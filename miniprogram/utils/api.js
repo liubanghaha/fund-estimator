@@ -38,5 +38,8 @@ const api = {
   watchlistCheck(fundCode) {
     return this.callFunction("manageWatchlist", { action: "check", fundCode });
   },
+  fetchMarketIndex(indexCode, days) {
+    return this.callFunction("fetchMarketIndex", { indexCode, days });
+  },
 };
 module.exports = api;
