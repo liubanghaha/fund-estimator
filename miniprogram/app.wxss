@@ -1,0 +1,18 @@
+page {
+  --color-primary: #E4393C;
+  --color-green: #2E8B57;
+  --color-bg: #F5F5F5;
+  --color-text: #333333;
+  --color-text-light: #999999;
+  --color-border: #EEEEEE;
+
+  background-color: var(--color-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-size: 28rpx;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.container {
+  padding: 24rpx;
+}

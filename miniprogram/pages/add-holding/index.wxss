@@ -1,0 +1,99 @@
+.container{padding:24rpx}
+
+.import-bar{margin-bottom:24rpx}
+.import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:16rpx;padding:28rpx 32rpx;text-align:center}
+.import-icon{font-size:40rpx;display:block;margin-bottom:8rpx}
+.import-text{font-size:28rpx;color:#2E7D32;font-weight:500;display:block;margin-bottom:6rpx}
+.import-hint{font-size:22rpx;color:#81C784;display:block}
+.import-loading{text-align:center;padding:32rpx;font-size:28rpx;color:#999;background:#FFF;border-radius:16rpx}
+
+.screenshot-preview{margin-bottom:24rpx;background:#FFF;border-radius:20rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
+.preview-img{width:100%;display:block}
+.preview-actions{display:flex;justify-content:space-between;align-items:center;padding:20rpx 28rpx}
+.preview-tip{font-size:24rpx;color:#999}
+.preview-remove{font-size:24rpx;color:#E4393C}
+
+.form{background:#FFF;border-radius:20rpx;padding:0 32rpx;margin-bottom:32rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
+
+.form-item{display:flex;align-items:center;justify-content:space-between;padding:30rpx 0;border-bottom:1rpx solid #F5F5F5}
+.form-item:last-child{border-bottom:none}
+
+.label{font-size:28rpx;color:#333;width:160rpx;font-weight:500}
+.input{flex:1;text-align:right;font-size:28rpx;color:#1A1A1A}
+.picker-value{font-size:28rpx;color:#999;text-align:right;width:100%}
+
+.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:#E4393C;border-radius:46rpx;text-align:center;padding:0;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(228,57,60,.3)}
+
+.delete-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#999;background:#FFF;border:2rpx solid #E5E5E5;border-radius:44rpx;text-align:center;padding:0}
+
+/* 多选弹窗 — 顶部滑入 */
+.picker-overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.45);
+  z-index:1000;
+  display:flex;align-items:flex-start;justify-content:center;
+  animation:fadeIn .2s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+.picker-panel{
+  width:660rpx;
+  margin-top:120rpx;
+  background:#FFF;
+  border-radius:24rpx;
+  overflow:hidden;
+  box-shadow:0 12rpx 40rpx rgba(0,0,0,.15);
+  animation:slideDown .25s ease;
+}
+@keyframes slideDown{from{transform:translateY(-80rpx);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.picker-header{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:28rpx 32rpx;
+  border-bottom:1rpx solid #F0F0F0;
+}
+.picker-title{font-size:30rpx;font-weight:600;color:#1A1A1A}
+.picker-select-all{font-size:26rpx;color:#4CAF50}
+
+.picker-list{max-height:480rpx;padding:8rpx 0}
+
+.picker-item{
+  display:flex;align-items:flex-start;
+  padding:24rpx 32rpx;
+}
+.picker-item:active{background:#F9F9F9}
+
+.picker-checkbox{
+  width:40rpx;height:40rpx;
+  border:2rpx solid #D0D0D0;border-radius:8rpx;
+  margin-right:20rpx;
+  margin-top:2rpx;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.picker-checkbox.checked{
+  background:#4CAF50;border-color:#4CAF50;
+}
+.picker-checkbox.checked text{color:#FFF;font-size:24rpx;font-weight:600}
+
+.picker-info{flex:1;display:flex;flex-direction:column}
+.picker-fname{font-size:28rpx;color:#1A1A1A;margin-bottom:4rpx}
+.picker-amount{font-size:24rpx;color:#E4393C}
+
+.picker-footer{
+  display:flex;gap:20rpx;
+  padding:24rpx 32rpx;
+  border-top:1rpx solid #F0F0F0;
+}
+.picker-cancel{
+  flex:1;height:80rpx;line-height:80rpx;
+  font-size:28rpx;color:#666;
+  background:#F5F5F5;border-radius:40rpx;
+  text-align:center;padding:0;
+}
+.picker-confirm{
+  flex:2;height:80rpx;line-height:80rpx;
+  font-size:28rpx;color:#FFF;
+  background:#E4393C;border-radius:40rpx;
+  text-align:center;padding:0;
+}

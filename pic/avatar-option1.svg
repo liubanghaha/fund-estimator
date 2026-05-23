@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E4393C"/>
+      <stop offset="100%" stop-color="#C62828"/>
+    </linearGradient>
+  </defs>
+  <rect width="144" height="144" rx="24" fill="url(#bg1)"/>
+  <text x="72" y="108" text-anchor="middle" font-size="96" font-weight="900" fill="#FFFFFF" font-family="PingFang SC, Heiti SC, Microsoft YaHei, sans-serif">涨</text>
+</svg>

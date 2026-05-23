@@ -1,0 +1,7 @@
+.login-page{display:flex;flex-direction:column;align-items:center;padding-top:160rpx}
+.login-logo{text-align:center;margin-bottom:80rpx}
+.logo-icon{font-size:100rpx;margin-bottom:32rpx}
+.logo-title{font-size:40rpx;font-weight:600;color:#333;margin-bottom:16rpx}
+.logo-desc{font-size:28rpx;color:#999}
+.login-btn{width:520rpx;height:88rpx;line-height:88rpx;font-size:32rpx;color:#FFF;background:#07C160;border-radius:44rpx;text-align:center;padding:0}
+.login-tip{margin-top:32rpx;font-size:24rpx;color:#CCC}

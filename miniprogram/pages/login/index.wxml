@@ -1,0 +1,9 @@
+<view class="login-page">
+  <view class="login-logo">
+    <view class="logo-icon">📈</view>
+    <view class="logo-title">基金估算</view>
+    <view class="logo-desc">管理你的基金持仓，追踪每日收益</view>
+  </view>
+  <button class="login-btn" bind:tap="onLogin">微信一键登录</button>
+  <view class="login-tip">登录后可管理持仓记录</view>
+</view>

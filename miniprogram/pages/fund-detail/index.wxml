@@ -1,0 +1,115 @@
+<view class="page">
+  <view wx:if="{{loading}}">加载中...</view>
+  <view wx:else class="content">
+    <view class="fund-header">
+      <view class="header-name">{{fundName}}</view>
+      <view class="header-code">{{fundCode}}</view>
+    </view>
+
+    <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
+      <view class="nav-top-row">
+        <view class="nav-main">
+          <view class="nav-label">估算净值</view>
+          <view class="nav-big">{{estimatedNav}}</view>
+          <view wx:if="{{nav}}" class="nav-ref">昨日净值 {{nav}}</view>
+        </view>
+        <view class="nav-change-col">
+          <view class="nav-change-label">涨幅估算</view>
+          <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
+            {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate}}%
+          </view>
+          <view class="nav-badge">实时数据</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{!isTrading || !estimatedNav}}" class="nav-card primary">
+      <view class="nav-top-row">
+        <view class="nav-main">
+          <view class="nav-label">单位净值</view>
+          <view class="nav-big">{{actualNav || nav || '--'}}</view>
+          <view wx:if="{{actualDate}}" class="nav-date">净值日期：{{actualDate}}</view>
+        </view>
+        <view class="nav-change-col">
+          <view class="nav-change-label">当日涨幅</view>
+          <view class="nav-change {{actualChangeRate > 0 ? 'up' : actualChangeRate < 0 ? 'down' : ''}}">
+            {{actualChangeRate > 0 ? '+' : ''}}{{actualChangeRate !== null ? actualChangeRate : '--'}}%
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="tab-bar">
+      <view class="tab-item {{activeTab === 'trend' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="trend">走势</view>
+      <view class="tab-item {{activeTab === 'holdings' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="holdings">持仓</view>
+      <view class="tab-item {{activeTab === 'profile' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="profile">档案</view>
+    </view>
+
+    <view wx:if="{{activeTab === 'trend'}}">
+      <view wx:if="{{navHistory.length > 1}}" class="chart-card">
+        <view class="section-title">净值走势</view>
+        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:360rpx"></canvas>
+      </view>
+      <view class="info-card"><view class="section-title">收益表现</view>
+        <view class="metrics-grid">
+          <view class="metric-item"><view class="metric-label">日涨幅</view><view class="metric-value {{todayReturn > 0 ? 'up' : todayReturn < 0 ? 'down' : ''}}">{{todayReturn > 0 ? '+' : ''}}{{todayReturn}}%</view></view>
+          <view class="metric-item"><view class="metric-label">近1周</view><view class="metric-value {{weekReturn > 0 ? 'up' : weekReturn < 0 ? 'down' : ''}}">{{weekReturn > 0 ? '+' : ''}}{{weekReturn}}%</view></view>
+          <view class="metric-item"><view class="metric-label">近1月</view><view class="metric-value {{monthReturn > 0 ? 'up' : monthReturn < 0 ? 'down' : ''}}">{{monthReturn > 0 ? '+' : ''}}{{monthReturn}}%</view></view>
+          <view class="metric-item"><view class="metric-label">近3月</view><view class="metric-value {{threeMonthReturn > 0 ? 'up' : threeMonthReturn < 0 ? 'down' : ''}}">{{threeMonthReturn > 0 ? '+' : ''}}{{threeMonthReturn}}%</view></view>
+          <view class="metric-item"><view class="metric-label">近6月</view><view class="metric-value {{sixMonthReturn > 0 ? 'up' : sixMonthReturn < 0 ? 'down' : ''}}">{{sixMonthReturn > 0 ? '+' : ''}}{{sixMonthReturn}}%</view></view>
+          <view class="metric-item"><view class="metric-value muted">--</view></view>
+        </view>
+      </view>
+      <view wx:if="{{navHistory.length > 0}}" class="info-card">
+        <view class="section-title">历史净值</view>
+        <view wx:for="{{navHistory}}" wx:key="date" wx:if="{{index < 10 || showAllHistory}}" class="history-row">
+          <view class="h-date">{{item.date}}</view>
+          <view class="h-nav">{{item.nav}}</view>
+          <view class="h-change {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.changeRate > 0 ? '+' : ''}}{{item.changeRate}}%</view>
+        </view>
+        <view wx:if="{{navHistory.length > 10 && !showAllHistory}}" class="show-more" bind:tap="onShowMore">查看更多 (共{{navHistory.length}}条)</view>
+        <view wx:if="{{showAllHistory}}" class="show-more" bind:tap="onShowLess">收起</view>
+      </view>
+    </view>
+
+    <view wx:if="{{activeTab === 'holdings'}}">
+      <view wx:if="{{holdings.length > 0}}" class="info-card">
+        <view class="section-title">前十大持仓</view>
+        <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
+          <view class="hold-rank">{{item.rank}}</view>
+          <view class="hold-name">{{item.stockName}}</view>
+          <view class="hold-ratio">{{item.navRatio}}</view>
+        </view>
+      </view>
+      <view wx:else class="info-card"><view class="empty-text">暂无持仓数据</view></view>
+    </view>
+
+    <view wx:if="{{activeTab === 'profile'}}">
+      <view wx:if="{{manager && manager.name}}" class="info-card">
+        <view class="section-title">基金经理</view>
+        <view class="manager-row">
+          <view class="manager-avatar">{{manager.name[0]}}</view>
+          <view class="manager-name">{{manager.name}}</view>
+          <view class="manager-detail">任职 {{manager.tenureDays}}天</view>
+          <view wx:if="{{manager.tenureReturn}}" class="manager-return {{manager.tenureReturn > 0 ? 'up' : manager.tenureReturn < 0 ? 'down' : ''}}">任职回报 {{manager.tenureReturn > 0 ? '+' : ''}}{{manager.tenureReturn}}%</view>
+        </view>
+      </view>
+      <view wx:if="{{profile}}" class="info-card">
+        <view class="section-title">基金档案</view>
+        <view class="profile-grid">
+          <view class="profile-item"><view class="profile-label">基金类型</view><view class="profile-value">{{profile.fundType || '--'}}</view></view>
+          <view class="profile-item"><view class="profile-label">成立日期</view><view class="profile-value">{{profile.establishDate || '--'}}</view></view>
+          <view class="profile-item"><view class="profile-label">基金规模</view><view class="profile-value">{{profile.fundSizeText}}</view></view>
+          <view class="profile-item"><view class="profile-label">风险等级</view><view class="profile-value">{{profile.riskText}}</view></view>
+          <view class="profile-item full" wx:if="{{profile.company}}"><view class="profile-label">基金公司</view><view class="profile-value">{{profile.company}}</view></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="bottom-bar">
+      <button class="btn-add" bind:tap="onAddHolding">添加持仓</button>
+      <button class="btn-refresh" bind:tap="onRefresh">刷新</button>
+    </view>
+    <view class="bottom-safe"></view>
+  </view>
+</view>
