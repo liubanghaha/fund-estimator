@@ -16,26 +16,42 @@ Page({
     wx.showLoading({ title: "登录中..." });
     try {
       const res = await api.userLogin();
-      wx.hideLoading();
-      if (res.result && res.result.code === 0) {
-        wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
-        this.setData({ isLoggedIn: true });
-        wx.showToast({ title: "登录成功", icon: "success" });
-      } else {
+      if (!res.result || res.result.code !== 0) {
+        wx.hideLoading();
         wx.showToast({ title: "登录失败，请重试", icon: "none" });
+        return;
       }
+      wx.hideLoading();
+      this.getUserProfile(res.result.data.openid);
     } catch (e) {
       wx.hideLoading();
-      console.error("登录失败:", e);
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
   },
-  onChooseAvatar(e) {
-    const avatarUrl = e.detail.avatarUrl;
-    this.setData({ avatarUrl });
-    const userInfo = wx.getStorageSync("userInfo") || {};
-    userInfo.avatarUrl = avatarUrl;
-    wx.setStorageSync("userInfo", userInfo);
+  getUserProfile(openid) {
+    wx.getUserProfile({
+      desc: "用于展示你的微信头像和昵称",
+      success: (res) => {
+        const userInfo = {
+          loggedIn: true,
+          openid: openid,
+          avatarUrl: res.userInfo.avatarUrl,
+          nickName: res.userInfo.nickName,
+        };
+        wx.setStorageSync("userInfo", userInfo);
+        this.setData({
+          isLoggedIn: true,
+          avatarUrl: userInfo.avatarUrl,
+          nickName: userInfo.nickName,
+        });
+        wx.showToast({ title: "登录成功", icon: "success" });
+      },
+      fail: () => {
+        wx.setStorageSync("userInfo", { loggedIn: true, openid: openid });
+        this.setData({ isLoggedIn: true });
+        wx.showToast({ title: "登录成功", icon: "success" });
+      },
+    });
   },
   onLogout() {
     wx.showModal({
