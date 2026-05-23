@@ -7,8 +7,12 @@
 .retry-btn{width:200rpx;height:64rpx;line-height:64rpx;font-size:26rpx;color:#E4393C;background:#FFF;border:1rpx solid #E4393C;border-radius:32rpx;text-align:center;padding:0}
 
 .fund-header{background:#FFF;padding:32rpx 32rpx 24rpx}
+.header-top{display:flex;justify-content:space-between;align-items:flex-start}
+.header-info{flex:1}
 .header-name{font-size:36rpx;font-weight:600;color:#1A1A1A;margin-bottom:10rpx}
 .header-code{font-size:26rpx;color:#999}
+.follow-btn{flex-shrink:0;padding:10rpx 24rpx;font-size:26rpx;color:#E4393C;border:1rpx solid #E4393C;border-radius:32rpx;margin-top:4rpx}
+.follow-btn.followed{color:#999;border-color:#CCC}
 
 .nav-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
 .nav-card.primary{border-left:6rpx solid #E4393C}

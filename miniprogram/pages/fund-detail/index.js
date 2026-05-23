@@ -10,7 +10,7 @@ Page({
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null,
     profile: null, manager: null, holdings: [],
-    hasHolding: false, activeTab: "trend",
+    hasHolding: false, followed: false, activeTab: "trend",
     showAllHistory: false,
     isTrading: false,
   },
@@ -26,13 +26,37 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, errorMsg: "" });
     try {
-      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.fetchProfile()]);
+      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.fetchProfile(), this.checkFollow()]);
       await this.checkHolding();
       this.updateDisplay();
       this.setData({ loading: false });
       setTimeout(() => this.drawChart(), 500);
     } catch (e) {
       this.setData({ loading: false, errorMsg: "加载失败" });
+    }
+  },
+  async checkFollow() {
+    try {
+      const res = await api.watchlistCheck(this.data.fundCode);
+      if (res.result && res.result.code === 0) {
+        this.setData({ followed: res.result.data.followed });
+      }
+    } catch (e) {}
+  },
+  async onToggleFollow() {
+    const { fundCode, fundName, followed } = this.data;
+    try {
+      if (followed) {
+        await api.watchlistRemove(fundCode);
+        this.setData({ followed: false });
+        wx.showToast({ title: "已取消关注", icon: "none" });
+      } else {
+        await api.watchlistAdd(fundCode, fundName);
+        this.setData({ followed: true });
+        wx.showToast({ title: "已关注", icon: "success" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "操作失败", icon: "none" });
     }
   },
 

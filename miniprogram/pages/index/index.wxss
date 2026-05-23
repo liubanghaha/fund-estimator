@@ -23,6 +23,20 @@
 .action-icon{font-size:48rpx;margin-bottom:12rpx}
 .action-text{font-size:26rpx;color:#333}
 
+/* 收益走势图 */
+.chart-section{margin:24rpx}
+.chart-card{background:#FFF;margin:0;border-radius:16rpx;padding:20rpx}
+
+/* 自选关注 */
+.watchlist-section{margin:24rpx}
+.watchlist-scroll{display:flex;overflow-x:auto;white-space:nowrap;padding:4rpx 0}
+.watchlist-scroll::-webkit-scrollbar{display:none}
+.watch-item{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:180rpx;padding:28rpx 20rpx;margin-right:16rpx;background:#FFF;border-radius:16rpx}
+.w-name{font-size:26rpx;color:#333;margin-bottom:12rpx;max-width:160rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w-rate{font-size:36rpx;font-weight:600;color:#999}
+.w-rate.up{color:#E4393C}
+.w-rate.down{color:#2E8B57}
+
 /* 持仓列表 */
 .holdings-section{margin:24rpx}
 .section-title{font-size:28rpx;font-weight:500;color:#333;margin-bottom:14rpx;padding-left:8rpx}

@@ -1,0 +1,9 @@
+{
+  "name": "manageWatchlist",
+  "version": "1.0.0",
+  "description": "管理自选基金",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

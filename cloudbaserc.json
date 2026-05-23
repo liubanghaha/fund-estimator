@@ -11,6 +11,7 @@
     { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "ocrScreenshot", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "searchFund", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "manageWatchlist", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "userLogin", "timeout": 10, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

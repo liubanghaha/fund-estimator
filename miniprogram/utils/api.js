@@ -26,5 +26,17 @@ const api = {
   ocrScreenshot(fileID) {
     return this.callFunction("ocrScreenshot", { fileID });
   },
+  watchlistAdd(fundCode, fundName) {
+    return this.callFunction("manageWatchlist", { action: "add", fundCode, fundName });
+  },
+  watchlistRemove(fundCode) {
+    return this.callFunction("manageWatchlist", { action: "remove", fundCode });
+  },
+  watchlistList() {
+    return this.callFunction("manageWatchlist", { action: "list" });
+  },
+  watchlistCheck(fundCode) {
+    return this.callFunction("manageWatchlist", { action: "check", fundCode });
+  },
 };
 module.exports = api;

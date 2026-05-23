@@ -2,8 +2,15 @@
   <view wx:if="{{loading}}">加载中...</view>
   <view wx:else class="content">
     <view class="fund-header">
-      <view class="header-name">{{fundName}}</view>
-      <view class="header-code">{{fundCode}}</view>
+      <view class="header-top">
+        <view class="header-info">
+          <view class="header-name">{{fundName}}</view>
+          <view class="header-code">{{fundCode}}</view>
+        </view>
+        <view class="follow-btn {{followed ? 'followed' : ''}}" bind:tap="onToggleFollow">
+          {{followed ? '已关注' : '+ 关注'}}
+        </view>
+      </view>
     </view>
 
     <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
