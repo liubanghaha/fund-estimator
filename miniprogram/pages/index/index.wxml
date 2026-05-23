@@ -22,6 +22,14 @@
       </view>
     </view>
 
+    <!-- 收益走势 -->
+    <view wx:if="{{profitHistory.length > 1}}" class="chart-section">
+      <view class="section-title">收益走势</view>
+      <view class="chart-card">
+        <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx"></canvas>
+      </view>
+    </view>
+
     <!-- 快捷入口 -->
     <view class="quick-actions">
       <view class="action-item" bind:tap="onSearch">
