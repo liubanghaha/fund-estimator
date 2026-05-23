@@ -8,7 +8,13 @@ Page({
       const res = await api.userLogin();
       wx.hideLoading();
       if (res.result && res.result.code === 0) {
-        wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
+        const userProfile = await this.getUserProfile();
+        wx.setStorageSync("userInfo", {
+          loggedIn: true,
+          openid: res.result.data.openid,
+          avatarUrl: userProfile.avatarUrl || "",
+          nickName: userProfile.nickName || "",
+        });
         wx.showToast({ title: "登录成功", icon: "success" });
         setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
       } else {
@@ -19,5 +25,13 @@ Page({
       console.error("登录失败:", e);
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
+  },
+  getUserProfile() {
+    return new Promise((resolve) => {
+      wx.getUserInfo({
+        success: (res) => resolve({ avatarUrl: res.userInfo.avatarUrl, nickName: res.userInfo.nickName }),
+        fail: () => resolve({ avatarUrl: "", nickName: "" }),
+      });
+    });
   },
 });

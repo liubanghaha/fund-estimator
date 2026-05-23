@@ -1,7 +1,8 @@
 <view class="container">
   <view class="user-header">
-    <view class="avatar-icon">👤</view>
-    <view class="nickname">{{isLoggedIn ? '已登录' : '点击登录'}}</view>
+    <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" wx:if="{{avatarUrl}}"></image>
+    <view class="avatar-placeholder" wx:else>👤</view>
+    <view class="nickname">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
   </view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索基金</text><text class="arrow">></text></view>
