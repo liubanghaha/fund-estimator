@@ -10,7 +10,6 @@ Page({
     totalReturn: "0.00",
     totalReturnRate: "0.00",
     updateTime: "",
-    profitHistory: [],
   },
 
   onShow() {
@@ -37,94 +36,14 @@ Page({
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
         });
-        this.fetchProfitHistory(d.holdings || []);
       }
     } catch (e) {
       console.error("获取持仓失败:", e);
     }
   },
 
-  async fetchProfitHistory(holdings) {
-    if (holdings.length === 0) return;
-    try {
-      const navResults = await Promise.all(
-        holdings.map((h) => api.fetchFundNAVHistory(h.fundCode, 30).catch(() => null))
-      );
-      const dateMap = {};
-      navResults.forEach((r, i) => {
-        if (!r || !r.result || r.result.code !== 0) return;
-        (r.result.data || []).forEach((item) => {
-          const d = item.date;
-          if (!dateMap[d]) dateMap[d] = 0;
-          dateMap[d] += item.nav * holdings[i].shares;
-        });
-      });
-      const totalCost = holdings.reduce((sum, h) => sum + h.buyPrice * h.shares, 0);
-      const history = Object.entries(dateMap)
-        .map(([date, value]) => ({
-          date,
-          value: +value.toFixed(2),
-          profit: +(value - totalCost).toFixed(2),
-        }))
-        .sort((a, b) => a.date.localeCompare(b.date));
-      this.setData({ profitHistory: history.slice(-30) });
-      setTimeout(() => this.drawProfitChart(), 500);
-    } catch (e) {}
-  },
-
-  drawProfitChart() {
-    const history = this.data.profitHistory;
-    if (!history || history.length < 2) return;
-    const ctx = wx.createCanvasContext('profitCanvas', this);
-    const w = 340, h = 180;
-    const data = [...history].reverse();
-    const profits = data.map(d => d.profit);
-    const minP = Math.min(...profits), maxP = Math.max(...profits);
-    const range = maxP - minP || 0.01;
-    const pad = range * 0.15;
-    const yMin = minP - pad, yMax = maxP + pad;
-    const m = { top: 16, right: 8, bottom: 22, left: 8 };
-    const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
-    const xp = (i) => m.left + (pw / (data.length - 1)) * i;
-    const yp = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
-
-    ctx.setFillStyle('#FFFFFF');
-    ctx.fillRect(0, 0, w, h);
-
-    const isUp = profits[profits.length - 1] >= profits[0];
-    const gradient = ctx.createLinearGradient(0, m.top, 0, h - m.bottom);
-    gradient.addColorStop(0, isUp ? 'rgba(228,57,60,0.12)' : 'rgba(46,139,87,0.12)');
-    gradient.addColorStop(1, isUp ? 'rgba(228,57,60,0.01)' : 'rgba(46,139,87,0.01)');
-    ctx.beginPath();
-    data.forEach((d, i) => { const x = xp(i), y = yp(d.profit); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-    ctx.lineTo(xp(data.length - 1), h - m.bottom);
-    ctx.lineTo(xp(0), h - m.bottom);
-    ctx.closePath();
-    ctx.setFillStyle(gradient);
-    ctx.fill();
-
-    ctx.beginPath();
-    data.forEach((d, i) => { const x = xp(i), y = yp(d.profit); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-    ctx.setStrokeStyle(isUp ? '#E4393C' : '#2E8B57');
-    ctx.setLineWidth(1.5);
-    ctx.stroke();
-
-    ctx.setFillStyle('#999');
-    ctx.setFontSize(9);
-    ctx.setTextAlign('right');
-    ctx.setTextBaseline('middle');
-    for (let i = 0; i <= 4; i++) {
-      const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(0), m.left + 52, yp(val));
-    }
-    ctx.setTextAlign('center');
-    ctx.setTextBaseline('top');
-    const steps = Math.min(5, data.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (data.length - 1));
-      ctx.fillText(data[idx].date.slice(5), xp(idx), h - m.bottom + 4);
-    }
-    ctx.draw();
+  onTapProfit() {
+    wx.navigateTo({ url: "/pages/profit-detail/index" });
   },
 
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },

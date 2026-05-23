@@ -1,0 +1,112 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <view wx:else>
+    <view class="summary-bar">
+      <view class="summary-item {{activeTab === 'day' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="day">
+        <view class="summary-label">当日收益</view>
+        <view class="summary-value {{todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : ''}}">
+          {{todayProfit > 0 ? '+' : ''}}{{todayProfit}}
+        </view>
+        <view class="summary-rate {{todayProfitRate > 0 ? 'up' : todayProfitRate < 0 ? 'down' : ''}}">
+          {{todayProfitRate > 0 ? '+' : ''}}{{todayProfitRate}}%
+        </view>
+      </view>
+      <view class="summary-item {{activeTab === 'month' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="month">
+        <view class="summary-label">本月收益</view>
+        <view class="summary-value {{monthProfit > 0 ? 'up' : monthProfit < 0 ? 'down' : ''}}">
+          {{monthProfit > 0 ? '+' : ''}}{{monthProfit}}
+        </view>
+        <view class="summary-rate {{monthProfitRate > 0 ? 'up' : monthProfitRate < 0 ? 'down' : ''}}">
+          {{monthProfitRate > 0 ? '+' : ''}}{{monthProfitRate}}%
+        </view>
+      </view>
+      <view class="summary-item {{activeTab === 'year' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="year">
+        <view class="summary-label">本年收益</view>
+        <view class="summary-value {{yearProfit > 0 ? 'up' : yearProfit < 0 ? 'down' : ''}}">
+          {{yearProfit > 0 ? '+' : ''}}{{yearProfit}}
+        </view>
+        <view class="summary-rate {{yearProfitRate > 0 ? 'up' : yearProfitRate < 0 ? 'down' : ''}}">
+          {{yearProfitRate > 0 ? '+' : ''}}{{yearProfitRate}}%
+        </view>
+      </view>
+    </view>
+
+    <view class="chart-card">
+      <view class="chart-header">
+        <view class="chart-title">收益走势</view>
+        <picker mode="selector" range="{{compareRange}}" bindchange="onCompareChange">
+          <view class="compare-picker">{{compareLabel}}</view>
+        </picker>
+      </view>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:680rpx;height:400rpx;display:block"></canvas>
+    </view>
+
+    <view class="tab-bar">
+      <view class="tab-blocks">
+        <view class="tab-block {{calendarView === 'day' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="day">日</view>
+        <view class="tab-block {{calendarView === 'month' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="month">月</view>
+        <view class="tab-block {{calendarView === 'year' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="year">年</view>
+      </view>
+      <view class="tab-controls">
+        <picker wx:if="{{calendarView === 'day'}}" mode="selector" range="{{availableMonths}}" bindchange="onMonthChange">
+          <view class="picker-label">{{selectedMonth}} ▼</view>
+        </picker>
+        <picker wx:if="{{calendarView === 'month'}}" mode="selector" range="{{availableYears}}" bindchange="onYearChange">
+          <view class="picker-label">{{selectedYear}} ▼</view>
+        </picker>
+        <view class="mode-toggle" bind:tap="onToggleMode">
+          {{displayMode === 'amount' ? '金额' : '收益率'}}
+        </view>
+      </view>
+    </view>
+
+    <!-- 日视图 - 日历 -->
+    <view wx:if="{{calendarView === 'day'}}" class="calendar-card">
+      <view class="weekday-row">
+        <view class="weekday">日</view>
+        <view class="weekday">一</view>
+        <view class="weekday">二</view>
+        <view class="weekday">三</view>
+        <view class="weekday">四</view>
+        <view class="weekday">五</view>
+        <view class="weekday">六</view>
+      </view>
+      <view wx:for="{{dayCalendar}}" wx:key="index" class="week-row">
+        <view wx:for="{{item}}" wx:for-item="d" wx:for-index="di" wx:key="di" class="day-cell {{d.empty ? 'empty' : (d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : '')}}">
+          <view class="day-num">{{d.day}}</view>
+          <view wx:if="{{!d.empty && d.profit !== null}}" class="day-profit {{d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? (d.profit > 0 ? '+' : '') + d.profit : (d.profitRate > 0 ? '+' : '') + d.profitRate + '%'}}
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 月视图 - 12宫格 -->
+    <view wx:if="{{calendarView === 'month'}}" class="calendar-card">
+      <view class="month-grid">
+        <view wx:for="{{monthCalendar}}" wx:key="month" class="month-cell {{item.empty ? 'empty' : (item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : '')}}">
+          <view class="month-name">{{item.month}}月</view>
+          <view wx:if="{{!item.empty && item.profit !== null}}" class="month-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profitRate > 0 ? '+' : '') + item.profitRate + '%'}}
+          </view>
+          <view wx:else class="month-profit empty-text">--</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 年视图 - 表格 -->
+    <view wx:if="{{calendarView === 'year'}}" class="calendar-card">
+      <view class="year-list">
+        <view wx:for="{{yearData}}" wx:key="date" class="year-row {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+          <view class="year-label">{{item.date.slice(0, 4)}}年</view>
+          <view class="year-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profitRate > 0 ? '+' : '') + item.profitRate + '%'}}
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

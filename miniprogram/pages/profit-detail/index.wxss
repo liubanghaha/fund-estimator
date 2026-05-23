@@ -1,0 +1,70 @@
+.page{min-height:100vh;background:#F5F5F5;padding-bottom:40rpx}
+
+.loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
+.loading-text{font-size:28rpx;color:#999}
+
+.summary-bar{display:flex;background:#FFF;padding:24rpx 24rpx;margin-bottom:16rpx}
+.summary-item{flex:1;text-align:center;padding:16rpx 8rpx;border-radius:12rpx;transition:all .2s;margin-right:12rpx}
+.summary-item:last-child{margin-right:0}
+.summary-item.active{background:linear-gradient(135deg,#E4393C,#FF6B6B)}
+.summary-item.active .summary-label{color:rgba(255,255,255,.8)}
+.summary-item.active .summary-value{color:#FFF}
+.summary-item.active .summary-value.up{color:#FFD700}
+.summary-item.active .summary-value.down{color:#90EE90}
+.summary-label{font-size:22rpx;color:#999;margin-bottom:8rpx}
+.summary-value{font-size:34rpx;font-weight:600;color:#333}
+.summary-value.up{color:#E4393C}
+.summary-value.down{color:#2E8B57}
+.summary-rate{font-size:22rpx;color:#999;margin-top:4rpx}
+.summary-rate.up{color:#E4393C}
+.summary-rate.down{color:#2E8B57}
+.summary-item.active .summary-rate{color:rgba(255,255,255,.7)}
+.summary-item.active .summary-rate.up{color:#FFD700}
+.summary-item.active .summary-rate.down{color:#90EE90}
+
+.chart-card{background:#FFF;margin:16rpx 24rpx;border-radius:20rpx;padding:24rpx 16rpx 16rpx}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12rpx;padding-left:8rpx}
+.chart-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
+.compare-picker{font-size:24rpx;color:#1976D2;padding:8rpx 16rpx;background:rgba(25,118,210,0.06);border-radius:8rpx}
+
+.tab-bar{display:flex;align-items:center;background:#FFF;margin:0 24rpx;border-radius:20rpx 20rpx 0 0;padding:12rpx 16rpx}
+.tab-blocks{display:flex;flex-shrink:0}
+.tab-block{flex-shrink:0;padding:12rpx 24rpx;font-size:26rpx;color:#666;background:#F5F5F5;border-radius:10rpx;margin-right:8rpx}
+.tab-block.active{color:#FFF;background:#E4393C;font-weight:600}
+.tab-controls{display:flex;align-items:center;margin-left:auto;gap:8rpx}
+.picker-label{font-size:24rpx;color:#666;padding:10rpx 14rpx;background:#F5F5F5;border-radius:8rpx;white-space:nowrap}
+.mode-toggle{flex-shrink:0;font-size:22rpx;color:#E4393C;padding:10rpx 14rpx;background:rgba(228,57,60,0.06);border-radius:8rpx;white-space:nowrap}
+/* 日历 */
+.calendar-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:16rpx 16rpx 24rpx}
+
+.weekday-row{display:flex;padding:8rpx 0 12rpx}
+.weekday{flex:1;text-align:center;font-size:22rpx;color:#BBB}
+
+.week-row{display:flex}
+.day-cell{flex:1;text-align:center;padding:12rpx 2rpx;min-height:90rpx;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.day-cell.empty{opacity:.4}
+.day-cell.empty .day-num{font-size:20rpx;color:#CCC}
+.day-cell.up .day-num,.day-cell.down .day-num{font-size:26rpx;color:#333;font-weight:500}
+.day-num{font-size:20rpx;color:#CCC;margin-bottom:2rpx}
+.day-profit{font-size:18rpx;font-weight:600;white-space:nowrap}
+.day-profit.up{color:#E4393C}
+.day-profit.down{color:#2E8B57}
+
+/* 月网格 */
+.month-grid{display:flex;flex-wrap:wrap;padding:8rpx 0}
+.month-cell{width:25%;text-align:center;padding:24rpx 0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.month-cell.empty{opacity:.25}
+.month-name{font-size:26rpx;color:#333;margin-bottom:8rpx}
+.month-profit{font-size:24rpx;font-weight:500}
+.month-profit.up{color:#E4393C}
+.month-profit.down{color:#2E8B57}
+.empty-text{font-size:24rpx;color:#CCC}
+
+/* 年列表 */
+.year-list{padding:8rpx 0}
+.year-row{display:flex;justify-content:space-between;align-items:center;padding:24rpx 8rpx;border-bottom:1rpx solid #F5F5F5}
+.year-row:last-child{border-bottom:none}
+.year-label{font-size:30rpx;font-weight:500;color:#333}
+.year-profit{font-size:30rpx;font-weight:600}
+.year-profit.up{color:#E4393C}
+.year-profit.down{color:#2E8B57}

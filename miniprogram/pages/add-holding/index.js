@@ -74,14 +74,16 @@ Page({
         const d = ocrRes.result.data;
         const holdings = (d.holdings || []).map((h) => ({ ...h, _checked: true }));
         if (holdings.length === 0) {
-          wx.showToast({ title: "未能识别出基金信息", icon: "none" });
+          wx.showModal({
+            title: "提示",
+            content: "未识别到基金信息，请手动输入",
+            showCancel: false,
+          });
           return;
         }
         if (holdings.length === 1) {
-          // 单只基金直接填充
           this.fillForm(d);
         } else {
-          // 多只基金弹窗多选
           this.setData({
             ocrHoldings: holdings,
             showPicker: true,
@@ -90,12 +92,20 @@ Page({
           });
         }
       } else {
-        wx.showToast({ title: "识别失败，请对照截图填写", icon: "none" });
+        wx.showModal({
+          title: "识别失败",
+          content: "请检查截图是否清晰，或手动输入",
+          showCancel: false,
+        });
       }
     } catch (e) {
       wx.hideLoading();
       this.setData({ ocrLoading: false });
-      wx.showToast({ title: "识别失败，请对照截图填写", icon: "none" });
+      wx.showModal({
+        title: "识别失败",
+        content: "请检查截图是否清晰，或手动输入",
+        showCancel: false,
+      });
     }
   },
 
@@ -109,13 +119,20 @@ Page({
 
     if (Object.keys(updates).length > 0) {
       this.setData(updates);
-      wx.showToast({ title: `已识别(${d.method})，请核对`, icon: "success" });
+      wx.showModal({
+        title: "识别成功",
+        content: "已自动填入持仓信息，请核对后保存",
+        showCancel: false,
+      });
     } else {
-      wx.showToast({ title: "未能提取信息，请对照截图填写", icon: "none" });
+      wx.showModal({
+        title: "提示",
+        content: "未提取到完整信息，请对照截图手动填写",
+        showCancel: false,
+      });
     }
   },
 
-  // 多选弹窗逻辑
   noop() {},
 
   onToggleItem(e) {
@@ -147,16 +164,24 @@ Page({
   async onPickerConfirm() {
     const selected = this.data.ocrHoldings.filter((h) => h._checked);
     if (selected.length === 0) {
-      wx.showToast({ title: "请至少选择一个基金", icon: "none" });
+      wx.showToast({ title: "请选择一个基金", icon: "none" });
       return;
     }
 
-    wx.showLoading({ title: `正在添加 ${selected.length} 个基金...` });
+    wx.showLoading({ title: "添加中..." });
     const db = wx.cloud.database();
-    const errors = [];
+    let added = 0, skipped = 0, failed = 0;
 
     for (const h of selected) {
       try {
+        // Idempotency: check if fund already exists
+        const existRes = await db.collection("holdings")
+          .where({ fundCode: h.fundCode })
+          .count();
+        if (existRes.total > 0) {
+          skipped++;
+          continue;
+        }
         await db.collection("holdings").add({
           data: {
             fundCode: h.fundCode || "",
@@ -168,22 +193,29 @@ Page({
             createTime: new Date(),
           },
         });
+        added++;
       } catch (e) {
-        errors.push(h.fundName);
+        failed++;
       }
     }
 
     wx.hideLoading();
     this.setData({ showPicker: false });
 
-    if (errors.length > 0) {
-      wx.showToast({ title: `${errors.length} 个添加失败`, icon: "none" });
-    } else {
-      wx.showToast({ title: `已添加 ${selected.length} 个基金`, icon: "success" });
-    }
-    setTimeout(() => {
-      wx.switchTab({ url: "/pages/index/index" });
-    }, 800);
+    const parts = [];
+    if (added > 0) parts.push(`成功添加 ${added} 个`);
+    if (skipped > 0) parts.push(`${skipped} 个已存在`);
+    if (failed > 0) parts.push(`${failed} 个失败`);
+    wx.showModal({
+      title: "添加结果",
+      content: parts.join("\n"),
+      showCancel: false,
+      success: () => {
+        if (added > 0) {
+          setTimeout(() => wx.switchTab({ url: "/pages/index/index" }), 300);
+        }
+      },
+    });
   },
 
   onRemoveScreenshot() {
@@ -200,11 +232,26 @@ Page({
     const { id, isEdit, fundCode, fundName, buyPrice, shares, buyAmount, buyDate } = this.data;
     if (!fundCode.trim()) { wx.showToast({ title: "请输入基金代码", icon: "none" }); return; }
     if (!fundName.trim()) { wx.showToast({ title: "请输入基金名称", icon: "none" }); return; }
-    if (!buyPrice || parseFloat(buyPrice) <= 0) { wx.showToast({ title: "请输入有效的买入净值", icon: "none" }); return; }
-    if (!shares || parseFloat(shares) <= 0) { wx.showToast({ title: "请输入有效的份额", icon: "none" }); return; }
+    if (!buyPrice || parseFloat(buyPrice) <= 0) { wx.showToast({ title: "请输入有效净值", icon: "none" }); return; }
+    if (!shares || parseFloat(shares) <= 0) { wx.showToast({ title: "请输入有效份额", icon: "none" }); return; }
     wx.showLoading({ title: "保存中..." });
     try {
       const db = wx.cloud.database();
+      if (!isEdit) {
+        // Idempotency: check duplicate
+        const existRes = await db.collection("holdings")
+          .where({ fundCode: fundCode.trim() })
+          .count();
+        if (existRes.total > 0) {
+          wx.hideLoading();
+          wx.showModal({
+            title: "重复添加",
+            content: `基金 ${fundCode.trim()} 已在持仓中`,
+            showCancel: false,
+          });
+          return;
+        }
+      }
       const data = {
         fundCode: fundCode.trim(), fundName: fundName.trim(),
         buyPrice: parseFloat(buyPrice), shares: parseFloat(shares),
@@ -217,7 +264,7 @@ Page({
         await db.collection("holdings").add({ data });
       }
       wx.hideLoading();
-      wx.showToast({ title: isEdit ? "更新成功" : "保存成功", icon: "success" });
+      wx.showToast({ title: isEdit ? "更新成功" : "添加成功", icon: "success" });
       setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
     } catch (e) {
       wx.hideLoading();

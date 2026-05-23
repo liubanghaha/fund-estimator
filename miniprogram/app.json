@@ -6,7 +6,8 @@
     "pages/fund-detail/index",
     "pages/add-holding/index",
     "pages/user-center/index",
-    "pages/login/index"
+    "pages/login/index",
+    "pages/profit-detail/index"
   ],
   "window": {
     "backgroundColor": "#F5F5F5",
