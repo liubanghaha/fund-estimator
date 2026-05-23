@@ -27,7 +27,7 @@
 
     <view class="chart-card">
       <view class="chart-title">收益走势</view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:400rpx"></canvas>
+      <canvas class="profit-canvas" canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx"></canvas>
     </view>
 
     <view class="tab-bar">
