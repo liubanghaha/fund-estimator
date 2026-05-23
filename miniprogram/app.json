@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/watchlist/index",
+    "pages/profit-detail/index",
     "pages/search/index",
     "pages/fund-detail/index",
     "pages/add-holding/index",
