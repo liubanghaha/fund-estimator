@@ -14,11 +14,8 @@ Page({
     yearProfit: "0.00",
   },
 
-  onShow() {
-    if (!this._loaded) {
-      this._loaded = true;
-      this.loadData();
-    }
+  onLoad() {
+    this.loadData();
   },
 
   async loadData() {
@@ -105,8 +102,9 @@ Page({
         monthProfit: monthProfit.toFixed(2),
         yearProfit: yearProfit.toFixed(2),
         loading: false,
+      }, () => {
+        setTimeout(() => this.drawChart(), 300);
       });
-      setTimeout(() => this.drawChart(), 600);
     } catch (e) {
       console.error("加载收益数据失败:", e);
       this.setData({ loading: false });
@@ -114,8 +112,9 @@ Page({
   },
 
   onTabTap(e) {
-    this.setData({ activeTab: e.currentTarget.dataset.tab });
-    setTimeout(() => this.drawChart(), 300);
+    this.setData({ activeTab: e.currentTarget.dataset.tab }, () => {
+      setTimeout(() => this.drawChart(), 300);
+    });
   },
 
   onToggleMode() {

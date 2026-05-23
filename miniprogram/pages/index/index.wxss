@@ -23,10 +23,6 @@
 .action-icon{font-size:48rpx;margin-bottom:12rpx}
 .action-text{font-size:26rpx;color:#333}
 
-/* 收益走势 */
-.chart-section{margin:24rpx}
-.chart-card{background:#FFF;margin:0;border-radius:16rpx;padding:20rpx}
-
 /* 持仓列表 */
 .holdings-section{margin:24rpx}
 .section-title{font-size:28rpx;font-weight:500;color:#333;margin-bottom:14rpx;padding-left:8rpx}
