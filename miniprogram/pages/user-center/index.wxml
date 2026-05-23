@@ -1,11 +1,9 @@
 <view class="container">
   <view class="user-header">
-    <view class="avatar-box" wx:if="{{isLoggedIn}}">
+    <view class="avatar-box">
       <open-data type="userAvatarUrl" />
     </view>
-    <view class="avatar-placeholder" wx:else>👤</view>
-    <open-data class="nickname" type="userNickName" wx:if="{{isLoggedIn}}" lang="zh_CN" />
-    <view class="nickname-text" wx:else>点击登录</view>
+    <open-data class="nickname" type="userNickName" lang="zh_CN" />
   </view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索基金</text><text class="arrow">></text></view>
