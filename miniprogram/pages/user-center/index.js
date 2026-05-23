@@ -1,11 +1,15 @@
 const api = require("../../utils/api");
 
 Page({
-  data: { isLoggedIn: false },
+  data: { isLoggedIn: false, avatarUrl: "", nickName: "" },
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      this.setData({ isLoggedIn: true });
+      this.setData({
+        isLoggedIn: true,
+        avatarUrl: userInfo.avatarUrl || "",
+        nickName: userInfo.nickName || "",
+      });
     }
   },
   async onLogin() {
@@ -26,13 +30,20 @@ Page({
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
   },
+  onChooseAvatar(e) {
+    const avatarUrl = e.detail.avatarUrl;
+    this.setData({ avatarUrl });
+    const userInfo = wx.getStorageSync("userInfo") || {};
+    userInfo.avatarUrl = avatarUrl;
+    wx.setStorageSync("userInfo", userInfo);
+  },
   onLogout() {
     wx.showModal({
       title: "提示", content: "确定要退出登录吗？",
       success: (res) => {
         if (res.confirm) {
           wx.removeStorageSync("userInfo");
-          this.setData({ isLoggedIn: false });
+          this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "" });
         }
       },
     });
