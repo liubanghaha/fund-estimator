@@ -3,14 +3,14 @@
   "envId": "cloudbase-d0gug00io7bfedd97",
   "functionRoot": "cloudfunctions",
   "functions": [
-    { "name": "createCollection", "timeout": 15, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "fetchFundEstimate", "timeout": 20, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "fetchFundInfo", "timeout": 15, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "fetchFundNAVHistory", "timeout": 15, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "fetchFundProfile", "timeout": 20, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "ocrScreenshot", "timeout": 30, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "searchFund", "timeout": 15, "runtime": "Nodejs18.15", "handler": "index.main" },
-    { "name": "userLogin", "timeout": 10, "runtime": "Nodejs18.15", "handler": "index.main" }
+    { "name": "createCollection", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundInfo", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundNAVHistory", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundProfile", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "ocrScreenshot", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "searchFund", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "userLogin", "timeout": 10, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }
