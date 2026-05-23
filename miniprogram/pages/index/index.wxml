@@ -8,7 +8,7 @@
 
   <view wx:if="{{isLoggedIn}}" class="dashboard">
     <!-- 今日实时收益 -->
-    <view class="asset-overview" bind:tap="onTapProfit">
+    <view class="asset-overview">
       <view class="asset-label">今日估算收益</view>
       <view class="asset-value {{todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : ''}}">
         {{todayProfit > 0 ? '+' : ''}}{{todayProfit}}
@@ -19,6 +19,14 @@
         <text>市值 {{totalAmount}}</text>
         <text class="asset-divider">|</text>
         <text class="{{totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : ''}}">累计 {{totalReturn > 0 ? '+' : ''}}{{totalReturn}}</text>
+      </view>
+    </view>
+
+    <!-- 收益走势图 -->
+    <view wx:if="{{profitHistory.length > 1}}" class="chart-section">
+      <view class="section-title">收益走势</view>
+      <view class="chart-card">
+        <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx"></canvas>
       </view>
     </view>
 
