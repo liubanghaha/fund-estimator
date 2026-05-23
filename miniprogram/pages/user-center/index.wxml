@@ -1,7 +1,7 @@
 <view class="container">
   <view class="user-header">
-    <view class="avatar-box">
-      <open-data type="userAvatarUrl" wx:if="{{isLoggedIn}}" />
+    <view class="avatar-box" wx:if="{{isLoggedIn}}">
+      <open-data type="userAvatarUrl" />
     </view>
     <view class="avatar-placeholder" wx:else>👤</view>
     <open-data class="nickname" type="userNickName" wx:if="{{isLoggedIn}}" lang="zh_CN" />
