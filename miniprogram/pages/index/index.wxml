@@ -22,6 +22,14 @@
       </view>
     </view>
 
+    <!-- 收益走势图 -->
+    <view wx:if="{{profitHistory.length > 1}}" class="chart-section">
+      <view class="section-title">收益走势</view>
+      <view class="chart-card">
+        <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx"></canvas>
+      </view>
+    </view>
+
     <!-- 快捷入口 -->
     <view class="quick-actions">
       <view class="action-item" bind:tap="onSearch">
@@ -31,27 +39,6 @@
       <view class="action-item" bind:tap="onAdd">
         <view class="action-icon">📝</view>
         <view class="action-text">添加持仓</view>
-      </view>
-    </view>
-
-    <!-- 收益走势图 -->
-    <view wx:if="{{profitHistory.length > 1}}" class="chart-section">
-      <view class="section-title">收益走势</view>
-      <view class="chart-card">
-        <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx"></canvas>
-      </view>
-    </view>
-
-    <!-- 自选关注 -->
-    <view wx:if="{{watchlist.length > 0}}" class="watchlist-section">
-      <view class="section-title">自选关注</view>
-      <view class="watchlist-scroll">
-        <view wx:for="{{watchlist}}" wx:key="fundCode" class="watch-item" bind:tap="onTapWatchlist" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
-          <view class="w-name">{{item.fundName}}</view>
-          <view class="w-rate {{item.estimatedChangeRate > 0 ? 'up' : item.estimatedChangeRate < 0 ? 'down' : ''}}">
-            {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate !== null ? item.estimatedChangeRate : '--'}}%
-          </view>
-        </view>
       </view>
     </view>
 

@@ -3,7 +3,6 @@ const api = require("../../utils/api");
 Page({
   data: {
     isLoggedIn: false,
-    watchlist: [],
     holdings: [],
     totalAmount: "0.00",
     todayProfit: "0.00",
@@ -20,9 +19,8 @@ Page({
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
       this.fetchPortfolio();
-      this.fetchWatchlist();
     } else {
-      this.setData({ isLoggedIn: false, holdings: [], watchlist: [] });
+      this.setData({ isLoggedIn: false, holdings: [] });
     }
   },
 
@@ -138,35 +136,6 @@ Page({
       ctx.fillText(history[idx].date.slice(5), xp(idx), h - m.bottom + 4);
     }
     ctx.draw();
-  },
-
-  async fetchWatchlist() {
-    try {
-      const res = await api.watchlistList();
-      if (res.result && res.result.code === 0 && res.result.data.length > 0) {
-        const items = res.result.data;
-        const estimates = await Promise.all(
-          items.map((w) => api.fetchFundEstimate(w.fundCode).catch(() => null))
-        );
-        const watchlist = items.map((w, i) => {
-          const e = estimates[i] && estimates[i].result && estimates[i].result.code === 0
-            ? estimates[i].result.data : null;
-          return {
-            fundCode: w.fundCode,
-            fundName: w.fundName,
-            nav: e ? e.nav : null,
-            estimatedNav: e ? e.estimatedNav : null,
-            estimatedChangeRate: e ? e.estimatedChangeRate : null,
-            estimateTime: e ? e.estimateTime : null,
-          };
-        });
-        this.setData({ watchlist });
-      }
-    } catch (e) {}
-  },
-  onTapWatchlist(e) {
-    const { code, name } = e.currentTarget.dataset;
-    wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
   },
 
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },

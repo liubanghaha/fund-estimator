@@ -1,0 +1,34 @@
+<view class="page">
+  <view wx:if="{{!loaded}}" class="loading-wrap">
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <view wx:elif="{{watchlist.length === 0}}" class="empty-wrap">
+    <view class="empty-icon">⭐</view>
+    <view class="empty-text">暂无自选基金</view>
+    <view class="empty-hint">在基金详情页点击「关注」添加自选</view>
+    <button class="search-btn" bind:tap="onSearch">去搜索基金</button>
+  </view>
+
+  <view wx:else class="list">
+    <view
+      wx:for="{{watchlist}}"
+      wx:key="fundCode"
+      class="item"
+      bind:tap="onTapItem"
+      data-code="{{item.fundCode}}"
+      data-name="{{item.fundName}}"
+    >
+      <view class="item-left">
+        <view class="item-name">{{item.fundName}}</view>
+        <view class="item-code">{{item.fundCode}}</view>
+      </view>
+      <view class="item-right">
+        <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
+        <view class="item-rate {{item.estimatedChangeRate > 0 ? 'up' : item.estimatedChangeRate < 0 ? 'down' : ''}}">
+          {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate !== null ? item.estimatedChangeRate : '--'}}%
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

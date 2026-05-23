@@ -1,0 +1,21 @@
+.page{min-height:100vh;background:#F5F5F5}
+
+.loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
+.loading-text{font-size:28rpx;color:#999}
+
+.empty-wrap{display:flex;flex-direction:column;align-items:center;padding-top:200rpx}
+.empty-icon{font-size:80rpx;margin-bottom:24rpx}
+.empty-text{font-size:30rpx;color:#999;margin-bottom:12rpx}
+.empty-hint{font-size:24rpx;color:#CCC;margin-bottom:48rpx}
+.search-btn{width:280rpx;height:72rpx;line-height:72rpx;font-size:28rpx;color:#FFF;background:#E4393C;border-radius:36rpx;text-align:center;padding:0}
+
+.list{padding:16rpx 24rpx}
+.item{display:flex;justify-content:space-between;align-items:center;background:#FFF;padding:28rpx 28rpx;border-radius:16rpx;margin-bottom:12rpx}
+.item-left{flex:1}
+.item-name{font-size:28rpx;font-weight:500;color:#333;margin-bottom:6rpx}
+.item-code{font-size:22rpx;color:#999}
+.item-right{text-align:right}
+.item-nav{font-size:28rpx;font-weight:500;color:#333;margin-bottom:6rpx}
+.item-rate{font-size:28rpx;font-weight:600;color:#999}
+.item-rate.up{color:#E4393C}
+.item-rate.down{color:#2E8B57}

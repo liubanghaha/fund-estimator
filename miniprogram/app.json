@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/watchlist/index",
     "pages/search/index",
     "pages/fund-detail/index",
     "pages/add-holding/index",
@@ -20,6 +21,7 @@
     "backgroundColor": "#FFFFFF",
     "list": [
       { "pagePath": "pages/index/index", "text": "基金估算" },
+      { "pagePath": "pages/watchlist/index", "text": "自选" },
       { "pagePath": "pages/user-center/index", "text": "我的" }
     ]
   },
