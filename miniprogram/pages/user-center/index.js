@@ -1,19 +1,11 @@
 const api = require("../../utils/api");
 
 Page({
-  data: {
-    isLoggedIn: false,
-    avatarUrl: "",
-    nickName: "",
-  },
+  data: { isLoggedIn: false },
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      this.setData({
-        isLoggedIn: true,
-        avatarUrl: userInfo.avatarUrl || "",
-        nickName: userInfo.nickName || "微信用户",
-      });
+      this.setData({ isLoggedIn: true });
     }
   },
   async onLogin() {
@@ -22,19 +14,8 @@ Page({
       const res = await api.userLogin();
       wx.hideLoading();
       if (res.result && res.result.code === 0) {
-        const userProfile = await this.getUserProfile();
-        const userInfo = {
-          loggedIn: true,
-          openid: res.result.data.openid,
-          avatarUrl: userProfile.avatarUrl || "",
-          nickName: userProfile.nickName || "",
-        };
-        wx.setStorageSync("userInfo", userInfo);
-        this.setData({
-          isLoggedIn: true,
-          avatarUrl: userInfo.avatarUrl,
-          nickName: userInfo.nickName || "微信用户",
-        });
+        wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
+        this.setData({ isLoggedIn: true });
         wx.showToast({ title: "登录成功", icon: "success" });
       } else {
         wx.showToast({ title: "登录失败，请重试", icon: "none" });
@@ -45,21 +26,13 @@ Page({
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
   },
-  getUserProfile() {
-    return new Promise((resolve) => {
-      wx.getUserInfo({
-        success: (res) => resolve({ avatarUrl: res.userInfo.avatarUrl, nickName: res.userInfo.nickName }),
-        fail: () => resolve({ avatarUrl: "", nickName: "" }),
-      });
-    });
-  },
   onLogout() {
     wx.showModal({
       title: "提示", content: "确定要退出登录吗？",
       success: (res) => {
         if (res.confirm) {
           wx.removeStorageSync("userInfo");
-          this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "" });
+          this.setData({ isLoggedIn: false });
         }
       },
     });
