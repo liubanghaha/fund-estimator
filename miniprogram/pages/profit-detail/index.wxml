@@ -56,45 +56,33 @@
       <view wx:if="{{activeTab === 'day'}}">
         <view wx:for="{{dayData}}" wx:key="date" class="table-row">
           <view class="td-date">{{item.date.slice(5)}}</view>
-          <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profit > 0 ? '+' : '') + (item.profit / totalCost * 100).toFixed(2) + '%'}}
+          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
           </view>
-          <view class="td-index {{item.shRate > 0 ? 'up' : item.shRate < 0 ? 'down' : ''}}">
-            {{item.shRate != null ? (item.shRate > 0 ? '+' : '') + item.shRate + '%' : '--'}}
-          </view>
-          <view class="td-index {{item.hsRate > 0 ? 'up' : item.hsRate < 0 ? 'down' : ''}}">
-            {{item.hsRate != null ? (item.hsRate > 0 ? '+' : '') + item.hsRate + '%' : '--'}}
-          </view>
+          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
+          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
         </view>
       </view>
 
       <view wx:if="{{activeTab === 'month'}}">
         <view wx:for="{{monthData}}" wx:key="date" class="table-row">
           <view class="td-date">{{item.date.slice(5)}}</view>
-          <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profit > 0 ? '+' : '') + (item.profit / totalCost * 100).toFixed(2) + '%'}}
+          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
           </view>
-          <view class="td-index {{item.shRate > 0 ? 'up' : item.shRate < 0 ? 'down' : ''}}">
-            {{item.shRate != null ? (item.shRate > 0 ? '+' : '') + item.shRate + '%' : '--'}}
-          </view>
-          <view class="td-index {{item.hsRate > 0 ? 'up' : item.hsRate < 0 ? 'down' : ''}}">
-            {{item.hsRate != null ? (item.hsRate > 0 ? '+' : '') + item.hsRate + '%' : '--'}}
-          </view>
+          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
+          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
         </view>
       </view>
 
       <view wx:if="{{activeTab === 'year'}}">
         <view wx:for="{{yearData}}" wx:key="date" class="table-row">
           <view class="td-date">{{item.date}}</view>
-          <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profit > 0 ? '+' : '') + (item.profit / totalCost * 100).toFixed(2) + '%'}}
+          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
+            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
           </view>
-          <view class="td-index {{item.shRate > 0 ? 'up' : item.shRate < 0 ? 'down' : ''}}">
-            {{item.shRate != null ? (item.shRate > 0 ? '+' : '') + item.shRate + '%' : '--'}}
-          </view>
-          <view class="td-index {{item.hsRate > 0 ? 'up' : item.hsRate < 0 ? 'down' : ''}}">
-            {{item.hsRate != null ? (item.hsRate > 0 ? '+' : '') + item.hsRate + '%' : '--'}}
-          </view>
+          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
+          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
         </view>
       </view>
     </view>

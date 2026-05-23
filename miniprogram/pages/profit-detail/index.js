@@ -96,11 +96,24 @@ Page({
       const enrichIndexRate = (data) => {
         if (data.length === 0) return data;
         const first = data[0];
-        return data.map((d) => ({
-          ...d,
-          shRate: first.sh && d.sh != null ? +(((d.sh / first.sh) - 1) * 100).toFixed(2) : null,
-          hsRate: first.hs300 && d.hs300 != null ? +(((d.hs300 / first.hs300) - 1) * 100).toFixed(2) : null,
-        }));
+        return data.map((d) => {
+          const shRate = first.sh && d.sh != null ? (((d.sh / first.sh) - 1) * 100) : null;
+          const hsRate = first.hs300 && d.hs300 != null ? (((d.hs300 / first.hs300) - 1) * 100) : null;
+          const profitRate = totalCost > 0 ? ((d.profit / totalCost) * 100) : 0;
+          return {
+            ...d,
+            shRate: shRate != null ? shRate.toFixed(2) : null,
+            hsRate: hsRate != null ? hsRate.toFixed(2) : null,
+            shRateNum: shRate != null ? +shRate.toFixed(2) : null,
+            hsRateNum: hsRate != null ? +hsRate.toFixed(2) : null,
+            profitRate: profitRate.toFixed(2),
+            profitRateNum: +profitRate.toFixed(2),
+            profitStr: d.profit >= 0 ? '+' + d.profit : '' + d.profit,
+            shRateStr: shRate != null ? (shRate >= 0 ? '+' : '') + shRate.toFixed(2) + '%' : '--',
+            hsRateStr: hsRate != null ? (hsRate >= 0 ? '+' : '') + hsRate.toFixed(2) + '%' : '--',
+            profitRateStr: profitRate >= 0 ? '+' + profitRate.toFixed(2) + '%' : profitRate.toFixed(2) + '%',
+          };
+        });
       };
 
       const dayData = enrichIndexRate(dayMerged.slice(-7));
