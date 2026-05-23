@@ -10,11 +10,8 @@
 .summary-value.up{color:#E4393C}
 .summary-value.down{color:#2E8B57}
 
-.chart-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:24rpx 16rpx 16rpx}
+.chart-card{background:#FFF;margin:16rpx 24rpx;border-radius:20rpx;padding:24rpx 16rpx 16rpx}
 .chart-title{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:12rpx;padding-left:8rpx}
-.chart-legend{display:flex;justify-content:center;gap:32rpx;margin-top:12rpx}
-.legend-item{display:flex;align-items:center;font-size:22rpx;color:#999}
-.legend-dot{width:16rpx;height:6rpx;border-radius:3rpx;margin-right:8rpx}
 
 .tab-bar{display:flex;align-items:center;background:#FFF;margin:0 24rpx;border-radius:20rpx 20rpx 0 0;overflow:hidden;padding-right:16rpx}
 .tab-item{flex:1;text-align:center;padding:24rpx 0;font-size:28rpx;color:#999}
@@ -22,16 +19,14 @@
 .tab-toggle{flex-shrink:0;padding:12rpx 20rpx;font-size:24rpx;color:#E4393C;border:1rpx solid #E4393C;border-radius:24rpx}
 .toggle-arrow{font-size:16rpx;margin-left:4rpx}
 
-.table-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:0 24rpx 16rpx}
+.table-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:0 28rpx 16rpx}
 .table-header{display:flex;padding:20rpx 0 12rpx;border-bottom:1rpx solid #F0F0F0}
 .table-header view{font-size:24rpx;color:#999}
 .table-row{display:flex;padding:18rpx 0;border-bottom:1rpx solid #F8F8F8}
 .table-row:last-child{border-bottom:none}
-.th-date{width:110rpx}
-.th-profit{flex:1;text-align:right;padding-right:12rpx}
-.th-index{width:120rpx;text-align:right;padding-right:8rpx}
-.td-date{width:110rpx;font-size:24rpx;color:#666}
-.td-profit{flex:1;text-align:right;padding-right:12rpx;font-size:24rpx;font-weight:500;color:#333}
+.th-date{width:140rpx}
+.th-profit{flex:1;text-align:right}
+.td-date{width:140rpx;font-size:26rpx;color:#666}
+.td-profit{flex:1;text-align:right;font-size:26rpx;font-weight:500;color:#333}
 .td-profit.up{color:#E4393C}
 .td-profit.down{color:#2E8B57}
-.td-index{width:120rpx;text-align:right;padding-right:8rpx;font-size:24rpx;color:#666}

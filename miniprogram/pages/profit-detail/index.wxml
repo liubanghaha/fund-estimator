@@ -26,13 +26,8 @@
     </view>
 
     <view class="chart-card">
-      <view class="chart-title">收益对比</view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:380rpx"></canvas>
-      <view class="chart-legend">
-        <view class="legend-item"><view class="legend-dot" style="background:#E4393C"></view>我的收益</view>
-        <view class="legend-item"><view class="legend-dot" style="background:#FF8C00"></view>上证指数</view>
-        <view class="legend-item"><view class="legend-dot" style="background:#1E90FF"></view>沪深300</view>
-      </view>
+      <view class="chart-title">收益走势</view>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:400rpx"></canvas>
     </view>
 
     <view class="tab-bar">
@@ -45,44 +40,41 @@
       </view>
     </view>
 
-    <view class="table-card">
+    <view wx:if="{{activeTab === 'day'}}" class="table-card">
       <view class="table-header">
-        <view class="th-date">{{activeTab === 'year' ? '月份' : '日期'}}</view>
+        <view class="th-date">日期</view>
         <view class="th-profit">{{displayMode === 'amount' ? '收益金额' : '收益率'}}</view>
-        <view class="th-index">上证指数</view>
-        <view class="th-index">沪深300</view>
       </view>
-
-      <view wx:if="{{activeTab === 'day'}}">
-        <view wx:for="{{dayData}}" wx:key="date" class="table-row">
-          <view class="td-date">{{item.date.slice(5)}}</view>
-          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
-          </view>
-          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
-          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
+      <view wx:for="{{dayData}}" wx:key="date" class="table-row">
+        <view class="td-date">{{item.date.slice(5)}}</view>
+        <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+          {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profitRate > 0 ? '+' : '') + item.profitRate + '%'}}
         </view>
       </view>
+    </view>
 
-      <view wx:if="{{activeTab === 'month'}}">
-        <view wx:for="{{monthData}}" wx:key="date" class="table-row">
-          <view class="td-date">{{item.date.slice(5)}}</view>
-          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
-          </view>
-          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
-          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
+    <view wx:if="{{activeTab === 'month'}}" class="table-card">
+      <view class="table-header">
+        <view class="th-date">日期</view>
+        <view class="th-profit">{{displayMode === 'amount' ? '收益金额' : '收益率'}}</view>
+      </view>
+      <view wx:for="{{monthData}}" wx:key="date" class="table-row">
+        <view class="td-date">{{item.date.slice(5)}}</view>
+        <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+          {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profitRate > 0 ? '+' : '') + item.profitRate + '%'}}
         </view>
       </view>
+    </view>
 
-      <view wx:if="{{activeTab === 'year'}}">
-        <view wx:for="{{yearData}}" wx:key="date" class="table-row">
-          <view class="td-date">{{item.date}}</view>
-          <view class="td-profit {{item.profitRateNum > 0 ? 'up' : item.profitRateNum < 0 ? 'down' : ''}}">
-            {{displayMode === 'amount' ? item.profitStr : item.profitRateStr}}
-          </view>
-          <view class="td-index {{item.shRateNum > 0 ? 'up' : item.shRateNum < 0 ? 'down' : ''}}">{{item.shRateStr}}</view>
-          <view class="td-index {{item.hsRateNum > 0 ? 'up' : item.hsRateNum < 0 ? 'down' : ''}}">{{item.hsRateStr}}</view>
+    <view wx:if="{{activeTab === 'year'}}" class="table-card">
+      <view class="table-header">
+        <view class="th-date">月份</view>
+        <view class="th-profit">{{displayMode === 'amount' ? '收益金额' : '收益率'}}</view>
+      </view>
+      <view wx:for="{{yearData}}" wx:key="date" class="table-row">
+        <view class="td-date">{{item.date}}</view>
+        <view class="td-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+          {{displayMode === 'amount' ? (item.profit > 0 ? '+' : '') + item.profit : (item.profitRate > 0 ? '+' : '') + item.profitRate + '%'}}
         </view>
       </view>
     </view>
