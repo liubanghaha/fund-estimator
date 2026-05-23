@@ -1,10 +1,11 @@
 <view class="container">
   <view class="user-header">
-    <view class="avatar-box">
-      <open-data type="userAvatarUrl" />
-    </view>
-    <open-data class="nickname" type="userNickName" lang="zh_CN" />
-    <view class="login-hint" wx:if="{{!isLoggedIn}}" bind:tap="onLogin">点击登录</view>
+    <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+      <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" wx:if="{{avatarUrl}}" />
+      <view class="avatar-placeholder" wx:else>👤</view>
+    </button>
+    <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
+    <view class="nickname">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
   </view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索基金</text><text class="arrow">></text></view>
