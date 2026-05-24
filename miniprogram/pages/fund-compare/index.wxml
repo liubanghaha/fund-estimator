@@ -1,0 +1,115 @@
+<view class="page">
+  <view wx:if="{{loading}}">
+    <view class="loading-text">加载中...</view>
+  </view>
+
+  <view wx:else>
+    <!-- Fund A header -->
+    <view class="compare-header">
+      <view class="fund-col">
+        <view class="fund-name">{{fundA.name || fundA.code}}</view>
+        <view class="fund-code">{{fundA.code}}</view>
+        <view class="fund-nav">净值 {{fundA.nav || '--'}}</view>
+        <view class="fund-rate {{fundA.changeRate > 0 ? 'up' : fundA.changeRate < 0 ? 'down' : ''}}">
+          涨幅 {{fundA.changeRate > 0 ? '+' : ''}}{{fundA.changeRate != null ? fundA.changeRate : '--'}}%
+        </view>
+      </view>
+      <view class="vs-divider">VS</view>
+      <view wx:if="{{fundB.code}}" class="fund-col">
+        <view class="fund-name">{{fundB.name || fundB.code}}</view>
+        <view class="fund-code">{{fundB.code}}</view>
+        <view class="fund-nav">净值 {{fundB.nav || '--'}}</view>
+        <view class="fund-rate {{fundB.changeRate > 0 ? 'up' : fundB.changeRate < 0 ? 'down' : ''}}">
+          涨幅 {{fundB.changeRate > 0 ? '+' : ''}}{{fundB.changeRate != null ? fundB.changeRate : '--'}}%
+        </view>
+      </view>
+      <view wx:else class="fund-col fund-col-placeholder" catch:tap="onTapPlaceholder">
+        <view class="add-icon">+</view>
+        <view class="add-text">添加对比基金</view>
+        <view class="add-hint">点击或下方搜索</view>
+      </view>
+    </view>
+
+    <!-- Selection area (search + watchlist) -->
+    <view wx:if="{{!fundB.code}}" class="select-area">
+      <!-- Search -->
+      <view class="search-section {{searchHighlight ? 'search-highlight' : ''}}">
+        <view class="search-box">
+          <input class="search-input" bind:input="onSearchInput" placeholder="输入6位基金代码搜索" focus="{{searchFocus}}"/>
+        </view>
+        <view wx:if="{{searching}}" class="search-status">搜索中...</view>
+        <view wx:elif="{{hasSearched && searchResults.length === 0}}" class="search-status">未找到相关基金</view>
+        <view wx:elif="{{searchResults.length > 0}}" class="search-results">
+          <view wx:for="{{searchResults}}" wx:key="fundCode" class="search-item" bind:tap="onSelectFundB" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
+            <view class="sr-name">{{item.fundName}}</view>
+            <view class="sr-code">{{item.fundCode}}</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- Watchlist quick select -->
+      <view wx:if="{{watchlistLoaded && watchlist.length > 0}}" class="watchlist-section">
+        <view class="section-title">我的自选</view>
+        <view wx:for="{{watchlist}}" wx:key="fundCode" class="wl-item" bind:tap="onSelectFundB" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
+          <view class="wl-left">
+            <view class="wl-name">{{item.fundName}}</view>
+            <view class="wl-code">{{item.fundCode}}</view>
+          </view>
+          <view class="wl-arrow">对比</view>
+        </view>
+      </view>
+      <view wx:elif="{{watchlistLoaded && watchlist.length === 0}}" class="watchlist-empty">
+        <view class="empty-hint">暂无自选基金，可搜索添加</view>
+      </view>
+    </view>
+
+    <!-- Comparison content -->
+    <view wx:if="{{fundB.code && comparison}}">
+      <!-- Returns comparison -->
+      <view class="section">
+        <view class="section-title">收益对比</view>
+        <view class="cmp-table">
+          <view class="cmp-row cmp-header-row">
+            <view class="cmp-label">指标</view>
+            <view class="cmp-val">{{fundA.name || fundA.code}}</view>
+            <view class="cmp-val">{{fundB.name || fundB.code}}</view>
+          </view>
+          <view wx:for="{{comparison.returns}}" wx:key="label" class="cmp-row">
+            <view class="cmp-label">{{item.label}}</view>
+            <view class="cmp-val {{item.a > 0 ? 'up' : item.a < 0 ? 'down' : ''}}">{{item.a != null ? (item.a > 0 ? '+' : '') + item.a + '%' : '--'}}</view>
+            <view class="cmp-val {{item.b > 0 ? 'up' : item.b < 0 ? 'down' : ''}}">{{item.b != null ? (item.b > 0 ? '+' : '') + item.b + '%' : '--'}}</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- Chart -->
+      <view wx:if="{{chartData.length > 1}}" class="section">
+        <view class="section-title">走势对比（归一化）</view>
+        <view class="chart-card">
+          <canvas canvas-id="compareCanvas" id="compareCanvas" style="width:100%;height:400rpx"></canvas>
+        </view>
+      </view>
+
+      <!-- Info comparison -->
+      <view class="section">
+        <view class="section-title">基本信息对比</view>
+        <view class="cmp-table">
+          <view class="cmp-row cmp-header-row">
+            <view class="cmp-label">指标</view>
+            <view class="cmp-val">{{fundA.name || fundA.code}}</view>
+            <view class="cmp-val">{{fundB.name || fundB.code}}</view>
+          </view>
+          <view wx:for="{{comparison.infos}}" wx:key="label" class="cmp-row">
+            <view class="cmp-label">{{item.label}}</view>
+            <view class="cmp-val">{{item.a}}</view>
+            <view class="cmp-val">{{item.b}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="btn-row">
+        <button class="btn-switch" bind:tap="onRemoveFundB">更换对比基金</button>
+      </view>
+    </view>
+  </view>
+</view>

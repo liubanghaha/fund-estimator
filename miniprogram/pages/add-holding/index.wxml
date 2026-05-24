@@ -40,6 +40,14 @@
       <input class="input" type="digit" value="{{shares}}" bind:input="onSharesInput" placeholder="0.00"/>
     </view>
     <view class="form-item">
+      <text class="label">持有金额</text>
+      <input class="input" type="digit" value="{{marketValue}}" bind:input="onMarketValueInput" placeholder="0.00"/>
+    </view>
+    <view class="form-item">
+      <text class="label">持有收益</text>
+      <input class="input" type="digit" value="{{holdingReturn}}" bind:input="onHoldingReturnInput" placeholder="0.00"/>
+    </view>
+    <view class="form-item">
       <text class="label">买入金额</text>
       <input class="input" type="digit" value="{{buyAmount}}" bind:input="onBuyAmountInput" placeholder="0.00"/>
     </view>
@@ -50,6 +58,7 @@
       </picker>
     </view>
   </view>
+
   <button class="submit-btn" bind:tap="onSubmit">{{isEdit ? '更新持仓' : '保存持仓'}}</button>
   <button wx:if="{{isEdit}}" class="delete-btn" bind:tap="onDelete">删除此持仓</button>
 </view>

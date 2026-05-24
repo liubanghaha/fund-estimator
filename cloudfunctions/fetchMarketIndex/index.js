@@ -32,7 +32,7 @@ function fetchKline(secid, days) {
       path,
       headers: { Referer: "https://quote.eastmoney.com/" },
     };
-    https.get(options, (res) => {
+    const req = https.get(options, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -60,6 +60,8 @@ function fetchKline(secid, days) {
           reject(e);
         }
       });
-    }).on("error", reject);
+    });
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error("请求超时")); });
+    req.on("error", reject);
   });
 };

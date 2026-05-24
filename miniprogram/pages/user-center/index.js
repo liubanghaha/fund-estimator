@@ -50,4 +50,31 @@ Page({
   },
   onSearchFund() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
+  onFeedback() {
+    wx.showModal({
+      title: "意见反馈",
+      content: "如有问题或建议，欢迎通过客服会话反馈",
+      confirmText: "联系客服",
+      cancelText: "取消",
+      success: (res) => {
+        if (res.confirm) {
+          wx.openCustomerServiceChat
+            ? wx.openCustomerServiceChat({})
+            : wx.showToast({ title: "请在小程序中联系客服", icon: "none" });
+        }
+      },
+    });
+  },
+  onShowVersion() {
+    const accountInfo = wx.getAccountInfoSync ? wx.getAccountInfoSync() : {};
+    const version = (accountInfo.miniProgram && accountInfo.miniProgram.version) || "1.0.0";
+    const env = (accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || "develop";
+    const envMap = { develop: "开发版", trial: "体验版", release: "正式版" };
+    wx.showModal({
+      title: "涨跌有数",
+      content: `版本：${version}\n环境：${envMap[env] || env}`,
+      showCancel: false,
+      confirmText: "知道了",
+    });
+  },
 });

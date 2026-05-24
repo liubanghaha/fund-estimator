@@ -1,5 +1,4 @@
 const api = require("../../utils/api");
-const calc = require("../../utils/calculator");
 
 Page({
   data: {
@@ -10,16 +9,15 @@ Page({
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null,
     profile: null, manager: null, holdings: [],
-    hasHolding: false, followed: false, activeTab: "trend",
+    hasHolding: false, holdingData: null, followed: false, activeTab: "trend",
     showAllHistory: false,
     isTrading: false,
   },
 
   onLoad(options) {
-    this.setData({
-      fundCode: options.fundCode || "",
-      fundName: options.fundName ? decodeURIComponent(options.fundName) : "",
-    });
+    const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
+    this.setData({ fundCode: options.fundCode || "", fundName });
+    wx.setNavigationBarTitle({ title: fundName });
     this.fetchAll();
   },
 
@@ -38,22 +36,30 @@ Page({
   async checkFollow() {
     try {
       const res = await api.watchlistCheck(this.data.fundCode);
-      if (res.result && res.result.code === 0) {
-        this.setData({ followed: res.result.data.followed });
+      if (res.result && res.result.code === 0 && res.result.data) {
+        this.setData({ followed: !!res.result.data.followed });
       }
-    } catch (e) {}
+    } catch (e) { console.error("检查自选失败:", e); }
   },
   async onToggleFollow() {
     const { fundCode, fundName, followed } = this.data;
     try {
       if (followed) {
-        await api.watchlistRemove(fundCode);
-        this.setData({ followed: false });
-        wx.showToast({ title: "已取消关注", icon: "none" });
+        const res = await api.watchlistRemove(fundCode);
+        if (res.result && res.result.code === 0) {
+          this.setData({ followed: false });
+          wx.showToast({ title: "已取消自选", icon: "none" });
+        } else {
+          wx.showToast({ title: "操作失败", icon: "none" });
+        }
       } else {
-        await api.watchlistAdd(fundCode, fundName);
-        this.setData({ followed: true });
-        wx.showToast({ title: "已关注", icon: "success" });
+        const res = await api.watchlistAdd(fundCode, fundName);
+        if (res.result && res.result.code === 0) {
+          this.setData({ followed: true });
+          wx.showToast({ title: "已加自选", icon: "success" });
+        } else {
+          wx.showToast({ title: res.result ? res.result.msg : "操作失败", icon: "none" });
+        }
       }
     } catch (e) {
       wx.showToast({ title: "操作失败", icon: "none" });
@@ -82,12 +88,12 @@ Page({
           actualChangeRate: d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate,
         });
       }
-    } catch (e) {}
+    } catch (e) { console.error("获取估值失败:", e); }
   },
 
   async fetchHistory() {
     try {
-      const res = await api.fetchFundNAVHistory(this.data.fundCode, 60);
+      const res = await api.fetchFundNAVHistory(this.data.fundCode, 260);
       if (res.result && res.result.code === 0) {
         const history = res.result.data;
         if (history.length > 0) {
@@ -100,7 +106,7 @@ Page({
           this.calcReturns(history);
         }
       }
-    } catch (e) {}
+    } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
   async fetchProfile() {
@@ -117,7 +123,7 @@ Page({
           holdings: res.result.data.holdings || [],
         });
       }
-    } catch (e) {}
+    } catch (e) { console.error("获取基金档案失败:", e); }
   },
 
   calcReturns(history) {
@@ -125,8 +131,8 @@ Page({
     const g = (d) => { if (history.length <= d) return null; return parseFloat(((latest - history[d].nav) / history[d].nav * 100).toFixed(2)); };
     this.setData({
       todayReturn: history[0].changeRate || 0,
-      weekReturn: g(4), monthReturn: g(19), threeMonthReturn: g(39),
-      sixMonthReturn: g(59), yearReturn: null,
+      weekReturn: g(4), monthReturn: g(19), threeMonthReturn: g(64),
+      sixMonthReturn: g(129), yearReturn: g(249),
     });
   },
 
@@ -141,7 +147,7 @@ Page({
     const range = maxNav - minNav || 0.01;
     const pad = range * 0.15;
     const yMin = minNav - pad, yMax = maxNav + pad;
-    const m = { top: 16, right: 8, bottom: 22, left: 8 };
+    const m = { top: 16, right: 8, bottom: 22, left: 56 };
     const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
     const xp = (i) => m.left + (pw / (data.length - 1)) * i;
     const yp = (nav) => m.top + ph - ((nav - yMin) / (yMax - yMin)) * ph;
@@ -172,7 +178,7 @@ Page({
     ctx.setTextBaseline('middle');
     for (let i = 0; i <= 4; i++) {
       const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(4), m.left + 52, yp(val));
+      ctx.fillText(val.toFixed(4), m.left - 4, yp(val));
     }
     ctx.setTextAlign('center');
     ctx.setTextBaseline('top');
@@ -189,9 +195,12 @@ Page({
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
         const holdings = res.result.data.holdings || [];
-        this.setData({ hasHolding: holdings.some((h) => h.fundCode === this.data.fundCode) });
+        const myHolding = holdings.find((h) => h.fundCode === this.data.fundCode);
+        if (myHolding) {
+          this.setData({ hasHolding: true, holdingData: myHolding });
+        }
       }
-    } catch (e) {}
+    } catch (e) { console.error("检查持仓失败:", e); }
   },
 
   onRefresh() { this.fetchAll(); },
@@ -205,5 +214,19 @@ Page({
   onAddHolding() {
     const { fundCode, fundName } = this.data;
     wx.navigateTo({ url: `/pages/add-holding/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName)}` });
+  },
+  onCompare() {
+    const { fundCode, fundName } = this.data;
+    if (!fundCode || fundCode === "undefined") {
+      wx.showToast({ title: "基金信息异常", icon: "none" });
+      return;
+    }
+    wx.navigateTo({
+      url: `/pages/fund-compare/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName || "")}`,
+      fail: (err) => {
+        console.error("跳转对比页失败:", err);
+        wx.showToast({ title: err.errMsg || "跳转失败", icon: "none" });
+      },
+    });
   },
 });

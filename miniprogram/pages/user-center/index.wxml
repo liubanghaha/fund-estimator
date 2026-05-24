@@ -11,6 +11,10 @@
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索基金</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onAddHolding"><text>添加持仓</text><text class="arrow">></text></view>
   </view>
+  <view class="menu-list">
+    <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">></text></view>
+    <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
+  </view>
   <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
   <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
 </view>

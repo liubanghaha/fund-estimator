@@ -21,7 +21,7 @@ function fetchProfile(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
     const url = `https://fundmobapi.eastmoney.com/FundMApi/FundDetailInformation.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-    https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -46,7 +46,9 @@ function fetchProfile(fundCode) {
           });
         } catch (e) { resolve(null); }
       });
-    }).on("error", () => resolve(null));
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
   });
 }
 
@@ -54,7 +56,7 @@ function fetchManager(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
     const url = `https://fundmobapi.eastmoney.com/FundMApi/FundManagerList.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-    https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -69,7 +71,9 @@ function fetchManager(fundCode) {
           });
         } catch (e) { resolve(null); }
       });
-    }).on("error", () => resolve(null));
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
   });
 }
 
@@ -88,7 +92,7 @@ function fetchHoldings(fundCode) {
     if (month < 4) { y = year - 1; m = 12; }
 
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${y}&month=${m}&rt=${Math.random()}`;
-    https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -96,7 +100,6 @@ function fetchHoldings(fundCode) {
           const match = body.match(/content:"([^"]+)"/);
           if (!match) { resolve([]); return; }
           const html = match[1].replace(/\\"/g, '"');
-          // 提取表格行
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
@@ -122,6 +125,8 @@ function fetchHoldings(fundCode) {
           resolve(rows.length > 0 ? rows : []);
         } catch (e) { resolve([]); }
       });
-    }).on("error", () => resolve([]));
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
   });
 };

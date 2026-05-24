@@ -1,3 +1,4 @@
+const api = require("../../utils/api");
 Page({
   data: {
     id: "",
@@ -8,6 +9,7 @@ Page({
     showPicker: false,
     allSelected: true,
     selectedCount: 0,
+    currentNav: "", holdingReturn: "", marketValue: "",
   },
   onLoad(options) {
     if (options.id) {
@@ -29,10 +31,33 @@ Page({
         fundCode: h.fundCode, fundName: h.fundName,
         buyPrice: String(h.buyPrice), shares: String(h.shares),
         buyAmount: String(h.buyAmount || ""), buyDate: h.buyDate || "",
+        holdingReturn: String(h.holdingReturn || ""),
+        marketValue: String(h.marketValue || ""),
       });
+      this.fetchCurrentNav(h.fundCode);
     } catch (e) {
       wx.showToast({ title: "加载失败", icon: "none" });
     }
+  },
+
+  async fetchCurrentNav(fundCode) {
+    try {
+      const res = await api.fetchFundEstimate(fundCode);
+      if (res.result && res.result.code === 0) {
+        const d = res.result.data;
+        const nav = d.actualNav || d.nav;
+        if (nav) {
+          this.setData({ currentNav: String(nav) });
+          // 持有金额 → 自动算份额
+          const mv = parseFloat(this.data.marketValue);
+          if (!isNaN(mv) && mv > 0) {
+            this.setData({ shares: (mv / nav).toFixed(2) });
+          }
+          // 持有收益 → 自动算买入净值
+          this.calcBuyPriceFromReturn();
+        }
+      }
+    } catch (e) { /* ignore */ }
   },
 
   onImportScreenshot() {
@@ -115,10 +140,17 @@ Page({
     if (d.fundName) updates.fundName = d.fundName;
     if (d.buyPrice) updates.buyPrice = d.buyPrice;
     if (d.shares) updates.shares = d.shares;
+    if (d.marketValue) updates.marketValue = d.marketValue;
+    if (d.holdingReturn) updates.holdingReturn = d.holdingReturn;
     if (d.buyAmount) updates.buyAmount = d.buyAmount;
 
     if (Object.keys(updates).length > 0) {
       this.setData(updates);
+      // 有持有金额或持有收益时，尝试获取净值后自动计算
+      if (d.marketValue || d.holdingReturn) {
+        const code = d.fundCode || this.data.fundCode;
+        if (code && code.length === 6) this.fetchCurrentNav(code);
+      }
       wx.showModal({
         title: "识别成功",
         content: "已自动填入持仓信息，请核对后保存",
@@ -174,9 +206,10 @@ Page({
 
     for (const h of selected) {
       try {
-        // Idempotency: check if fund already exists
+        // Idempotency: check if fund already exists (scoped to current user)
+        const openid = (wx.getStorageSync("userInfo") || {}).openid || "";
         const existRes = await db.collection("holdings")
-          .where({ fundCode: h.fundCode })
+          .where({ _openid: openid, fundCode: h.fundCode })
           .count();
         if (existRes.total > 0) {
           skipped++;
@@ -188,6 +221,8 @@ Page({
             fundName: h.fundName || "",
             buyPrice: parseFloat(h.buyPrice) || 0,
             shares: parseFloat(h.shares) || 0,
+            marketValue: parseFloat(h.marketValue) || 0,
+            holdingReturn: parseFloat(h.holdingReturn) || 0,
             buyAmount: parseFloat(h.buyAmount) || 0,
             buyDate: "",
             createTime: new Date(),
@@ -222,14 +257,41 @@ Page({
     this.setData({ screenshotUrl: "" });
   },
 
-  onFundCodeInput(e) { this.setData({ fundCode: e.detail.value }); },
+  onFundCodeInput(e) {
+    this.setData({ fundCode: e.detail.value });
+    if (e.detail.value.length === 6) this.fetchCurrentNav(e.detail.value);
+  },
   onFundNameInput(e) { this.setData({ fundName: e.detail.value }); },
   onBuyPriceInput(e) { this.setData({ buyPrice: e.detail.value }); },
   onSharesInput(e) { this.setData({ shares: e.detail.value }); },
+  onMarketValueInput(e) {
+    this.setData({ marketValue: e.detail.value });
+    const mv = parseFloat(e.detail.value);
+    const nav = parseFloat(this.data.currentNav);
+    if (!isNaN(mv) && nav > 0 && mv > 0) {
+      this.setData({ shares: (mv / nav).toFixed(2) });
+      this.calcBuyPriceFromReturn();
+    }
+  },
+  onHoldingReturnInput(e) {
+    this.setData({ holdingReturn: e.detail.value });
+    this.calcBuyPriceFromReturn();
+  },
+
+  calcBuyPriceFromReturn() {
+    const { holdingReturn, shares, currentNav } = this.data;
+    const hr = parseFloat(holdingReturn);
+    const sh = parseFloat(shares);
+    const nav = parseFloat(currentNav);
+    if (!isNaN(hr) && sh > 0 && nav > 0) {
+      const bp = nav - (hr / sh);
+      if (bp > 0) this.setData({ buyPrice: bp.toFixed(4) });
+    }
+  },
   onBuyAmountInput(e) { this.setData({ buyAmount: e.detail.value }); },
   onDateChange(e) { this.setData({ buyDate: e.detail.value }); },
   async onSubmit() {
-    const { id, isEdit, fundCode, fundName, buyPrice, shares, buyAmount, buyDate } = this.data;
+    const { id, isEdit, fundCode, fundName, buyPrice, shares, holdingReturn, marketValue, buyAmount, buyDate } = this.data;
     if (!fundCode.trim()) { wx.showToast({ title: "请输入基金代码", icon: "none" }); return; }
     if (!fundName.trim()) { wx.showToast({ title: "请输入基金名称", icon: "none" }); return; }
     if (!buyPrice || parseFloat(buyPrice) <= 0) { wx.showToast({ title: "请输入有效净值", icon: "none" }); return; }
@@ -238,9 +300,10 @@ Page({
     try {
       const db = wx.cloud.database();
       if (!isEdit) {
-        // Idempotency: check duplicate
+        // Idempotency: check duplicate (scoped to current user)
+        const openid = (wx.getStorageSync("userInfo") || {}).openid || "";
         const existRes = await db.collection("holdings")
-          .where({ fundCode: fundCode.trim() })
+          .where({ _openid: openid, fundCode: fundCode.trim() })
           .count();
         if (existRes.total > 0) {
           wx.hideLoading();
@@ -255,6 +318,8 @@ Page({
       const data = {
         fundCode: fundCode.trim(), fundName: fundName.trim(),
         buyPrice: parseFloat(buyPrice), shares: parseFloat(shares),
+        holdingReturn: parseFloat(holdingReturn) || 0,
+        marketValue: parseFloat(marketValue) || 0,
         buyAmount: parseFloat(buyAmount) || 0, buyDate,
       };
       if (isEdit) {
@@ -275,7 +340,7 @@ Page({
     const { id, isEdit } = this.data;
     if (!isEdit) return;
     wx.showModal({
-      title: "确认删除", content: "确定要删除这条持仓记录吗？",
+      title: "确认删除", content: "确定要删除这条持仓吗？",
       success: async (res) => {
         if (!res.confirm) return;
         try {

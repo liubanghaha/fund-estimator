@@ -1,0 +1,62 @@
+.page{min-height:100vh;background:#F5F5F5}
+.loading-text{text-align:center;padding-top:200rpx;font-size:28rpx;color:#999}
+
+/* Header */
+.compare-header{display:flex;align-items:center;background:#FFF;padding:32rpx 24rpx;margin-bottom:16rpx}
+.fund-col{flex:1;text-align:center}
+.fund-name{font-size:30rpx;font-weight:600;color:#1A1A1A;margin-bottom:8rpx}
+.fund-code{font-size:24rpx;color:#999;margin-bottom:10rpx}
+.fund-nav{font-size:26rpx;color:#333;margin-bottom:4rpx}
+.fund-rate{font-size:32rpx;font-weight:600;color:#999}
+.fund-rate.up{color:#E4393C}
+.fund-rate.down{color:#2E8B57}
+.vs-divider{font-size:28rpx;font-weight:700;color:#BBB;padding:0 16rpx}
+.fund-col-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2rpx dashed #DDD;border-radius:16rpx;padding:32rpx 0;min-height:160rpx}
+.add-icon{font-size:48rpx;color:#CCC;margin-bottom:8rpx}
+.add-text{font-size:24rpx;color:#999}
+.add-hint{font-size:20rpx;color:#CCC;margin-top:8rpx}
+
+/* Search */
+.search-section{padding:0 24rpx}
+.search-highlight .search-box{animation:highlightPulse 0.8s ease}
+@keyframes highlightPulse{0%,100%{box-shadow:0 0 0 0 rgba(228,57,60,0)}50%{box-shadow:0 0 0 8rpx rgba(228,57,60,0.25)}}
+.search-box{background:#FFF;border-radius:12rpx;padding:16rpx 24rpx}
+.search-input{font-size:28rpx;color:#333;width:100%}
+.search-status{text-align:center;padding:40rpx 0;font-size:26rpx;color:#999}
+.search-results{background:#FFF;border-radius:12rpx;margin-top:12rpx}
+.search-item{display:flex;align-items:center;justify-content:space-between;padding:24rpx 28rpx;border-bottom:1rpx solid #F5F5F5}
+.search-item:last-child{border-bottom:none}
+.sr-name{font-size:28rpx;color:#333;flex:1}
+.sr-code{font-size:24rpx;color:#999}
+
+/* Watchlist */
+.watchlist-section{background:#FFF;margin:16rpx 24rpx;border-radius:16rpx;padding:24rpx 28rpx}
+.watchlist-section .section-title{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:16rpx}
+.wl-item{display:flex;align-items:center;justify-content:space-between;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
+.wl-item:last-child{border-bottom:none}
+.wl-left{flex:1}
+.wl-name{font-size:28rpx;color:#333;margin-bottom:4rpx}
+.wl-code{font-size:22rpx;color:#999}
+.wl-arrow{flex-shrink:0;font-size:24rpx;color:#E4393C;padding:8rpx 20rpx;border:1rpx solid #E4393C;border-radius:24rpx}
+.watchlist-empty{text-align:center;padding:32rpx 24rpx}
+.empty-hint{font-size:24rpx;color:#CCC}
+
+/* Comparison sections */
+.section{background:#FFF;margin:16rpx 24rpx;border-radius:16rpx;padding:24rpx 28rpx}
+.section-title{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:16rpx}
+
+.cmp-table{width:100%}
+.cmp-row{display:flex;align-items:center;padding:18rpx 0;border-bottom:1rpx solid #F5F5F5}
+.cmp-row:last-child{border-bottom:none}
+.cmp-header-row{border-bottom:1rpx solid #E5E5E5}
+.cmp-header-row .cmp-label{font-size:24rpx;color:#999;font-weight:500}
+.cmp-header-row .cmp-val{font-size:24rpx;color:#999;font-weight:500}
+.cmp-label{flex:1;font-size:26rpx;color:#666}
+.cmp-val{flex:1;text-align:center;font-size:26rpx;color:#333;font-weight:500}
+.cmp-val.up{color:#E4393C}
+.cmp-val.down{color:#2E8B57}
+
+.chart-card{background:#FFF;padding:12rpx 0}
+
+.btn-row{padding:24rpx}
+.btn-switch{width:100%;height:88rpx;line-height:88rpx;font-size:28rpx;color:#E4393C;background:#FFF;border:2rpx solid #E5E5E5;border-radius:44rpx;text-align:center}

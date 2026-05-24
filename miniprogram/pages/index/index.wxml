@@ -1,7 +1,7 @@
 <view class="container">
   <view wx:if="{{!isLoggedIn}}" class="empty-state">
     <view class="empty-icon">📈</view>
-    <view class="empty-title">基金估算涨幅</view>
+    <view class="empty-title">我的持仓</view>
     <view class="empty-desc">追踪你的基金持仓，查看实时估值</view>
     <button class="login-btn" bind:tap="onLogin">微信授权登录</button>
   </view>
@@ -36,32 +36,45 @@
 
     <!-- 持仓列表 -->
     <view wx:if="{{holdings.length > 0}}" class="holdings-section">
-      <view class="section-title">持仓概览</view>
-      <view wx:for="{{holdings}}" wx:key="_id" class="swipe-wrapper">
-        <view class="swipe-delete" bind:tap="onDeleteHolding" data-id="{{item._id}}">删除</view>
+      <view class="section-title">持仓概览 <text class="swipe-hint">← 左滑看更多</text></view>
+      <view wx:for="{{holdings}}" wx:key="_id" class="card-clip">
         <view
-          class="holding-item {{item._swiped ? 'swiped' : ''}}"
+          class="card-scroll"
+          style="transform:translateX({{item._scrollX}}px);{{item._transition ? 'transition:transform 0.25s ease' : ''}}"
           bind:tap="onTapHolding"
           data-code="{{item.fundCode}}"
           data-name="{{item.fundName}}"
           data-id="{{item._id}}"
           data-index="{{index}}"
           bind:touchstart="onTouchStart"
+          bind:touchmove="onTouchMove"
           bind:touchend="onTouchEnd"
+          bind:longpress="onLongPressHolding"
         >
-          <view class="h-left">
-            <view class="h-name">{{item.fundName}}</view>
-            <view class="h-code">{{item.fundCode}}</view>
-            <view class="h-nav">{{item.currentNav}}</view>
-          </view>
-          <view class="h-right">
-            <view class="h-today {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">
-              {{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%
+          <view class="card-table">
+            <view class="card-row">
+              <view class="c-name name-text">{{item.fundName}}</view>
+              <view class="c-mid label-text">当日收益</view>
+              <view class="c-extra label-text">累计收益</view>
             </view>
-            <view class="h-sub {{item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : ''}}">
-              {{item.todayProfit > 0 ? '+' : ''}}{{item.todayProfit}}
+            <view class="card-row">
+              <view class="c-name code-text">{{item.fundCode}}</view>
+              <view class="c-mid value-text {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">
+                {{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%
+              </view>
+              <view class="c-extra value-text {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">
+                {{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%
+              </view>
             </view>
-            <view class="h-meta">市值 {{item.marketValue}}</view>
+            <view class="card-row">
+              <view class="c-name code-text">{{item.currentNav}}</view>
+              <view class="c-mid value-text {{item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : ''}}">
+                {{item.todayProfit > 0 ? '+' : ''}}{{item.todayProfit}}
+              </view>
+              <view class="c-extra value-text {{item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : ''}}">
+                {{item.totalReturn > 0 ? '+' : ''}}{{item.totalReturn}}
+              </view>
+            </view>
           </view>
         </view>
       </view>

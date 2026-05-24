@@ -8,7 +8,7 @@
           <view class="header-code">{{fundCode}}</view>
         </view>
         <view class="follow-btn {{followed ? 'followed' : ''}}" bind:tap="onToggleFollow">
-          {{followed ? '已关注' : '+ 关注'}}
+          {{followed ? '已自选' : '+ 加自选'}}
         </view>
       </view>
     </view>
@@ -23,7 +23,7 @@
         <view class="nav-change-col">
           <view class="nav-change-label">涨幅估算</view>
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
-            {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate}}%
+            {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
           </view>
           <view class="nav-badge">实时数据</view>
         </view>
@@ -46,6 +46,37 @@
       </view>
     </view>
 
+    <!-- 我的持仓 -->
+    <view wx:if="{{hasHolding && holdingData}}" class="my-holding-card">
+      <view class="mh-title">我的持仓</view>
+      <view class="mh-grid">
+        <view class="mh-item">
+          <view class="mh-label">持有金额</view>
+          <view class="mh-value">{{holdingData.marketValue}}</view>
+        </view>
+        <view class="mh-item">
+          <view class="mh-label">持有份额</view>
+          <view class="mh-value">{{holdingData.shares}}</view>
+        </view>
+        <view class="mh-item">
+          <view class="mh-label">当日收益</view>
+          <view class="mh-value {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
+        </view>
+        <view class="mh-item">
+          <view class="mh-label">累计收益</view>
+          <view class="mh-value {{holdingData.totalReturn > 0 ? 'up' : holdingData.totalReturn < 0 ? 'down' : ''}}">{{holdingData.totalReturn > 0 ? '+' : ''}}{{holdingData.totalReturn}}</view>
+        </view>
+        <view class="mh-item">
+          <view class="mh-label">累计收益率</view>
+          <view class="mh-value {{holdingData.totalReturnRate > 0 ? 'up' : holdingData.totalReturnRate < 0 ? 'down' : ''}}">{{holdingData.totalReturnRate > 0 ? '+' : ''}}{{holdingData.totalReturnRate}}%</view>
+        </view>
+        <view class="mh-item">
+          <view class="mh-label">买入净值</view>
+          <view class="mh-value">{{holdingData.buyPrice}}</view>
+        </view>
+      </view>
+    </view>
+
     <view class="tab-bar">
       <view class="tab-item {{activeTab === 'trend' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="trend">走势</view>
       <view class="tab-item {{activeTab === 'holdings' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="holdings">持仓</view>
@@ -60,11 +91,11 @@
       <view class="info-card"><view class="section-title">收益表现</view>
         <view class="metrics-grid">
           <view class="metric-item"><view class="metric-label">日涨幅</view><view class="metric-value {{todayReturn > 0 ? 'up' : todayReturn < 0 ? 'down' : ''}}">{{todayReturn > 0 ? '+' : ''}}{{todayReturn}}%</view></view>
-          <view class="metric-item"><view class="metric-label">近1周</view><view class="metric-value {{weekReturn > 0 ? 'up' : weekReturn < 0 ? 'down' : ''}}">{{weekReturn > 0 ? '+' : ''}}{{weekReturn}}%</view></view>
-          <view class="metric-item"><view class="metric-label">近1月</view><view class="metric-value {{monthReturn > 0 ? 'up' : monthReturn < 0 ? 'down' : ''}}">{{monthReturn > 0 ? '+' : ''}}{{monthReturn}}%</view></view>
-          <view class="metric-item"><view class="metric-label">近3月</view><view class="metric-value {{threeMonthReturn > 0 ? 'up' : threeMonthReturn < 0 ? 'down' : ''}}">{{threeMonthReturn > 0 ? '+' : ''}}{{threeMonthReturn}}%</view></view>
-          <view class="metric-item"><view class="metric-label">近6月</view><view class="metric-value {{sixMonthReturn > 0 ? 'up' : sixMonthReturn < 0 ? 'down' : ''}}">{{sixMonthReturn > 0 ? '+' : ''}}{{sixMonthReturn}}%</view></view>
-          <view class="metric-item"><view class="metric-value muted">--</view></view>
+          <view class="metric-item"><view class="metric-label">近1周</view><view class="metric-value {{weekReturn > 0 ? 'up' : weekReturn < 0 ? 'down' : ''}}">{{weekReturn != null ? (weekReturn > 0 ? '+' : '') + weekReturn + '%' : '--'}}</view></view>
+          <view class="metric-item"><view class="metric-label">近1月</view><view class="metric-value {{monthReturn > 0 ? 'up' : monthReturn < 0 ? 'down' : ''}}">{{monthReturn != null ? (monthReturn > 0 ? '+' : '') + monthReturn + '%' : '--'}}</view></view>
+          <view class="metric-item"><view class="metric-label">近3月</view><view class="metric-value {{threeMonthReturn > 0 ? 'up' : threeMonthReturn < 0 ? 'down' : ''}}">{{threeMonthReturn != null ? (threeMonthReturn > 0 ? '+' : '') + threeMonthReturn + '%' : '--'}}</view></view>
+          <view class="metric-item"><view class="metric-label">近6月</view><view class="metric-value {{sixMonthReturn > 0 ? 'up' : sixMonthReturn < 0 ? 'down' : ''}}">{{sixMonthReturn != null ? (sixMonthReturn > 0 ? '+' : '') + sixMonthReturn + '%' : '--'}}</view></view>
+          <view class="metric-item"><view class="metric-label">近1年</view><view class="metric-value {{yearReturn > 0 ? 'up' : yearReturn < 0 ? 'down' : ''}}">{{yearReturn != null ? (yearReturn > 0 ? '+' : '') + yearReturn + '%' : '--'}}</view></view>
         </view>
       </view>
       <view wx:if="{{navHistory.length > 0}}" class="info-card">
@@ -115,6 +146,7 @@
 
     <view class="bottom-bar">
       <button class="btn-add" bind:tap="onAddHolding">添加持仓</button>
+      <button class="btn-compare" bind:tap="onCompare">对比</button>
       <button class="btn-refresh" bind:tap="onRefresh">刷新</button>
     </view>
     <view class="bottom-safe"></view>

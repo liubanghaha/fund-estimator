@@ -17,7 +17,7 @@ exports.main = async () => {
       };
     }
 
-    let totalCost = 0, totalMarket = 0, totalTodayProfit = 0;
+    let totalCost = 0, totalMarket = 0, totalYesterdayMarket = 0, totalTodayProfit = 0;
     let updateTime = "";
     const enriched = [];
 
@@ -32,19 +32,24 @@ exports.main = async () => {
           fetchEastMoney(h.fundCode),
         ]);
 
-        currentNav = tiantian.estimatedNav || eastmoney.actualNav || h.buyPrice;
-        todayChangeRate = (eastmoney.actualChangeRate != null)
-          ? eastmoney.actualChangeRate
-          : (tiantian.estimatedChangeRate || 0);
+        currentNav = eastmoney.actualNav || tiantian.nav || h.buyPrice;
 
-        if (tiantian.estimatedNav != null && tiantian.nav != null) {
-          todayProfitAmount = (tiantian.estimatedNav - tiantian.nav) * h.shares;
-        } else if (tiantian.nav != null) {
-          todayProfitAmount = tiantian.nav * h.shares * (todayChangeRate / 100);
-        } else if (eastmoney.actualNav != null) {
-          todayProfitAmount = eastmoney.actualNav * h.shares * (todayChangeRate / 100);
+        const yesterdayNav = tiantian.nav; // 昨日净值
+
+        // 当日收益 = (当日净值 - 昨日净值) × 份额
+        // 收益率 = (当日净值 - 昨日净值) / 昨日净值 × 100，所以收益 = 昨日净值 × 份额 × 收益率 / 100
+        // 收盘后优先用实际净值，盘中用估算净值
+        if (eastmoney.actualNav != null && yesterdayNav != null && eastmoney.actualNav !== yesterdayNav) {
+          todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * h.shares;
+          todayChangeRate = eastmoney.actualChangeRate || 0;
+        } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
+          todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * h.shares;
+          todayChangeRate = tiantian.estimatedChangeRate || 0;
+        } else {
+          todayChangeRate = eastmoney.actualChangeRate || 0;
         }
 
+        totalYesterdayMarket += (yesterdayNav || currentNav) * h.shares;
         if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
       } catch (e) {
         console.error(`获取基金 ${h.fundCode} 估值失败:`, e);
@@ -52,7 +57,7 @@ exports.main = async () => {
 
       const costValue = h.buyPrice * h.shares;
       const marketValue = currentNav * h.shares;
-      const totalReturn = marketValue - costValue;
+      const totalReturn = h.holdingReturn || (marketValue - costValue);
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
 
       totalCost += costValue;
@@ -70,9 +75,12 @@ exports.main = async () => {
       });
     }
 
-    const todayProfitRate = totalCost > 0 ? ((totalTodayProfit / totalCost) * 100) : 0;
+    const todayProfitRate = totalYesterdayMarket > 0 ? ((totalTodayProfit / totalYesterdayMarket) * 100) : 0;
     const totalReturn = totalMarket - totalCost;
     const totalReturnRate = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0;
+
+    // 按当日收益金额倒序排序
+    enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
 
     return {
       code: 0,
@@ -95,7 +103,7 @@ exports.main = async () => {
 function fetchTiantian(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
-    https.get(`https://fundgz.1234567.com.cn/js/${fundCode}.js`, (res) => {
+    const req = https.get(`https://fundgz.1234567.com.cn/js/${fundCode}.js`, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -113,7 +121,9 @@ function fetchTiantian(fundCode) {
           resolve({});
         }
       });
-    }).on("error", (e) => {
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve({}); });
+    req.on("error", (e) => {
       console.error("天天基金请求失败:", e.message);
       resolve({});
     });
@@ -123,38 +133,35 @@ function fetchTiantian(fundCode) {
 function fetchEastMoney(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
-    const options = {
-      hostname: "api.fund.eastmoney.com",
-      path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=2`,
-      headers: { "Referer": "https://fundf10.eastmoney.com/" },
-      timeout: 8000,
-    };
-    const req = https.get(options, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
-          const list = (json.Data && json.Data.LSJZList) || [];
-          const today = list[0] || {};
-          resolve({
-            actualNav: parseFloat(today.DWJZ) || null,
-            actualDate: today.FSRQ || "",
-            actualChangeRate: parseFloat(today.JZZZL) || null,
-          });
-        } catch (e) {
-          console.error("东方财富解析失败:", e.message);
-          resolve({});
-        }
-      });
-    });
+    const req = https.get(
+      {
+        hostname: "api.fund.eastmoney.com",
+        path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=2`,
+        headers: { "Referer": "https://fundf10.eastmoney.com/" },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
+            const list = (json.Data && json.Data.LSJZList) || [];
+            const today = list[0] || {};
+            resolve({
+              actualNav: parseFloat(today.DWJZ) || null,
+              actualDate: today.FSRQ || "",
+              actualChangeRate: parseFloat(today.JZZZL) || null,
+            });
+          } catch (e) {
+            console.error("东方财富解析失败:", e.message);
+            resolve({});
+          }
+        });
+      }
+    );
+    req.setTimeout(8000, () => { req.destroy(); resolve({}); });
     req.on("error", (e) => {
       console.error("东方财富请求失败:", e.message);
-      resolve({});
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      console.error("东方财富请求超时");
       resolve({});
     });
   });

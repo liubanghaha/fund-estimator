@@ -1,5 +1,7 @@
 const api = require("../../utils/api");
 
+const EXTRA_WIDTH = 260;
+
 Page({
   data: {
     isLoggedIn: false,
@@ -22,13 +24,21 @@ Page({
     }
   },
 
+  onPullDownRefresh() {
+    this.fetchPortfolio().finally(() => {
+      wx.stopPullDownRefresh();
+    });
+  },
+
   async fetchPortfolio() {
     try {
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
         this.setData({
-          holdings: (d.holdings || []).map((h) => ({ ...h, _swiped: false })),
+          holdings: (d.holdings || []).map((h) => ({
+            ...h, _scrollX: 0, _transition: false,
+          })),
           totalAmount: d.totalAmount,
           todayProfit: d.todayProfit,
           todayProfitRate: d.todayProfitRate,
@@ -50,37 +60,80 @@ Page({
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
 
-  // 左滑删除
+  // 左右滑动卡片
   onTouchStart(e) {
     const idx = e.currentTarget.dataset.index;
-    this._touchData = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, index: idx };
+    const h = this.data.holdings[idx];
+    this._touchData = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      index: idx,
+      baseScroll: h._scrollX || 0,
+      moved: false,
+    };
+  },
+
+  onTouchMove(e) {
+    if (!this._touchData) return;
+    const dx = e.touches[0].clientX - this._touchData.startX;
+    const dy = e.touches[0].clientY - this._touchData.startY;
+
+    // 判断为横向滑动
+    if (!this._touchData.moved && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
+      this._touchData.moved = true;
+    }
+    if (!this._touchData.moved) return;
+
+    const idx = this._touchData.index;
+    const px = this.rpxToPx(EXTRA_WIDTH);
+    let newX = this._touchData.baseScroll + dx;
+    // 限制滑动范围：0 ~ -extraWidth
+    newX = Math.min(0, Math.max(-px, newX));
+    this.setData({
+      [`holdings[${idx}]._scrollX`]: newX,
+      [`holdings[${idx}]._transition`]: false,
+    });
   },
 
   onTouchEnd(e) {
     if (!this._touchData) return;
-    const deltaX = e.changedTouches[0].clientX - this._touchData.startX;
-    const deltaY = e.changedTouches[0].clientY - this._touchData.startY;
     const idx = this._touchData.index;
     const holdings = this.data.holdings;
+    const px = this.rpxToPx(EXTRA_WIDTH);
 
-    if (deltaX < -40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      for (let i = 0; i < holdings.length; i++) {
-        if (i !== idx) holdings[i]._swiped = false;
+    // 关掉其他卡片的滑动
+    for (let i = 0; i < holdings.length; i++) {
+      if (i !== idx && holdings[i]._scrollX !== 0) {
+        holdings[i]._scrollX = 0;
+        holdings[i]._transition = true;
       }
-      holdings[idx]._swiped = true;
-    } else {
-      holdings[idx]._swiped = false;
     }
+
+    const cur = holdings[idx]._scrollX || 0;
+    if (Math.abs(cur) > px * 0.3) {
+      holdings[idx]._scrollX = -px;
+    } else {
+      holdings[idx]._scrollX = 0;
+    }
+    holdings[idx]._transition = true;
 
     this.setData({ holdings });
     this._touchData = null;
   },
 
+  rpxToPx(rpx) {
+    const { windowWidth } = wx.getSystemInfoSync();
+    return (rpx / 750) * windowWidth;
+  },
+
   onTapHolding(e) {
-    const holdings = this.data.holdings;
     const idx = e.currentTarget.dataset.index;
-    if (holdings[idx] && holdings[idx]._swiped) {
-      holdings[idx]._swiped = false;
+    const holdings = this.data.holdings;
+    if (this._touchData && this._touchData.moved) return;
+    // 如果卡片已滑开，先收起
+    if (holdings[idx] && holdings[idx]._scrollX < 0) {
+      holdings[idx]._scrollX = 0;
+      holdings[idx]._transition = true;
       this.setData({ holdings });
       return;
     }
@@ -88,25 +141,34 @@ Page({
     wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
   },
 
-  onDeleteHolding(e) {
-    const id = e.currentTarget.dataset.id;
+  onLongPressHolding(e) {
+    const { id } = e.currentTarget.dataset;
     const _this = this;
-    wx.showModal({
-      title: "确认删除",
-      content: "确定要删除此持仓记录吗？",
+    wx.showActionSheet({
+      itemList: ['编辑', '删除'],
       success(res) {
-        if (!res.confirm) return;
-        wx.showLoading({ title: "删除中..." });
-        wx.cloud.database().collection("holdings").doc(id).remove()
-          .then(() => {
-            wx.hideLoading();
-            wx.showToast({ title: "已删除", icon: "success" });
-            _this.fetchPortfolio();
-          })
-          .catch(() => {
-            wx.hideLoading();
-            wx.showToast({ title: "删除失败", icon: "none" });
+        if (res.tapIndex === 0) {
+          wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
+        } else if (res.tapIndex === 1) {
+          wx.showModal({
+            title: "确认删除",
+            content: "确定要删除此条持仓吗？",
+            success(r) {
+              if (!r.confirm) return;
+              wx.showLoading({ title: "删除中..." });
+              wx.cloud.database().collection("holdings").doc(id).remove()
+                .then(() => {
+                  wx.hideLoading();
+                  wx.showToast({ title: "已删除", icon: "success" });
+                  _this.fetchPortfolio();
+                })
+                .catch(() => {
+                  wx.hideLoading();
+                  wx.showToast({ title: "删除失败", icon: "none" });
+                });
+            },
           });
+        }
       },
     });
   },

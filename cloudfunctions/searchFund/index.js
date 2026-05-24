@@ -29,7 +29,7 @@ function lookUpFund(fundCode) {
   const https = require("https");
   const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js`;
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
+    const req = https.get(url, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -45,6 +45,8 @@ function lookUpFund(fundCode) {
           resolve(null);
         }
       });
-    }).on("error", reject);
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    req.on("error", reject);
   });
 }

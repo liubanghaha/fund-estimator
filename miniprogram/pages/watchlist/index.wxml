@@ -6,7 +6,7 @@
   <view wx:elif="{{watchlist.length === 0}}" class="empty-wrap">
     <view class="empty-icon">⭐</view>
     <view class="empty-text">暂无自选基金</view>
-    <view class="empty-hint">在基金详情页点击「关注」添加自选</view>
+    <view class="empty-hint">在基金详情页点击「加自选」添加自选</view>
     <button class="search-btn" bind:tap="onSearch">去搜索基金</button>
   </view>
 

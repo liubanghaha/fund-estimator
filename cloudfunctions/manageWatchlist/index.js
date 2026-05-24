@@ -13,16 +13,18 @@ exports.main = async (event) => {
   try {
     if (action === "add") {
       if (!fundCode || !fundName) return { code: 400, msg: "缺少基金信息" };
+      if (fundCode.length !== 6 || !/^\d{6}$/.test(fundCode)) return { code: 400, msg: "基金代码格式错误" };
+      if (fundName.length > 50) return { code: 400, msg: "基金名称过长" };
       const exist = await col.where({ _openid: OPENID, fundCode }).count();
-      if (exist.total > 0) return { code: 0, msg: "已关注" };
+      if (exist.total > 0) return { code: 0, msg: "已加自选" };
       await col.add({ data: { _openid: OPENID, fundCode, fundName, createTime: new Date() } });
-      return { code: 0, msg: "关注成功" };
+      return { code: 0, msg: "加自选成功" };
     }
 
     if (action === "remove") {
       if (!fundCode) return { code: 400, msg: "缺少基金代码" };
       await col.where({ _openid: OPENID, fundCode }).remove();
-      return { code: 0, msg: "取消关注" };
+      return { code: 0, msg: "取消自选" };
     }
 
     if (action === "list") {

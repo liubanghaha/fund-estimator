@@ -26,35 +26,48 @@
 /* 持仓列表 */
 .holdings-section{margin:24rpx}
 .section-title{font-size:28rpx;font-weight:500;color:#333;margin-bottom:14rpx;padding-left:8rpx}
+.swipe-hint{font-size:22rpx;color:#CCC;font-weight:400;margin-left:8rpx}
 
-/* 左滑删除 */
-.swipe-wrapper{position:relative;margin-bottom:10rpx;overflow:hidden;border-radius:16rpx}
-.swipe-delete{
-  position:absolute;top:0;right:0;bottom:0;
-  width:160rpx;
-  background:#E4393C;color:#FFF;
-  font-size:28rpx;font-weight:500;
-  display:flex;align-items:center;justify-content:center;
+/* 可左右滑动的卡片 */
+.card-clip{
+  margin-bottom:12rpx;
+  border-radius:16rpx;
+  overflow:hidden;
 }
-.holding-item{
-  position:relative;z-index:1;
-  display:flex;justify-content:space-between;align-items:center;
-  padding:24rpx 28rpx;background:#FFF;border-radius:16rpx;
-  transition:transform .2s ease;
+.card-scroll{
+  width:calc(100% + 260rpx);
+  background:#FFF;
+  border-radius:16rpx;
+  padding:28rpx 0;
 }
-.holding-item.swiped{transform:translateX(-160rpx)}
-.h-left{flex:1}
-.h-name{font-size:28rpx;font-weight:500;color:#333;margin-bottom:6rpx}
-.h-code{font-size:22rpx;color:#999;margin-bottom:4rpx}
-.h-nav{font-size:24rpx;color:#999}
 
-.h-right{text-align:right}
-.h-today{font-size:30rpx;font-weight:600;margin-bottom:4rpx}
-.h-today.up{color:#E4393C}
-.h-today.down{color:#2E8B57}
-.h-sub{font-size:24rpx;margin-bottom:4rpx}
-.h-sub.up{color:#E4393C}
-.h-sub.down{color:#2E8B57}
-.h-meta{font-size:22rpx;color:#CCC}
+/* 行式布局：每行内容天然对齐 */
+.card-table{width:100%}
+.card-row{
+  display:flex;
+  align-items:baseline;
+}
+.card-row + .card-row{margin-top:18rpx}
+
+.c-name{flex:1;min-width:0;padding-left:28rpx}
+
+.c-mid{
+  flex-shrink:0;width:170rpx;
+  text-align:right;padding-right:24rpx;
+}
+
+.c-extra{
+  flex-shrink:0;width:220rpx;
+  text-align:right;
+  padding:0 20rpx;
+  border-left:1rpx solid #F0F0F0;
+}
+
+.label-text{font-size:26rpx;font-weight:600;color:#E4393C;line-height:1}
+.name-text{font-size:26rpx;font-weight:500;color:#333;line-height:1}
+.code-text{font-size:24rpx;color:#999;line-height:1}
+.value-text{font-size:26rpx;font-weight:600;line-height:1}
+.up{color:#E4393C}
+.down{color:#2E8B57}
 
 .update-time{text-align:center;font-size:22rpx;color:#CCC;padding:16rpx 0}

@@ -30,6 +30,16 @@
 .nav-change.down{color:#2E8B57}
 .nav-badge{display:inline-block;font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:4rpx 12rpx;border-radius:8rpx;margin-top:8rpx}
 
+/* 我的持仓 */
+.my-holding-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:28rpx 32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
+.mh-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:20rpx}
+.mh-grid{display:flex;flex-wrap:wrap}
+.mh-item{width:50%;margin-bottom:24rpx}
+.mh-label{font-size:22rpx;color:#999;margin-bottom:8rpx}
+.mh-value{font-size:30rpx;font-weight:600;color:#1A1A1A}
+.mh-value.up{color:#E4393C}
+.mh-value.down{color:#2E8B57}
+
 .tab-bar{display:flex;background:#FFF;margin:16rpx 24rpx 0;border-radius:20rpx;overflow:hidden}
 .tab-item{flex:1;text-align:center;padding:24rpx 0;font-size:28rpx;color:#999}
 .tab-item.active{color:#E4393C;font-weight:600;border-bottom:4rpx solid #E4393C}
@@ -83,8 +93,9 @@
 .h-change.down{color:#2E8B57}
 .show-more{text-align:center;padding:24rpx 0 8rpx;font-size:26rpx;color:#E4393C}
 
-.bottom-bar{display:flex;gap:24rpx;padding:24rpx;position:fixed;bottom:0;left:0;right:0;background:#FFF;box-shadow:0 -2rpx 16rpx rgba(0,0,0,.06);z-index:10}
-.btn-add,.btn-refresh{flex:1;height:88rpx;line-height:88rpx;font-size:30rpx;border-radius:44rpx;text-align:center;padding:0}
+.bottom-bar{display:flex;gap:16rpx;padding:16rpx 24rpx;position:fixed;bottom:0;left:0;right:0;background:#FFF;box-shadow:0 -2rpx 16rpx rgba(0,0,0,.06);z-index:10}
+.btn-add,.btn-compare,.btn-refresh{flex:1;height:80rpx;line-height:80rpx;font-size:26rpx;border-radius:40rpx;text-align:center;padding:0}
 .btn-add{background:#E4393C;color:#FFF}
+.btn-compare{background:#FFF;color:#E4393C;border:2rpx solid #E4393C}
 .btn-refresh{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
 .bottom-safe{height:160rpx}

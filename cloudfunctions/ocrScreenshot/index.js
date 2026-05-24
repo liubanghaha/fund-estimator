@@ -52,6 +52,8 @@ exports.main = async (event) => {
       fundName: holdings[0].fundName,
       buyPrice: holdings[0].buyPrice,
       shares: holdings[0].shares,
+      marketValue: holdings[0].marketValue,
+      holdingReturn: holdings[0].holdingReturn,
       buyAmount: holdings[0].buyAmount,
       holdings,
     },
@@ -152,19 +154,42 @@ function parseFundInfo(text) {
   const sharesMatch = text.match(/(?:持有份额|份额|持仓份额)[:\s：]*([\d,]+\.?\d*)/);
   if (sharesMatch) shares = sharesMatch[1].replace(/,/g, "");
 
-  // 配对：每个基金名配它后面第一个金额（且在下一个基金名之前）
+  // 持有金额（市值）
+  let marketValue = null;
+  const mvMatch = text.match(/(?:持有金额|持仓金额|市值|持仓市值)[:\s：]*([\d,]+\.?\d{1,2})/);
+  if (mvMatch) marketValue = mvMatch[1].replace(/,/g, "");
+
+  // 持有收益（累计收益）
+  let holdingReturn = null;
+  const hrMatch = text.match(/(?:持有收益|累计收益|持仓收益)[:\s：]*([+-]?[\d,]+\.?\d{1,2})/);
+  if (hrMatch) holdingReturn = hrMatch[1].replace(/,/g, "");
+
+  // 买入金额（仅当明确标注时）
+  let buyAmount = null;
+  const baMatch = text.match(/(?:买入金额|投入金额|投入成本)[:\s：]*([\d,]+\.?\d{1,2})/);
+  if (baMatch) buyAmount = baMatch[1].replace(/,/g, "");
+
+  // 配对：每个基金名配它后面第一个金额作为持有金额
   const holdings = [];
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
     const nextNameIdx = i + 1 < names.length ? names[i + 1].index : text.length;
     const myAmounts = amounts.filter((a) => a.index > name.index && a.index < nextNameIdx);
 
+    // 数值合法性校验
+    const safePrice = buyPrice != null && parseFloat(buyPrice) > 0.1 && parseFloat(buyPrice) < 100 ? buyPrice : undefined;
+    const safeShares = shares != null && parseFloat(shares) > 0 && parseFloat(shares) < 1e9 ? shares : undefined;
+    const safeMV = marketValue != null && parseFloat(marketValue) > 0 && parseFloat(marketValue) < 1e10 ? marketValue : undefined;
+    const safeHR = holdingReturn != null && parseFloat(holdingReturn) > -1e10 && parseFloat(holdingReturn) < 1e10 ? holdingReturn : undefined;
+
     holdings.push({
       fundName: name.fundName,
       fundCode: i < validCodes.length ? validCodes[i] : (i === 0 && validCodes.length > 0 ? validCodes[0] : undefined),
-      buyPrice: i === 0 ? buyPrice : undefined,
-      shares: i === 0 ? shares : undefined,
-      buyAmount: myAmounts.length > 0 ? myAmounts[0].str : undefined,
+      buyPrice: i === 0 ? safePrice : undefined,
+      shares: i === 0 ? safeShares : undefined,
+      marketValue: i === 0 ? safeMV : (myAmounts.length > 0 ? myAmounts[0].str : undefined),
+      holdingReturn: i === 0 ? safeHR : undefined,
+      buyAmount: i === 0 ? buyAmount : undefined,
     });
   }
 
