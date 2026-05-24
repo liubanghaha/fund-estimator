@@ -99,7 +99,7 @@ Page({
         if (history.length > 0) {
           this.setData({
             navHistory: history,
-            actualNav: this.data.actualNav || history[0].nav.toFixed(4),
+            actualNav: this.data.actualNav || (history[0].nav != null ? history[0].nav.toFixed(4) : ""),
             actualDate: history[0].date,
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),
           });
@@ -128,7 +128,7 @@ Page({
 
   calcReturns(history) {
     const latest = history[0].nav;
-    const g = (d) => { if (history.length <= d) return null; return parseFloat(((latest - history[d].nav) / history[d].nav * 100).toFixed(2)); };
+    const g = (d) => { if (history.length <= d) return null; const nav = history[d] && history[d].nav; if (!nav) return null; return parseFloat(((latest - nav) / nav * 100).toFixed(2)); };
     this.setData({
       todayReturn: history[0].changeRate || 0,
       weekReturn: g(4), monthReturn: g(19), threeMonthReturn: g(64),

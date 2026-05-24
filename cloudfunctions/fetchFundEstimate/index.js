@@ -53,7 +53,6 @@ function fetchTiantian(fundCode) {
 function fetchEastMoney(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
-    const url = `https://api.fund.eastmoney.com/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=2`;
     const req = https.get(
       {
         hostname: "api.fund.eastmoney.com",

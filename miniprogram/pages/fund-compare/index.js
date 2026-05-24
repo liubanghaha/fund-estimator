@@ -210,7 +210,9 @@ Page({
     const latest = history[0].nav;
     const g = (days) => {
       if (history.length <= days) return null;
-      return parseFloat(((latest - history[days].nav) / history[days].nav * 100).toFixed(2));
+      const nav = history[days] && history[days].nav;
+      if (!nav) return null;
+      return parseFloat(((latest - nav) / nav * 100).toFixed(2));
     };
     return {
       day: history[0].changeRate || 0,
@@ -261,6 +263,7 @@ Page({
     const ratesA = chartData.map(d => d.rateA).filter(v => v !== null);
     const ratesB = chartData.map(d => d.rateB).filter(v => v !== null);
     const allVals = [...ratesA, ...ratesB];
+    if (allVals.length === 0) return;
     const min = Math.min(...allVals), max = Math.max(...allVals);
     const range = max - min || 0.01;
     const pad = range * 0.15;

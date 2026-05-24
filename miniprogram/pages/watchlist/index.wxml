@@ -26,7 +26,7 @@
       <view class="item-right">
         <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
         <view class="item-rate {{item.estimatedChangeRate > 0 ? 'up' : item.estimatedChangeRate < 0 ? 'down' : ''}}">
-          {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate !== null ? item.estimatedChangeRate : '--'}}%
+          {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate != null ? item.estimatedChangeRate : '--'}}%
         </view>
       </view>
     </view>
