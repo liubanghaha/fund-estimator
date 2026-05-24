@@ -11,8 +11,8 @@ const api = {
   fetchFundEstimate(fundCode) {
     return this.callFunction("fetchFundEstimate", { fundCode });
   },
-  getPortfolio() {
-    return this.callFunction("getPortfolio", {});
+  getPortfolio(historyDays) {
+    return this.callFunction("getPortfolio", historyDays ? { historyDays } : {});
   },
   fetchFundNAVHistory(fundCode, pageSize) {
     return this.callFunction("fetchFundNAVHistory", { fundCode, pageSize });
@@ -49,8 +49,8 @@ const api = {
       "399006": "0.399006",
     };
     const secid = INDEX_SECID[indexCode] || "1.000001";
-    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`;
-    return new Promise((resolve, reject) => {
+
+    const doRequest = (url) => new Promise((resolve) => {
       wx.request({
         url,
         header: { Referer: "https://quote.eastmoney.com/" },
@@ -83,6 +83,25 @@ const api = {
           resolve({ code: 500, msg: err.errMsg || "请求失败" });
         },
       });
+    });
+
+    const endpoints = [
+      `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`,
+      `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?_var=kline_dayqfq&param=${secid.split(".")[1]},day,,,${days},qfq`,
+    ];
+
+    const tryRequest = async (url, retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        const res = await doRequest(url);
+        if (res.code === 0 && res.data && res.data.length > 0) return res;
+        if (i < retries) await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+      return { code: 500, msg: "多次重试后仍无数据" };
+    };
+
+    return tryRequest(endpoints[0]).then(res => {
+      if (res.code === 0) return res;
+      return tryRequest(endpoints[1]);
     });
   },
 };

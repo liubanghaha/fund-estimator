@@ -40,7 +40,7 @@ Page({
   async loadData() {
     this.setData({ loading: true });
     try {
-      const res = await api.getPortfolio();
+      const res = await api.getPortfolio(80);
       if (!res.result || res.result.code !== 0) {
         this.setData({ loading: false });
         return;
@@ -54,24 +54,24 @@ Page({
       const portfolioRes = res.result.data;
       const totalCost = holdings.reduce((sum, h) => sum + h.buyPrice * h.shares, 0);
       const todayProfitFromPortfolio = parseFloat(portfolioRes.todayProfit) || 0;
+      const navHistoryMap = portfolioRes.navHistoryMap || {};
 
-      const navResults = [];
-      for (const h of holdings) {
-        const r = await api.fetchFundNAVHistory(h.fundCode, 80).catch(() => null);
-        navResults.push(r);
-      }
+      // Fetch index data in parallel with data processing
+      const compareIndex = this.data.activeTab === 'day' ? '000001' : '000300';
+      const compareLabel = this.data.activeTab === 'day' ? '上证指数' : '沪深300';
+      const indexPromise = this.loadIndexData(compareIndex);
 
       const dateMap = {};
-      navResults.forEach((r, i) => {
-        if (!r || !r.result || r.result.code !== 0) return;
-        (r.result.data || []).forEach((item) => {
+      holdings.forEach((h) => {
+        const history = navHistoryMap[h.fundCode] || [];
+        history.forEach((item) => {
           const d = item.date;
           if (!dateMap[d]) dateMap[d] = 0;
-          dateMap[d] += item.nav * holdings[i].shares;
+          dateMap[d] += item.nav * h.shares;
         });
       });
 
-      const allDaily = Object.entries(dateMap)
+      let allDaily = Object.entries(dateMap)
         .map(([date, value]) => ({
           date,
           value: +value.toFixed(2),
@@ -81,16 +81,8 @@ Page({
         .sort((a, b) => a.date.localeCompare(b.date));
 
       if (allDaily.length === 0) {
-        allDaily.push(...this.generateMockData());
+        allDaily = this.generateMockData();
         this._isMock = true;
-      }
-
-      // Fetch index data for comparison
-      const compareIndex = this.data.activeTab === 'day' ? '000001' : '000300';
-      const compareLabel = this.data.activeTab === 'day' ? '上证指数' : '沪深300';
-      let indexDaily = [];
-      if (compareIndex) {
-        indexDaily = await this.loadIndexData(compareIndex);
       }
 
       const availableMonths = [...new Set(allDaily.map(d => d.date.slice(0, 7)))].sort().reverse();
@@ -126,6 +118,8 @@ Page({
         ? +((todayProfitFromPortfolio / totalCost) * 100).toFixed(2)
         : 0;
 
+      const indexDaily = await indexPromise;
+
       this.setData({
         allDaily, totalCost, indexDaily,
         compareIndex, compareLabel,
@@ -136,8 +130,7 @@ Page({
         monthProfit: monthProfit.toFixed(2),
         yearProfit: yearProfit.toFixed(2),
         todayProfitRate: todayProfitRateFromPortfolio,
-        monthProfitRate: monthProfitRate,
-        yearProfitRate: yearProfitRate,
+        monthProfitRate, yearProfitRate,
         loading: false,
       }, () => {
         setTimeout(() => this.drawChart(), 500);
@@ -177,11 +170,16 @@ Page({
 
   async loadIndexData(indexCode) {
     try {
-      const res = await api.fetchMarketIndexClient(indexCode, 80);
-      if (!res || res.code !== 0) return [];
+      let res = await api.fetchMarketIndexClient(indexCode, 80);
+      if (!res || res.code !== 0 || !res.data || res.data.length === 0) {
+        res = await api.fetchMarketIndex(indexCode, 80);
+        if (!res || !res.result || res.result.code !== 0) return [];
+        return (res.result.data || []).map(item => ({
+          date: item.date, close: item.close,
+        })).sort((a, b) => a.date.localeCompare(b.date));
+      }
       return (res.data || []).map(item => ({
-        date: item.date,
-        close: item.close,
+        date: item.date, close: item.close,
       })).sort((a, b) => a.date.localeCompare(b.date));
     } catch (e) {
       console.error("加载指数数据失败:", e);
@@ -455,7 +453,6 @@ Page({
     let values, yUnit;
     if (isComparing) {
       values = list.map(d => d.baseRate);
-      // Collect all rates for Y range (including index)
       const indexRates = list.filter(d => d.indexRate !== null).map(d => d.indexRate);
       const allVals = [...values, ...indexRates];
       const min = Math.min(...allVals), max = Math.max(...allVals);
@@ -464,12 +461,12 @@ Page({
       this._yRange = { min: min - pad, max: max + pad };
       yUnit = '%';
     } else {
-      values = list.map(d => d.profit);
+      values = list.map(d => d.profitRate);
       const minP = Math.min(...values), maxP = Math.max(...values);
       const range = maxP - minP || 0.01;
       const pad = range * 0.15;
       this._yRange = { min: minP - pad, max: maxP + pad };
-      yUnit = '';
+      yUnit = '%';
     }
 
     const { min: yMin, max: yMax } = this._yRange;

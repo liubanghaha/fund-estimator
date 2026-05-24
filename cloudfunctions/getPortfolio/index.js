@@ -2,8 +2,9 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
-exports.main = async () => {
+exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
+  const { historyDays } = event || {};
 
   try {
     const res = await db.collection("holdings").where({ _openid: OPENID }).get();
@@ -17,43 +18,51 @@ exports.main = async () => {
       };
     }
 
-    let totalCost = 0, totalMarket = 0, totalYesterdayMarket = 0, totalTodayProfit = 0;
+    let totalCost = 0, totalYesterdayMarket = 0, totalTodayProfit = 0;
     let updateTime = "";
-    const enriched = [];
+    const navHistoryMap = {};
 
-    for (const h of holdings) {
-      let currentNav = h.buyPrice;
+    // Fire all HTTP requests for all holdings in parallel
+    const resultsList = await Promise.all(
+      holdings.map(async (h) => {
+        try {
+          const promises = [fetchTiantian(h.fundCode), fetchEastMoney(h.fundCode)];
+          if (historyDays) promises.push(fetchNAVHistory(h.fundCode, historyDays));
+          const results = await Promise.all(promises);
+          return { h, tiantian: results[0], eastmoney: results[1], navHistory: historyDays ? results[2] : null };
+        } catch (e) {
+          console.error(`获取基金 ${h.fundCode} 失败:`, e);
+          return { h, tiantian: {}, eastmoney: {}, navHistory: [] };
+        }
+      })
+    );
+
+    const enriched = [];
+    let totalMarket = 0;
+
+    for (const { h, tiantian, eastmoney, navHistory } of resultsList) {
+      let currentNav = eastmoney.actualNav || tiantian.nav || h.buyPrice;
       let todayChangeRate = 0;
       let todayProfitAmount = 0;
 
-      try {
-        const [tiantian, eastmoney] = await Promise.all([
-          fetchTiantian(h.fundCode),
-          fetchEastMoney(h.fundCode),
-        ]);
-
-        currentNav = eastmoney.actualNav || tiantian.nav || h.buyPrice;
-
-        const yesterdayNav = tiantian.nav; // 昨日净值
-
-        // 当日收益 = (当日净值 - 昨日净值) × 份额
-        // 收益率 = (当日净值 - 昨日净值) / 昨日净值 × 100，所以收益 = 昨日净值 × 份额 × 收益率 / 100
-        // 收盘后优先用实际净值，盘中用估算净值
-        if (eastmoney.actualNav != null && yesterdayNav != null && eastmoney.actualNav !== yesterdayNav) {
-          todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * h.shares;
-          todayChangeRate = eastmoney.actualChangeRate || 0;
-        } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
-          todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * h.shares;
-          todayChangeRate = tiantian.estimatedChangeRate || 0;
-        } else {
-          todayChangeRate = eastmoney.actualChangeRate || 0;
-        }
-
-        totalYesterdayMarket += (yesterdayNav || currentNav) * h.shares;
-        if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
-      } catch (e) {
-        console.error(`获取基金 ${h.fundCode} 估值失败:`, e);
+      if (historyDays && navHistory) {
+        navHistoryMap[h.fundCode] = navHistory;
       }
+
+      const yesterdayNav = tiantian.nav;
+
+      if (eastmoney.actualNav != null && yesterdayNav != null && eastmoney.actualNav !== yesterdayNav) {
+        todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * h.shares;
+        todayChangeRate = eastmoney.actualChangeRate || 0;
+      } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
+        todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * h.shares;
+        todayChangeRate = tiantian.estimatedChangeRate || 0;
+      } else {
+        todayChangeRate = eastmoney.actualChangeRate || 0;
+      }
+
+      totalYesterdayMarket += (yesterdayNav || currentNav) * h.shares;
+      if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
       const costValue = h.buyPrice * h.shares;
       const marketValue = currentNav * h.shares;
@@ -92,6 +101,7 @@ exports.main = async () => {
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
         updateTime,
+        navHistoryMap: historyDays ? navHistoryMap : undefined,
       },
     };
   } catch (e) {
@@ -128,6 +138,48 @@ function fetchTiantian(fundCode) {
       resolve({});
     });
   });
+}
+
+function fetchNAVHistory(fundCode, totalNeeded) {
+  const https = require("https");
+  const PER_PAGE = 20;
+  const pages = Math.ceil(totalNeeded / PER_PAGE);
+  const allList = [];
+
+  const fetchPage = (pageIndex) => new Promise((resolve) => {
+    const req = https.get({
+      hostname: "api.fund.eastmoney.com",
+      path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${pageIndex}&pageSize=${PER_PAGE}`,
+      headers: { Referer: "https://fundf10.eastmoney.com/" },
+    }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
+          const list = (json.Data.LSJZList || []).map((item) => ({
+            date: item.FSRQ,
+            nav: parseFloat(item.DWJZ) || 0,
+            cumulativeNav: parseFloat(item.LJJZ) || 0,
+            changeRate: parseFloat(item.JZZZL) || 0,
+          }));
+          resolve(list);
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+  });
+
+  return (async () => {
+    for (let i = 1; i <= pages; i++) {
+      const pageData = await fetchPage(i);
+      if (pageData.length === 0) break;
+      allList.push(...pageData);
+      if (pageData.length < PER_PAGE) break;
+    }
+    return allList;
+  })();
 }
 
 function fetchEastMoney(fundCode) {

@@ -46,7 +46,7 @@
 .day-cell.empty .day-num{font-size:20rpx;color:#CCC}
 .day-cell.up .day-num,.day-cell.down .day-num{font-size:26rpx;color:#333;font-weight:500}
 .day-num{font-size:20rpx;color:#CCC;margin-bottom:2rpx}
-.day-profit{font-size:18rpx;font-weight:600;white-space:nowrap}
+.day-profit{font-size:22rpx;font-weight:600;white-space:nowrap}
 .day-profit.up{color:#E4393C}
 .day-profit.down{color:#2E8B57}
 

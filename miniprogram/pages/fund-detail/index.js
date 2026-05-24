@@ -24,8 +24,7 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, errorMsg: "" });
     try {
-      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.fetchProfile(), this.checkFollow()]);
-      await this.checkHolding();
+      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.fetchProfile(), this.checkFollow(), this.checkHolding()]);
       this.updateDisplay();
       this.setData({ loading: false });
       setTimeout(() => this.drawChart(), 500);

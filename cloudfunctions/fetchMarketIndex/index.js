@@ -1,21 +1,25 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const INDEX_CONFIG = {
-  "000001": { name: "上证指数", secid: "1.000001" },
-  "399001": { name: "深证成指", secid: "0.399001" },
-  "000300": { name: "沪深300", secid: "1.000300" },
-  "399006": { name: "创业板指", secid: "0.399006" },
+const INDEX_SYMBOL = {
+  "000001": "sh000001",
+  "399001": "sz399001",
+  "000300": "sh000300",
+  "399006": "sz399006",
 };
 
 exports.main = async (event) => {
-  const { indexCode, days = 90 } = event;
-  if (!indexCode || !INDEX_CONFIG[indexCode]) {
+  const { indexCode, days = 80 } = event;
+  if (!indexCode || !INDEX_SYMBOL[indexCode]) {
     return { code: 400, msg: "不支持的指数代码" };
   }
 
   try {
-    const data = await fetchKline(INDEX_CONFIG[indexCode].secid, days);
+    // Try Sina first, fallback to eastmoney
+    let data = await fetchSinaKline(INDEX_SYMBOL[indexCode], days);
+    if (!data || data.length === 0) {
+      data = await fetchEastMoneyKline(indexCode, days);
+    }
     return { code: 0, msg: "success", data };
   } catch (e) {
     console.error("获取指数数据失败:", e.message || e);
@@ -23,23 +27,58 @@ exports.main = async (event) => {
   }
 };
 
-function fetchKline(secid, days) {
+function fetchSinaKline(symbol, days) {
   const https = require("https");
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
+    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&datalen=${days}`;
+    const req = https.get(url, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const list = JSON.parse(body);
+          if (!Array.isArray(list)) { resolve([]); return; }
+          resolve(list.map(item => ({
+            date: item.day,
+            open: parseFloat(item.open) || 0,
+            close: parseFloat(item.close) || 0,
+            high: parseFloat(item.high) || 0,
+            low: parseFloat(item.low) || 0,
+            volume: parseFloat(item.volume) || 0,
+          })));
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    });
+    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+  });
+}
+
+function fetchEastMoneyKline(indexCode, days) {
+  const https = require("https");
+  const SECID_MAP = {
+    "000001": "1.000001",
+    "399001": "0.399001",
+    "000300": "1.000300",
+    "399006": "0.399006",
+  };
+  const secid = SECID_MAP[indexCode] || "1.000001";
+  return new Promise((resolve) => {
     const path = `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`;
-    const options = {
+    const req = https.get({
       hostname: "push2his.eastmoney.com",
       path,
       headers: { Referer: "https://quote.eastmoney.com/" },
-    };
-    const req = https.get(options, (res) => {
+    }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
           const json = JSON.parse(body);
           const klines = (json.data && json.data.klines) || [];
-          const list = klines.map((line) => {
+          resolve(klines.map((line) => {
             const parts = line.split(",");
             return {
               date: parts[0],
@@ -48,20 +87,14 @@ function fetchKline(secid, days) {
               high: parseFloat(parts[3]) || 0,
               low: parseFloat(parts[4]) || 0,
               volume: parseFloat(parts[5]) || 0,
-              amount: parseFloat(parts[6]) || 0,
-              amplitude: parseFloat(parts[7]) || 0,
-              changeRate: parseFloat(parts[8]) || 0,
-              changeAmount: parseFloat(parts[9]) || 0,
-              turnover: parseFloat(parts[10]) || 0,
             };
-          });
-          resolve(list);
+          }));
         } catch (e) {
-          reject(e);
+          resolve([]);
         }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error("请求超时")); });
-    req.on("error", reject);
+    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
   });
-};
+}

@@ -1,11 +1,15 @@
 const api = require("../../utils/api");
 
 const EXTRA_WIDTH = 260;
+const PAGE_SIZE = 8;
 
 Page({
   data: {
     isLoggedIn: false,
     holdings: [],
+    displayCount: PAGE_SIZE,
+    hasMore: false,
+    amountVisible: true,
     totalAmount: "0.00",
     todayProfit: "0.00",
     todayProfitRate: "0.00",
@@ -15,6 +19,8 @@ Page({
   },
 
   onShow() {
+    const amountVisible = wx.getStorageSync("amountVisible");
+    if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
@@ -22,6 +28,12 @@ Page({
     } else {
       this.setData({ isLoggedIn: false, holdings: [] });
     }
+  },
+
+  onToggleAmount() {
+    const v = !this.data.amountVisible;
+    this.setData({ amountVisible: v });
+    wx.setStorageSync("amountVisible", v);
   },
 
   onPullDownRefresh() {
@@ -35,10 +47,13 @@ Page({
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
+        const holdings = (d.holdings || []).map((h) => ({
+          ...h, _scrollX: 0, _transition: false,
+        }));
         this.setData({
-          holdings: (d.holdings || []).map((h) => ({
-            ...h, _scrollX: 0, _transition: false,
-          })),
+          holdings,
+          displayCount: PAGE_SIZE,
+          hasMore: holdings.length > PAGE_SIZE,
           totalAmount: d.totalAmount,
           todayProfit: d.todayProfit,
           todayProfitRate: d.todayProfitRate,
@@ -49,6 +64,21 @@ Page({
       }
     } catch (e) {
       console.error("获取持仓失败:", e);
+    }
+  },
+
+  loadMore() {
+    const { holdings, displayCount } = this.data;
+    const next = displayCount + PAGE_SIZE;
+    this.setData({
+      displayCount: next,
+      hasMore: next < holdings.length,
+    });
+  },
+
+  onReachBottom() {
+    if (this.data.hasMore) {
+      this.loadMore();
     }
   },
 

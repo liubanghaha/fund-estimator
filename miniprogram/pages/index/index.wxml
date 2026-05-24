@@ -9,16 +9,17 @@
   <view wx:if="{{isLoggedIn}}" class="dashboard">
     <!-- 今日实时收益 -->
     <view class="asset-overview" bind:tap="onTapProfit">
+      <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
       <view class="asset-label">今日估算收益</view>
-      <view class="asset-value {{todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : ''}}">
-        {{todayProfit > 0 ? '+' : ''}}{{todayProfit}}
+      <view class="asset-value {{amountVisible ? (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '') : ''}}">
+        {{amountVisible ? (todayProfit > 0 ? '+' : '') + todayProfit : '****'}}
       </view>
       <view class="asset-sub">
         <text>涨幅 {{todayProfitRate > 0 ? '+' : ''}}{{todayProfitRate}}%</text>
         <text class="asset-divider">|</text>
-        <text>市值 {{totalAmount}}</text>
+        <text>市值 {{amountVisible ? totalAmount : '****'}}</text>
         <text class="asset-divider">|</text>
-        <text class="{{totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : ''}}">累计 {{totalReturn > 0 ? '+' : ''}}{{totalReturn}}</text>
+        <text class="{{amountVisible ? (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '') : ''}}">累计 {{amountVisible ? (totalReturn > 0 ? '+' : '') + totalReturn : '****'}}</text>
       </view>
     </view>
 
@@ -37,7 +38,7 @@
     <!-- 持仓列表 -->
     <view wx:if="{{holdings.length > 0}}" class="holdings-section">
       <view class="section-title">持仓概览 <text class="swipe-hint">← 左滑看更多</text></view>
-      <view wx:for="{{holdings}}" wx:key="_id" class="card-clip">
+      <view wx:for="{{holdings}}" wx:key="_id" class="card-clip" wx:if="{{index < displayCount}}">
         <view
           class="card-scroll"
           style="transform:translateX({{item._scrollX}}px);{{item._transition ? 'transition:transform 0.25s ease' : ''}}"
@@ -68,15 +69,19 @@
             </view>
             <view class="card-row">
               <view class="c-name code-text">{{item.currentNav}}</view>
-              <view class="c-mid value-text {{item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : ''}}">
-                {{item.todayProfit > 0 ? '+' : ''}}{{item.todayProfit}}
+              <view class="c-mid value-text {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">
+                {{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}
               </view>
-              <view class="c-extra value-text {{item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : ''}}">
-                {{item.totalReturn > 0 ? '+' : ''}}{{item.totalReturn}}
+              <view class="c-extra value-text {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">
+                {{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}
               </view>
             </view>
           </view>
         </view>
+      </view>
+      <view wx:if="{{hasMore}}" class="load-more" bind:tap="loadMore">
+        <text>查看更多持仓</text>
+        <text class="load-more-count">（已显示{{displayCount}}/{{holdings.length}}）</text>
       </view>
     </view>
 

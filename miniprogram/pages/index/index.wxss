@@ -7,21 +7,22 @@
 .dashboard{padding-bottom:24rpx}
 
 /* 今日收益卡片 */
-.asset-overview{background:linear-gradient(135deg,#E4393C,#FF6B6B);padding:44rpx 32rpx;margin:24rpx;border-radius:16rpx;text-align:center;color:#FFF}
-.asset-label{font-size:26rpx;opacity:.85;margin-bottom:14rpx}
-.asset-value{font-size:64rpx;font-weight:700;margin-bottom:16rpx}
+.asset-overview{position:relative;background:linear-gradient(135deg,#E4393C,#FF6B6B);padding:36rpx 32rpx;margin:20rpx 24rpx;border-radius:16rpx;text-align:center;color:#FFF}
+.amount-toggle{position:absolute;top:20rpx;right:24rpx;font-size:22rpx;color:rgba(255,255,255,.6);z-index:2}
+.asset-label{font-size:24rpx;opacity:.85;margin-bottom:10rpx}
+.asset-value{font-size:60rpx;font-weight:700;margin-bottom:12rpx}
 .asset-value.up{color:#FFD700}
 .asset-value.down{color:#90EE90}
-.asset-sub{font-size:26rpx;opacity:.9}
+.asset-sub{font-size:24rpx;opacity:.9}
 .asset-sub .up{color:#FFD700}
 .asset-sub .down{color:#90EE90}
-.asset-divider{margin:0 12rpx;opacity:.4}
+.asset-divider{margin:0 10rpx;opacity:.4}
 
 /* 快捷入口 */
-.quick-actions{display:flex;justify-content:space-around;padding:32rpx 24rpx;margin:0 24rpx;background:#FFF;border-radius:16rpx}
+.quick-actions{display:flex;justify-content:space-around;padding:20rpx 24rpx;margin:0 24rpx;background:#FFF;border-radius:12rpx}
 .action-item{text-align:center}
-.action-icon{font-size:48rpx;margin-bottom:12rpx}
-.action-text{font-size:26rpx;color:#333}
+.action-icon{font-size:36rpx;margin-bottom:6rpx}
+.action-text{font-size:22rpx;color:#333}
 
 /* 持仓列表 */
 .holdings-section{margin:24rpx}
@@ -69,5 +70,9 @@
 .value-text{font-size:26rpx;font-weight:600;line-height:1}
 .up{color:#E4393C}
 .down{color:#2E8B57}
+
+/* 加载更多 */
+.load-more{text-align:center;padding:28rpx 0;font-size:26rpx;color:#999}
+.load-more-count{font-size:22rpx;color:#CCC;margin-left:8rpx}
 
 .update-time{text-align:center;font-size:22rpx;color:#CCC;padding:16rpx 0}
