@@ -1,6 +1,6 @@
 <view class="page">
-  <view wx:if="{{!loaded}}" class="loading-wrap">
-    <text class="loading-text">加载中...</text>
+  <view wx:if="{{!loaded}}" class="skeleton-wrap">
+    <view wx:for="{{[1,2,3,4,5]}}" wx:key="*this" class="sk-item skeleton"></view>
   </view>
 
   <view wx:elif="{{watchlist.length === 0}}" class="empty-wrap">

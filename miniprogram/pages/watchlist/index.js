@@ -10,6 +10,10 @@ Page({
     this.fetchWatchlist();
   },
 
+  onPullDownRefresh() {
+    this.fetchWatchlist().finally(() => wx.stopPullDownRefresh());
+  },
+
   async fetchWatchlist() {
     try {
       const res = await api.watchlistList();

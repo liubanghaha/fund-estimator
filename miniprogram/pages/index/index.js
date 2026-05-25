@@ -6,6 +6,7 @@ const PAGE_SIZE = 8;
 Page({
   data: {
     isLoggedIn: false,
+    loading: false,
     holdings: [],
     displayCount: PAGE_SIZE,
     hasMore: false,
@@ -43,6 +44,7 @@ Page({
   },
 
   async fetchPortfolio() {
+    this.setData({ loading: true });
     try {
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
@@ -51,6 +53,7 @@ Page({
           ...h, _scrollX: 0, _transition: false,
         }));
         this.setData({
+          loading: false,
           holdings,
           displayCount: PAGE_SIZE,
           hasMore: holdings.length > PAGE_SIZE,
@@ -63,6 +66,7 @@ Page({
         });
       }
     } catch (e) {
+      this.setData({ loading: false });
       console.error("获取持仓失败:", e);
     }
   },

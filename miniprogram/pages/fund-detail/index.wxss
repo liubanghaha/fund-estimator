@@ -2,6 +2,15 @@
 
 .loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
 .loading-text{font-size:28rpx;color:#999}
+
+/* 骨架屏 */
+.skeleton-wrap{padding:24rpx}
+.sk-header{padding:32rpx;margin-bottom:16rpx}
+.sk-title{width:360rpx;height:40rpx;margin-bottom:12rpx}
+.sk-code{width:160rpx;height:28rpx}
+.sk-nav-card{height:180rpx;border-radius:20rpx;margin-bottom:16rpx}
+.sk-tabs{height:88rpx;border-radius:20rpx;margin-bottom:16rpx}
+.sk-content{height:400rpx;border-radius:20rpx}
 .error-wrap{display:flex;flex-direction:column;align-items:center;padding-top:200rpx}
 .error-text{font-size:28rpx;color:#E4393C;margin-bottom:32rpx}
 .retry-btn{width:200rpx;height:64rpx;line-height:64rpx;font-size:26rpx;color:#E4393C;background:#FFF;border:1rpx solid #E4393C;border-radius:32rpx;text-align:center;padding:0}

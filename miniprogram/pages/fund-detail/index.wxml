@@ -1,5 +1,13 @@
 <view class="page">
-  <view wx:if="{{loading}}">加载中...</view>
+  <view wx:if="{{loading}}" class="skeleton-wrap">
+    <view class="sk-header">
+      <view class="sk-title skeleton"></view>
+      <view class="sk-code skeleton"></view>
+    </view>
+    <view class="sk-nav-card skeleton"></view>
+    <view class="sk-tabs skeleton"></view>
+    <view class="sk-content skeleton"></view>
+  </view>
   <view wx:else class="content">
     <view class="fund-header">
       <view class="header-top">

@@ -3,6 +3,7 @@ const api = require("../../utils/api");
 Page({
   data: {
     activeTab: "day",
+    empty: false,
     calendarView: "day",
     displayMode: "amount",
     loading: true,
@@ -37,6 +38,10 @@ Page({
     this.loadData();
   },
 
+  onPullDownRefresh() {
+    this.loadData().finally(() => wx.stopPullDownRefresh());
+  },
+
   async loadData() {
     this.setData({ loading: true });
     try {
@@ -47,7 +52,7 @@ Page({
       }
       const holdings = res.result.data.holdings || [];
       if (holdings.length === 0) {
-        this.setData({ loading: false });
+        this.setData({ loading: false, empty: true });
         return;
       }
 
@@ -80,40 +85,46 @@ Page({
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      if (allDaily.length === 0) {
+      if (allDaily.length === 0 && holdings.length === 0) {
         allDaily = this.generateMockData();
         this._isMock = true;
       }
 
-      const availableMonths = [...new Set(allDaily.map(d => d.date.slice(0, 7)))].sort().reverse();
-      const availableYears = [...new Set(allDaily.map(d => d.date.slice(0, 4)))].sort().reverse();
+      // 统一日变动：date → 当日收益（当天profit - 前一天profit）
+      const dailyChange = {};
+      for (let i = 1; i < allDaily.length; i++) {
+        dailyChange[allDaily[i].date] = +(allDaily[i].profit - allDaily[i - 1].profit).toFixed(2);
+      }
+      this._dailyChange = dailyChange;
+
+      // 按周期求和
+      const sumByPeriod = (prefix, len) => {
+        let sum = 0;
+        for (const [date, chg] of Object.entries(dailyChange)) {
+          if (date.slice(0, len) === prefix) sum += chg;
+        }
+        return +sum.toFixed(2);
+      };
 
       const today = new Date();
       const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
       const currentYear = `${today.getFullYear()}`;
+
+      const availableMonths = [...new Set(allDaily.map(d => d.date.slice(0, 7)))].sort().reverse();
+      const availableYears = [...new Set(allDaily.map(d => d.date.slice(0, 4)))].sort().reverse();
       const selectedMonth = availableMonths.includes(currentMonth) ? currentMonth : availableMonths[0];
       const selectedYear = availableYears.includes(currentYear) ? currentYear : availableYears[0];
 
-      const dayCalendar = this.buildDayCalendar(allDaily, selectedMonth, totalCost);
-      const monthCalendar = this.buildMonthCalendar(allDaily, selectedYear, totalCost);
-      const yearData = this.buildYearData(allDaily, totalCost);
+      const dayCalendar = this.buildDayCalendar(allDaily, dailyChange, selectedMonth, totalCost);
+      const monthCalendar = this.buildMonthCalendar(dailyChange, selectedYear, totalCost);
+      const yearData = this.buildYearData(dailyChange, totalCost);
 
-      const thisMonthPrefix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-      const thisMonthDays = allDaily.filter(d => d.date.startsWith(thisMonthPrefix));
-      const monthProfit = thisMonthDays.length >= 1
-        ? thisMonthDays[thisMonthDays.length - 1].profit - thisMonthDays[0].profit
-        : 0;
-      const monthProfitRate = totalCost > 0 && thisMonthDays.length >= 1
-        ? +((monthProfit / totalCost) * 100).toFixed(2)
-        : 0;
-      const thisYearPrefix = `${today.getFullYear()}`;
-      const thisYearDays = allDaily.filter(d => d.date.startsWith(thisYearPrefix));
-      const yearProfit = thisYearDays.length >= 1
-        ? thisYearDays[thisYearDays.length - 1].profit - thisYearDays[0].profit
-        : 0;
-      const yearProfitRate = totalCost > 0 && thisYearDays.length >= 1
-        ? +((yearProfit / totalCost) * 100).toFixed(2)
-        : 0;
+      const monthProfit = sumByPeriod(currentMonth, 7);
+      const monthProfitRate = totalCost > 0 ? +((monthProfit / totalCost) * 100).toFixed(2) : 0;
+
+      const yearProfit = sumByPeriod(currentYear, 4);
+      const yearProfitRate = totalCost > 0 ? +((yearProfit / totalCost) * 100).toFixed(2) : 0;
+
       const todayProfitRateFromPortfolio = totalCost > 0
         ? +((todayProfitFromPortfolio / totalCost) * 100).toFixed(2)
         : 0;
@@ -187,19 +198,17 @@ Page({
     }
   },
 
-  buildDayCalendar(allDaily, selectedMonth, totalCost) {
+  buildDayCalendar(allDaily, dailyChange, selectedMonth, totalCost) {
     const dataMap = {};
     allDaily.forEach(d => { dataMap[d.date] = d; });
 
-    const sortedDates = allDaily.map(d => d.date);
-    const prevProfitMap = {};
-    for (let i = 1; i < sortedDates.length; i++) {
-      prevProfitMap[sortedDates[i]] = allDaily[i - 1].profit;
-    }
     const [year, month] = selectedMonth.split('-').map(Number);
     const firstDay = new Date(year, month - 1, 1).getDay();
     const daysInMonth = new Date(year, month, 0).getDate();
     const startOffset = firstDay;
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const weeks = [];
     let week = [];
@@ -211,10 +220,9 @@ Page({
 
     while (day <= daysInMonth) {
       const dateStr = `${selectedMonth}-${String(day).padStart(2, '0')}`;
-      const info = dataMap[dateStr];
       let dayProfit = null, dayProfitRate = null;
-      if (info && prevProfitMap[dateStr] !== undefined) {
-        dayProfit = +(info.profit - prevProfitMap[dateStr]).toFixed(2);
+      if (dateStr !== todayStr && dailyChange[dateStr] !== undefined) {
+        dayProfit = dailyChange[dateStr];
         dayProfitRate = totalCost > 0 ? +((dayProfit / totalCost) * 100).toFixed(2) : 0;
       }
       week.push({
@@ -234,40 +242,29 @@ Page({
     return weeks;
   },
 
-  buildMonthCalendar(allDaily, year, totalCost) {
-    const monthData = {};
-    allDaily.forEach(d => {
-      if (!d.date.startsWith(year)) return;
-      const key = d.date.slice(0, 7);
-      if (!monthData[key]) monthData[key] = { first: d, last: d };
-      else monthData[key].last = d;
-    });
-
+  buildMonthCalendar(dailyChange, year, totalCost) {
     return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => {
-      const key = `${year}-${String(m).padStart(2, '0')}`;
-      const md = monthData[key];
-      let profit = null, profitRate = null;
-      if (md && md.first && md.last) {
-        profit = +(md.last.profit - md.first.profit).toFixed(2);
-        profitRate = totalCost > 0 ? +((profit / totalCost) * 100).toFixed(2) : 0;
+      const prefix = `${year}-${String(m).padStart(2, '0')}`;
+      let profit = 0;
+      for (const [date, chg] of Object.entries(dailyChange)) {
+        if (date.startsWith(prefix)) profit += chg;
       }
-      return { month: m, date: key, profit, profitRate, empty: profit === null };
+      profit = +profit.toFixed(2);
+      const hasData = Object.keys(dailyChange).some(d => d.startsWith(prefix));
+      return { month: m, date: prefix, profit, profitRate: totalCost > 0 ? +((profit / totalCost) * 100).toFixed(2) : 0, empty: !hasData };
     });
   },
 
-  buildYearData(allDaily, totalCost) {
-    const yearData = {};
-    allDaily.forEach(d => {
-      const y = d.date.slice(0, 4);
-      if (!yearData[y]) yearData[y] = { first: d, last: d };
-      else yearData[y].last = d;
-    });
-
-    return Object.keys(yearData).sort().map(y => {
-      const yd = yearData[y];
-      const profit = +(yd.last.profit - yd.first.profit).toFixed(2);
-      const profitRate = totalCost > 0 ? +((profit / totalCost) * 100).toFixed(2) : 0;
-      return { date: yd.last.date, profit, profitRate };
+  buildYearData(dailyChange, totalCost) {
+    const years = [...new Set(Object.keys(dailyChange).map(d => d.slice(0, 4)))].sort();
+    return years.map(y => {
+      let profit = 0;
+      for (const [date, chg] of Object.entries(dailyChange)) {
+        if (date.startsWith(y)) profit += chg;
+      }
+      profit = +profit.toFixed(2);
+      const lastDate = Object.keys(dailyChange).filter(d => d.startsWith(y)).sort().pop() || `${y}-12-31`;
+      return { date: lastDate, profit, profitRate: totalCost > 0 ? +((profit / totalCost) * 100).toFixed(2) : 0 };
     });
   },
 
@@ -304,7 +301,7 @@ Page({
   onMonthChange(e) {
     const idx = e.detail.value;
     const selectedMonth = this.data.availableMonths[idx];
-    const dayCalendar = this.buildDayCalendar(this.data.allDaily, selectedMonth, this.data.totalCost);
+    const dayCalendar = this.buildDayCalendar(this.data.allDaily, this._dailyChange, selectedMonth, this.data.totalCost);
     this.setData({ selectedMonth, dayCalendar }, () => {
       setTimeout(() => this.drawChart(), 300);
     });
@@ -313,7 +310,7 @@ Page({
   onYearChange(e) {
     const idx = e.detail.value;
     const selectedYear = this.data.availableYears[idx];
-    const monthCalendar = this.buildMonthCalendar(this.data.allDaily, selectedYear, this.data.totalCost);
+    const monthCalendar = this.buildMonthCalendar(this._dailyChange, selectedYear, this.data.totalCost);
     this.setData({ selectedYear, monthCalendar }, () => {
       setTimeout(() => this.drawChart(), 300);
     });
@@ -342,6 +339,10 @@ Page({
 
   onToggleMode() {
     this.setData({ displayMode: this.data.displayMode === "amount" ? "rate" : "amount" });
+  },
+
+  onGoHome() {
+    wx.switchTab({ url: "/pages/index/index" });
   },
 
   getChartData() {

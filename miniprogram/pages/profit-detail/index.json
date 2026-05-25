@@ -1,4 +1,6 @@
 {
   "navigationBarTitleText": "收益走势",
-  "usingComponents": {}
+  "usingComponents": {},
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
 }

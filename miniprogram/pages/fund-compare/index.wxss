@@ -1,6 +1,14 @@
 .page{min-height:100vh;background:#F5F5F5}
 .loading-text{text-align:center;padding-top:200rpx;font-size:28rpx;color:#999}
 
+/* 骨架屏 */
+.skeleton-wrap{padding:24rpx}
+.sk-compare-header{display:flex;align-items:center;gap:16rpx;margin-bottom:16rpx}
+.sk-fund-col{flex:1;height:160rpx;border-radius:16rpx}
+.sk-vs{font-size:28rpx;color:#CCC;flex-shrink:0;padding:0 8rpx}
+.sk-compare-chart{height:360rpx;border-radius:16rpx;margin-bottom:16rpx}
+.sk-compare-metrics{height:240rpx;border-radius:16rpx}
+
 /* Header */
 .compare-header{display:flex;align-items:center;background:#FFF;padding:32rpx 24rpx;margin-bottom:16rpx}
 .fund-col{flex:1;text-align:center}

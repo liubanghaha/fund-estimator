@@ -3,6 +3,10 @@
 .loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
 .loading-text{font-size:28rpx;color:#999}
 
+/* 骨架屏 */
+.skeleton-wrap{padding:16rpx 24rpx}
+.sk-item{height:100rpx;border-radius:16rpx;margin-bottom:12rpx}
+
 .empty-wrap{display:flex;flex-direction:column;align-items:center;padding-top:200rpx}
 .empty-icon{font-size:80rpx;margin-bottom:24rpx}
 .empty-text{font-size:30rpx;color:#999;margin-bottom:12rpx}

@@ -203,6 +203,9 @@ Page({
   },
 
   onRefresh() { this.fetchAll(); },
+  onPullDownRefresh() {
+    this.fetchAll().finally(() => wx.stopPullDownRefresh());
+  },
   onShowMore() { this.setData({ showAllHistory: true }); },
   onShowLess() { this.setData({ showAllHistory: false }); },
   onTabTap(e) {
