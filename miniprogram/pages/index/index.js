@@ -17,6 +17,17 @@ Page({
     totalReturn: "0.00",
     totalReturnRate: "0.00",
     updateTime: "",
+    indexCards: [],
+    indexExpanded: false,
+    indexLoading: false,
+    pageHeight: 0,
+    indexBarHeight: 0,
+    refresherTriggered: false,
+  },
+
+  onLoad() {
+    const { windowHeight } = wx.getSystemInfoSync();
+    this.setData({ pageHeight: windowHeight });
   },
 
   onShow() {
@@ -26,6 +37,7 @@ Page({
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
       this.fetchPortfolio();
+      this.fetchIndices();
     } else {
       this.setData({ isLoggedIn: false, holdings: [] });
     }
@@ -37,9 +49,9 @@ Page({
     wx.setStorageSync("amountVisible", v);
   },
 
-  onPullDownRefresh() {
-    this.fetchPortfolio().finally(() => {
-      wx.stopPullDownRefresh();
+  onScrollRefresh() {
+    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
+      this.setData({ refresherTriggered: false });
     });
   },
 
@@ -80,7 +92,55 @@ Page({
     });
   },
 
-  onReachBottom() {
+  async fetchIndices() {
+    const INDEX_LIST = [
+      { code: "000001", name: "上证指数" },
+      { code: "399001", name: "深证成指" },
+      { code: "000300", name: "沪深300" },
+      { code: "399006", name: "创业板指" },
+      { code: "HSTECH", name: "恒生科技" },
+      { code: "HSI", name: "恒生指数" },
+    ];
+    try {
+      const results = await Promise.all(
+        INDEX_LIST.map((idx) => api.fetchMarketIndex(idx.code, 2).catch(() => null))
+      );
+      const indexCards = INDEX_LIST.map((idx, i) => {
+        const res = results[i];
+        const data = (res && res.result && res.result.code === 0 && res.result.data) || [];
+        if (data.length >= 1) {
+          const latest = data[data.length - 1];
+          const prev = data.length >= 2 ? data[data.length - 2] : latest;
+          const change = +(latest.close - prev.close).toFixed(2);
+          const changeRate = prev.close && prev.close !== 0
+            ? +((change / prev.close) * 100).toFixed(2) : 0;
+          return {
+            name: idx.name,
+            code: idx.code,
+            price: latest.close.toFixed(2),
+            change: change > 0 ? `+${change}` : `${change}`,
+            changeRate: changeRate > 0 ? `+${changeRate}` : `${changeRate}`,
+            isUp: change >= 0,
+          };
+        }
+        return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
+      });
+      this.setData({ indexCards, indexLoading: false, indexBarHeight: 110 });
+    } catch (e) {
+      this.setData({ indexLoading: false });
+      console.error("获取指数失败:", e);
+    }
+  },
+
+  onToggleIndex() {
+    const indexExpanded = !this.data.indexExpanded;
+    this.setData({
+      indexExpanded,
+      indexBarHeight: indexExpanded ? 210 : 110,
+    });
+  },
+
+  onScrollToLower() {
     if (this.data.hasMore) {
       this.loadMore();
     }
@@ -90,11 +150,12 @@ Page({
     wx.navigateTo({ url: "/pages/profit-detail/index" });
   },
 
+  noop() {},
+
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
 
-  // 左右滑动卡片
   onTouchStart(e) {
     const idx = e.currentTarget.dataset.index;
     const h = this.data.holdings[idx];
@@ -111,17 +172,13 @@ Page({
     if (!this._touchData) return;
     const dx = e.touches[0].clientX - this._touchData.startX;
     const dy = e.touches[0].clientY - this._touchData.startY;
-
-    // 判断为横向滑动
     if (!this._touchData.moved && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
       this._touchData.moved = true;
     }
     if (!this._touchData.moved) return;
-
     const idx = this._touchData.index;
     const px = this.rpxToPx(EXTRA_WIDTH);
     let newX = this._touchData.baseScroll + dx;
-    // 限制滑动范围：0 ~ -extraWidth
     newX = Math.min(0, Math.max(-px, newX));
     this.setData({
       [`holdings[${idx}]._scrollX`]: newX,
@@ -134,15 +191,12 @@ Page({
     const idx = this._touchData.index;
     const holdings = this.data.holdings;
     const px = this.rpxToPx(EXTRA_WIDTH);
-
-    // 关掉其他卡片的滑动
     for (let i = 0; i < holdings.length; i++) {
       if (i !== idx && holdings[i]._scrollX !== 0) {
         holdings[i]._scrollX = 0;
         holdings[i]._transition = true;
       }
     }
-
     const cur = holdings[idx]._scrollX || 0;
     if (Math.abs(cur) > px * 0.3) {
       holdings[idx]._scrollX = -px;
@@ -150,7 +204,6 @@ Page({
       holdings[idx]._scrollX = 0;
     }
     holdings[idx]._transition = true;
-
     this.setData({ holdings });
     this._touchData = null;
   },
@@ -164,7 +217,6 @@ Page({
     const idx = e.currentTarget.dataset.index;
     const holdings = this.data.holdings;
     if (this._touchData && this._touchData.moved) return;
-    // 如果卡片已滑开，先收起
     if (holdings[idx] && holdings[idx]._scrollX < 0) {
       holdings[idx]._scrollX = 0;
       holdings[idx]._transition = true;
