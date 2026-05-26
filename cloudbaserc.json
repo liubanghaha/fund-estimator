@@ -6,7 +6,7 @@
     { "name": "createCollection", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundInfo", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundNAVHistory", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundNAVHistory", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundProfile", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "ocrScreenshot", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },

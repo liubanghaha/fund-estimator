@@ -90,16 +90,25 @@
 
 /* 指数行情 - 绝对定位悬浮在 tabBar 上方 */
 .index-bar{position:absolute;bottom:0;left:0;right:0;z-index:10;background:#FFF;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.06)}
-.index-toggle{display:flex;justify-content:flex-end;padding:6rpx 24rpx 0}
+.index-toggle{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 0}
+.idx-edit{font-size:22rpx;color:#999;padding:6rpx}
 .idx-arrow{font-size:22rpx;color:#BBB;padding:6rpx}
+/* 编辑面板 */
+.index-edit-panel{padding:12rpx 24rpx 18rpx}
+.idx-check-item{display:flex;align-items:center;padding:10rpx 0}
+.idx-checkbox{width:36rpx;height:36rpx;border:2rpx solid #DDD;border-radius:6rpx;margin-right:16rpx;text-align:center;line-height:36rpx;font-size:22rpx;color:#FFF}
+.idx-checkbox.checked{background:#E4393C;border-color:#E4393C}
+.idx-check-label{font-size:26rpx;color:#333}
+.idx-edit-actions{text-align:right;padding-top:12rpx}
+.idx-save-btn{font-size:26rpx;color:#E4393C;padding:8rpx 20rpx}
 .index-collapsed{display:flex;align-items:baseline;padding:4rpx 24rpx 18rpx}
-.ic-col{width:33.33%}
-.ic-col:nth-child(1){text-align:left}
-.ic-col:nth-child(2){text-align:center}
-.ic-col:nth-child(3){text-align:right}
 .idx-name{font-size:26rpx;color:#333}
-.idx-price{font-size:26rpx}
-.idx-change{font-size:26rpx}
+.idx-price{font-size:26rpx;margin-left:24rpx}
+.idx-change{font-size:26rpx;margin-left:auto}
+.idx-change-rate{font-size:26rpx;margin-left:16rpx}
+.idx-name{font-size:26rpx;color:#333}
+.idx-price{font-size:26rpx;white-space:nowrap}
+.idx-change{font-size:26rpx;white-space:nowrap}
 .index-expanded-panel{padding:16rpx 0}
 .index-scroll{white-space:nowrap;width:100%;padding:0 24rpx}
 .index-card{display:inline-flex;flex-direction:column;align-items:center;min-width:180rpx;border-radius:12rpx;padding:18rpx 16rpx;margin-right:12rpx}

@@ -114,15 +114,26 @@
   </scroll-view>
 
   <view wx:if="{{isLoggedIn && indexCards.length > 0}}" class="index-bar">
-    <view class="index-toggle" bind:tap="onToggleIndex">
-      <text class="idx-arrow">{{indexExpanded ? '▲' : '▼'}}</text>
+    <view class="index-toggle">
+      <text class="idx-edit" bind:tap="onToggleIndexEdit">{{showIndexEdit ? '完成' : '⚙'}}</text>
+      <text class="idx-arrow" bind:tap="onToggleIndex">{{showIndexEdit ? '' : (indexExpanded ? '▲' : '▼')}}</text>
     </view>
-    <view wx:if="{{!indexExpanded}}" class="index-collapsed">
-      <view class="ic-col"><text class="idx-name">{{indexCards[0].name}}</text></view>
-      <view class="ic-col"><text class="idx-price {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].price}}</text></view>
-      <view class="ic-col"><text class="idx-change {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].change}}  {{indexCards[0].changeRate}}%</text></view>
+    <view wx:if="{{showIndexEdit}}" class="index-edit-panel">
+      <view wx:for="{{ALL_INDICES}}" wx:key="code" class="idx-check-item" bind:tap="onToggleIndexItem" data-code="{{item.code}}">
+        <view class="idx-checkbox {{editSelections[item.code] ? 'checked' : ''}}">{{editSelections[item.code] ? '✓' : ''}}</view>
+        <text class="idx-check-label">{{item.name}}</text>
+      </view>
+      <view class="idx-edit-actions">
+        <text class="idx-save-btn" bind:tap="onSaveIndexPrefs">保存</text>
+      </view>
     </view>
-    <view wx:if="{{indexExpanded}}" class="index-expanded-panel">
+    <view wx:elif="{{!indexExpanded}}" class="index-collapsed">
+      <text class="idx-name">{{indexCards[0].name}}</text>
+      <text class="idx-price {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].price}}</text>
+      <text class="idx-change {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].change}}</text>
+      <text class="idx-change-rate {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].changeRate}}%</text>
+    </view>
+    <view wx:elif="{{indexExpanded}}" class="index-expanded-panel">
       <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
         <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}">
           <view class="ic-name">{{item.name}}</view>

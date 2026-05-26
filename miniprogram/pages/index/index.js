@@ -3,6 +3,17 @@ const api = require("../../utils/api");
 const EXTRA_WIDTH = 260;
 const PAGE_SIZE = 8;
 
+const ALL_INDICES = [
+  { code: "000001", name: "上证指数" },
+  { code: "399001", name: "深证成指" },
+  { code: "000300", name: "沪深300" },
+  { code: "399006", name: "创业板指" },
+  { code: "HSTECH", name: "恒生科技" },
+  { code: "HSI", name: "恒生指数" },
+  { code: "SPX", name: "标普500" },
+  { code: "IXIC", name: "纳斯达克" },
+];
+
 Page({
   data: {
     isLoggedIn: false,
@@ -20,6 +31,10 @@ Page({
     indexCards: [],
     indexExpanded: false,
     indexLoading: false,
+    showIndexEdit: false,
+    ALL_INDICES,
+    activeIndices: ALL_INDICES.slice(0, 6),
+    editSelections: {},
     pageHeight: 0,
     indexBarHeight: 0,
     refresherTriggered: false,
@@ -33,6 +48,12 @@ Page({
   onShow() {
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
+    const savedCodes = wx.getStorageSync("indexCodes");
+    let activeIndices = ALL_INDICES.slice(0, 6);
+    if (savedCodes && savedCodes.length > 0) {
+      activeIndices = ALL_INDICES.filter((idx) => savedCodes.indexOf(idx.code) !== -1);
+    }
+    this.setData({ activeIndices });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
@@ -93,19 +114,12 @@ Page({
   },
 
   async fetchIndices() {
-    const INDEX_LIST = [
-      { code: "000001", name: "上证指数" },
-      { code: "399001", name: "深证成指" },
-      { code: "000300", name: "沪深300" },
-      { code: "399006", name: "创业板指" },
-      { code: "HSTECH", name: "恒生科技" },
-      { code: "HSI", name: "恒生指数" },
-    ];
+    const activeIndices = this.data.activeIndices;
     try {
       const results = await Promise.all(
-        INDEX_LIST.map((idx) => api.fetchMarketIndex(idx.code, 2).catch(() => null))
+        activeIndices.map((idx) => api.fetchMarketIndex(idx.code, 2).catch(() => null))
       );
-      const indexCards = INDEX_LIST.map((idx, i) => {
+      const indexCards = activeIndices.map((idx, i) => {
         const res = results[i];
         const data = (res && res.result && res.result.code === 0 && res.result.data) || [];
         if (data.length >= 1) {
@@ -136,8 +150,51 @@ Page({
     const indexExpanded = !this.data.indexExpanded;
     this.setData({
       indexExpanded,
+      showIndexEdit: false,
       indexBarHeight: indexExpanded ? 210 : 110,
     });
+  },
+
+  onToggleIndexEdit() {
+    const show = !this.data.showIndexEdit;
+    const selections = {};
+    const activeCodes = this.data.activeIndices.map((i) => i.code);
+    ALL_INDICES.forEach((idx) => {
+      selections[idx.code] = activeCodes.indexOf(idx.code) !== -1;
+    });
+    this.setData({
+      showIndexEdit: show,
+      indexExpanded: false,
+      editSelections: selections,
+      indexBarHeight: show ? 420 : 110,
+    });
+  },
+
+  onToggleIndexItem(e) {
+    const { code } = e.currentTarget.dataset;
+    const selections = { ...this.data.editSelections };
+    selections[code] = !selections[code];
+    this.setData({ editSelections: selections });
+  },
+
+  onSaveIndexPrefs() {
+    const codes = [];
+    ALL_INDICES.forEach((idx) => {
+      if (this.data.editSelections[idx.code]) codes.push(idx.code);
+    });
+    if (codes.length === 0) {
+      wx.showToast({ title: "至少保留一个指数", icon: "none" });
+      return;
+    }
+    wx.setStorageSync("indexCodes", codes);
+    const activeIndices = ALL_INDICES.filter((idx) => codes.indexOf(idx.code) !== -1);
+    this.setData({
+      showIndexEdit: false,
+      activeIndices,
+      indexBarHeight: 110,
+      indexExpanded: false,
+    });
+    this.fetchIndices();
   },
 
   onScrollToLower() {

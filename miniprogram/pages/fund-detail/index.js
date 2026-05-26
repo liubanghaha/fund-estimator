@@ -12,6 +12,7 @@ Page({
     hasHolding: false, holdingData: null, followed: false, activeTab: "trend",
     showAllHistory: false,
     isTrading: false,
+    chartPeriod: '1M',
   },
 
   onLoad(options) {
@@ -24,8 +25,9 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, errorMsg: "" });
     try {
-      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.fetchProfile(), this.checkFollow(), this.checkHolding()]);
+      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding()]);
       this.updateDisplay();
+      this.enrichHoldingData();
       this.setData({ loading: false });
       setTimeout(() => this.drawChart(), 500);
     } catch (e) {
@@ -90,9 +92,9 @@ Page({
     } catch (e) { console.error("获取估值失败:", e); }
   },
 
-  async fetchHistory() {
+  async fetchHistory(days = 80) {
     try {
-      const res = await api.fetchFundNAVHistory(this.data.fundCode, 260);
+      const res = await api.fetchFundNAVHistory(this.data.fundCode, days);
       if (res.result && res.result.code === 0) {
         const history = res.result.data;
         if (history.length > 0) {
@@ -138,9 +140,13 @@ Page({
   drawChart() {
     const history = this.data.navHistory;
     if (history.length < 2) return;
+    const PERIOD_DAYS = { '1M': 22, '3M': 66, '6M': 132, '1Y': 260 };
+    const days = PERIOD_DAYS[this.data.chartPeriod] || 260;
+    const sliced = history.slice(0, days);
+    if (sliced.length < 2) return;
     const ctx = wx.createCanvasContext('navCanvas', this);
     const w = 340, h = 180;
-    const data = [...history].reverse();
+    const data = [...sliced].reverse();
     const navs = data.map(d => d.nav);
     const minNav = Math.min(...navs), maxNav = Math.max(...navs);
     const range = maxNav - minNav || 0.01;
@@ -189,17 +195,59 @@ Page({
     ctx.draw();
   },
 
+  async onChartPeriod(e) {
+    const period = e.currentTarget.dataset.period;
+    const PERIOD_DAYS = { '1M': 22, '3M': 66, '6M': 132, '1Y': 260 };
+    const neededDays = PERIOD_DAYS[period] || 260;
+    this.setData({ chartPeriod: period });
+    if (this.data.navHistory.length < neededDays) {
+      await this.fetchHistory(Math.min(neededDays + 20, 280));
+    }
+    this.drawChart();
+  },
+
   async checkHolding() {
     try {
-      const res = await api.getPortfolio();
-      if (res.result && res.result.code === 0) {
-        const holdings = res.result.data.holdings || [];
-        const myHolding = holdings.find((h) => h.fundCode === this.data.fundCode);
-        if (myHolding) {
-          this.setData({ hasHolding: true, holdingData: myHolding });
-        }
+      const db = wx.cloud.database();
+      const userInfo = wx.getStorageSync("userInfo") || {};
+      const openid = userInfo.openid || "";
+      const res = await db.collection("holdings")
+        .where({ _openid: openid, fundCode: this.data.fundCode })
+        .get();
+      if (res.data && res.data.length > 0) {
+        this._rawHolding = res.data[0];
+        this.setData({ hasHolding: true });
       }
     } catch (e) { console.error("检查持仓失败:", e); }
+  },
+
+  enrichHoldingData() {
+    if (!this._rawHolding) return;
+    const raw = this._rawHolding;
+    const { nav, estimatedNav, actualNav } = this.data;
+    const currentNav = parseFloat(estimatedNav || actualNav || nav || 0);
+    const yesterdayNav = parseFloat(nav || 0);
+    if (!currentNav || !yesterdayNav) return;
+
+    const shares = raw.shares || raw.amount || 0;
+    const buyPrice = raw.nav || raw.buyPrice || 0;
+    const marketValue = currentNav * shares;
+    const todayProfit = (currentNav - yesterdayNav) * shares;
+    const costValue = buyPrice * shares;
+    const totalReturn = raw.holdingReturn || (marketValue - costValue);
+    const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
+
+    this.setData({
+      holdingData: {
+        shares: shares,
+        buyPrice: buyPrice,
+        marketValue: marketValue.toFixed(2),
+        todayProfit: todayProfit.toFixed(2),
+        totalReturn: totalReturn.toFixed(2),
+        totalReturnRate: totalReturnRate.toFixed(2),
+      },
+    });
+    this._rawHolding = null;
   },
 
   onRefresh() { this.fetchAll(); },
@@ -208,10 +256,16 @@ Page({
   },
   onShowMore() { this.setData({ showAllHistory: true }); },
   onShowLess() { this.setData({ showAllHistory: false }); },
-  onTabTap(e) {
+  async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ activeTab: tab });
-    if (tab === 'trend') setTimeout(() => this.drawChart(), 300);
+    if (tab === 'trend') {
+      setTimeout(() => this.drawChart(), 300);
+    } else if ((tab === 'holdings' || tab === 'profile') && !this.data.profile) {
+      wx.showLoading({ title: '加载中...' });
+      await this.fetchProfile();
+      wx.hideLoading();
+    }
   },
   onAddHolding() {
     const { fundCode, fundName } = this.data;

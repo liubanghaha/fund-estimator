@@ -2,11 +2,11 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 exports.main = async (event) => {
-  const { fundCode, pageSize = 130 } = event;
+  const { fundCode, days = 80 } = event;
   if (!fundCode) return { code: 400, msg: "请提供基金代码" };
 
   try {
-    const list = await fetchHistory(fundCode, pageSize);
+    const list = await fetchHistory(fundCode, days);
     return { code: 0, msg: "success", data: list };
   } catch (e) {
     console.error("获取历史净值失败:", e.message || e);

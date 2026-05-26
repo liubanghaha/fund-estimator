@@ -28,13 +28,15 @@
 .nav-top-row{display:flex;justify-content:space-between;align-items:flex-start}
 .nav-main{flex:1}
 .nav-label{font-size:24rpx;color:#999;margin-bottom:10rpx}
-.nav-big{font-size:68rpx;font-weight:700;color:#1A1A1A;margin-bottom:6rpx}
+.nav-big{font-size:52rpx;font-weight:700;color:#1A1A1A;margin-bottom:6rpx}
+.nav-big.up{color:#E4393C}
+.nav-big.down{color:#2E8B57}
 .nav-ref{font-size:22rpx;color:#BBB}
 .nav-date{font-size:22rpx;color:#BBB}
 
 .nav-change-col{text-align:right}
 .nav-change-label{font-size:24rpx;color:#999;margin-bottom:10rpx}
-.nav-change{font-size:44rpx;font-weight:700;color:#999}
+.nav-change{font-size:52rpx;font-weight:700;color:#999}
 .nav-change.up{color:#E4393C}
 .nav-change.down{color:#2E8B57}
 .nav-badge{display:inline-block;font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:4rpx 12rpx;border-radius:8rpx;margin-top:8rpx}
@@ -54,6 +56,9 @@
 .tab-item.active{color:#E4393C;font-weight:600;border-bottom:4rpx solid #E4393C}
 
 .chart-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:20rpx}
+.period-tabs{display:flex;justify-content:center;gap:12rpx;margin-bottom:16rpx}
+.period-item{padding:8rpx 24rpx;font-size:24rpx;color:#999;border-radius:20rpx;background:#F5F5F5}
+.period-item.active{color:#FFF;background:#E4393C}
 .nav-canvas{width:680rpx;height:360rpx;display:block;margin:0 auto}
 
 .info-card{background:#FFF;margin:16rpx 24rpx;border-radius:20rpx;padding:28rpx 32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}

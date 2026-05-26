@@ -41,9 +41,11 @@
     <view wx:if="{{!isTrading || !estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
-          <view class="nav-label">单位净值</view>
-          <view class="nav-big">{{actualNav || nav || '--'}}</view>
-          <view wx:if="{{actualDate}}" class="nav-date">净值日期：{{actualDate}}</view>
+          <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益</view>
+          <view wx:else class="nav-label">单位净值</view>
+          <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
+          <view wx:else class="nav-big">{{actualNav || nav || '--'}}</view>
+          <view wx:if="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
         <view class="nav-change-col">
           <view class="nav-change-label">当日涨幅</view>
@@ -67,8 +69,8 @@
           <view class="mh-value">{{holdingData.shares}}</view>
         </view>
         <view class="mh-item">
-          <view class="mh-label">当日收益</view>
-          <view class="mh-value {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
+          <view class="mh-label">买入净值</view>
+          <view class="mh-value">{{holdingData.buyPrice}}</view>
         </view>
         <view class="mh-item">
           <view class="mh-label">累计收益</view>
@@ -79,8 +81,8 @@
           <view class="mh-value {{holdingData.totalReturnRate > 0 ? 'up' : holdingData.totalReturnRate < 0 ? 'down' : ''}}">{{holdingData.totalReturnRate > 0 ? '+' : ''}}{{holdingData.totalReturnRate}}%</view>
         </view>
         <view class="mh-item">
-          <view class="mh-label">买入净值</view>
-          <view class="mh-value">{{holdingData.buyPrice}}</view>
+          <view class="mh-label">单位净值</view>
+          <view class="mh-value">{{actualNav || nav || '--'}}</view>
         </view>
       </view>
     </view>
@@ -94,6 +96,12 @@
     <view wx:if="{{activeTab === 'trend'}}">
       <view wx:if="{{navHistory.length > 1}}" class="chart-card">
         <view class="section-title">净值走势</view>
+        <view class="period-tabs">
+          <view class="period-item {{chartPeriod === '1M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1M">近一月</view>
+          <view class="period-item {{chartPeriod === '3M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3M">近三月</view>
+          <view class="period-item {{chartPeriod === '6M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="6M">近半年</view>
+          <view class="period-item {{chartPeriod === '1Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1Y">近一年</view>
+        </view>
         <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:360rpx"></canvas>
       </view>
       <view class="info-card"><view class="section-title">收益表现</view>

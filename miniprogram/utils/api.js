@@ -14,8 +14,8 @@ const api = {
   getPortfolio(historyDays) {
     return this.callFunction("getPortfolio", historyDays ? { historyDays } : {});
   },
-  fetchFundNAVHistory(fundCode, pageSize) {
-    return this.callFunction("fetchFundNAVHistory", { fundCode, pageSize });
+  fetchFundNAVHistory(fundCode, days) {
+    return this.callFunction("fetchFundNAVHistory", { fundCode, days });
   },
   fetchFundProfile(fundCode) {
     return this.callFunction("fetchFundProfile", { fundCode });
