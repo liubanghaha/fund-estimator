@@ -26,8 +26,17 @@
 
 /* 持仓列表 */
 .holdings-section{margin:24rpx}
-.section-title{font-size:28rpx;font-weight:500;color:#333;margin-bottom:14rpx;padding-left:8rpx}
+/* 标题栏：与卡片列对齐 + 列标题随卡片滑动 */
+.title-clip{overflow:hidden;margin-bottom:14rpx}
+.title-row{display:flex;align-items:baseline;width:calc(100% + 280rpx)}
+.t-left{flex:1;min-width:0;padding-left:16rpx;font-size:28rpx;font-weight:500;color:#333;position:relative;z-index:2;background:#F5F5F5;box-shadow:6rpx 0 10rpx -4rpx rgba(0,0,0,.10)}
+.t-slide{flex-shrink:0;display:flex;gap:20rpx;position:relative;z-index:1}
 .swipe-hint{font-size:22rpx;color:#CCC;font-weight:400;margin-left:8rpx}
+.updated-tag{font-size:14rpx;color:#FFF;background:#1976D2;border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-left:8rpx;vertical-align:middle}
+
+/* 列标题（在标题栏滑动区内，可点击排序） */
+.hd-text{font-size:22rpx;font-weight:500;color:#999;line-height:1}
+.hd-text.active{color:#1976D2}
 
 /* 可左右滑动的卡片 */
 .card-clip{
@@ -36,29 +45,41 @@
   overflow:hidden;
 }
 .card-scroll{
-  width:calc(100% + 260rpx);
+  display:flex;
+  width:calc(100% + 280rpx);
   background:#FFF;
   border-radius:16rpx;
   padding:28rpx 0;
 }
 
-/* 行式布局：每行内容天然对齐 */
-.card-table{width:100%}
+/* 左栏：基金名称（固定，遮布效果） */
+.card-left{
+  flex:1;min-width:0;
+  position:relative;z-index:2;
+  background:#FFF;
+  box-shadow:6rpx 0 10rpx -4rpx rgba(0,0,0,.10);
+}
+
+/* 右栏：收益数据（整体滑动） */
+.card-right{flex-shrink:0;position:relative;z-index:1;min-width:470rpx}
+
+/* 行式布局 */
 .card-row{
   display:flex;
   align-items:baseline;
+  gap:20rpx;
 }
 .card-row + .card-row{margin-top:18rpx}
 
-.c-name{flex:1;min-width:0;padding-left:28rpx}
+.c-name{flex:1;min-width:0;padding-left:16rpx}
 
 .c-mid{
-  flex-shrink:0;width:170rpx;
+  box-sizing:border-box;flex-shrink:0;width:210rpx;
   text-align:right;padding-right:24rpx;
 }
 
 .c-extra{
-  flex-shrink:0;width:220rpx;
+  box-sizing:border-box;flex-shrink:0;width:240rpx;
   text-align:right;
   padding:0 20rpx;
   border-left:1rpx solid #F0F0F0;

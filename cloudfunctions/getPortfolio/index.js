@@ -22,14 +22,17 @@ exports.main = async (event) => {
     let updateTime = "";
     const navHistoryMap = {};
 
-    // Fire all HTTP requests for all holdings in parallel
+    // 批量请求天天基金估值（N 合 1），再并行获取东方财富最新净值
+    const codes = holdings.map((h) => h.fundCode);
+    const tiantianMap = await batchFetchTiantian(codes);
     const resultsList = await Promise.all(
       holdings.map(async (h) => {
         try {
-          const promises = [fetchTiantian(h.fundCode), fetchEastMoney(h.fundCode)];
+          const tiantian = tiantianMap[h.fundCode] || {};
+          const promises = [fetchEastMoney(h.fundCode)];
           if (historyDays) promises.push(fetchNAVHistory(h.fundCode, historyDays));
           const results = await Promise.all(promises);
-          return { h, tiantian: results[0], eastmoney: results[1], navHistory: historyDays ? results[2] : null };
+          return { h, tiantian, eastmoney: results[0], navHistory: historyDays ? results[1] : null };
         } catch (e) {
           console.error(`获取基金 ${h.fundCode} 失败:`, e);
           return { h, tiantian: {}, eastmoney: {}, navHistory: [] };
@@ -41,7 +44,11 @@ exports.main = async (event) => {
     let totalMarket = 0;
 
     for (const { h, tiantian, eastmoney, navHistory } of resultsList) {
-      let currentNav = eastmoney.actualNav || tiantian.nav || h.buyPrice;
+      // 向后兼容：旧数据用 amount/nav 字段，新数据用 shares/buyPrice
+      const shares = h.shares || h.amount || 0;
+      const buyPrice = h.buyPrice || h.nav || 0;
+
+      let currentNav = eastmoney.actualNav || tiantian.nav || buyPrice;
       let todayChangeRate = 0;
       let todayProfitAmount = 0;
 
@@ -52,26 +59,31 @@ exports.main = async (event) => {
       const yesterdayNav = tiantian.nav;
 
       if (eastmoney.actualNav != null && yesterdayNav != null && eastmoney.actualNav !== yesterdayNav) {
-        todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * h.shares;
+        todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * shares;
         todayChangeRate = eastmoney.actualChangeRate || 0;
       } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
-        todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * h.shares;
+        todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * shares;
         todayChangeRate = tiantian.estimatedChangeRate || 0;
       } else {
         todayChangeRate = eastmoney.actualChangeRate || 0;
       }
 
-      totalYesterdayMarket += (yesterdayNav || currentNav) * h.shares;
+      totalYesterdayMarket += (yesterdayNav || currentNav) * shares;
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
-      const costValue = h.buyPrice * h.shares;
-      const marketValue = currentNav * h.shares;
+      const costValue = buyPrice * shares;
+      const marketValue = currentNav * shares;
       const totalReturn = h.holdingReturn || (marketValue - costValue);
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
 
       totalCost += costValue;
       totalMarket += marketValue;
       totalTodayProfit += todayProfitAmount;
+
+      // 判断当天实际净值是否已公布（eastmoney actualDate 为今天）
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const estimateUpdated = eastmoney.actualDate === todayStr;
 
       enriched.push({
         ...h,
@@ -81,6 +93,7 @@ exports.main = async (event) => {
         todayProfit: todayProfitAmount.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
+        estimateUpdated,
       });
     }
 
@@ -109,6 +122,56 @@ exports.main = async (event) => {
     return { code: 500, msg: "获取持仓失败" };
   }
 };
+
+async function batchFetchTiantian(codes) {
+  const https = require("https");
+  const map = {};
+  if (!codes || codes.length === 0) return map;
+
+  // 批量请求：逗号分隔多基金代码，N 合 1
+  const batchCode = codes.join(",");
+  const batchResult = await new Promise((resolve) => {
+    const req = https.get(`https://fundgz.1234567.com.cn/js/${batchCode}.js`, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          // 批量返回格式：jsonpgzs({fundcode:{...}, fundcode:{...}})
+          const clean = body.replace(/^jsonpgzs\(/, "").replace(/\)\;?$/, "").trim();
+          const obj = JSON.parse(clean);
+          resolve(typeof obj === "object" && !Array.isArray(obj) ? obj : {});
+        } catch (e) {
+          resolve({});
+        }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve({}); });
+    req.on("error", () => resolve({}));
+  });
+
+  // 解析批量结果
+  for (const [code, data] of Object.entries(batchResult)) {
+    if (data && typeof data === "object") {
+      map[code] = {
+        fundCode: data.fundcode || code,
+        fundName: data.name || "",
+        nav: parseFloat(data.dwjz) || null,
+        estimatedNav: parseFloat(data.gsz) || null,
+        estimatedChangeRate: parseFloat(data.gszzl) || null,
+        estimateTime: data.gztime || "",
+      };
+    }
+  }
+
+  // 对批量请求中缺失的基金，逐个回退请求
+  const missing = codes.filter((c) => !map[c]);
+  if (missing.length > 0) {
+    const fallbacks = await Promise.all(missing.map((c) => fetchTiantian(c)));
+    missing.forEach((c, i) => { map[c] = fallbacks[i]; });
+  }
+
+  return map;
+}
 
 function fetchTiantian(fundCode) {
   const https = require("https");

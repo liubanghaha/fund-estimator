@@ -5,6 +5,7 @@
     "pages/search/index",
     "pages/fund-detail/index",
     "pages/add-holding/index",
+    "pages/adjust-holding/index",
     "pages/user-center/index",
     "pages/login/index",
     "pages/profit-detail/index",

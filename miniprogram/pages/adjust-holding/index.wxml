@@ -1,0 +1,95 @@
+<view class="container">
+  <!-- 两个入口按钮（始终显示） -->
+  <view class="main-actions">
+    <view class="action-card" bind:tap="onImportScreenshot">
+      <view class="ac-icon">📷</view>
+      <view class="ac-title">截图导入</view>
+      <view class="ac-desc">识别交易记录自动填写</view>
+    </view>
+    <view class="action-card" bind:tap="onManual">
+      <view class="ac-icon">✏️</view>
+      <view class="ac-title">手动加减仓</view>
+      <view class="ac-desc">选择基金手动输入份额</view>
+    </view>
+  </view>
+
+  <!-- 识别中 -->
+  <view wx:if="{{ocrLoading}}" class="loading-overlay">
+    <canvas canvas-id="loadCanvas" class="lo-canvas"></canvas>
+    <text class="lo-text">{{loadPercent >= 100 ? '识别完成' : '正在识别交易记录'}}</text>
+  </view>
+
+  <!-- OCR 识别结果列表 -->
+  <view wx:if="{{ocrResults.length > 0}}" class="results-section">
+    <view class="results-title">识别到 {{ocrResults.length}} 笔交易</view>
+    <view wx:for="{{ocrResults}}" wx:key="index" class="result-card">
+      <view class="rc-del" bind:tap="onRemoveItem" data-index="{{index}}">🗑</view>
+      <view class="rc-head">
+        <text class="rc-name">{{item.fundName || '未知基金'}}</text>
+        <text class="rc-code">{{item.fundCode || '--'}}</text>
+      </view>
+      <view class="rc-row">
+        <view class="rc-left"><text class="rc-label">类型</text><text class="rc-val {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '加仓' : '减仓'}}</text></view>
+        <view class="rc-right"><text class="rc-label">金额</text><text class="rc-val">{{item.amount || '--'}} 元</text></view>
+      </view>
+      <view class="rc-row">
+        <view class="rc-left"><text class="rc-label">日期</text><text class="rc-val">{{item.date || '--'}}</text></view>
+        <view wx:if="{{item.matched}}" class="rc-right"><text class="rc-label">确认</text><text class="rc-val">{{item.confirmShares}} 份</text></view>
+        <view wx:else class="rc-right"><text class="rc-no-match">未匹配到持仓</text></view>
+      </view>
+    </view>
+    <button wx:if="{{matchedCount > 0}}" class="submit-all-btn" bind:tap="onConfirmAll">确认全部（{{matchedCount}}笔）</button>
+  </view>
+
+  <!-- 选基金弹窗 -->
+  <view wx:if="{{showPicker}}" class="picker-mask" bind:tap="onClosePicker">
+    <view class="picker-panel" catch:tap="noop">
+      <view class="picker-title">选择基金</view>
+      <scroll-view scroll-y class="picker-list">
+        <view wx:for="{{holdings}}" wx:key="_id" class="picker-item" bind:tap="onSelectFund" data-index="{{index}}">
+          <text>{{item.fundName}}</text>
+          <text class="picker-shares">{{item._currentShares}}份</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 调整表单弹窗 -->
+  <view wx:if="{{showForm}}" class="picker-mask">
+    <view class="form-panel" catch:tap="noop">
+      <view class="form-title">{{editFundName}}</view>
+      <view class="form-sub">{{editFundCode}} | 当前 {{editCurrentShares}} 份</view>
+
+      <view class="toggle-row">
+        <view class="toggle-btn {{editTxType === 'buy' ? 'active-buy' : ''}}" bind:tap="onToggleType" data-type="buy">加仓</view>
+        <view class="toggle-btn {{editTxType === 'sell' ? 'active-sell' : ''}}" bind:tap="onToggleType" data-type="sell">减仓</view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">份额</text>
+        <input class="form-input" type="digit" value="{{editTxShares}}" bindinput="onEditInput" data-field="shares" placeholder="0.00"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">净值</text>
+        <input class="form-input" type="digit" value="{{editTxPrice}}" bindinput="onEditInput" data-field="price" placeholder="0.0000"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">金额</text>
+        <input class="form-input" type="digit" value="{{editTxAmount}}" bindinput="onEditInput" data-field="amount" placeholder="自动计算"/>
+      </view>
+
+      <view wx:if="{{editPreview}}" class="form-preview">
+        {{editCurrentShares}} → <text class="{{editTxType === 'buy' ? 'up' : 'down'}}">{{editNewShares}} 份</text>
+        <view wx:if="{{editTxType === 'buy'}}">净值 → {{editNewBuyPrice}}</view>
+      </view>
+      <view wx:if="{{editError}}" class="form-error">{{editError}}</view>
+
+      <view class="form-btns">
+        <button class="btn-cancel" bind:tap="onCloseForm">取消</button>
+        <button class="btn-confirm {{editTxType === 'buy' ? 'buy' : 'sell'}}" bind:tap="onSubmitOne" disabled="{{!editValid}}">
+          {{editTxType === 'buy' ? '确认加仓' : '确认减仓'}}
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

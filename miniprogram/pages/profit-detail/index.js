@@ -221,7 +221,7 @@ Page({
     while (day <= daysInMonth) {
       const dateStr = `${selectedMonth}-${String(day).padStart(2, '0')}`;
       let dayProfit = null, dayProfitRate = null;
-      if (dateStr !== todayStr && dailyChange[dateStr] !== undefined) {
+      if (dailyChange[dateStr] !== undefined) {
         dayProfit = dailyChange[dateStr];
         dayProfitRate = totalCost > 0 ? +((dayProfit / totalCost) * 100).toFixed(2) : 0;
       }

@@ -1,0 +1,66 @@
+.container{padding:24rpx;min-height:100vh}
+
+/* 加载 */
+.loading-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60rpx 0}
+.lo-canvas{width:120rpx;height:120rpx}
+.lo-text{font-size:24rpx;color:#BBB;margin-top:24rpx;letter-spacing:2rpx}
+
+/* 删除按钮 */
+.rc-del{position:absolute;bottom:18rpx;right:20rpx;font-size:26rpx;z-index:1}
+
+/* 主入口 */
+.main-actions{display:flex;gap:20rpx;margin-top:40rpx}
+.action-card{flex:1;background:#FFF;border-radius:16rpx;padding:40rpx 20rpx;text-align:center}
+.ac-icon{font-size:56rpx;margin-bottom:16rpx}
+.ac-title{font-size:30rpx;font-weight:600;color:#333;margin-bottom:8rpx}
+.ac-desc{font-size:22rpx;color:#999}
+
+/* OCR 结果列表 */
+.results-section{margin-top:24rpx}
+.results-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:14rpx}
+.result-card{position:relative;background:#FFF;border-radius:14rpx;padding:24rpx;margin-bottom:14rpx}
+.rc-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14rpx}
+.rc-name{font-size:28rpx;font-weight:600;color:#333;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-code{font-size:24rpx;color:#999;flex-shrink:0;margin-left:20rpx}
+.rc-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:10rpx}
+.rc-left,.rc-right{display:flex;align-items:baseline;gap:8rpx;flex:1}
+.rc-label{font-size:22rpx;color:#999;width:56rpx;flex-shrink:0}
+.rc-val{font-size:26rpx;color:#333;font-weight:500}
+.rc-val.up{color:#E4393C}
+.rc-val.down{color:#2E8B57}
+.rc-no-match{font-size:22rpx;color:#E4393C}
+.submit-all-btn{width:100%;height:84rpx;line-height:84rpx;font-size:30rpx;font-weight:600;color:#FFF;background:linear-gradient(135deg,#E4393C,#FF6B6B);border-radius:42rpx;text-align:center;padding:0;margin-top:24rpx}
+
+/* 选基金弹窗 */
+.picker-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.picker-panel{width:100%;background:#FFF;border-radius:20rpx 20rpx 0 0;padding:28rpx;max-height:60vh;display:flex;flex-direction:column}
+.picker-title{font-size:30rpx;font-weight:600;text-align:center;margin-bottom:20rpx}
+.picker-list{flex:1}
+.picker-item{display:flex;justify-content:space-between;padding:24rpx 0;border-bottom:1rpx solid #F5F5F5;font-size:28rpx;color:#333}
+.picker-shares{color:#999;font-size:24rpx}
+
+/* 表单弹窗 */
+.form-panel{width:100%;background:#FFF;border-radius:20rpx 20rpx 0 0;padding:28rpx;max-height:80vh;overflow-y:auto}
+.form-title{font-size:30rpx;font-weight:600;text-align:center}
+.form-sub{font-size:24rpx;color:#999;text-align:center;margin:8rpx 0 24rpx}
+
+.toggle-row{display:flex;gap:16rpx;margin-bottom:20rpx}
+.toggle-btn{flex:1;text-align:center;padding:16rpx 0;border-radius:10rpx;font-size:28rpx;font-weight:500;background:#F0F0F0;color:#888}
+.toggle-btn.active-buy{background:rgba(228,57,60,.12);color:#E4393C;font-weight:700}
+.toggle-btn.active-sell{background:rgba(46,139,87,.12);color:#2E8B57;font-weight:700}
+
+.form-row{display:flex;align-items:center;padding:22rpx 0;border-bottom:1rpx solid #F5F5F5}
+.form-label{width:80rpx;font-size:26rpx;color:#666}
+.form-input{flex:1;text-align:right;font-size:28rpx}
+
+.form-preview{background:#F8F8F8;border-radius:10rpx;padding:18rpx;margin:16rpx 0;text-align:center;font-size:26rpx;color:#666}
+.form-preview .up{color:#E4393C;font-weight:600}
+.form-preview .down{color:#2E8B57;font-weight:600}
+.form-error{color:#E4393C;font-size:24rpx;text-align:center;padding:8rpx 0}
+
+.form-btns{display:flex;gap:16rpx;margin-top:20rpx}
+.btn-cancel{flex:1;height:80rpx;line-height:80rpx;font-size:28rpx;color:#666;background:#F0F0F0;border-radius:40rpx;text-align:center;padding:0}
+.btn-confirm{flex:2;height:80rpx;line-height:80rpx;font-size:28rpx;font-weight:600;color:#FFF;border-radius:40rpx;text-align:center;padding:0}
+.btn-confirm.buy{background:linear-gradient(135deg,#E4393C,#FF6B6B)}
+.btn-confirm.sell{background:linear-gradient(135deg,#2E8B57,#5CB878)}
+.btn-confirm[disabled]{opacity:.4}

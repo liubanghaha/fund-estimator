@@ -55,16 +55,27 @@
           </view>
           <view class="action-item" bind:tap="onAdd">
             <view class="action-icon">📝</view>
-            <view class="action-text">添加持仓</view>
+            <view class="action-text">新增持仓</view>
+          </view>
+          <view class="action-item" bind:tap="onAdjust">
+            <view class="action-icon">✏️</view>
+            <view class="action-text">加减持仓</view>
           </view>
         </view>
 
         <view wx:if="{{holdings.length > 0}}" class="holdings-section">
-          <view class="section-title">持仓概览 <text class="swipe-hint">← 左滑看更多</text></view>
+          <view class="title-clip">
+            <view class="title-row">
+              <view class="t-left">持仓概览<text class="swipe-hint">← 左滑看更多</text></view>
+              <view class="t-slide" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
+                <view class="c-mid hd-text {{sortField === 'todayProfit' ? 'active' : ''}}" bind:tap="onSortTap" data-field="todayProfit">当日收益{{sortField === 'todayProfit' ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}}</view>
+                <view class="c-extra hd-text {{sortField === 'totalReturn' ? 'active' : ''}}" bind:tap="onSortTap" data-field="totalReturn">累计收益{{sortField === 'totalReturn' ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}}</view>
+              </view>
+            </view>
+          </view>
           <view wx:for="{{holdings}}" wx:key="_id" class="card-clip" wx:if="{{index < displayCount}}">
             <view
               class="card-scroll"
-              style="transform:translateX({{item._scrollX}}px);{{item._transition ? 'transition:transform 0.25s ease' : ''}}"
               bind:tap="onTapHolding"
               data-code="{{item.fundCode}}"
               data-name="{{item.fundName}}"
@@ -75,14 +86,12 @@
               bind:touchend="onTouchEnd"
               bind:longpress="onLongPressHolding"
             >
-              <view class="card-table">
+              <view class="card-left">
+                <view class="card-row"><view class="c-name name-text">{{item.fundName}}<text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text></view></view>
+                <view class="card-row"><view class="c-name code-text">{{item.fundCode}}</view></view>
+              </view>
+              <view class="card-right" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
                 <view class="card-row">
-                  <view class="c-name name-text">{{item.fundName}}</view>
-                  <view class="c-mid label-text">当日收益</view>
-                  <view class="c-extra label-text">累计收益</view>
-                </view>
-                <view class="card-row">
-                  <view class="c-name code-text">{{item.fundCode}}</view>
                   <view class="c-mid value-text {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">
                     {{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%
                   </view>
@@ -91,7 +100,6 @@
                   </view>
                 </view>
                 <view class="card-row">
-                  <view class="c-name code-text">{{item.currentNav}}</view>
                   <view class="c-mid value-text {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">
                     {{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}
                   </view>

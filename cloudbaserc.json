@@ -13,6 +13,7 @@
     { "name": "searchFund", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "manageWatchlist", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "userLogin", "timeout": 10, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchMarketIndex", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" }
+    { "name": "fetchMarketIndex", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "ocrTransaction", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

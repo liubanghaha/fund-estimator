@@ -49,8 +49,8 @@
         </view>
         <view class="nav-change-col">
           <view class="nav-change-label">当日涨幅</view>
-          <view class="nav-change {{actualChangeRate > 0 ? 'up' : actualChangeRate < 0 ? 'down' : ''}}">
-            {{actualChangeRate > 0 ? '+' : ''}}{{actualChangeRate !== null ? actualChangeRate : '--'}}%
+          <view class="nav-change {{displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : ''}}">
+            {{displayChangeRate > 0 ? '+' : ''}}{{displayChangeRate != null ? displayChangeRate : '--'}}%
           </view>
         </view>
       </view>

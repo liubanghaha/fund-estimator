@@ -27,9 +27,11 @@ Page({
       const db = wx.cloud.database();
       const res = await db.collection("holdings").doc(id).get();
       const h = res.data;
+      const buyPrice = h.buyPrice || h.nav || 0;
+      const shares = h.shares || h.amount || 0;
       this.setData({
         fundCode: h.fundCode, fundName: h.fundName,
-        buyPrice: String(h.buyPrice), shares: String(h.shares),
+        buyPrice: String(buyPrice), shares: String(shares),
         buyAmount: String(h.buyAmount || ""), buyDate: h.buyDate || "",
         holdingReturn: String(h.holdingReturn || ""),
         marketValue: String(h.marketValue || ""),

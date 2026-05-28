@@ -13,6 +13,7 @@ Page({
     showAllHistory: false,
     isTrading: false,
     chartPeriod: '1M',
+    chartTxMap: {},
   },
 
   onLoad(options) {
@@ -25,7 +26,7 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, errorMsg: "" });
     try {
-      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding()]);
+      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
       this.setData({ loading: false });
@@ -72,8 +73,20 @@ Page({
     const day = now.getDay();
     const hour = now.getHours();
     const min = now.getMinutes();
-    const isTrading = day >= 1 && day <= 5 && (hour > 9 || (hour === 9 && min >= 30)) && hour < 15;
-    this.setData({ isTrading });
+    const isTrading = day >= 1 && day <= 5 &&
+      (hour > 9 || (hour === 9 && min >= 0)) &&
+      (hour < 15 || (hour === 15 && min <= 30));
+    const { estimatedChangeRate, actualChangeRate, nav, actualNav } = this.data;
+    // 与 getPortfolio 逻辑一致：实际净值已更新用实际涨跌幅，否则有估算用估算
+    let displayChangeRate;
+    if (actualNav != null && nav != null && parseFloat(actualNav) !== nav) {
+      displayChangeRate = actualChangeRate;
+    } else if (estimatedChangeRate != null) {
+      displayChangeRate = estimatedChangeRate;
+    } else {
+      displayChangeRate = actualChangeRate;
+    }
+    this.setData({ isTrading, displayChangeRate });
   },
 
   async fetchEstimate() {
@@ -81,12 +94,24 @@ Page({
       const res = await api.fetchFundEstimate(this.data.fundCode);
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
+        const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
+        const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
+        const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
+        let displayCR;
+        if (actNavRaw != null && yesterdayNav != null && actNavRaw !== yesterdayNav) {
+          displayCR = actualCR;
+        } else if (d.estimatedChangeRate != null) {
+          displayCR = d.estimatedChangeRate;
+        } else {
+          displayCR = actualCR;
+        }
         this.setData({
           nav: d.nav, estimatedNav: d.estimatedNav,
           estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
           fundName: this.data.fundName || d.fundName || "",
           actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
-          actualChangeRate: d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate,
+          actualChangeRate: actualCR,
+          displayChangeRate: displayCR,
         });
       }
     } catch (e) { console.error("获取估值失败:", e); }
@@ -130,8 +155,9 @@ Page({
   calcReturns(history) {
     const latest = history[0].nav;
     const g = (d) => { if (history.length <= d) return null; const nav = history[d] && history[d].nav; if (!nav) return null; return parseFloat(((latest - nav) / nav * 100).toFixed(2)); };
+    const { displayChangeRate } = this.data;
     this.setData({
-      todayReturn: history[0].changeRate || 0,
+      todayReturn: displayChangeRate != null ? displayChangeRate : (history[0].changeRate || 0),
       weekReturn: g(4), monthReturn: g(19), threeMonthReturn: g(64),
       sixMonthReturn: g(129), yearReturn: g(249),
     });
@@ -192,6 +218,37 @@ Page({
       const idx = Math.round((i / (steps - 1)) * (data.length - 1));
       ctx.fillText(data[idx].date.slice(5), xp(idx), h - m.bottom + 4);
     }
+    // 交易标记点
+    const txMap = this.data.chartTxMap || {};
+    let hasTx = false;
+    data.forEach((d, i) => {
+      const tx = txMap[d.date];
+      if (!tx) return;
+      const x = xp(i), y = yp(d.nav);
+      if (tx.buys > 0 && tx.sells > 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.setStrokeStyle('#2E8B57');
+        ctx.setLineWidth(2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.setFillStyle('#E4393C');
+        ctx.fill();
+      } else if (tx.buys > 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.setFillStyle('#E4393C');
+        ctx.fill();
+      } else if (tx.sells > 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.setFillStyle('#2E8B57');
+        ctx.fill();
+      }
+      hasTx = true;
+    });
+
     ctx.draw();
   },
 
@@ -219,6 +276,25 @@ Page({
         this.setData({ hasHolding: true });
       }
     } catch (e) { console.error("检查持仓失败:", e); }
+  },
+
+  async fetchTransactions() {
+    try {
+      const db = wx.cloud.database();
+      const ui = wx.getStorageSync("userInfo") || {};
+      const res = await db.collection("transactions")
+        .where({ _openid: ui.openid || "", fundCode: this.data.fundCode })
+        .get();
+      const txns = res.data || [];
+      const map = {};
+      txns.forEach((tx) => {
+        if (!tx.date) return;
+        if (!map[tx.date]) map[tx.date] = { buys: 0, sells: 0 };
+        if (tx.type === "buy") map[tx.date].buys++;
+        else if (tx.type === "sell") map[tx.date].sells++;
+      });
+      this.setData({ chartTxMap: map });
+    } catch (e) { console.error("获取交易记录失败:", e); }
   },
 
   enrichHoldingData() {

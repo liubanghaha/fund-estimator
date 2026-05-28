@@ -1,6 +1,6 @@
 const api = require("../../utils/api");
 
-const EXTRA_WIDTH = 260;
+const EXTRA_WIDTH = 280;
 const PAGE_SIZE = 8;
 
 const ALL_INDICES = [
@@ -13,6 +13,8 @@ const ALL_INDICES = [
   { code: "SPX", name: "标普500" },
   { code: "IXIC", name: "纳斯达克" },
 ];
+
+const CACHE_KEY = "portfolio_cache";
 
 Page({
   data: {
@@ -38,6 +40,11 @@ Page({
     pageHeight: 0,
     indexBarHeight: 0,
     refresherTriggered: false,
+    fromCache: false,
+    sortField: "todayProfit",
+    sortOrder: "desc",
+    listScrollX: 0,
+    listSliding: false,
   },
 
   onLoad() {
@@ -57,11 +64,34 @@ Page({
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
+      this.applyCache();
       this.fetchPortfolio();
       this.fetchIndices();
     } else {
       this.setData({ isLoggedIn: false, holdings: [] });
     }
+  },
+
+  applyCache() {
+    try {
+      const cached = wx.getStorageSync(CACHE_KEY);
+      if (cached && cached.holdings && cached.holdings.length > 0) {
+        let holdings = cached.holdings;
+        holdings = this.sortHoldings(holdings);
+        this.setData({
+          holdings,
+          displayCount: PAGE_SIZE,
+          hasMore: holdings.length > PAGE_SIZE,
+          totalAmount: cached.totalAmount,
+          todayProfit: cached.todayProfit,
+          todayProfitRate: cached.todayProfitRate,
+          totalReturn: cached.totalReturn,
+          totalReturnRate: cached.totalReturnRate,
+          updateTime: cached.updateTime || "",
+          fromCache: true,
+        });
+      }
+    } catch (e) { /* ignore cache read error */ }
   },
 
   onToggleAmount() {
@@ -82,9 +112,8 @@ Page({
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
-        const holdings = (d.holdings || []).map((h) => ({
-          ...h, _scrollX: 0, _transition: false,
-        }));
+        let holdings = (d.holdings || []);
+        holdings = this.sortHoldings(holdings);
         this.setData({
           loading: false,
           holdings,
@@ -96,7 +125,9 @@ Page({
           totalReturn: d.totalReturn,
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
+          fromCache: false,
         });
+        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
       }
     } catch (e) {
       this.setData({ loading: false });
@@ -111,6 +142,31 @@ Page({
       displayCount: next,
       hasMore: next < holdings.length,
     });
+  },
+
+  onSortTap(e) {
+    const field = e.currentTarget.dataset.field;
+    const { sortField, sortOrder } = this.data;
+    let nextField = field;
+    let nextOrder = 'desc';
+    if (sortField === field) {
+      nextOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+    }
+    const sorted = this.sortHoldings([...this.data.holdings], nextField, nextOrder);
+    this.setData({ sortField: nextField, sortOrder: nextOrder, holdings: sorted, displayCount: PAGE_SIZE, hasMore: sorted.length > PAGE_SIZE });
+  },
+
+  sortHoldings(list, field, order) {
+    const f = field || this.data.sortField;
+    const o = order || this.data.sortOrder;
+    const dir = o === 'asc' ? 1 : -1;
+    if (f === 'todayProfit') {
+      return list.sort((a, b) => {
+        if (a.estimateUpdated !== b.estimateUpdated) return a.estimateUpdated ? -1 : 1;
+        return dir * (parseFloat(a.todayProfit) - parseFloat(b.todayProfit));
+      });
+    }
+    return list.sort((a, b) => dir * (parseFloat(a.totalReturn) - parseFloat(b.totalReturn)));
   },
 
   async fetchIndices() {
@@ -212,15 +268,20 @@ Page({
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
+  onAdjust() {
+    const holdings = this.data.holdings;
+    if (holdings.length === 0) {
+      wx.showToast({ title: "暂无持仓", icon: "none" });
+      return;
+    }
+    wx.navigateTo({ url: "/pages/adjust-holding/index" });
+  },
 
   onTouchStart(e) {
-    const idx = e.currentTarget.dataset.index;
-    const h = this.data.holdings[idx];
     this._touchData = {
       startX: e.touches[0].clientX,
       startY: e.touches[0].clientY,
-      index: idx,
-      baseScroll: h._scrollX || 0,
+      baseScroll: this.data.listScrollX,
       moved: false,
     };
   },
@@ -233,35 +294,18 @@ Page({
       this._touchData.moved = true;
     }
     if (!this._touchData.moved) return;
-    const idx = this._touchData.index;
     const px = this.rpxToPx(EXTRA_WIDTH);
     let newX = this._touchData.baseScroll + dx;
     newX = Math.min(0, Math.max(-px, newX));
-    this.setData({
-      [`holdings[${idx}]._scrollX`]: newX,
-      [`holdings[${idx}]._transition`]: false,
-    });
+    this.setData({ listScrollX: newX, listSliding: true });
   },
 
   onTouchEnd(e) {
     if (!this._touchData) return;
-    const idx = this._touchData.index;
-    const holdings = this.data.holdings;
     const px = this.rpxToPx(EXTRA_WIDTH);
-    for (let i = 0; i < holdings.length; i++) {
-      if (i !== idx && holdings[i]._scrollX !== 0) {
-        holdings[i]._scrollX = 0;
-        holdings[i]._transition = true;
-      }
-    }
-    const cur = holdings[idx]._scrollX || 0;
-    if (Math.abs(cur) > px * 0.3) {
-      holdings[idx]._scrollX = -px;
-    } else {
-      holdings[idx]._scrollX = 0;
-    }
-    holdings[idx]._transition = true;
-    this.setData({ holdings });
+    const cur = this.data.listScrollX;
+    const snapX = Math.abs(cur) > px * 0.3 ? -px : 0;
+    this.setData({ listScrollX: snapX, listSliding: false });
     this._touchData = null;
   },
 
@@ -271,13 +315,9 @@ Page({
   },
 
   onTapHolding(e) {
-    const idx = e.currentTarget.dataset.index;
-    const holdings = this.data.holdings;
     if (this._touchData && this._touchData.moved) return;
-    if (holdings[idx] && holdings[idx]._scrollX < 0) {
-      holdings[idx]._scrollX = 0;
-      holdings[idx]._transition = true;
-      this.setData({ holdings });
+    if (this.data.listScrollX < 0) {
+      this.setData({ listScrollX: 0, listSliding: false });
       return;
     }
     const { code, name } = e.currentTarget.dataset;
@@ -288,11 +328,14 @@ Page({
     const { id } = e.currentTarget.dataset;
     const _this = this;
     wx.showActionSheet({
-      itemList: ['编辑', '删除'],
+      itemList: ['编辑', '加减持仓', '删除'],
       success(res) {
+        const h = _this.data.holdings.find((x) => x._id === id);
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
+          wx.navigateTo({ url: "/pages/adjust-holding/index" });
+        } else if (res.tapIndex === 2) {
           wx.showModal({
             title: "确认删除",
             content: "确定要删除此条持仓吗？",
