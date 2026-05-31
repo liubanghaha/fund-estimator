@@ -1,8 +1,14 @@
+const api = require("../../utils/api");
+
 Page({
   data: {
     holdings: [],
     ocrLoading: false,
     ocrResults: [],
+    ocrRawText: "",
+    ocrMethod: "",
+    redirecting: false,
+    ocrShowRaw: false,
     matchedCount: 0,
     loadPercent: 0,
     showPicker: false,
@@ -14,21 +20,95 @@ Page({
     editValid: false, editError: "",
   },
 
-  onShow() { this.loadHoldings(); },
+  onLoad(options) {
+    // 如果指定了基金，直接跳转 sync-trade 页面（基金名通过 globalData 传递，避免 URL 编码问题）
+    if (options.fundCode) {
+      this.setData({ redirecting: true });
+      wx.redirectTo({ url: `/pages/sync-trade/index?fundCode=${options.fundCode}` });
+    }
+  },
+
+  onShow() {
+    if (this.data.holdings.length === 0) this.loadHoldings();
+  },
 
   async loadHoldings() {
     try {
       const db = wx.cloud.database();
-      const ui = wx.getStorageSync("userInfo") || {};
-      const res = await db.collection("holdings").where({ _openid: ui.openid || "" }).get();
+      const cr = await db.collection("holdings").get();
+      const data = cr.data || [];
+      console.log("=== loadHoldings ===", data.length, "funds");
+      console.log("持仓列表:", data.map(h => h.fundName));
       this.setData({
-        holdings: (res.data || []).map((h) => {
+        holdings: data.map((h) => {
           const s = h.shares || h.amount || 0;
           const bp = h.buyPrice || h.nav || 0;
           return { ...h, _currentShares: s.toFixed(2), _currentBuyPrice: bp.toFixed(4) };
         }),
       });
     } catch (e) { /* ignore */ }
+  },
+
+  // 多层匹配：OCR 识别的基金名 → 持仓中的基金
+  matchHolding(ocrName) {
+    const holdings = this.data.holdings;
+    if (!ocrName || holdings.length === 0) return -1;
+
+    // 第1层：直接包含
+    let idx = holdings.findIndex((h) =>
+      h.fundName.includes(ocrName) || ocrName.includes(h.fundName)
+    );
+    if (idx >= 0) return idx;
+
+    // 第2层：去噪包含（去空格括号，保留字母）
+    const clean = (s) => s.replace(/[\s（）()]/g, "");
+    const cn = clean(ocrName);
+    idx = holdings.findIndex((h) => {
+      const hn = clean(h.fundName);
+      return hn.includes(cn) || cn.includes(hn);
+    });
+    if (idx >= 0) return idx;
+
+    // 第3层：去掉A/C后缀后再匹配
+    const trimAC = (s) => s.replace(/[AC]$/, "");
+    const tn = trimAC(clean(ocrName));
+    idx = holdings.findIndex((h) => {
+      const hn = trimAC(clean(h.fundName));
+      return hn.includes(tn) || tn.includes(hn);
+    });
+    if (idx >= 0) return idx;
+
+    // 第4层：中文关键词重叠（至少3个连续相同中文字符）
+    const chineseOnly = (s) => s.replace(/[^一-鿿]/g, "");
+    const cn_ocr = chineseOnly(ocrName);
+    let bestIdx = -1, bestOverlap = 0;
+    holdings.forEach((h, i) => {
+      const cn_h = chineseOnly(h.fundName);
+      // 找最长公共子串长度
+      let maxLen = 0;
+      for (let a = 0; a < cn_ocr.length; a++) {
+        for (let b = a + 3; b <= cn_ocr.length; b++) {
+          if (cn_h.includes(cn_ocr.substring(a, b))) {
+            maxLen = Math.max(maxLen, b - a);
+          }
+        }
+      }
+      if (maxLen > bestOverlap) { bestOverlap = maxLen; bestIdx = i; }
+    });
+    if (bestOverlap >= 4) return bestIdx;
+    if (idx >= 0) return idx;
+
+    return -1;
+  },
+
+  onToggleRaw() {
+    this.setData({ ocrShowRaw: !this.data.ocrShowRaw });
+  },
+  onCopyRawText() {
+    wx.setClipboardData({
+      data: this.data.ocrRawText,
+      success: () => wx.showToast({ title: "已复制", icon: "success" }),
+    });
   },
 
   // ==== 截图导入 ====
@@ -105,15 +185,14 @@ Page({
         }
 
         // 匹配持仓
+        console.log("=== OCR识别结果 ===");
+        console.log("持仓列表:", this.data.holdings.map(h => h.fundName));
+        console.log("OCR交易:", txs.map(t => t.fundName));
         const matchedList = [];
         for (const tx of txs) {
           let matched = false, idx = -1, currentShares = "", currentBuyPrice = "";
           if (tx.fundName) {
-            idx = this.data.holdings.findIndex((h) => h.fundName.includes(tx.fundName) || tx.fundName.includes(h.fundName));
-            if (idx < 0) {
-              const clean = (s) => s.replace(/[\s（）()A-Za-z]/g, "");
-              idx = this.data.holdings.findIndex((h) => clean(h.fundName).includes(clean(tx.fundName)) || clean(tx.fundName).includes(clean(h.fundName)));
-            }
+            idx = this.matchHolding(tx.fundName);
             if (idx >= 0) {
               matched = true;
               currentShares = this.data.holdings[idx]._currentShares;
@@ -164,6 +243,8 @@ Page({
           this.setData({
             ocrLoading: false,
             ocrResults: results,
+            ocrRawText: d.raw || "",
+            ocrMethod: d.method || "",
             matchedCount: results.filter((r) => r.matched).length,
           });
         }, 600);
@@ -188,15 +269,29 @@ Page({
     });
   },
 
-  onConfirmItem(e) {
+  async onConfirmItem(e) {
     const item = this.data.ocrResults[e.currentTarget.dataset.index];
     if (!item || !item.matched) return;
-    this.processItem(item);
+    wx.showLoading({ title: "保存中..." });
+    try {
+      await this.processItem(item);
+      wx.hideLoading();
+      wx.showToast({ title: "保存成功", icon: "success" });
+      wx.removeStorageSync("portfolio_cache");
+      wx.setStorageSync("portfolio_force_refresh", true);
+      setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: "保存失败", icon: "none" });
+    }
   },
 
   async onConfirmAll() {
     const matched = this.data.ocrResults.filter((item) => item.matched);
-    if (matched.length === 0) return;
+    if (matched.length === 0) {
+      wx.showToast({ title: "请先将基金加入持仓", icon: "none" });
+      return;
+    }
     const lines = matched.map((item) => `${item.fundName} ${item.type === 'buy' ? '加仓' : '减仓'} ${item.amount}元`);
     const ok = await new Promise((r) => {
       wx.showModal({
@@ -222,7 +317,9 @@ Page({
     if (done > 0) {
       wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
       this.setData({ ocrResults: [] });
-      this.loadHoldings();
+      wx.removeStorageSync("portfolio_cache");
+      wx.setStorageSync("portfolio_force_refresh", true);
+      setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
     } else {
       wx.showToast({ title: "保存失败", icon: "none" });
     }
@@ -233,46 +330,61 @@ Page({
     if (!h || !h._id) throw new Error("持仓数据异常");
     const amount = parseFloat(item.amount) || 0;
     const liveNav = parseFloat(item._liveNav) || 0;
-    const price = parseFloat(item.price) || liveNav || parseFloat(item.currentBuyPrice) || 0;
+    const price = parseFloat(item.price) || liveNav || 0;
     if (amount <= 0 || price <= 0) throw new Error("金额或净值无效");
     const shares = (amount / price).toFixed(2);
     const s = parseFloat(shares);
     const type = item.type || "buy";
-    const oldS = parseFloat(item.currentShares) || 0;
-    const oldP = parseFloat(item.currentBuyPrice) || 0;
+    let oldS = parseFloat(item.currentShares) || 0;
+    let oldP = parseFloat(item.currentBuyPrice) || 0;
 
-    const db = wx.cloud.database();
+    // OCR 导入兜底：shares/buyPrice 为 0 时反推
+    if ((!oldS || !oldP) && h.marketValue && liveNav > 0) {
+      const mv = parseFloat(h.marketValue) || 0;
+      const hr = parseFloat(h.holdingReturn) || 0;
+      if (!oldS) oldS = mv / liveNav;
+      if (!oldP && oldS > 0) oldP = liveNav - (hr / oldS);
+      if (!oldP || oldP <= 0) oldP = liveNav;
+      console.log("=== adjust OCR fallback ===", { oldS, oldP, mv, liveNav, hr });
+    }
+    console.log("=== adjust processItem ===", { oldS, oldP, amount, price, shares: s, type });
+
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    await db.collection("transactions").add({
-      data: {
-        fundCode: h.fundCode, fundName: h.fundName,
-        type, shares: s, price, amount,
-        date: item.date || today, createTime: new Date(),
-      },
+    await api.transactionAdd({
+      fundCode: h.fundCode, fundName: h.fundName,
+      type, shares: s, price, amount,
+      date: item.date || today,
     });
 
     let ns, np;
+    const oldMV = parseFloat(h.marketValue) || 0;
     if (type === "buy") { ns = oldS + s; np = (oldP * oldS + price * s) / ns; }
     else { ns = oldS - s; np = oldP; }
 
-    const updateRes = await db.collection("holdings").doc(h._id).update({
-      data: {
-        shares: parseFloat(ns.toFixed(4)),
-        buyPrice: parseFloat(np.toFixed(4)),
-        buyAmount: parseFloat((ns * np).toFixed(2)),
-        marketValue: parseFloat((ns * np).toFixed(2)),
-        holdingReturn: 0,
-      },
+    const newMarketValue = type === "buy"
+      ? +(oldMV + amount).toFixed(2)
+      : +(oldMV - amount).toFixed(2);
+
+    const updateRes = await api.holdingUpdate(h._id, {
+      shares: parseFloat(ns.toFixed(4)),
+      buyPrice: parseFloat(np.toFixed(4)),
+      buyAmount: parseFloat((ns * np).toFixed(2)),
+      marketValue: newMarketValue,
+      holdingReturn: +(newMarketValue - ns * np).toFixed(2),
     });
-    if (!updateRes.stats || updateRes.stats.updated === 0) {
-      throw new Error("持仓更新失败，请检查权限");
+    console.log("=== adjust update ===", { oldMV, newMarketValue, ns, np, holdingReturn: +(newMarketValue - ns * np).toFixed(2) });
+    if (!updateRes.result || updateRes.result.code !== 0) {
+      throw new Error("持仓更新失败");
     }
   },
 
   // ==== 手动加减仓 ====
-  onManual() {
+  async onManual() {
+    wx.showLoading({ title: "加载中..." });
+    await this.loadHoldings();
+    wx.hideLoading();
     if (this.data.holdings.length === 0) {
       wx.showToast({ title: "暂无持仓", icon: "none" });
       return;
@@ -284,7 +396,11 @@ Page({
 
   onSelectFund(e) {
     const idx = e.currentTarget.dataset.index;
-    this.openForm(idx, this.data.holdings[idx], {});
+    const h = this.data.holdings[idx];
+    this.setData({ showPicker: false });
+    const app = getApp();
+    app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
+    wx.navigateTo({ url: `/pages/sync-trade/index?fundCode=${h.fundCode}` });
   },
 
   // ==== 通用表单 ====
@@ -357,27 +473,23 @@ Page({
 
     wx.showLoading({ title: "保存中..." });
     try {
-      const db = wx.cloud.database();
       const amt = parseFloat(this.data.editTxAmount) || (s * p);
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-      await db.collection("transactions").add({
-        data: { fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today, createTime: new Date() },
+      await api.transactionAdd({
+        fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
       });
 
       let ns, np;
       if (type === "buy") { ns = oldS + s; np = (oldP * oldS + p * s) / ns; }
       else { ns = oldS - s; np = oldP; }
 
-      await db.collection("holdings").doc(h._id).update({
-        data: {
-          shares: parseFloat(ns.toFixed(4)),
-          buyPrice: parseFloat(np.toFixed(4)),
-          buyAmount: parseFloat((ns * np).toFixed(2)),
-          holdingReturn: 0,
-        },
-      });
+      await api.holdingUpdate(h._id, {
+        shares: parseFloat(ns.toFixed(4)),
+        buyPrice: parseFloat(np.toFixed(4)),
+        buyAmount: parseFloat((ns * np).toFixed(2)),
+        });
 
       wx.hideLoading();
       wx.showToast({ title: type === "buy" ? "加仓成功" : "减仓成功", icon: "success" });

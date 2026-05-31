@@ -45,8 +45,10 @@ exports.main = async (event) => {
 
     for (const { h, tiantian, eastmoney, navHistory } of resultsList) {
       // 向后兼容：旧数据用 amount/nav 字段，新数据用 shares/buyPrice
-      const shares = h.shares || h.amount || 0;
-      const buyPrice = h.buyPrice || h.nav || 0;
+      let shares = h.shares || h.amount || 0;
+      let buyPrice = h.buyPrice || h.nav || 0;
+      const dbMarketValue = h.marketValue || 0;
+      const dbHoldingReturn = h.holdingReturn || 0;
 
       let currentNav = eastmoney.actualNav || tiantian.nav || buyPrice;
       let todayChangeRate = 0;
@@ -54,6 +56,15 @@ exports.main = async (event) => {
 
       if (historyDays && navHistory) {
         navHistoryMap[h.fundCode] = navHistory;
+      }
+
+      // OCR 导入兜底：当 shares 或 buyPrice 为 0 时，用 OCR 提取的市值/收益反推
+      if ((!shares || !buyPrice) && dbMarketValue > 0 && currentNav > 0) {
+        if (!shares) shares = dbMarketValue / currentNav;
+        if (!buyPrice && shares > 0) {
+          buyPrice = currentNav - (dbHoldingReturn / shares);
+          if (buyPrice <= 0) buyPrice = currentNav;
+        }
       }
 
       const yesterdayNav = tiantian.nav;
@@ -72,12 +83,12 @@ exports.main = async (event) => {
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
       const costValue = buyPrice * shares;
-      const marketValue = currentNav * shares;
-      const totalReturn = h.holdingReturn || (marketValue - costValue);
+      const ocrMarketValue = dbMarketValue > 0 ? dbMarketValue : (currentNav * shares);
+      const totalReturn = dbHoldingReturn || (ocrMarketValue - costValue);
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
 
       totalCost += costValue;
-      totalMarket += marketValue;
+      totalMarket += ocrMarketValue;
       totalTodayProfit += todayProfitAmount;
 
       // 判断当天实际净值是否已公布（eastmoney actualDate 为今天）
@@ -88,7 +99,7 @@ exports.main = async (event) => {
       enriched.push({
         ...h,
         currentNav: currentNav.toFixed(4),
-        marketValue: marketValue.toFixed(2),
+        marketValue: ocrMarketValue.toFixed(2),
         todayChangeRate: todayChangeRate.toFixed(2),
         todayProfit: todayProfitAmount.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
@@ -207,7 +218,6 @@ function fetchNAVHistory(fundCode, totalNeeded) {
   const https = require("https");
   const PER_PAGE = 20;
   const pages = Math.ceil(totalNeeded / PER_PAGE);
-  const allList = [];
 
   const fetchPage = (pageIndex) => new Promise((resolve) => {
     const req = https.get({
@@ -234,15 +244,9 @@ function fetchNAVHistory(fundCode, totalNeeded) {
     req.on("error", () => resolve([]));
   });
 
-  return (async () => {
-    for (let i = 1; i <= pages; i++) {
-      const pageData = await fetchPage(i);
-      if (pageData.length === 0) break;
-      allList.push(...pageData);
-      if (pageData.length < PER_PAGE) break;
-    }
-    return allList;
-  })();
+  return Promise.all(
+    Array.from({ length: pages }, (_, i) => fetchPage(i + 1))
+  ).then((results) => results.flat());
 }
 
 function fetchEastMoney(fundCode) {

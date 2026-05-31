@@ -9,7 +9,8 @@
     "pages/user-center/index",
     "pages/login/index",
     "pages/profit-detail/index",
-    "pages/fund-compare/index"
+    "pages/fund-compare/index",
+    "pages/sync-trade/index"
   ],
   "window": {
     "backgroundColor": "#F5F5F5",

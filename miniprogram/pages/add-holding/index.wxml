@@ -1,89 +1,107 @@
 <view class="container">
-  <!-- 截图导入（仅新建模式，未选图时） -->
-  <view wx:if="{{!isEdit && !screenshotUrl && !ocrLoading}}" class="import-bar">
-    <view class="import-btn" bind:tap="onImportScreenshot">
-      <text class="import-icon">📷</text>
-      <text class="import-text">截图导入</text>
-      <text class="import-hint">自动识别持仓信息，可手动修正</text>
-    </view>
-  </view>
 
-  <!-- 识别中 -->
-  <view wx:if="{{ocrLoading}}" class="import-loading">
-    <text>正在识别截图...</text>
-  </view>
+  <!-- ========== 截图导入模式 ========== -->
+  <block wx:if="{{mode === 'screenshot'}}">
 
-  <!-- 截图预览（识别完成后对照） -->
-  <view wx:if="{{screenshotUrl && !ocrLoading}}" class="screenshot-preview">
-    <image class="preview-img" src="{{screenshotUrl}}" mode="widthFix" />
-    <view class="preview-actions">
-      <text class="preview-tip">截图已加载，可对照填写</text>
-      <text class="preview-remove" bind:tap="onRemoveScreenshot">移除</text>
+    <!-- 未选图 -->
+    <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
+      <view class="import-btn" bind:tap="onImportScreenshot">
+        <text class="import-icon">📷</text>
+        <text class="import-text">截图导入</text>
+        <text class="import-hint">自动识别持仓信息，可手动修正</text>
+      </view>
     </view>
-  </view>
 
-  <view class="form">
-    <view class="form-item">
-      <text class="label">基金代码</text>
-      <input class="input" value="{{fundCode}}" bind:input="onFundCodeInput" placeholder="输入基金代码" disabled="{{isEdit}}"/>
+    <!-- 识别中 -->
+    <view wx:if="{{ocrLoading}}" class="import-loading">
+      <text>正在识别截图...</text>
     </view>
-    <view class="form-item">
-      <text class="label">基金名称</text>
-      <input class="input" value="{{fundName}}" bind:input="onFundNameInput" placeholder="输入或自动获取" disabled="{{isEdit}}"/>
-    </view>
-    <view class="form-item">
-      <text class="label">买入净值</text>
-      <input class="input" type="digit" value="{{buyPrice}}" bind:input="onBuyPriceInput" placeholder="0.00"/>
-    </view>
-    <view class="form-item">
-      <text class="label">持有份额</text>
-      <input class="input" type="digit" value="{{shares}}" bind:input="onSharesInput" placeholder="0.00"/>
-    </view>
-    <view class="form-item">
-      <text class="label">持有金额</text>
-      <input class="input" type="digit" value="{{marketValue}}" bind:input="onMarketValueInput" placeholder="0.00"/>
-    </view>
-    <view class="form-item">
-      <text class="label">持有收益</text>
-      <input class="input" type="digit" value="{{holdingReturn}}" bind:input="onHoldingReturnInput" placeholder="0.00"/>
-    </view>
-    <view class="form-item">
-      <text class="label">买入金额</text>
-      <input class="input" type="digit" value="{{buyAmount}}" bind:input="onBuyAmountInput" placeholder="0.00"/>
-    </view>
-    <view class="form-item">
-      <text class="label">买入日期</text>
-      <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">
-        <view class="picker-value">{{buyDate || '请选择日期'}}</view>
-      </picker>
-    </view>
-  </view>
 
-  <button class="submit-btn" bind:tap="onSubmit">{{isEdit ? '更新持仓' : '保存持仓'}}</button>
-  <button wx:if="{{isEdit}}" class="delete-btn" bind:tap="onDelete">删除此持仓</button>
-</view>
-
-<!-- 多选弹窗 -->
-<view wx:if="{{showPicker}}" class="picker-overlay" bind:tap="onPickerCancel">
-  <view class="picker-panel" catch:tap="noop">
-    <view class="picker-header">
-      <text class="picker-title">识别到 {{ocrHoldings.length}} 个基金</text>
-      <text class="picker-select-all" bind:tap="onSelectAll">{{allSelected ? '取消全选' : '全选'}}</text>
+    <!-- 截图预览 -->
+    <view wx:if="{{screenshotUrl && !ocrLoading}}" class="screenshot-preview">
+      <image class="preview-img" src="{{screenshotUrl}}" mode="widthFix" />
+      <view class="preview-actions">
+        <text class="preview-tip">截图已加载</text>
+        <text class="preview-remove" bind:tap="onRemoveScreenshot">移除</text>
+      </view>
     </view>
-    <scroll-view class="picker-list" scroll-y>
-      <view wx:for="{{ocrHoldings}}" wx:key="index" class="picker-item" bind:tap="onToggleItem" data-index="{{index}}">
-        <view class="picker-checkbox {{item._checked ? 'checked' : ''}}">
-          <text wx:if="{{item._checked}}">✓</text>
+
+
+    <!-- 基金卡片列表 -->
+    <view wx:if="{{ocrFunds.length > 0}}" class="fund-cards">
+      <view class="cards-header">
+        <text class="cards-title">识别到 {{ocrFunds.length}} 个基金</text>
+      </view>
+
+      <view wx:for="{{ocrFunds}}" wx:key="index" class="fund-card {{item._saved ? 'saved' : ''}}">
+        <view class="card-left">
+          <text class="card-code">{{item.fundCode || '--'}}</text>
+          <text class="card-name">{{item.fundName}}</text>
+          <view class="card-nums">
+            <text wx:if="{{item.marketValue}}" class="card-mv">持有金额 ¥{{item.marketValue}}</text>
+            <text wx:if="{{item.holdingReturn}}" class="card-hr">持有收益 {{item.holdingReturn}}</text>
+          </view>
         </view>
-        <view class="picker-info">
-          <text class="picker-fname">{{item.fundName || '未知基金'}}</text>
-          <text wx:if="{{item.buyAmount}}" class="picker-amount">¥{{item.buyAmount}}</text>
+        <view class="card-right">
+          <text wx:if="{{item._saved}}" class="card-done">已保存</text>
+          <text wx:else class="card-edit" bind:tap="onEditFund" data-index="{{index}}">编辑</text>
         </view>
       </view>
-    </scroll-view>
-    <view class="picker-footer">
-      <button class="picker-cancel" bind:tap="onPickerCancel">取消</button>
-      <button class="picker-confirm" bind:tap="onPickerConfirm">确认添加 ({{selectedCount}})</button>
+
+      <view class="cards-footer">
+        <button wx:if="{{unsavedCount > 0}}" class="save-all-btn" bind:tap="onSaveAll" disabled="{{saving}}">
+          全部保存 ({{unsavedCount}})
+        </button>
+        <text wx:else class="cards-footer-hint">全部已保存，可在首页查看持仓</text>
+      </view>
     </view>
-  </view>
+  </block>
+
+  <!-- ========== 手动填写模式 ========== -->
+  <block wx:if="{{mode === 'manual'}}">
+    <view class="form">
+      <view wx:if="{{_editIdx < 0}}" class="form-item">
+        <text class="label">基金代码</text>
+        <input class="input" value="{{fundCode}}" bind:input="onFundCodeInput"
+               placeholder="输入基金代码" disabled="{{isEdit}}"/>
+      </view>
+      <view wx:if="{{_editIdx < 0}}" class="form-item">
+        <text class="label">基金名称</text>
+        <input class="input" value="{{fundName}}" bind:input="onFundNameInput"
+               placeholder="输入或自动获取" disabled="{{isEdit}}"/>
+      </view>
+      <view class="form-item">
+        <text class="label">持有金额</text>
+        <input class="input" type="digit" value="{{marketValue}}"
+               bind:input="onMarketValueInput" placeholder="0.00"/>
+      </view>
+      <view class="form-item">
+        <text class="label">持有收益</text>
+        <view class="signed-input">
+          <view class="sign-toggle {{holdingSign < 0 ? 'minus' : ''}}" bind:tap="onToggleHoldingSign">{{holdingSign < 0 ? '−' : '+'}}</view>
+          <input class="input signed-val" type="digit" value="{{holdingReturnAbs}}"
+                 bind:input="onHoldingReturnInput" placeholder="0.00"/>
+        </view>
+      </view>
+      <view class="form-item">
+        <text class="label">买入日期</text>
+        <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">
+          <view class="picker-value">{{buyDate || '请选择日期'}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view wx:if="{{isEdit}}" class="edit-actions">
+      <view class="action-row">
+        <button class="action-btn sync-buy" bind:tap="onSyncBuy">同步加仓</button>
+        <button class="action-btn sync-sell" bind:tap="onSyncSell">同步减仓</button>
+      </view>
+      <view class="action-row">
+        <button class="action-btn update-btn" bind:tap="onSubmit">更新持仓</button>
+        <button class="action-btn delete-btn" bind:tap="onDelete">删除持仓</button>
+      </view>
+    </view>
+    <button wx:else class="submit-btn" bind:tap="onSubmit">保存持仓</button>
+  </block>
+
 </view>

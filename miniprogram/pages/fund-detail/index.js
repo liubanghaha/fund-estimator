@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const calc = require("../../utils/calculator");
 
 Page({
   data: {
@@ -9,18 +10,44 @@ Page({
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null,
     profile: null, manager: null, holdings: [],
-    hasHolding: false, holdingData: null, followed: false, activeTab: "trend",
+    hasHolding: false, holdingId: null, holdingData: null, followed: false, activeTab: "trend",
     showAllHistory: false,
     isTrading: false,
     chartPeriod: '1M',
     chartTxMap: {},
+    transactionList: [],
+    showTransactions: false,
+    scrollToTx: "",
   },
 
   onLoad(options) {
+    if (!options.fundCode) return;
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
-    this.setData({ fundCode: options.fundCode || "", fundName });
+    this.setData({ fundCode: options.fundCode, fundName });
     wx.setNavigationBarTitle({ title: fundName });
+    this._firstLoad = true;
     this.fetchAll();
+  },
+
+  onShow() {
+    // 从子页面返回时刷新数据
+    if (this._firstLoad) { this._firstLoad = false; return; }
+    const { fundCode } = this.data;
+    if (!fundCode) return;
+    this.refreshData();
+  },
+
+  async refreshData() {
+    try {
+      await Promise.all([
+        this.fetchEstimate(),
+        this.checkHolding(),
+        this.checkFollow(),
+        this.fetchTransactions(),
+      ]);
+      this.updateDisplay();
+      this.enrichHoldingData();
+    } catch (e) { /* ignore */ }
   },
 
   async fetchAll() {
@@ -153,13 +180,12 @@ Page({
   },
 
   calcReturns(history) {
-    const latest = history[0].nav;
-    const g = (d) => { if (history.length <= d) return null; const nav = history[d] && history[d].nav; if (!nav) return null; return parseFloat(((latest - nav) / nav * 100).toFixed(2)); };
+    const r = calc.calcPeriodReturns(history);
     const { displayChangeRate } = this.data;
     this.setData({
-      todayReturn: displayChangeRate != null ? displayChangeRate : (history[0].changeRate || 0),
-      weekReturn: g(4), monthReturn: g(19), threeMonthReturn: g(64),
-      sixMonthReturn: g(129), yearReturn: g(249),
+      todayReturn: displayChangeRate != null ? displayChangeRate : (r.day || 0),
+      weekReturn: r.week, monthReturn: r.month, threeMonthReturn: r.threeMonth,
+      sixMonthReturn: r.sixMonth, yearReturn: r.year,
     });
   },
 
@@ -264,28 +290,25 @@ Page({
   },
 
   async checkHolding() {
+    // 客户端直查（不按 _openid 过滤，确保查到数据）
     try {
       const db = wx.cloud.database();
-      const userInfo = wx.getStorageSync("userInfo") || {};
-      const openid = userInfo.openid || "";
-      const res = await db.collection("holdings")
-        .where({ _openid: openid, fundCode: this.data.fundCode })
-        .get();
-      if (res.data && res.data.length > 0) {
-        this._rawHolding = res.data[0];
-        this.setData({ hasHolding: true });
+      const cr = await db.collection("holdings").where({ fundCode: this.data.fundCode }).get();
+      if (cr.data && cr.data.length > 0) {
+        this._rawHolding = cr.data[0];
+        this.setData({ hasHolding: true, holdingId: cr.data[0]._id });
+        const raw = cr.data[0];
+        console.log("=== 详情页 checkHolding ===");
+        console.log("DB原始数据:", JSON.stringify({ _id: raw._id, shares: raw.shares, buyPrice: raw.buyPrice, buyAmount: raw.buyAmount, marketValue: raw.marketValue, holdingReturn: raw.holdingReturn, nav: raw.nav, amount: raw.amount }));
+        return;
       }
-    } catch (e) { console.error("检查持仓失败:", e); }
+    } catch (e) { console.error("checkHolding 客户端失败:", e); }
   },
 
   async fetchTransactions() {
     try {
-      const db = wx.cloud.database();
-      const ui = wx.getStorageSync("userInfo") || {};
-      const res = await db.collection("transactions")
-        .where({ _openid: ui.openid || "", fundCode: this.data.fundCode })
-        .get();
-      const txns = res.data || [];
+      const res = await api.transactionList(this.data.fundCode);
+      const txns = (res.result && res.result.data) || [];
       const map = {};
       txns.forEach((tx) => {
         if (!tx.date) return;
@@ -293,7 +316,8 @@ Page({
         if (tx.type === "buy") map[tx.date].buys++;
         else if (tx.type === "sell") map[tx.date].sells++;
       });
-      this.setData({ chartTxMap: map });
+      txns.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      this.setData({ chartTxMap: map, transactionList: txns });
     } catch (e) { console.error("获取交易记录失败:", e); }
   },
 
@@ -301,23 +325,47 @@ Page({
     if (!this._rawHolding) return;
     const raw = this._rawHolding;
     const { nav, estimatedNav, actualNav } = this.data;
-    const currentNav = parseFloat(estimatedNav || actualNav || nav || 0);
     const yesterdayNav = parseFloat(nav || 0);
-    if (!currentNav || !yesterdayNav) return;
+    if (!yesterdayNav) return;
 
-    const shares = raw.shares || raw.amount || 0;
-    const buyPrice = raw.nav || raw.buyPrice || 0;
-    const marketValue = currentNav * shares;
+    let shares = parseFloat(raw.shares || raw.amount || 0);
+    let buyPrice = parseFloat(raw.buyPrice || raw.nav || 0);
+    const dbMarketValue = parseFloat(raw.marketValue) || 0;
+    const dbHoldingReturn = parseFloat(raw.holdingReturn) || 0;
+
+    // 选择当前净值：与 getPortfolio 云函数逻辑一致
+    // 如果今日实际净值已更新且与昨日不同，用实际净值；否则用估算净值
+    const actualNavNum = parseFloat(actualNav);
+    const estimatedNavNum = parseFloat(estimatedNav);
+    let currentNav;
+    if (actualNavNum != null && actualNavNum !== yesterdayNav) {
+      currentNav = actualNavNum;
+    } else if (estimatedNavNum != null) {
+      currentNav = estimatedNavNum;
+    } else {
+      currentNav = actualNavNum || yesterdayNav;
+    }
+
+    // OCR 导入兜底：shares/buyPrice 为 0 时用 DB 中的市值和收益反推
+    if ((!shares || !buyPrice) && dbMarketValue > 0 && currentNav > 0) {
+      if (!shares) shares = dbMarketValue / currentNav;
+      if (!buyPrice && shares > 0) {
+        buyPrice = currentNav - (dbHoldingReturn / shares);
+        if (buyPrice <= 0) buyPrice = currentNav;
+      }
+    }
+
+    const displayMarketValue = dbMarketValue > 0 ? dbMarketValue : (currentNav * shares);
     const todayProfit = (currentNav - yesterdayNav) * shares;
     const costValue = buyPrice * shares;
-    const totalReturn = raw.holdingReturn || (marketValue - costValue);
+    const totalReturn = dbHoldingReturn || (displayMarketValue - costValue);
     const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
 
     this.setData({
       holdingData: {
-        shares: shares,
-        buyPrice: buyPrice,
-        marketValue: marketValue.toFixed(2),
+        shares: shares.toFixed(2),
+        buyPrice: buyPrice.toFixed(4),
+        marketValue: displayMarketValue.toFixed(2),
         todayProfit: todayProfit.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
@@ -326,7 +374,10 @@ Page({
     this._rawHolding = null;
   },
 
-  onRefresh() { this.fetchAll(); },
+  onRefresh() {
+    const show = !this.data.showTransactions;
+    this.setData({ showTransactions: show, scrollToTx: show ? "txSection" : "" });
+  },
   onPullDownRefresh() {
     this.fetchAll().finally(() => wx.stopPullDownRefresh());
   },
@@ -343,9 +394,89 @@ Page({
       wx.hideLoading();
     }
   },
+  onImportScreenshot() {
+    const _this = this;
+    wx.showActionSheet({
+      itemList: ["从相册选择", "拍照"],
+      success(res) {
+        const sourceType = res.tapIndex === 0 ? ["album"] : ["camera"];
+        wx.chooseMedia({
+          count: 1, mediaType: ["image"], sourceType, sizeType: ["compressed"],
+          success(mediaRes) { _this.doOCR(mediaRes.tempFiles[0].tempFilePath); },
+        });
+      },
+    });
+  },
+
+  async doOCR(tempPath) {
+    wx.showLoading({ title: "识别中..." });
+    try {
+      const up = await wx.cloud.uploadFile({ cloudPath: `holdings/${Date.now()}.jpg`, filePath: tempPath });
+      const res = await wx.cloud.callFunction({ name: "ocrScreenshot", data: { fileID: up.fileID } });
+      wx.hideLoading();
+      if (res.result && res.result.code === 0 && res.result.data) {
+        const d = res.result.data;
+        const holdings = d.holdings || [];
+        if (holdings.length === 0) {
+          wx.showToast({ title: "未识别到基金信息", icon: "none" });
+          return;
+        }
+        // 取第一只基金，检查是否匹配当前详情页
+        const h = holdings[0];
+        if (h.fundName && h.fundName.includes(this.data.fundName)) {
+          // 直接添加持仓
+          wx.showModal({
+            title: "识别结果",
+            content: `${h.fundName}\n市值: ${h.marketValue || "--"}\n收益: ${h.holdingReturn || "--"}`,
+            confirmText: "添加持仓",
+            success: async (mr) => {
+              if (!mr.confirm) return;
+              wx.showLoading({ title: "添加中..." });
+              const db = wx.cloud.database();
+              const ui = wx.getStorageSync("userInfo") || {};
+              await db.collection("holdings").add({
+                data: {
+                  fundCode: this.data.fundCode,
+                  fundName: this.data.fundName,
+                  buyPrice: parseFloat(h.buyPrice || 0),
+                  shares: parseFloat(h.shares || 0),
+                  marketValue: parseFloat(h.marketValue || 0),
+                  holdingReturn: parseFloat(h.holdingReturn || 0),
+                  buyAmount: parseFloat(h.buyAmount || 0),
+                  _openid: ui.openid || "",
+                  createTime: new Date(),
+                },
+              });
+              wx.hideLoading();
+              wx.showToast({ title: "添加成功", icon: "success" });
+              wx.removeStorageSync("portfolio_cache");
+              this.fetchAll();
+            },
+          });
+        } else {
+          // 识别到但名称不匹配
+          wx.showModal({
+            title: "识别结果",
+            content: `识别到 ${holdings.length} 个基金，但名称与当前基金不匹配`,
+            showCancel: false,
+          });
+        }
+      } else {
+        wx.showToast({ title: "识别失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: "识别失败", icon: "none" });
+    }
+  },
+
   onAddHolding() {
-    const { fundCode, fundName } = this.data;
-    wx.navigateTo({ url: `/pages/add-holding/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName)}` });
+    const { fundCode, fundName, hasHolding, holdingId } = this.data;
+    if (hasHolding && holdingId) {
+      wx.navigateTo({ url: `/pages/add-holding/index?id=${holdingId}` });
+    } else {
+      wx.navigateTo({ url: `/pages/add-holding/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName)}` });
+    }
   },
   onCompare() {
     const { fundCode, fundName } = this.data;

@@ -1,8 +1,11 @@
+.container{transition:padding-bottom .3s ease}
 .empty-state{text-align:center;padding-top:200rpx}
 .empty-icon{font-size:100rpx;margin-bottom:32rpx}
 .empty-title{font-size:40rpx;font-weight:600;color:#333;margin-bottom:16rpx}
 .empty-desc{font-size:28rpx;color:#999;margin-bottom:60rpx}
+.empty-btns{display:flex;flex-direction:column;align-items:center;gap:20rpx}
 .login-btn{width:400rpx;height:88rpx;line-height:88rpx;font-size:32rpx;color:#FFF;background:#07C160;border-radius:44rpx;text-align:center;padding:0}
+.login-btn.secondary{background:#E4393C;color:#FFF}
 
 .dashboard{padding-bottom:24rpx}
 
@@ -110,32 +113,61 @@
 .page-scroll{height:100%}
 
 /* 指数行情 - 绝对定位悬浮在 tabBar 上方 */
-.index-bar{position:absolute;bottom:0;left:0;right:0;z-index:10;background:#FFF;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.06)}
-.index-toggle{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 0}
-.idx-edit{font-size:22rpx;color:#999;padding:6rpx}
-.idx-arrow{font-size:22rpx;color:#BBB;padding:6rpx}
+.index-bar{position:absolute;bottom:0;left:0;right:0;z-index:10;background:#FFF;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.06);transition:height .3s ease}
 /* 编辑面板 */
-.index-edit-panel{padding:12rpx 24rpx 18rpx}
+.index-edit-panel{padding:12rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
+.idx-edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8rpx}
+.idx-edit-title{font-size:24rpx;color:#999}
+.idx-edit-done{font-size:24rpx;color:#1976D2;padding:8rpx 12rpx}
 .idx-check-item{display:flex;align-items:center;padding:10rpx 0}
 .idx-checkbox{width:36rpx;height:36rpx;border:2rpx solid #DDD;border-radius:6rpx;margin-right:16rpx;text-align:center;line-height:36rpx;font-size:22rpx;color:#FFF}
 .idx-checkbox.checked{background:#E4393C;border-color:#E4393C}
 .idx-check-label{font-size:26rpx;color:#333}
 .idx-edit-actions{text-align:right;padding-top:12rpx}
 .idx-save-btn{font-size:26rpx;color:#E4393C;padding:8rpx 20rpx}
-.index-collapsed{display:flex;align-items:baseline;padding:4rpx 24rpx 18rpx}
-.idx-name{font-size:26rpx;color:#333}
-.idx-price{font-size:26rpx;margin-left:24rpx}
-.idx-change{font-size:26rpx;margin-left:auto}
-.idx-change-rate{font-size:26rpx;margin-left:16rpx}
-.idx-name{font-size:26rpx;color:#333}
-.idx-price{font-size:26rpx;white-space:nowrap}
-.idx-change{font-size:26rpx;white-space:nowrap}
-.index-expanded-panel{padding:16rpx 0}
+/* 收起态 */
+.index-collapsed{display:flex;align-items:baseline;padding:6rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
+.idx-name{font-size:26rpx;color:#333;flex-shrink:0}
+.idx-price{font-size:26rpx;margin-left:24rpx;white-space:nowrap}
+.idx-change{font-size:26rpx;white-space:nowrap;margin-left:auto}
+.idx-change-rate{font-size:26rpx;margin-left:20rpx;white-space:nowrap}
+.idx-expand-hint{font-size:24rpx;color:#CCC;padding:4rpx 8rpx;margin-left:12rpx}
+.idx-gear{font-size:26rpx;padding:12rpx 16rpx;color:#BBB}
+/* 展开态 */
+.index-expanded-panel{padding:0;animation:fadeSlideIn .3s ease}
+.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 8rpx}
+.idx-collapse-arrow{font-size:24rpx;color:#CCC;padding:4rpx 8rpx}
 .index-scroll{white-space:nowrap;width:100%;padding:0 24rpx}
-.index-card{display:inline-flex;flex-direction:column;align-items:center;min-width:180rpx;border-radius:12rpx;padding:18rpx 16rpx;margin-right:12rpx}
+.index-card{display:inline-flex;flex-direction:column;align-items:center;min-width:180rpx;border-radius:12rpx;padding:18rpx 16rpx;margin-right:12rpx;animation:cardPopIn .35s ease both}
+.index-card:nth-child(1){animation-delay:.05s}
+.index-card:nth-child(2){animation-delay:.1s}
+.index-card:nth-child(3){animation-delay:.15s}
+.index-card:nth-child(4){animation-delay:.2s}
+.index-card:nth-child(5){animation-delay:.25s}
+.index-card:nth-child(6){animation-delay:.3s}
 .index-card:last-child{margin-right:0}
 .card-up{background:rgba(227,57,60,.06)}
 .card-down{background:rgba(46,139,87,.06)}
 .ic-name{font-size:24rpx;color:#666;margin-bottom:8rpx}
 .ic-price{font-size:28rpx;font-weight:700;margin-bottom:6rpx}
 .ic-change-row{font-size:22rpx}
+/* 动画 */
+@keyframes fadeSlideIn{
+  from{opacity:0;transform:translateY(16rpx)}
+  to{opacity:1;transform:translateY(0)}
+}
+/* 批量模式 */
+.batch-top-bar{display:flex;align-items:center;justify-content:space-between;padding:16rpx 28rpx;background:#FFF;margin:0 24rpx 12rpx;border-radius:14rpx;box-shadow:0 2rpx 8rpx rgba(0,0,0,.04)}
+.batch-top-cancel{font-size:26rpx;color:#999}
+.batch-top-title{font-size:26rpx;color:#333;font-weight:500}
+.batch-top-right{display:flex;align-items:center;gap:16rpx}
+.batch-top-link{font-size:26rpx;color:#1976D2}
+.batch-top-delete{font-size:26rpx;color:#FFF;background:#E4393C;padding:8rpx 24rpx;border-radius:20rpx}
+.card-clip.selected .card-scroll{outline:3rpx solid #E4393C;border-radius:16rpx}
+.batch-check{width:28rpx;height:28rpx;border:2rpx solid #CCC;border-radius:14rpx;margin-right:12rpx;display:flex;align-items:center;justify-content:center;font-size:16rpx;color:#FFF;flex-shrink:0;align-self:center}
+.batch-check.checked{background:#E4393C;border-color:#E4393C}
+
+@keyframes cardPopIn{
+  from{opacity:0;transform:translateY(24rpx) scale(.9)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}

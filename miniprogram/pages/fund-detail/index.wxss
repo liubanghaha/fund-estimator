@@ -1,4 +1,6 @@
 .page{min-height:100vh;background:#F5F5F5}
+.page-body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.detail-scroll{flex:1;overflow-y:auto}
 
 .loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
 .loading-text{font-size:28rpx;color:#999}
@@ -41,6 +43,12 @@
 .nav-change.down{color:#2E8B57}
 .nav-badge{display:inline-block;font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:4rpx 12rpx;border-radius:8rpx;margin-top:8rpx}
 
+/* 暂无持仓 */
+.no-holding-card{text-align:center;padding:48rpx 32rpx;margin:24rpx;background:#FFF;border-radius:14rpx}
+.nh-title{font-size:30rpx;font-weight:600;color:#333;margin-bottom:12rpx}
+.nh-desc{font-size:24rpx;color:#999;margin-bottom:28rpx}
+.nh-import-btn{width:360rpx;height:80rpx;line-height:80rpx;font-size:28rpx;color:#FFF;background:linear-gradient(135deg,#E4393C,#FF6B6B);border-radius:40rpx;text-align:center;padding:0}
+
 /* 我的持仓 */
 .my-holding-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:28rpx 32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
 .mh-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:20rpx}
@@ -72,11 +80,12 @@
 .metric-value.down{color:#2E8B57}
 .metric-value.muted{color:#CCC}
 
-.manager-row{display:flex;align-items:center;gap:24rpx}
-.manager-avatar{width:80rpx;height:80rpx;border-radius:40rpx;background:linear-gradient(135deg,#E4393C,#FF6B6B);color:#FFF;font-size:36rpx;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.manager-name{font-size:30rpx;font-weight:500;color:#1A1A1A;margin-bottom:6rpx}
-.manager-detail{font-size:24rpx;color:#999;margin-bottom:6rpx}
-.manager-return{font-size:26rpx;font-weight:500}
+.manager-row{display:flex;align-items:flex-start;gap:20rpx}
+.manager-avatar{width:72rpx;height:72rpx;border-radius:36rpx;background:linear-gradient(135deg,#E4393C,#FF6B6B);color:#FFF;font-size:32rpx;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.manager-info{flex:1;min-width:0}
+.manager-name{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:4rpx}
+.manager-detail{font-size:22rpx;color:#999;margin-bottom:4rpx}
+.manager-return{font-size:24rpx;font-weight:500}
 .manager-return.up{color:#E4393C}
 .manager-return.down{color:#2E8B57}
 
@@ -91,11 +100,12 @@
 .hold-ratio{font-size:28rpx;font-weight:600;color:#E4393C}
 
 .profile-grid{display:flex;flex-wrap:wrap}
-.profile-item{width:50%;padding:14rpx 0}
-.profile-item.full{width:100%}
-.profile-label{font-size:24rpx;color:#999;margin-bottom:6rpx}
-.profile-value{font-size:26rpx;color:#333}
-.profile-value.bench{font-size:22rpx}
+.profile-item{width:50%;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
+.profile-item:nth-last-child(-n+2){border-bottom:none}
+.profile-item.full{width:100%;border-bottom:1rpx solid #F5F5F5}
+.profile-item.full:last-child{border-bottom:none}
+.profile-label{font-size:24rpx;color:#999;margin-bottom:8rpx}
+.profile-value{font-size:28rpx;color:#1A1A1A;font-weight:500}
 .empty-text{font-size:26rpx;color:#CCC;text-align:center;padding:40rpx 0}
 
 .history-row{display:flex;align-items:center;justify-content:space-between;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
@@ -107,9 +117,21 @@
 .h-change.down{color:#2E8B57}
 .show-more{text-align:center;padding:24rpx 0 8rpx;font-size:26rpx;color:#E4393C}
 
-.bottom-bar{display:flex;gap:16rpx;padding:16rpx 24rpx;position:fixed;bottom:0;left:0;right:0;background:#FFF;box-shadow:0 -2rpx 16rpx rgba(0,0,0,.06);z-index:10}
-.btn-add,.btn-compare,.btn-refresh{flex:1;height:80rpx;line-height:80rpx;font-size:26rpx;border-radius:40rpx;text-align:center;padding:0}
-.btn-add{background:#E4393C;color:#FFF}
-.btn-compare{background:#FFF;color:#E4393C;border:2rpx solid #E4393C}
-.btn-refresh{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
-.bottom-safe{height:160rpx}
+.bottom-bar{display:flex;gap:12rpx;padding:16rpx 20rpx;background:#FFF;box-shadow:0 -2rpx 16rpx rgba(0,0,0,.06);flex-shrink:0}
+.btn-add,.btn-compare,.btn-txn{flex:1;height:80rpx;line-height:80rpx;font-size:24rpx;border-radius:40rpx;text-align:center;padding:0;display:flex;align-items:center;justify-content:center;gap:6rpx}
+.btn-icon{font-size:28rpx;line-height:1}
+.btn-add{background:linear-gradient(135deg,#E4393C,#FF5A5F);color:#FFF;font-weight:500}
+.btn-compare{background:#FFF;color:#E4393C;border:2rpx solid #E4393C;font-weight:500}
+.btn-txn{background:#FFF;color:#E4393C;border:2rpx solid #E4393C;font-weight:500}
+.bottom-safe{height:24rpx;flex-shrink:0}
+/* 交易记录 */
+.tx-list-card{background:#FFF;border-radius:14rpx;padding:24rpx;margin:20rpx 24rpx}
+.tx-row{display:flex;align-items:center;padding:18rpx 0;border-bottom:1rpx solid #F5F5F5;font-size:24rpx}
+.tx-row:last-child{border-bottom:none}
+.tx-header{border-bottom:2rpx solid #E5E5E5;padding-bottom:14rpx}
+.tx-header .tx-type,.tx-header .tx-shares,.tx-header .tx-price,.tx-header .tx-amount,.tx-header .tx-date{font-size:22rpx;color:#999;font-weight:400}
+.tx-type{width:80rpx;font-weight:600;flex-shrink:0}
+.tx-shares{flex:1;text-align:center;color:#666}
+.tx-price{flex:1;text-align:center;color:#666}
+.tx-amount{flex:1;text-align:right;font-weight:500;color:#333}
+.tx-date{width:160rpx;text-align:right;color:#BBB;font-size:22rpx;flex-shrink:0}

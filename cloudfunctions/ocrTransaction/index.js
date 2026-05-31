@@ -21,10 +21,11 @@ exports.main = async (event) => {
   if (!text) {
     try {
       const tempRes = await cloud.getTempFileURL({ fileList: [fileID] });
-      const tempUrl = tempRes.fileList[0]?.tempFileURL;
-      if (!tempUrl) throw new Error("获取临时链接失败");
-      text = await ocrSpace(tempUrl);
-      method = "ocrspace";
+      const tempUrl = tempRes.fileList[0] && tempRes.fileList[0].tempFileURL;
+      if (tempUrl) {
+        text = await ocrSpace(tempUrl);
+        method = "ocrspace";
+      }
     } catch (e) {
       console.log("OCR.space不可用:", e.message);
     }
@@ -39,14 +40,13 @@ exports.main = async (event) => {
   return {
     code: 0,
     data: {
-      raw: text,
-      method,
-      transactions,
-      // 兼容旧格式
+      raw: text, method, transactions,
       ...(transactions[0] || {}),
     },
   };
 };
+
+// ========== OCR.space 兜底 ==========
 
 function ocrSpace(imageUrl) {
   const https = require("https");
@@ -85,80 +85,103 @@ function ocrSpace(imageUrl) {
   });
 }
 
+// ========== 交易解析 ==========
+
 function parseTransactions(text) {
-  const transactions = [];
+  // 预处理：修复 OCR 偶尔在 "基金 |" 中插入空格
+  text = text.replace(/基金\s+[|｜]/g, "基金|");
 
-  // 按"基金|"或"基金|"分割，每段是一个基金交易
+  // 按 "基金|" 分段
   const blocks = text.split(/基金[|｜]/);
-  // 第一段是表头等无用信息，跳过
+  if (blocks.length <= 1) return [];
 
+  const transactions = [];
   for (let i = 1; i < blocks.length; i++) {
-    let block = blocks[i];
-    const tx = {};
+    const tx = parseBlock(blocks[i]);
+    if (tx.fundName) transactions.push(tx);
+  }
+  return transactions;
+}
 
-    // 基金名称（以类型关键词为特征）
-    const typeKw = "混合|股票|债券|指数|货币|ETF|FOF|联接|灵活|优选|稳健|成长|价值|蓝筹|红利|消费|医疗|科技|新能源|半导体|军工|制造|印度|纳斯达克|标普|恒生|全球|海外|量化|策略|精选|前沿|多元|新消费|资源|通成|配置|蓝筹";
-    const nameRe = new RegExp(
-      "([一-鿿A-Za-z]{2,16}(?:" + typeKw + ")[一-鿿A-Za-z0-9（()LOF／QDII）]{0,12})"
-    );
-    const nm = block.match(nameRe);
-    if (nm) {
-      tx.fundName = nm[1];
-      // 修复被 OCR 换行拆开的 A/C 后缀
-      const after = block.substring(nm.index + nm[0].length);
-      const suffixMatch = after.match(/^\s*([AC])\b/);
-      if (suffixMatch && !tx.fundName.endsWith(suffixMatch[1])) {
-        tx.fundName += suffixMatch[1];
-      }
+function parseBlock(block) {
+  const tx = {};
+
+  // 基金名：逐行拼接，遇到日期/金额/关键字停
+  const lines = block.split("\n");
+  let nameStr = "";
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    if (/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(t)) break;
+    if (/^\d[\d,]*\.?\d{1,2}\s*(?:元|$)/.test(t)) break;
+    if (/交易进行中|确认中|已完成|全部～/.test(t)) break;
+    nameStr += t;
+  }
+  tx.fundName = extractFundName(nameStr) || extractFundName(block.replace(/\n/g, ""));
+  if (!tx.fundName) return tx;
+
+  // 日期+时间：下午3点后算次日
+  const dtm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/);
+  if (dtm) {
+    const rawDate = dtm[1].replace(/[./]/g, "-").substring(0, 10);
+    const timeStr = dtm[2];
+    // 解析时间判断是否在15:00之后
+    const hour = parseInt(timeStr.split(":")[0], 10);
+    if (hour >= 15) {
+      // 次日（简化：+1天，不处理周末/节假日）
+      const d = new Date(rawDate);
+      d.setDate(d.getDate() + 1);
+      const pad = (n) => String(n).padStart(2, "0");
+      tx.date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    } else {
+      tx.date = rawDate;
     }
-
-    // 日期（只取前10位日期，去掉时间部分）
+    tx.time = timeStr;
+  } else {
+    // 兜底：仅日期
     const dm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/);
     if (dm) tx.date = dm[1].replace(/[./]/g, "-").substring(0, 10);
+  }
 
-    // 金额（提取含"元"的数字，注意负号表示卖出）
-    const lines = block.split("\n");
-    let rawAmount = "";
-    for (let j = lines.length - 1; j >= 0; j--) {
-      // 匹配带符号的金额：-500.00元 或 500.00元
-      const am = lines[j].match(/([+-]?[\d,]+\.?\d{1,2})\s*(?:元|$)/);
-      if (am) {
-        const v = parseFloat(am[1].replace(/,/g, ""));
-        if (Math.abs(v) >= 10 && Math.abs(v) < 1e10) {
-          rawAmount = am[1].replace(/,/g, "");
-          tx.amount = String(Math.abs(v));
-          break;
-        }
+  // 金额：优先匹配"XXX元"，兜底取行尾最大数字
+  const am = block.match(/([\d,]+\.?\d{1,2})\s*元/);
+  if (am) {
+    const v = parseFloat(am[1].replace(/,/g, ""));
+    if (v >= 1) tx.amount = String(v);
+  } else {
+    const nums = block.match(/\d[\d,]*\.\d{1,2}/g);
+    if (nums) {
+      for (let j = nums.length - 1; j >= 0; j--) {
+        const v = parseFloat(nums[j].replace(/,/g, ""));
+        if (v >= 5 && v < 1e10) { tx.amount = String(v); break; }
       }
-    }
-    if (!tx.amount) {
-      const allNums = [];
-      const nr = /([+-]?\d[\d,]*\.?\d{1,2})/g;
-      let n;
-      while ((n = nr.exec(block)) !== null) {
-        const v = parseFloat(n[1].replace(/,/g, ""));
-        if (Math.abs(v) >= 10 && Math.abs(v) < 1e10) allNums.push({ v: Math.abs(v), s: String(Math.abs(v)), sign: n[1].startsWith("-") });
-      }
-      if (allNums.length > 0) {
-        tx.amount = allNums[allNums.length - 1].s;
-        rawAmount = (allNums[allNums.length - 1].sign ? "-" : "") + allNums[allNums.length - 1].s;
-      }
-    }
-
-    // 交易类型判断：金额有负号 = 卖出，否则按关键词
-    if (rawAmount.startsWith("-")) {
-      tx.type = "sell";
-    } else if (/卖出|赎回|卖/.test(block)) {
-      tx.type = "sell";
-    } else {
-      tx.type = "buy";
-    }
-
-    // 至少要有名称或金额才算有效
-    if (tx.fundName || tx.amount) {
-      transactions.push(tx);
     }
   }
 
-  return transactions;
+  // 类型
+  tx.type = /卖出|赎回|减仓|转出/.test(block) ? "sell" : "buy";
+  return tx;
+}
+
+// ========== 基金名称提取 ==========
+
+const FUND_TYPE_KW = "混合|股票|债券|指数|货币|ETF|FOF|联接|灵活|优选|稳健|成长|价值|蓝筹|红利|消费|医疗|医药|科技|新能源|半导体|军工|制造|印度|纳斯达克|标普|恒生|全球|海外|量化|策略|精选|前沿|多元|资源|配置|增强|行业|主题|轮动|升级|机遇|趋势|领航|智选|动力|改革|创新|优势|龙头|核心|品质|健康|养老|环保|高端|智能|互联|国企|央企|大盘|中小盘|创业|平衡|积极|安心|安享|定开|定投|纯债|信用|利率|短债|中短|可转债|固收|收益|添利|增利|双利|丰禄|季季|双月|月月|年年|稳利|鑫享|添益";
+
+function extractFundName(text) {
+  const patterns = [
+    new RegExp("([一-鿿A-Z0-9]{2,24}(?:" + FUND_TYPE_KW + ")[一-鿿A-Za-z0-9（()LOF／QDII）]{0,16}[AC]?)"),
+    new RegExp("([一-鿿0-9]{2,24}(?:" + FUND_TYPE_KW + "))"),
+    /\d{6}\s*[-\s]?\s*([一-鿿A-Z0-9]{3,36})/,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      let name = m[1];
+      const after = text.substring(m.index + m[0].length);
+      const suffix = after.match(/^\s*([AC])\b/);
+      if (suffix && !name.endsWith(suffix[1])) name += suffix[1];
+      return name;
+    }
+  }
+  return null;
 }

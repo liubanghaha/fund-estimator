@@ -17,6 +17,7 @@
 .empty-text{font-size:30rpx;color:#999;margin-bottom:12rpx}
 .empty-hint{font-size:24rpx;color:#CCC;margin-bottom:48rpx}
 .empty-btn{width:240rpx;height:72rpx;line-height:72rpx;font-size:26rpx;color:#FFF;background:#E4393C;border-radius:36rpx;text-align:center;padding:0}
+.tip-inline{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 24rpx 4rpx}
 
 .summary-bar{display:flex;background:#FFF;padding:24rpx 24rpx;margin-bottom:16rpx}
 .summary-item{flex:1;text-align:center;padding:16rpx 8rpx;border-radius:12rpx;transition:all .2s;margin-right:12rpx}
@@ -41,14 +42,17 @@
 .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12rpx;padding-left:8rpx}
 .chart-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
 .compare-picker{font-size:24rpx;color:#1976D2;padding:8rpx 16rpx;background:rgba(25,118,210,0.06);border-radius:8rpx}
+.index-options{display:flex;gap:8rpx;flex-wrap:wrap}
+.index-opt{font-size:22rpx;color:#999;padding:6rpx 14rpx;border-radius:16rpx;background:#F5F5F5}
+.index-opt.active{color:#1976D2;background:rgba(25,118,210,0.08);font-weight:500}
 
-.tab-bar{display:flex;align-items:center;background:#FFF;margin:0 24rpx;border-radius:20rpx 20rpx 0 0;padding:12rpx 16rpx}
-.tab-blocks{display:flex;flex-shrink:0}
-.tab-block{flex-shrink:0;padding:12rpx 24rpx;font-size:26rpx;color:#666;background:#F5F5F5;border-radius:10rpx;margin-right:8rpx}
-.tab-block.active{color:#FFF;background:#E4393C;font-weight:600}
-.tab-controls{display:flex;align-items:center;margin-left:auto;gap:8rpx}
-.picker-label{font-size:24rpx;color:#666;padding:10rpx 14rpx;background:#F5F5F5;border-radius:8rpx;white-space:nowrap}
-.mode-toggle{flex-shrink:0;font-size:22rpx;color:#E4393C;padding:10rpx 14rpx;background:rgba(228,57,60,0.06);border-radius:8rpx;white-space:nowrap}
+.tab-bar{display:flex;align-items:center;gap:16rpx;background:#FFF;margin:0 24rpx;border-radius:20rpx 20rpx 0 0;padding:16rpx 24rpx;border-bottom:1rpx solid #F0F0F0}
+.tab-item{font-size:26rpx;color:#999;padding:8rpx 0;position:relative}
+.tab-item.active{color:#E4393C;font-weight:600}
+.tab-item.active::after{content:'';position:absolute;bottom:-17rpx;left:50%;transform:translateX(-50%);width:32rpx;height:4rpx;background:#E4393C;border-radius:2rpx}
+.tab-picker{margin-left:auto}
+.picker-label{font-size:24rpx;color:#666;padding:10rpx 14rpx;background:#F5F5F5;border-radius:8rpx}
+.cal-header{display:flex;justify-content:center;padding:0 0 16rpx}
 /* 日历 */
 .calendar-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:16rpx 16rpx 24rpx}
 

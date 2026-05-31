@@ -9,11 +9,14 @@
     { "name": "fetchFundNAVHistory", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundProfile", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "ocrScreenshot", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "ocrScreenshot", "timeout": 60, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "searchFund", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "manageWatchlist", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "userLogin", "timeout": 10, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchMarketIndex", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "ocrTransaction", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
+    { "name": "ocrTransaction", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "manageHolding", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "manageTransaction", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "batchFetchEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

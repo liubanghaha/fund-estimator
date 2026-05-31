@@ -18,17 +18,15 @@ async function fetchHistory(fundCode, totalNeeded) {
   const https = require("https");
   const PER_PAGE = 20;
   const pages = Math.ceil(totalNeeded / PER_PAGE);
-  const allList = [];
 
-  for (let i = 1; i <= pages; i++) {
-    const pageData = await new Promise((resolve, reject) => {
-      const path = `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${i}&pageSize=${PER_PAGE}`;
-      const options = {
+  const pageTasks = Array.from({ length: pages }, (_, i) =>
+    new Promise((resolve) => {
+      const path = `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${i + 1}&pageSize=${PER_PAGE}`;
+      const req = https.get({
         hostname: "api.fund.eastmoney.com",
         path,
         headers: { Referer: "https://fundf10.eastmoney.com/" },
-      };
-      const req = https.get(options, (res) => {
+      }, (res) => {
         let body = "";
         res.on("data", (c) => { body += c; });
         res.on("end", () => {
@@ -42,18 +40,15 @@ async function fetchHistory(fundCode, totalNeeded) {
             }));
             resolve(list);
           } catch (e) {
-            reject(e);
+            resolve([]);
           }
         });
       });
-      req.setTimeout(8000, () => { req.destroy(); reject(new Error("请求超时")); });
-      req.on("error", reject);
-    });
+      req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+      req.on("error", () => resolve([]));
+    })
+  );
 
-    if (pageData.length === 0) break;
-    allList.push(...pageData);
-    if (pageData.length < PER_PAGE) break;
-  }
-
-  return allList;
+  const results = await Promise.all(pageTasks);
+  return results.flat();
 }

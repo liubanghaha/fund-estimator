@@ -15,6 +15,7 @@ const ALL_INDICES = [
 ];
 
 const CACHE_KEY = "portfolio_cache";
+const INDEX_CACHE_KEY = "index_cache";
 
 Page({
   data: {
@@ -30,7 +31,10 @@ Page({
     totalReturn: "0.00",
     totalReturnRate: "0.00",
     updateTime: "",
-    indexCards: [],
+    indexCards: ALL_INDICES.slice(0, 6).map((idx) => ({
+      name: idx.name, code: idx.code,
+      price: "--", change: "--", changeRate: "--", isUp: true,
+    })),
     indexExpanded: false,
     indexLoading: false,
     showIndexEdit: false,
@@ -38,35 +42,51 @@ Page({
     activeIndices: ALL_INDICES.slice(0, 6),
     editSelections: {},
     pageHeight: 0,
-    indexBarHeight: 0,
+    indexBarHeight: 110,
     refresherTriggered: false,
     fromCache: false,
     sortField: "todayProfit",
     sortOrder: "desc",
     listScrollX: 0,
     listSliding: false,
+    batchMode: false,
+    selectedCount: 0,
+    allSelected: false,
   },
 
   onLoad() {
-    const { windowHeight } = wx.getSystemInfoSync();
+    const { windowHeight, windowWidth } = wx.getSystemInfoSync();
+    this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
   },
 
   onShow() {
+    const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     const savedCodes = wx.getStorageSync("indexCodes");
     let activeIndices = ALL_INDICES.slice(0, 6);
     if (savedCodes && savedCodes.length > 0) {
-      activeIndices = ALL_INDICES.filter((idx) => savedCodes.indexOf(idx.code) !== -1);
+      const filtered = ALL_INDICES.filter((idx) => savedCodes.indexOf(idx.code) !== -1);
+      if (filtered.length > 0) activeIndices = filtered;
     }
     this.setData({ activeIndices });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
       this.applyCache();
-      this.fetchPortfolio();
-      this.fetchIndices();
+      this.applyIndexCache();
+      // 30秒内不重复拉取数据（截图导入成功后强制刷新）
+      const forceRefresh = wx.getStorageSync("portfolio_force_refresh");
+      if (forceRefresh) {
+        wx.removeStorageSync("portfolio_force_refresh");
+        this._lastFetch = 0;
+      }
+      if (!this._lastFetch || now - this._lastFetch > 30000) {
+        this._lastFetch = now;
+        this.fetchPortfolio();
+        this.fetchIndices();
+      }
     } else {
       this.setData({ isLoggedIn: false, holdings: [] });
     }
@@ -94,6 +114,24 @@ Page({
     } catch (e) { /* ignore cache read error */ }
   },
 
+  applyIndexCache() {
+    try {
+      const cached = wx.getStorageSync(INDEX_CACHE_KEY);
+      const codes = this.data.activeIndices.map((i) => i.code).join(",");
+      if (cached && cached.codes === codes && cached.cards && cached.cards.length > 0) {
+        this.setData({ indexCards: cached.cards, indexBarHeight: 110 });
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+    // 无缓存时展示占位，让指数栏立即可见
+    const placeholders = this.data.activeIndices.map((idx) => ({
+      name: idx.name, code: idx.code,
+      price: "--", change: "--", changeRate: "--", isUp: true,
+    }));
+    this.setData({ indexCards: placeholders, indexBarHeight: 110 });
+    return false;
+  },
+
   onToggleAmount() {
     const v = !this.data.amountVisible;
     this.setData({ amountVisible: v });
@@ -101,6 +139,7 @@ Page({
   },
 
   onScrollRefresh() {
+    this._lastFetch = Date.now();
     Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
     });
@@ -171,13 +210,34 @@ Page({
 
   async fetchIndices() {
     const activeIndices = this.data.activeIndices;
+    if (!activeIndices || activeIndices.length === 0) {
+      this.setData({ indexCards: [], indexLoading: false, indexBarHeight: 0 });
+      return;
+    }
     try {
-      const results = await Promise.all(
-        activeIndices.map((idx) => api.fetchMarketIndex(idx.code, 2).catch(() => null))
-      );
+      const FETCH_TIMEOUT = 6000;
+      const A_CODES = ["000001", "399001", "000300", "399006"];
+      const fetchOne = async (idx) => {
+        // A股指数走客户端直连（无云函数冷启动，更快）
+        if (A_CODES.includes(idx.code)) {
+          const clientRes = await Promise.race([
+            api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
+            new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+          ]);
+          if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) {
+            return clientRes.data;
+          }
+        }
+        // 兜底走云函数
+        const res = await Promise.race([
+          api.fetchMarketIndex(idx.code, 2).catch(() => null),
+          new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+        ]);
+        return (res && res.result && res.result.code === 0 && res.result.data) || [];
+      };
+      const results = await Promise.all(activeIndices.map(fetchOne));
       const indexCards = activeIndices.map((idx, i) => {
-        const res = results[i];
-        const data = (res && res.result && res.result.code === 0 && res.result.data) || [];
+        const data = results[i] || [];
         if (data.length >= 1) {
           const latest = data[data.length - 1];
           const prev = data.length >= 2 ? data[data.length - 2] : latest;
@@ -195,6 +255,8 @@ Page({
         }
         return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
       });
+      const codes = activeIndices.map((i) => i.code).join(",");
+      wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards: indexCards, ts: Date.now() } });
       this.setData({ indexCards, indexLoading: false, indexBarHeight: 110 });
     } catch (e) {
       this.setData({ indexLoading: false });
@@ -207,7 +269,7 @@ Page({
     this.setData({
       indexExpanded,
       showIndexEdit: false,
-      indexBarHeight: indexExpanded ? 210 : 110,
+      indexBarHeight: indexExpanded ? 240 : 110,
     });
   },
 
@@ -222,7 +284,7 @@ Page({
       showIndexEdit: show,
       indexExpanded: false,
       editSelections: selections,
-      indexBarHeight: show ? 420 : 110,
+      indexBarHeight: show ? 470 : 110,
     });
   },
 
@@ -267,7 +329,71 @@ Page({
 
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
+  onScreenshotAdd() {
+    wx.showActionSheet({
+      itemList: ["从相册选择"],
+      success: () => {
+        wx.chooseMedia({
+          count: 1, mediaType: ["image"],
+          sourceType: ["album"], sizeType: ["compressed"],
+          success: (mediaRes) => {
+            const app = getApp();
+            app.globalData._screenshotPath = mediaRes.tempFiles[0].tempFilePath;
+            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+          },
+        });
+      },
+    });
+  },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
+
+  onToggleBatch() {
+    const enter = !this.data.batchMode;
+    const holdings = this.data.holdings.map(h => ({ ...h, _checked: false }));
+    this.setData({ batchMode: enter, holdings, selectedCount: 0, allSelected: false });
+  },
+
+  onToggleBatchSelect(e) {
+    const idx = e.currentTarget.dataset.index;
+    const holdings = [...this.data.holdings];
+    holdings[idx]._checked = !holdings[idx]._checked;
+    const count = holdings.filter(h => h._checked).length;
+    this.setData({ holdings, selectedCount: count, allSelected: count === holdings.length });
+  },
+
+  onSelectAll() {
+    const allSel = !this.data.allSelected;
+    const holdings = this.data.holdings.map(h => ({ ...h, _checked: allSel }));
+    this.setData({ holdings, selectedCount: allSel ? holdings.length : 0, allSelected: allSel });
+  },
+
+  async onBatchDelete() {
+    const selected = this.data.holdings.filter(h => h._checked);
+    if (selected.length === 0) { wx.showToast({ title: "请先选择", icon: "none" }); return; }
+    wx.showModal({
+      title: "批量删除",
+      content: `确定删除 ${selected.length} 个持仓及相关交易记录吗？`,
+      success: async (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: "删除中..." });
+        const db = wx.cloud.database();
+        let done = 0;
+        for (const h of selected) {
+          try {
+            await db.collection("holdings").doc(h._id).remove();
+            await db.collection("transactions").where({ fundCode: h.fundCode }).remove();
+            done++;
+          } catch (e) { /* ignore */ }
+        }
+        wx.hideLoading();
+        wx.showToast({ title: `已删除 ${done} 个`, icon: "success" });
+        this.setData({ batchMode: false });
+        wx.removeStorageSync("portfolio_cache");
+        this.fetchPortfolio();
+      },
+    });
+  },
+
   onAdjust() {
     const holdings = this.data.holdings;
     if (holdings.length === 0) {
@@ -310,8 +436,7 @@ Page({
   },
 
   rpxToPx(rpx) {
-    const { windowWidth } = wx.getSystemInfoSync();
-    return (rpx / 750) * windowWidth;
+    return (rpx / 750) * (this._windowWidth || 375);
   },
 
   onTapHolding(e) {
@@ -334,7 +459,9 @@ Page({
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
-          wx.navigateTo({ url: "/pages/adjust-holding/index" });
+          const app = getApp();
+          app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
+          wx.navigateTo({ url: `/pages/adjust-holding/index?fundCode=${h.fundCode}` });
         } else if (res.tapIndex === 2) {
           wx.showModal({
             title: "确认删除",
@@ -342,7 +469,7 @@ Page({
             success(r) {
               if (!r.confirm) return;
               wx.showLoading({ title: "删除中..." });
-              wx.cloud.database().collection("holdings").doc(id).remove()
+              api.holdingRemove(id)
                 .then(() => {
                   wx.hideLoading();
                   wx.showToast({ title: "已删除", icon: "success" });

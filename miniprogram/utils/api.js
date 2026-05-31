@@ -41,6 +41,33 @@ const api = {
   watchlistCheck(fundCode) {
     return this.callFunction("manageWatchlist", { action: "check", fundCode });
   },
+  holdingAdd(data) {
+    return this.callFunction("manageHolding", { action: "add", data });
+  },
+  holdingUpdate(id, data) {
+    return this.callFunction("manageHolding", { action: "update", id, data });
+  },
+  holdingRemove(id) {
+    return this.callFunction("manageHolding", { action: "remove", id });
+  },
+  holdingList() {
+    return this.callFunction("manageHolding", { action: "list" });
+  },
+  holdingGet(id) {
+    return this.callFunction("manageHolding", { action: "get", id });
+  },
+  holdingCheck(fundCode) {
+    return this.callFunction("manageHolding", { action: "check", data: { fundCode } });
+  },
+  transactionAdd(data) {
+    return this.callFunction("manageTransaction", { action: "add", data });
+  },
+  transactionList(fundCode) {
+    return this.callFunction("manageTransaction", { action: "list", fundCode });
+  },
+  batchFetchEstimate(codes) {
+    return this.callFunction("batchFetchEstimate", { codes });
+  },
   fetchMarketIndex(indexCode, days) {
     return this.callFunction("fetchMarketIndex", { indexCode, days });
   },

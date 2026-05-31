@@ -17,18 +17,25 @@
 
 /* OCR 结果列表 */
 .results-section{margin-top:24rpx}
-.results-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:14rpx}
-.result-card{position:relative;background:#FFF;border-radius:14rpx;padding:24rpx;margin-bottom:14rpx}
-.rc-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14rpx}
-.rc-name{font-size:28rpx;font-weight:600;color:#333;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rc-code{font-size:24rpx;color:#999;flex-shrink:0;margin-left:20rpx}
-.rc-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:10rpx}
-.rc-left,.rc-right{display:flex;align-items:baseline;gap:8rpx;flex:1}
-.rc-label{font-size:22rpx;color:#999;width:56rpx;flex-shrink:0}
-.rc-val{font-size:26rpx;color:#333;font-weight:500}
-.rc-val.up{color:#E4393C}
-.rc-val.down{color:#2E8B57}
-.rc-no-match{font-size:22rpx;color:#E4393C}
+.results-title{display:flex;justify-content:space-between;align-items:center;font-size:26rpx;font-weight:600;color:#333;margin-bottom:14rpx}
+.raw-toggle{font-size:22rpx;color:#1976D2;font-weight:400;padding:4rpx 8rpx}
+.raw-text-box{background:#F8F8F8;border-radius:10rpx;padding:18rpx;margin-bottom:14rpx}
+.raw-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8rpx}
+.raw-method{font-size:20rpx;color:#BBB}
+.raw-copy-btn{font-size:20rpx;color:#1976D2;padding:4rpx 8rpx}
+.raw-content{font-size:22rpx;color:#666;line-height:1.6;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
+.result-card{position:relative;background:#FFF;border-radius:14rpx;padding:24rpx 28rpx;margin-bottom:14rpx}
+.rc-del{position:absolute;top:0;right:20rpx;font-size:28rpx;color:#CCC;padding:8rpx;z-index:1}
+.rc-main{display:flex;align-items:center;gap:16rpx}
+.rc-sign{font-size:44rpx;font-weight:700;width:48rpx;text-align:center;flex-shrink:0}
+.rc-sign.up{color:#E4393C}
+.rc-sign.down{color:#2E8B57}
+.rc-info{flex:1;min-width:0}
+.rc-name-row{display:flex;align-items:center;gap:12rpx;margin-bottom:6rpx}
+.rc-name{font-size:28rpx;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-no-match{font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:2rpx 10rpx;border-radius:6rpx;flex-shrink:0}
+.rc-date{font-size:22rpx;color:#AAA}
+.rc-amount{font-size:30rpx;font-weight:700;color:#333;flex-shrink:0}
 .submit-all-btn{width:100%;height:84rpx;line-height:84rpx;font-size:30rpx;font-weight:600;color:#FFF;background:linear-gradient(135deg,#E4393C,#FF6B6B);border-radius:42rpx;text-align:center;padding:0;margin-top:24rpx}
 
 /* 选基金弹窗 */

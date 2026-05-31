@@ -1,5 +1,6 @@
 .container{padding:24rpx}
 
+/* 截图导入入口 */
 .import-bar{margin-bottom:24rpx}
 .import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:16rpx;padding:28rpx 32rpx;text-align:center}
 .import-icon{font-size:40rpx;display:block;margin-bottom:8rpx}
@@ -7,93 +8,56 @@
 .import-hint{font-size:22rpx;color:#81C784;display:block}
 .import-loading{text-align:center;padding:32rpx;font-size:28rpx;color:#999;background:#FFF;border-radius:16rpx}
 
+/* 截图预览 */
 .screenshot-preview{margin-bottom:24rpx;background:#FFF;border-radius:20rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
 .preview-img{width:100%;display:block}
 .preview-actions{display:flex;justify-content:space-between;align-items:center;padding:20rpx 28rpx}
 .preview-tip{font-size:24rpx;color:#999}
 .preview-remove{font-size:24rpx;color:#E4393C}
 
-.form{background:#FFF;border-radius:20rpx;padding:0 32rpx;margin-bottom:32rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
+/* ========== 基金卡片列表 ========== */
+.cards-header{margin-bottom:16rpx}
+.cards-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
 
+.fund-card{display:flex;align-items:center;justify-content:space-between;background:#FFF;border-radius:12rpx;margin-bottom:12rpx;padding:24rpx 24rpx;box-shadow:0 1rpx 6rpx rgba(0,0,0,.04)}
+.fund-card.saved{opacity:.45}
+
+.card-left{flex:1;min-width:0}
+.card-code{font-size:20rpx;color:#999;display:block}
+.card-name{font-size:28rpx;font-weight:600;color:#1A1A1A;margin:4rpx 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-nums{display:flex;gap:20rpx;margin-top:6rpx}
+.card-mv{font-size:22rpx;color:#666}
+.card-hr{font-size:22rpx;color:#E4393C}
+
+.card-right{flex-shrink:0;margin-left:16rpx;display:flex;flex-direction:column;gap:10rpx;align-items:flex-end}
+.card-save{font-size:22rpx;color:#FFF;background:#E4393C;padding:8rpx 24rpx;border-radius:28rpx}
+.card-edit{font-size:22rpx;color:#1976D2;padding:8rpx 24rpx;border:1rpx solid #1976D2;border-radius:28rpx}
+.card-done{font-size:24rpx;color:#4CAF50}
+
+.cards-footer{text-align:center;padding:24rpx 0;font-size:24rpx;color:#CCC}
+.save-all-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#FFF;background:#E4393C;border-radius:44rpx;padding:0}
+.cards-footer-hint{font-size:24rpx;color:#4CAF50}
+
+/* ========== 手动填写 ========== */
+.form{background:#FFF;border-radius:20rpx;padding:0 32rpx;margin-bottom:32rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
 .form-item{display:flex;align-items:center;justify-content:space-between;padding:30rpx 0;border-bottom:1rpx solid #F5F5F5}
 .form-item:last-child{border-bottom:none}
-
 .label{font-size:28rpx;color:#333;width:160rpx;font-weight:500}
 .input{flex:1;text-align:right;font-size:28rpx;color:#1A1A1A}
 .picker-value{font-size:28rpx;color:#999;text-align:right;width:100%}
 
+/* 正负号切换 */
+.signed-input{display:flex;align-items:center;gap:12rpx;flex:1;justify-content:flex-end}
+.sign-toggle{width:28rpx;height:28rpx;line-height:28rpx;text-align:center;font-size:18rpx;font-weight:600;color:#FFF;background:#E4393C;border-radius:14rpx;flex-shrink:0}
+.sign-toggle.minus{background:#2E8B57}
+.signed-val{flex:1}
+
 .submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:#E4393C;border-radius:46rpx;text-align:center;padding:0;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(228,57,60,.3)}
 
-.delete-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#999;background:#FFF;border:2rpx solid #E5E5E5;border-radius:44rpx;text-align:center;padding:0}
-
-/* 多选弹窗 — 顶部滑入 */
-.picker-overlay{
-  position:fixed;top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,0,.45);
-  z-index:1000;
-  display:flex;align-items:flex-start;justify-content:center;
-  animation:fadeIn .2s ease;
-}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-
-.picker-panel{
-  width:660rpx;
-  margin-top:120rpx;
-  background:#FFF;
-  border-radius:24rpx;
-  overflow:hidden;
-  box-shadow:0 12rpx 40rpx rgba(0,0,0,.15);
-  animation:slideDown .25s ease;
-}
-@keyframes slideDown{from{transform:translateY(-80rpx);opacity:0}to{transform:translateY(0);opacity:1}}
-
-.picker-header{
-  display:flex;justify-content:space-between;align-items:baseline;
-  padding:28rpx 32rpx;
-  border-bottom:1rpx solid #F0F0F0;
-}
-.picker-title{font-size:30rpx;font-weight:600;color:#1A1A1A}
-.picker-select-all{font-size:26rpx;color:#4CAF50}
-
-.picker-list{max-height:480rpx;padding:8rpx 0}
-
-.picker-item{
-  display:flex;align-items:flex-start;
-  padding:24rpx 32rpx;
-}
-.picker-item:active{background:#F9F9F9}
-
-.picker-checkbox{
-  width:40rpx;height:40rpx;
-  border:2rpx solid #D0D0D0;border-radius:8rpx;
-  margin-right:20rpx;
-  margin-top:2rpx;
-  display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
-.picker-checkbox.checked{
-  background:#4CAF50;border-color:#4CAF50;
-}
-.picker-checkbox.checked text{color:#FFF;font-size:24rpx;font-weight:600}
-
-.picker-info{flex:1;display:flex;flex-direction:column}
-.picker-fname{font-size:28rpx;color:#1A1A1A;margin-bottom:4rpx}
-.picker-amount{font-size:24rpx;color:#E4393C}
-
-.picker-footer{
-  display:flex;gap:20rpx;
-  padding:24rpx 32rpx;
-  border-top:1rpx solid #F0F0F0;
-}
-.picker-cancel{
-  flex:1;height:80rpx;line-height:80rpx;
-  font-size:28rpx;color:#666;
-  background:#F5F5F5;border-radius:40rpx;
-  text-align:center;padding:0;
-}
-.picker-confirm{
-  flex:2;height:80rpx;line-height:80rpx;
-  font-size:28rpx;color:#FFF;
-  background:#E4393C;border-radius:40rpx;
-  text-align:center;padding:0;
-}
+/* 编辑模式 */
+.edit-actions{margin-bottom:24rpx}
+.action-row{display:flex;gap:16rpx;margin-bottom:16rpx}
+.action-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;border-radius:42rpx;text-align:center;padding:0}
+.sync-buy,.sync-sell{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
+.update-btn{background:#E4393C;color:#FFF}
+.delete-btn{background:#E4393C;color:#FFF}

@@ -29,6 +29,10 @@ exports.main = async (event) => {
     } else {
       data = await fetchAShareIndexData(INDEX_SYMBOL[indexCode], indexCode, days);
     }
+    // 确保按日期升序排列（部分数据源可能返回降序）
+    if (data && data.length > 1) {
+      data.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    }
     return { code: 0, msg: "success", data };
   } catch (e) {
     console.error("获取指数数据失败:", e.message || e);
@@ -36,36 +40,50 @@ exports.main = async (event) => {
   }
 };
 
-// ========== A 股指数：K 线 + 实时行情融合 ==========
+// ========== A 股指数：实时行情为主，K 线兜底 ==========
 
 async function fetchAShareIndexData(sinaSymbol, indexCode, days) {
+  // 首页展示（days<=2）：直接用新浪实时行情，昨收→当前价，涨跌幅最准
+  if (days <= 2) {
+    const quote = await fetchSinaJSQuote(sinaSymbol);
+    if (quote && quote.length >= 2) return quote;
+    // 实时行情失败则用 K 线
+    const kline = await fetchEastMoneyKline(indexCode, days);
+    if (kline && kline.length > 0) {
+      kline.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      return kline;
+    }
+    return [];
+  }
+
+  // 历史数据（days>2）：东方财富 K 线 + 新浪实时行情融合
   const [kline, quote] = await Promise.all([
-    fetchSinaKline(sinaSymbol, days),
+    fetchEastMoneyKline(indexCode, days),
     fetchSinaJSQuote(sinaSymbol),
   ]);
 
-  // 无 K 线数据则 fallback 到东方财富
   let data = kline;
   if (!data || data.length === 0) {
-    data = await fetchEastMoneyKline(indexCode, days);
+    data = await fetchSinaKline(sinaSymbol, days);
   }
 
-  // 融合实时行情
-  if (quote && quote.length > 0 && data && data.length > 0) {
+  if (data && data.length > 1) {
+    data.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+
+  if (quote && quote.length >= 2 && data && data.length > 0) {
     const quoteLatest = quote[quote.length - 1];
     const klineLatest = data[data.length - 1];
     const today = formatDate(new Date());
 
     if (klineLatest.date === today) {
-      // 已是今天数据，用实时价格覆盖
       data[data.length - 1] = {
         ...klineLatest,
         close: quoteLatest.close,
         high: Math.max(klineLatest.high, quoteLatest.high),
         low: Math.min(klineLatest.low || quoteLatest.high, quoteLatest.low),
       };
-    } else if (quoteLatest.close !== quote[0].close) {
-      // 今天有新数据（当前价 != 昨收），追加当日数据点
+    } else {
       data.push({
         date: today,
         open: quoteLatest.open || quoteLatest.close,
@@ -131,136 +149,66 @@ async function fetchUSIndexData(code, days) {
 }
 
 function fetchSinaUSQuote(symbol) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const url = `https://hq.sinajs.cn/list=${symbol}`;
-    const req = https.get(url, {
-      headers: { Referer: "https://finance.sina.com.cn/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const match = body.match(/"([^"]+)"/);
-          if (!match) { resolve([]); return; }
-          const parts = match[1].split(",");
-          if (parts.length < 5) { resolve([]); return; }
-          // Sina US format: name, price, change_pct, time, change, open, high, low, ...
-          const price = parseFloat(parts[1]) || 0;
-          const changeAmt = parseFloat(parts[4]) || 0;
-          const prevClose = price - changeAmt;
-          const open = parseFloat(parts[5]) || 0;
-          const high = parseFloat(parts[6]) || 0;
-          const low = parseFloat(parts[7]) || 0;
-          if (price <= 0) { resolve([]); return; }
-          resolve(buildQuoteData(price, prevClose, open, high, low));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+  return httpGet(`https://hq.sinajs.cn/list=${symbol}`, { Referer: "https://finance.sina.com.cn/" }, 8000).then((body) => {
+    try {
+      const match = body.match(/"([^"]+)"/);
+      if (!match) return [];
+      const parts = match[1].split(",");
+      if (parts.length < 5) return [];
+      const price = +parts[1] || 0;
+      const prevClose = price - (+parts[4] || 0);
+      const open = +parts[5] || 0, high = +parts[6] || 0, low = +parts[7] || 0;
+      if (price <= 0) return [];
+      return buildQuoteData(price, prevClose, open, high, low);
+    } catch (e) { return []; }
   });
 }
 
 // ========== 实时行情接口（构建伪 K 线） ==========
 
 function fetchSinaJSQuote(symbol) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const url = `https://hq.sinajs.cn/list=${symbol}`;
-    const req = https.get(url, {
-      headers: { Referer: "https://finance.sina.com.cn/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const match = body.match(/"([^"]+)"/);
-          if (!match) { resolve([]); return; }
-          const parts = match[1].split(",");
-          if (parts.length < 4) { resolve([]); return; }
-          // Sina JS format: name, open, prev_close, price, high, low, ...
-          const price = parseFloat(parts[3]) || 0;
-          const prevClose = parseFloat(parts[2]) || 0;
-          const open = parseFloat(parts[1]) || price;
-          const high = parseFloat(parts[4]) || price;
-          const low = parseFloat(parts[5]) || price;
-          if (price <= 0) { resolve([]); return; }
-          resolve(buildQuoteData(price, prevClose, open, high, low));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+  return httpGet(`https://hq.sinajs.cn/list=${symbol}`, { Referer: "https://finance.sina.com.cn/" }, 8000).then((body) => {
+    try {
+      const match = body.match(/"([^"]+)"/);
+      if (!match) return [];
+      const parts = match[1].split(",");
+      if (parts.length < 4) return [];
+      const price = +parts[3] || 0, prevClose = +parts[2] || 0;
+      const open = +parts[1] || price, high = +parts[4] || price, low = +parts[5] || price;
+      if (price <= 0) return [];
+      return buildQuoteData(price, prevClose, open, high, low);
+    } catch (e) { return []; }
   });
 }
 
 function fetchEastMoneyRealtime(secid) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const path = `/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170`;
-    const req = https.get({
-      hostname: "push2.eastmoney.com",
-      path,
-      headers: { Referer: "https://quote.eastmoney.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          const d = json.data;
-          if (!d || !d.f43) { resolve([]); return; }
-          // EastMoney might return prices scaled (e.g. *100 for HK), detect scale
-          const scale = d.f43 > 100000 ? 1000 : d.f43 > 10000 ? 100 : 1;
-          const price = (d.f43 || 0) / scale;
-          const prevClose = (d.f60 || 0) / scale;
-          const open = (d.f46 || 0) / scale;
-          const high = (d.f44 || 0) / scale;
-          const low = (d.f45 || 0) / scale;
-          if (price <= 0) { resolve([]); return; }
-          resolve(buildQuoteData(price, prevClose, open, high, low));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+  return httpGet({
+    hostname: "push2.eastmoney.com",
+    path: `/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170`,
+  }, { Referer: "https://quote.eastmoney.com/" }, 8000).then((body) => {
+    try {
+      const d = JSON.parse(body).data;
+      if (!d || !d.f43) return [];
+      const marketPrefix = secid.split(".")[0] || "";
+      const scale = marketPrefix === "124" ? 1000 : 100;
+      const price = (d.f43 || 0) / scale, prevClose = (d.f60 || 0) / scale;
+      const open = (d.f46 || 0) / scale, high = (d.f44 || 0) / scale, low = (d.f45 || 0) / scale;
+      if (price <= 0) return [];
+      return buildQuoteData(price, prevClose, open, high, low);
+    } catch (e) { return []; }
   });
 }
 
 function fetchTencentRealtime(symbol) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const url = `https://qt.gtimg.cn/q=${symbol}`;
-    const req = https.get(url, {
-      headers: { Referer: "https://gu.qq.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const match = body.match(/"(.*?)"/);
-          if (!match) { resolve([]); return; }
-          const parts = match[1].split("~");
-          // Tencent format: market~name~code~price~prevClose~open~volume~...
-          const price = parseFloat(parts[3]) || 0;
-          const prevClose = parseFloat(parts[4]) || 0;
-          const open = parseFloat(parts[5]) || 0;
-          if (price <= 0) { resolve([]); return; }
-          resolve(buildQuoteData(price, prevClose, open, price, price));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+  return httpGet(`https://qt.gtimg.cn/q=${symbol}`, { Referer: "https://gu.qq.com/" }, 8000).then((body) => {
+    try {
+      const match = body.match(/"(.*?)"/);
+      if (!match) return [];
+      const parts = match[1].split("~");
+      const price = +parts[3] || 0, prevClose = +parts[4] || 0, open = +parts[5] || 0;
+      if (price <= 0) return [];
+      return buildQuoteData(price, prevClose, open, price, price);
+    } catch (e) { return []; }
   });
 }
 
@@ -295,223 +243,108 @@ function formatDate(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// ========== K 线接口（历史数据） ==========
+// ========== 通用 HTTP 请求 ==========
 
-function fetchSinaKline(symbol, days) {
+function httpGet(urlOrOpts, headers, timeoutMs = 10000) {
   const https = require("https");
   return new Promise((resolve) => {
-    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&datalen=${days}`;
-    const req = https.get(url, (res) => {
+    const opts = typeof urlOrOpts === "string"
+      ? [urlOrOpts, { headers: headers || {} }]
+      : [{ hostname: urlOrOpts.hostname, path: urlOrOpts.path }, { headers: headers || {} }];
+    const req = https.get(opts[0], opts[1], (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const list = JSON.parse(body);
-          if (!Array.isArray(list)) { resolve([]); return; }
-          resolve(list.map(item => ({
-            date: item.day,
-            open: parseFloat(item.open) || 0,
-            close: parseFloat(item.close) || 0,
-            high: parseFloat(item.high) || 0,
-            low: parseFloat(item.low) || 0,
-            volume: parseFloat(item.volume) || 0,
-          })));
-        } catch (e) {
-          resolve([]);
-        }
-      });
+      res.on("end", () => resolve(body));
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(""); });
+    req.on("error", () => resolve(""));
   });
+}
+
+// ========== K 线接口（历史数据） ==========
+
+const EM_SECID = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006" };
+
+function parseEMKlines(body) {
+  try {
+    const json = JSON.parse(body);
+    return (json.data && json.data.klines || []).map((line) => {
+      const parts = line.split(",");
+      return { date: parts[0], open: +parts[1] || 0, close: +parts[2] || 0, high: +parts[3] || 0, low: +parts[4] || 0, volume: +parts[5] || 0 };
+    });
+  } catch (e) { return []; }
+}
+
+function parseSinaKlines(body) {
+  try {
+    const list = JSON.parse(body);
+    if (!Array.isArray(list)) return [];
+    return list.map((item) => ({ date: item.day, open: +item.open || 0, close: +item.close || 0, high: +item.high || 0, low: +item.low || 0, volume: +item.volume || 0 }));
+  } catch (e) { return []; }
+}
+
+function fetchSinaKline(symbol, days) {
+  const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&datalen=${days}`;
+  return httpGet(url, null, 10000).then(parseSinaKlines);
 }
 
 function fetchEastMoneyKline(indexCode, days) {
-  const https = require("https");
-  const SECID_MAP = {
-    "000001": "1.000001",
-    "399001": "0.399001",
-    "000300": "1.000300",
-    "399006": "0.399006",
-  };
-  const secid = SECID_MAP[indexCode] || "1.000001";
-  return new Promise((resolve) => {
-    const path = `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`;
-    const req = https.get({
-      hostname: "push2his.eastmoney.com",
-      path,
-      headers: { Referer: "https://quote.eastmoney.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          const klines = (json.data && json.data.klines) || [];
-          resolve(klines.map((line) => {
-            const parts = line.split(",");
-            return {
-              date: parts[0],
-              open: parseFloat(parts[1]) || 0,
-              close: parseFloat(parts[2]) || 0,
-              high: parseFloat(parts[3]) || 0,
-              low: parseFloat(parts[4]) || 0,
-              volume: parseFloat(parts[5]) || 0,
-            };
-          }));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
-  });
+  const secid = EM_SECID[indexCode] || "1.000001";
+  return httpGet({
+    hostname: "push2his.eastmoney.com",
+    path: `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`,
+  }, { Referer: "https://quote.eastmoney.com/" }).then(parseEMKlines);
 }
 
 function fetchEastMoneyGlobalKline(secid, days) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const path = `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`;
-    const req = https.get({
-      hostname: "push2.eastmoney.com",
-      path,
-      headers: { Referer: "https://quote.eastmoney.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          const klines = (json.data && json.data.klines) || [];
-          resolve(klines.map((line) => {
-            const parts = line.split(",");
-            return {
-              date: parts[0],
-              open: parseFloat(parts[1]) || 0,
-              close: parseFloat(parts[2]) || 0,
-              high: parseFloat(parts[3]) || 0,
-              low: parseFloat(parts[4]) || 0,
-              volume: parseFloat(parts[5]) || 0,
-            };
-          }));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
-  });
+  return httpGet({
+    hostname: "push2.eastmoney.com",
+    path: `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`,
+  }, { Referer: "https://quote.eastmoney.com/" }).then(parseEMKlines);
 }
 
 function fetchSinaHKKline(symbol, days) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/HK_MarketData.getKLineData?symbol=${symbol}&scale=240&datalen=${days}`;
-    const req = https.get(url, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const list = JSON.parse(body);
-          if (!Array.isArray(list)) { resolve([]); return; }
-          resolve(list.map(item => ({
-            date: item.day,
-            open: parseFloat(item.open) || 0,
-            close: parseFloat(item.close) || 0,
-            high: parseFloat(item.high) || 0,
-            low: parseFloat(item.low) || 0,
-            volume: parseFloat(item.volume) || 0,
-          })));
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
-  });
+  const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/HK_MarketData.getKLineData?symbol=${symbol}&scale=240&datalen=${days}`;
+  return httpGet(url, null, 10000).then(parseSinaKlines);
 }
 
 function fetchTencentHKKline(symbol, days) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const path = `/appstock/app/fqkline/get?_var=kline_dayqfq&param=${symbol},day,,,${days},qfq`;
-    const req = https.get({
-      hostname: "web.ifzq.gtimg.cn",
-      path,
-      headers: { Referer: "https://gu.qq.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const jsonStr = body.replace(/^var\s+\w+\s*=\s*/, "").replace(/;?\s*$/, "");
-          const json = JSON.parse(jsonStr);
-          const list = (json.data && json.data[symbol] && json.data[symbol].day) || json.data || [];
-          if (!Array.isArray(list)) { resolve([]); return; }
-          resolve(list.map(item => {
-            const parts = Array.isArray(item) ? item : item.split ? item.split(",") : [];
-            return {
-              date: parts[0] || "",
-              open: parseFloat(parts[1]) || 0,
-              close: parseFloat(parts[2]) || 0,
-              high: parseFloat(parts[3]) || 0,
-              low: parseFloat(parts[4]) || 0,
-              volume: parseFloat(parts[5]) || 0,
-            };
-          }));
-        } catch (e) {
-          resolve([]);
-        }
+  return httpGet({
+    hostname: "web.ifzq.gtimg.cn",
+    path: `/appstock/app/fqkline/get?_var=kline_dayqfq&param=${symbol},day,,,${days},qfq`,
+  }, { Referer: "https://gu.qq.com/" }).then((body) => {
+    try {
+      const jsonStr = body.replace(/^var\s+\w+\s*=\s*/, "").replace(/;?\s*$/, "");
+      const json = JSON.parse(jsonStr);
+      const list = (json.data && json.data[symbol] && json.data[symbol].day) || json.data || [];
+      if (!Array.isArray(list)) return [];
+      return list.map((item) => {
+        const parts = Array.isArray(item) ? item : item.split ? item.split(",") : [];
+        return { date: parts[0] || "", open: +parts[1] || 0, close: +parts[2] || 0, high: +parts[3] || 0, low: +parts[4] || 0, volume: +parts[5] || 0 };
       });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    } catch (e) { return []; }
   });
 }
 
 function fetchYahooKline(symbol, days) {
-  const https = require("https");
   let range = "3mo";
   if (days <= 5) range = "5d";
   else if (days <= 30) range = "1mo";
   const YAHOO_SYMBOLS = { "HSTECH": "%5EHSTECH", "HSI": "%5EHSI" };
   const ySymbol = YAHOO_SYMBOLS[symbol] || symbol;
-  return new Promise((resolve) => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ySymbol}?range=${range}&interval=1d`;
-    const req = https.get(url, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          const result = json.chart && json.chart.result && json.chart.result[0];
-          if (!result) { resolve([]); return; }
-          const timestamps = result.timestamp || [];
-          const quote = result.indicators && result.indicators.quote && result.indicators.quote[0];
-          if (!quote || timestamps.length === 0) { resolve([]); return; }
-          const list = [];
-          for (let i = 0; i < timestamps.length; i++) {
-            const d = new Date(timestamps[i] * 1000);
-            const dateStr = formatDate(d);
-            list.push({
-              date: dateStr,
-              open: parseFloat(quote.open[i]) || 0,
-              close: parseFloat(quote.close[i]) || 0,
-              high: parseFloat(quote.high[i]) || 0,
-              low: parseFloat(quote.low[i]) || 0,
-              volume: parseFloat(quote.volume[i]) || 0,
-            });
-          }
-          resolve(list);
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+  return httpGet(`https://query1.finance.yahoo.com/v8/finance/chart/${ySymbol}?range=${range}&interval=1d`).then((body) => {
+    try {
+      const json = JSON.parse(body);
+      const result = json.chart && json.chart.result && json.chart.result[0];
+      if (!result) return [];
+      const timestamps = result.timestamp || [];
+      const quote = result.indicators && result.indicators.quote && result.indicators.quote[0];
+      if (!quote || timestamps.length === 0) return [];
+      return timestamps.map((ts, i) => ({
+        date: formatDate(new Date(ts * 1000)),
+        open: +quote.open[i] || 0, close: +quote.close[i] || 0,
+        high: +quote.high[i] || 0, low: +quote.low[i] || 0, volume: +quote.volume[i] || 0,
+      }));
+    } catch (e) { return []; }
   });
 }

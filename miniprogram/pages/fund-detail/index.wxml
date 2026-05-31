@@ -8,7 +8,8 @@
     <view class="sk-tabs skeleton"></view>
     <view class="sk-content skeleton"></view>
   </view>
-  <view wx:else class="content">
+  <view wx:else class="page-body">
+    <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation>
     <view class="fund-header">
       <view class="header-top">
         <view class="header-info">
@@ -55,6 +56,7 @@
         </view>
       </view>
     </view>
+
 
     <!-- 我的持仓 -->
     <view wx:if="{{hasHolding && holdingData}}" class="my-holding-card">
@@ -143,9 +145,11 @@
         <view class="section-title">基金经理</view>
         <view class="manager-row">
           <view class="manager-avatar">{{manager.name[0]}}</view>
-          <view class="manager-name">{{manager.name}}</view>
-          <view class="manager-detail">任职 {{manager.tenureDays}}天</view>
-          <view wx:if="{{manager.tenureReturn}}" class="manager-return {{manager.tenureReturn > 0 ? 'up' : manager.tenureReturn < 0 ? 'down' : ''}}">任职回报 {{manager.tenureReturn > 0 ? '+' : ''}}{{manager.tenureReturn}}%</view>
+          <view class="manager-info">
+            <view class="manager-name">{{manager.name}}</view>
+            <view class="manager-detail">任职 {{manager.tenureDays}}天</view>
+            <view wx:if="{{manager.tenureReturn}}" class="manager-return {{manager.tenureReturn > 0 ? 'up' : manager.tenureReturn < 0 ? 'down' : ''}}">任职回报 {{manager.tenureReturn > 0 ? '+' : ''}}{{manager.tenureReturn}}%</view>
+          </view>
         </view>
       </view>
       <view wx:if="{{profile}}" class="info-card">
@@ -160,10 +164,42 @@
       </view>
     </view>
 
+      <view wx:if="{{showTransactions}}" class="tx-list-card" id="txSection">
+        <view class="section-title">交易记录</view>
+        <view wx:if="{{transactionList.length === 0}}" class="empty-text">暂无交易记录</view>
+        <view wx:if="{{transactionList.length > 0}}" class="tx-row tx-header">
+          <text class="tx-type">类型</text>
+          <text class="tx-shares">份额</text>
+          <text class="tx-price">净值</text>
+          <text class="tx-amount">金额</text>
+          <text class="tx-date">日期</text>
+        </view>
+        <view wx:for="{{transactionList}}" wx:key="_id" class="tx-row">
+          <text class="tx-type {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
+          <text class="tx-shares">{{item.shares > 0 ? item.shares + '份' : '--'}}</text>
+          <text class="tx-price">{{item.price > 0 ? item.price + '元' : '--'}}</text>
+          <text class="tx-amount">{{item.amount || '--'}}元</text>
+          <text class="tx-date">{{item.date}}</text>
+        </view>
+      </view>
+    </scroll-view>
     <view class="bottom-bar">
-      <button class="btn-add" bind:tap="onAddHolding">添加持仓</button>
-      <button class="btn-compare" bind:tap="onCompare">对比</button>
-      <button class="btn-refresh" bind:tap="onRefresh">刷新</button>
+      <button class="btn-add" bind:tap="onAddHolding">
+        <text class="btn-icon">{{hasHolding ? '✏️' : '➕'}}</text>
+        <text>{{hasHolding ? '修改持仓' : '添加持仓'}}</text>
+      </button>
+      <button class="btn-compare" bind:tap="onCompare">
+        <text class="btn-icon">📊</text>
+        <text>对比</text>
+      </button>
+      <button wx:if="{{hasHolding}}" class="btn-txn" bind:tap="onRefresh">
+        <text class="btn-icon">📋</text>
+        <text>{{showTransactions ? '隐藏记录' : '交易记录'}}</text>
+      </button>
+      <button wx:else class="btn-txn" bind:tap="onImportScreenshot">
+        <text class="btn-icon">📷</text>
+        <text>截图导入</text>
+      </button>
     </view>
     <view class="bottom-safe"></view>
   </view>

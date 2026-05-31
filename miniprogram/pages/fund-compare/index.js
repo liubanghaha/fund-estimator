@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const calc = require("../../utils/calculator");
 
 Page({
   data: {
@@ -206,18 +207,7 @@ Page({
   },
 
   calcReturns(history) {
-    if (!history || history.length === 0) return { day: null, week: null, month: null, threeMonth: null, sixMonth: null, year: null };
-    const latest = history[0].nav;
-    const g = (days) => {
-      if (history.length <= days) return null;
-      const nav = history[days] && history[days].nav;
-      if (!nav) return null;
-      return parseFloat(((latest - nav) / nav * 100).toFixed(2));
-    };
-    return {
-      day: history[0].changeRate || 0,
-      week: g(4), month: g(19), threeMonth: g(64), sixMonth: g(129), year: g(249),
-    };
+    return calc.calcPeriodReturns(history);
   },
 
   buildChartData(histA, histB) {
@@ -258,7 +248,7 @@ Page({
     if (!chartData || chartData.length < 2) return;
 
     const ctx = wx.createCanvasContext('compareCanvas', this);
-    const w = 340, h = 200;
+    const w = 340, h = 212;
 
     const ratesA = chartData.map(d => d.rateA).filter(v => v !== null);
     const ratesB = chartData.map(d => d.rateB).filter(v => v !== null);
@@ -269,7 +259,7 @@ Page({
     const pad = range * 0.15;
     const yMin = min - pad, yMax = max + pad;
 
-    const m = { top: 24, right: 12, bottom: 36, left: 52 };
+    const m = { top: 36, right: 12, bottom: 36, left: 52 };
     const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
     const xp = (i) => m.left + (pw / (chartData.length - 1)) * i;
     const yp = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
@@ -282,18 +272,21 @@ Page({
     // Draw fund B line (blue)
     this.drawLine(ctx, chartData, 'rateB', xp, yp, '#1976D2', h, m);
 
-    // Legend
+    // Legend — 分两行显示，避免基金名称重叠
     ctx.setFontSize(9);
-    ctx.setTextBaseline('top');
+    ctx.setTextBaseline('middle');
+    const legendY1 = 10, legendY2 = 22;
+    // 基金A
     ctx.setFillStyle('#E4393C');
-    ctx.fillRect(m.left + 4, 4, 14, 3);
+    ctx.fillRect(m.left + 4, legendY1 - 2, 12, 4);
     ctx.setFillStyle('#666');
     ctx.setTextAlign('left');
-    ctx.fillText(this.data.fundA.name || '基金A', m.left + 22, 1);
+    ctx.fillText((this.data.fundA.name || '基金A').slice(0, 10), m.left + 20, legendY1);
+    // 基金B
     ctx.setFillStyle('#1976D2');
-    ctx.fillRect(m.left + 80, 4, 14, 3);
+    ctx.fillRect(m.left + 4, legendY2 - 2, 12, 4);
     ctx.setFillStyle('#666');
-    ctx.fillText(this.data.fundB.name || '基金B', m.left + 98, 1);
+    ctx.fillText((this.data.fundB.name || '基金B').slice(0, 10), m.left + 20, legendY2);
 
     // Y-axis
     ctx.setFillStyle('#999');

@@ -11,24 +11,33 @@
   </view>
 
   <view wx:else class="list">
-    <view
-      wx:for="{{watchlist}}"
-      wx:key="fundCode"
-      class="item"
+    <view wx:for="{{watchlist}}" wx:key="fundCode" class="item {{batchMode ? 'batch-item' : ''}}"
       bind:tap="onTapItem"
-      data-code="{{item.fundCode}}"
-      data-name="{{item.fundName}}"
-    >
+      bind:longpress="onLongPressItem"
+      data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-index="{{index}}">
+      <view wx:if="{{batchMode}}" class="item-check {{item._checked ? 'checked' : ''}}">
+        {{item._checked ? '✓' : ''}}
+      </view>
       <view class="item-left">
         <view class="item-name">{{item.fundName}}</view>
         <view class="item-code">{{item.fundCode}}</view>
       </view>
       <view class="item-right">
-        <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
         <view class="item-rate {{item.estimatedChangeRate > 0 ? 'up' : item.estimatedChangeRate < 0 ? 'down' : ''}}">
           {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate != null ? item.estimatedChangeRate : '--'}}%
         </view>
+        <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
       </view>
     </view>
+  </view>
+
+  <!-- 批量操作栏 -->
+  <view wx:if="{{watchlist.length > 0}}" class="batch-bar">
+    <text wx:if="{{!batchMode}}" class="batch-edit-btn" bind:tap="onToggleBatch">编辑</text>
+    <block wx:else>
+      <text class="batch-select-all" bind:tap="onSelectAll">全选</text>
+      <text class="batch-delete-btn" bind:tap="onBatchDelete">删除</text>
+      <text class="batch-cancel-btn" bind:tap="onToggleBatch">取消</text>
+    </block>
   </view>
 </view>
