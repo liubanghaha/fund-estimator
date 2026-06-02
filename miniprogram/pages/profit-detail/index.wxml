@@ -62,7 +62,7 @@
           </view>
         </view>
       </view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:680rpx;height:400rpx" width="340" height="200"></canvas>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onProfitTouch" bindtouchmove="onProfitTouch" bindtouchend="onProfitTouch"></canvas>
     </view>
 
     <!-- 日/月/年 统计 -->

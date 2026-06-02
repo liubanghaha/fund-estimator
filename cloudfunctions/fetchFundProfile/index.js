@@ -6,11 +6,37 @@ exports.main = async (event) => {
   if (!fundCode) return { code: 400, msg: "请提供基金代码" };
 
   try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    // 最新已发布季报：1-3月→12月, 4-6月→3月, 7-9月→6月, 10-12月→9月
+    const pubMonths = [12, 3, 6, 9];
+    let curM = 3, curY = year;
+    for (let i = 3; i >= 0; i--) {
+      if (month > pubMonths[i] + 1) { curM = pubMonths[i]; break; }
+      if (i === 0) { curY = year - 1; curM = 12; }
+    }
+    let prevY = curY, prevM = curM - 3;
+    if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
+
     const [profile, manager, holdings] = await Promise.all([
       fetchProfile(fundCode),
       fetchManager(fundCode),
-      fetchHoldings(fundCode),
+      fetchHoldings(fundCode, curY, curM),
     ]);
+
+    const prevHoldings = await fetchHoldings(fundCode, prevY, prevM).catch(() => []);
+    const prevMap = {};
+    prevHoldings.forEach(h => { prevMap[h.stockCode] = h; });
+    holdings.forEach(h => {
+      const prev = prevMap[h.stockCode];
+      if (prev && prev.navRatio) {
+        h.ratioChange = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
+      } else {
+        h.ratioChange = null;
+      }
+    });
+
     return { code: 0, data: { profile, manager, holdings } };
   } catch (e) {
     return { code: 500, msg: "获取基金信息失败" };
@@ -77,21 +103,10 @@ function fetchManager(fundCode) {
   });
 }
 
-function fetchHoldings(fundCode) {
+function fetchHoldings(fundCode, year, month) {
   const https = require("https");
   return new Promise((resolve) => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const qMonths = [3, 6, 9, 12];
-    let y = year;
-    let m = 12;
-    for (let i = qMonths.length - 1; i >= 0; i--) {
-      if (qMonths[i] <= month) { m = qMonths[i]; break; }
-    }
-    if (month < 4) { y = year - 1; m = 12; }
-
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${y}&month=${m}&rt=${Math.random()}`;
+    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${year}&month=${month}&rt=${Math.random()}`;
     const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });

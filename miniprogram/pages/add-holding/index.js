@@ -14,6 +14,11 @@ Page({
     marketValue: "",
 
     isEdit: false, id: "",
+    demoFunds: [
+      { name: "易方达蓝筹精选", code: "005827", amount: "¥12,580.00", return: "+1,280.50", isUp: true },
+      { name: "招商中证白酒", code: "161725", amount: "¥8,320.00", return: "-320.00", isUp: false },
+      { name: "天弘沪深300", code: "005918", amount: "¥5,600.00", return: "+458.20", isUp: true },
+    ],
   },
 
   onShow() {
@@ -133,7 +138,7 @@ Page({
       console.error("=== doOCR error ===", e);
       wx.hideLoading();
       this.setData({ ocrLoading: false });
-      wx.showToast({ title: "识别异常", icon: "none" });
+      wx.showToast({ title: "识别失败，请重试", icon: "none" });
     }
   },
 

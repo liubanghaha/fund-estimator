@@ -25,7 +25,7 @@
     <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
-          <view class="nav-label">估算净值</view>
+          <view class="nav-label">估算净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
           <view class="nav-big">{{estimatedNav}}</view>
           <view wx:if="{{nav}}" class="nav-ref">昨日净值 {{nav}}</view>
         </view>
@@ -42,8 +42,8 @@
     <view wx:if="{{!isTrading || !estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
-          <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益</view>
-          <view wx:else class="nav-label">单位净值</view>
+          <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
+          <view wx:else class="nav-label">单位净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
           <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
           <view wx:else class="nav-big">{{actualNav || nav || '--'}}</view>
           <view wx:if="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
@@ -86,6 +86,10 @@
           <view class="mh-label">单位净值</view>
           <view class="mh-value">{{actualNav || nav || '--'}}</view>
         </view>
+        <view wx:if="{{quarterNet !== 0}}" class="mh-item">
+          <view class="mh-label">近3月变动</view>
+          <view class="mh-value {{quarterNet > 0 ? 'up' : 'down'}}">{{quarterNet > 0 ? '+' : ''}}{{quarterNet}}</view>
+        </view>
       </view>
     </view>
 
@@ -97,23 +101,24 @@
 
     <view wx:if="{{activeTab === 'trend'}}">
       <view wx:if="{{navHistory.length > 1}}" class="chart-card">
-        <view class="section-title">净值走势</view>
+        <view class="section-title">收益走势</view>
         <view class="period-tabs">
           <view class="period-item {{chartPeriod === '1M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1M">近一月</view>
           <view class="period-item {{chartPeriod === '3M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3M">近三月</view>
           <view class="period-item {{chartPeriod === '6M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="6M">近半年</view>
           <view class="period-item {{chartPeriod === '1Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1Y">近一年</view>
+          <view class="period-item {{chartPeriod === '3Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3Y">近三年</view>
         </view>
-        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:360rpx"></canvas>
+        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:360rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
       </view>
       <view class="info-card"><view class="section-title">收益表现</view>
         <view class="metrics-grid">
-          <view class="metric-item"><view class="metric-label">日涨幅</view><view class="metric-value {{todayReturn > 0 ? 'up' : todayReturn < 0 ? 'down' : ''}}">{{todayReturn > 0 ? '+' : ''}}{{todayReturn}}%</view></view>
           <view class="metric-item"><view class="metric-label">近1周</view><view class="metric-value {{weekReturn > 0 ? 'up' : weekReturn < 0 ? 'down' : ''}}">{{weekReturn != null ? (weekReturn > 0 ? '+' : '') + weekReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近1月</view><view class="metric-value {{monthReturn > 0 ? 'up' : monthReturn < 0 ? 'down' : ''}}">{{monthReturn != null ? (monthReturn > 0 ? '+' : '') + monthReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近3月</view><view class="metric-value {{threeMonthReturn > 0 ? 'up' : threeMonthReturn < 0 ? 'down' : ''}}">{{threeMonthReturn != null ? (threeMonthReturn > 0 ? '+' : '') + threeMonthReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近6月</view><view class="metric-value {{sixMonthReturn > 0 ? 'up' : sixMonthReturn < 0 ? 'down' : ''}}">{{sixMonthReturn != null ? (sixMonthReturn > 0 ? '+' : '') + sixMonthReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近1年</view><view class="metric-value {{yearReturn > 0 ? 'up' : yearReturn < 0 ? 'down' : ''}}">{{yearReturn != null ? (yearReturn > 0 ? '+' : '') + yearReturn + '%' : '--'}}</view></view>
+          <view class="metric-item"><view class="metric-label">近3年</view><view class="metric-value {{threeYearReturn > 0 ? 'up' : threeYearReturn < 0 ? 'down' : ''}}">{{threeYearReturn != null ? (threeYearReturn > 0 ? '+' : '') + threeYearReturn + '%' : '--'}}</view></view>
         </view>
       </view>
       <view wx:if="{{navHistory.length > 0}}" class="info-card">
@@ -131,9 +136,21 @@
     <view wx:if="{{activeTab === 'holdings'}}">
       <view wx:if="{{holdings.length > 0}}" class="info-card">
         <view class="section-title">前十大持仓</view>
+        <view class="hold-header">
+          <text class="hold-h-name">名称</text>
+          <text class="hold-h-change">今日涨跌</text>
+          <text class="hold-h-ratio-chg">较上季度</text>
+          <text class="hold-h-ratio">占比</text>
+        </view>
         <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
           <view class="hold-rank">{{item.rank}}</view>
           <view class="hold-name">{{item.stockName}}</view>
+          <view class="hold-change {{item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : ''}}">
+            {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}
+          </view>
+          <view class="hold-ratio-change {{item.ratioChange > 0 ? 'up' : item.ratioChange < 0 ? 'down' : ''}}">
+            {{item.ratioChange != null ? (item.ratioChange > 0 ? '+' : '') + item.ratioChange + '%' : '--'}}
+          </view>
           <view class="hold-ratio">{{item.navRatio}}</view>
         </view>
       </view>

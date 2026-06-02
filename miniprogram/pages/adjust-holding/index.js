@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const calc = require("../../utils/calculator");
 
 Page({
   data: {
@@ -282,7 +283,7 @@ Page({
       setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ title: "保存失败", icon: "none" });
+      wx.showToast({ title: "保存失败，请重试", icon: "none" });
     }
   },
 
@@ -321,7 +322,7 @@ Page({
       wx.setStorageSync("portfolio_force_refresh", true);
       setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
     } else {
-      wx.showToast({ title: "保存失败", icon: "none" });
+      wx.showToast({ title: "保存失败，请重试", icon: "none" });
     }
   },
 
@@ -350,7 +351,7 @@ Page({
     console.log("=== adjust processItem ===", { oldS, oldP, amount, price, shares: s, type });
 
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const today = calc.formatDate(now);
 
     await api.transactionAdd({
       fundCode: h.fundCode, fundName: h.fundName,
@@ -475,7 +476,7 @@ Page({
     try {
       const amt = parseFloat(this.data.editTxAmount) || (s * p);
       const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const today = calc.formatDate(now);
 
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
@@ -497,7 +498,7 @@ Page({
       this.loadHoldings();
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ title: "保存失败", icon: "none" });
+      wx.showToast({ title: "保存失败，请重试", icon: "none" });
     }
   },
 

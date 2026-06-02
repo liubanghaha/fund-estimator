@@ -25,10 +25,23 @@
         <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-holding-item skeleton"></view>
       </view>
 
+      <view wx:elif="{{loadError}}" class="empty-state">
+        <view class="empty-icon">🔌</view>
+        <view class="empty-desc">网络异常，请检查网络后重试</view>
+        <view class="empty-btns">
+          <button class="login-btn" bind:tap="onScrollRefresh">点击重试</button>
+        </view>
+      </view>
+
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
-        <view class="empty-icon">📊</view>
-        <view class="empty-title">暂无持仓</view>
         <view class="empty-desc">添加你的第一笔基金持仓，开始追踪收益</view>
+        <view class="empty-demo-phone">
+          <image class="empty-demo-img" src="/images/index_demo.png" mode="widthFix" />
+          <view class="empty-demo-notch"></view>
+          <view class="empty-demo-bar"></view>
+        </view>
+        <text class="empty-demo-tip">参考样例：支付宝 APP 持仓截图</text>
+        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存，或手动添加</text>
         <view class="empty-btns">
           <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加基金</button>
           <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加基金</button>
@@ -38,7 +51,7 @@
       <view wx:else class="dashboard">
         <view class="asset-overview" bind:tap="onTapProfit">
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
-          <view class="asset-label">今日估算收益</view>
+          <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
           <view class="asset-value {{amountVisible ? (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '') : ''}}">
             {{amountVisible ? (todayProfit > 0 ? '+' : '') + todayProfit : '****'}}
           </view>
@@ -98,7 +111,6 @@
               data-name="{{item.fundName}}"
               data-index="{{index}}"
               data-id="{{item._id}}"
-              data-index="{{index}}"
               bind:touchstart="onTouchStart"
               bind:touchmove="onTouchMove"
               bind:touchend="onTouchEnd"
@@ -106,8 +118,8 @@
             >
               <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}">{{item._checked ? '✓' : ''}}</view>
               <view class="card-left">
-                <view class="card-row"><view class="c-name name-text">{{item.fundName}}<text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text></view></view>
-                <view class="card-row"><view class="c-name code-text">{{item.fundCode}}</view></view>
+                <view class="card-row"><view class="c-name name-text">{{item.fundName}}</view></view>
+                <view class="card-row"><view class="c-name code-text"><text class="updated-tag {{item.estimateUpdated ? '' : 'hidden'}}">✓</text>{{item.fundCode}}</view></view>
               </view>
               <view class="card-right" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
                 <view class="card-row">

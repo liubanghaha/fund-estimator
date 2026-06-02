@@ -47,7 +47,7 @@ Page({
           wx.showToast({ title: "已删除", icon: "success" });
           this.fetchWatchlist();
         } catch (e) {
-          wx.showToast({ title: "删除失败", icon: "none" });
+          wx.showToast({ title: "删除失败，请重试", icon: "none" });
         }
       },
     });
@@ -115,16 +115,6 @@ Page({
       const res = await api.watchlistList();
       if (res.result && res.result.code === 0 && res.result.data.length > 0) {
         const items = res.result.data;
-        const watchlistBasic = items.map((w) => ({
-          fundCode: w.fundCode,
-          fundName: w.fundName,
-          nav: null,
-          estimatedNav: null,
-          estimatedChangeRate: null,
-          estimateTime: null,
-        }));
-        this.setData({ watchlist: watchlistBasic, loaded: true });
-
         const codes = items.map((w) => w.fundCode);
         const estRes = await api.batchFetchEstimate(codes).catch(() => null);
         const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
@@ -137,6 +127,7 @@ Page({
             nav: e ? e.nav : null,
             estimatedNav: e ? e.estimatedNav : null,
             estimatedChangeRate: e ? e.estimatedChangeRate : null,
+            displayChangeRate: e ? e.displayChangeRate : null,
             estimateTime: e ? e.estimateTime : null,
           };
         });

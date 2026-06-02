@@ -191,7 +191,7 @@ Page({
     } catch (e) {
       wx.hideLoading();
       console.error("保存失败:", e);
-      wx.showToast({ title: "保存失败", icon: "none" });
+      wx.showToast({ title: "保存失败，请重试", icon: "none" });
     }
   },
 });

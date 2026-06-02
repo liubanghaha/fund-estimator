@@ -1,4 +1,6 @@
 const api = require("../../utils/api");
+const calc = require("../../utils/calculator");
+const chartUtil = require("../../utils/chart");
 
 Page({
   data: {
@@ -33,6 +35,12 @@ Page({
   },
 
   onLoad() {
+    const { windowWidth } = wx.getSystemInfoSync();
+    const canvasW = windowWidth - 24;
+    const canvasH = Math.round(canvasW * 0.59);
+    this._canvasW = canvasW;
+    this._canvasH = canvasH;
+    this.setData({ canvasW, canvasH });
     this.loadData();
   },
 
@@ -65,24 +73,29 @@ Page({
       const totalCost = holdings.reduce((sum, h) => sum + h.buyPrice * h.shares, 0);
       const navHistoryMap = data.navHistoryMap || {};
 
-      // 按基金独立计算日变动：只算持仓创建之后的净值变动
+      // 合并遍历：同时计算日变动 + 每日总市值 + 最早创建日
       const dailyChange = {};
+      const dateMap = {};
+      let earliestCreate = "9999-99-99";
       holdings.forEach((h) => {
         const history = navHistoryMap[h.fundCode] || [];
         let shares = parseFloat(h.shares || h.amount || 0);
         if (!shares && h.marketValue && h.currentNav) {
           shares = parseFloat(h.marketValue) / parseFloat(h.currentNav);
         }
+        const startDate = h.createTime ? calc.formatDate(h.createTime) : null;
+        if (startDate && startDate < earliestCreate) earliestCreate = startDate;
+
+        history.forEach((item) => {
+          if (!dateMap[item.date]) dateMap[item.date] = 0;
+          dateMap[item.date] += item.nav * h.shares;
+        });
+
         if (!shares || history.length < 2) return;
-        const startDate = h.createTime
-          ? `${new Date(h.createTime).getFullYear()}-${String(new Date(h.createTime).getMonth() + 1).padStart(2, '0')}-${String(new Date(h.createTime).getDate()).padStart(2, '0')}`
-          : null;
         for (let i = 1; i < history.length; i++) {
           const date = history[i].date;
-          // 创建日之前不累计，创建日当天用 [i-1]→[i] 的变动
           if (startDate && date < startDate) continue;
-          const prevNav = history[i - 1].nav;
-          const chg = (history[i].nav - prevNav) * shares;
+          const chg = (history[i].nav - history[i - 1].nav) * shares;
           if (!dailyChange[date]) dailyChange[date] = 0;
           dailyChange[date] += chg;
         }
@@ -91,26 +104,9 @@ Page({
         dailyChange[d] = +dailyChange[d].toFixed(2);
       }
 
-      // 如果持仓刚创建尚无所史变动，todayProfit 即为首日收益
       const hasHistory = Object.keys(dailyChange).length > 0;
       const todayProfit = parseFloat(data.todayProfit) || 0;
-
       const indexDaily = idxRes || [];
-
-      // 每日总市值（走势图用，只从最早持仓创建日开始）
-      const fmtCT = (ct) => ct ? `${new Date(ct).getFullYear()}-${String(new Date(ct).getMonth() + 1).padStart(2, '0')}-${String(new Date(ct).getDate()).padStart(2, '0')}` : null;
-      const earliestCreate = holdings.reduce((min, h) => {
-        const d = fmtCT(h.createTime);
-        return d && d < min ? d : min;
-      }, "9999-99-99");
-
-      const dateMap = {};
-      holdings.forEach((h) => {
-        (navHistoryMap[h.fundCode] || []).forEach((item) => {
-          if (!dateMap[item.date]) dateMap[item.date] = 0;
-          dateMap[item.date] += item.nav * h.shares;
-        });
-      });
 
       let allDaily = Object.entries(dateMap)
         .filter(([date]) => date >= earliestCreate)
@@ -123,7 +119,7 @@ Page({
 
       // 日历数据（即使走势图为空也生成结构）
       const now = new Date();
-      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const todayStr = calc.formatDate(now);
       const currentMonth = todayStr.slice(0, 7);
       const currentYear = todayStr.slice(0, 4);
       const availableMonths = [...new Set(Object.keys(dateMap).map(d => d.slice(0, 7)))].sort().reverse();
@@ -149,9 +145,7 @@ Page({
           selectedMonth, availableMonths,
           selectedYear, availableYears,
           dayCalendar, monthCalendar, yearData,
-        }, () => {
-          setTimeout(() => this.drawChart(), 800);
-        });
+        }, () => this.drawChart());
         return;
       }
 
@@ -206,9 +200,7 @@ Page({
         selectedMonth, availableMonths,
         selectedYear, availableYears,
         dayCalendar, monthCalendar, yearData,
-      }, () => {
-        setTimeout(() => this.drawChart(), 500);
-      });
+      }, () => this.drawChart());
     } catch (e) {
       console.error("加载收益数据失败:", e);
       this.setData({ loading: false });
@@ -220,13 +212,11 @@ Page({
     const day = d.getDay();
     const diff = day === 0 ? 6 : day - 1;
     d.setDate(d.getDate() - diff);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return calc.formatDate(d);
   },
 
   onSummaryTap(e) {
-    this.setData({ activeTab: e.currentTarget.dataset.tab }, () => {
-      setTimeout(() => this.drawChart(), 300);
-    });
+    this.setData({ activeTab: e.currentTarget.dataset.tab }, () => this.drawChart());
   },
 
   buildDayCalendar(allDaily, dailyChange, month) {
@@ -302,7 +292,7 @@ Page({
     console.log("=== onSelectIndex ===", code, indexDaily.length, indexDaily.slice(0, 2));
     this.setData({ compareIndex: code, compareLabel: name }, () => {
       wx.hideLoading();
-      setTimeout(() => this.drawChart(), 300);
+      this.drawChart();
     });
   },
 
@@ -397,125 +387,71 @@ Page({
     return { portfolio: merged, isComparing: hasCompare };
   },
 
+  _getPfColor(data) {
+    if (!data || data.length < 2) return '#E4393C';
+    const first = data[0].baseRate, last = data[data.length - 1].baseRate;
+    return last >= first ? '#E4393C' : '#2E8B57';
+  },
+
   drawChart() {
     const { portfolio, isComparing, indexOnly } = this.getChartData();
     if (!portfolio || portfolio.length < 2) return;
 
     const ctx = wx.createCanvasContext('profitCanvas', this);
-    const w = 340, h = 200;
-    const list = portfolio;
+    const w = this._canvasW || 340, h = this._canvasH || 200;
+    const p = { top: 36, right: 12, bottom: 36, left: 52 };
 
-    // 取值：indexOnly 时只用 indexRate，否则优先 baseRate
-    const vals = indexOnly
-      ? list.map(d => d.indexRate)
-      : list.map(d => d.baseRate);
-    const idxVals = list.filter(d => d.indexRate !== null).map(d => d.indexRate);
-    const allVals = [...vals.filter(v => v != null), ...idxVals];
-    if (allVals.length === 0) return;
-    const min = Math.min(...allVals), max = Math.max(...allVals);
-    const range = max - min || 0.01;
-    const yMin = min - range * 0.15, yMax = max + range * 0.15;
-
-    const m = { top: 24, right: 12, bottom: 36, left: 52 };
-    const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
-    const xp = (i) => m.left + (pw / (list.length - 1)) * i;
-    const yp = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
-
-    ctx.setFillStyle('#FFFFFF');
-    ctx.fillRect(0, 0, w, h);
-
-    if (!indexOnly) {
-      const isUp = vals[vals.length - 1] >= vals[0];
-      const pfColor = isUp ? '#E4393C' : '#2E8B57';
-      const gradient = ctx.createLinearGradient(0, m.top, 0, h - m.bottom);
-      gradient.addColorStop(0, isUp ? 'rgba(228,57,60,0.10)' : 'rgba(46,139,87,0.10)');
-      gradient.addColorStop(1, isUp ? 'rgba(228,57,60,0.01)' : 'rgba(46,139,87,0.01)');
-      ctx.beginPath();
-      let pfStarted = false;
-      list.forEach((d, i) => {
-        if (d.baseRate === null) { pfStarted = false; return; }
-        const x = xp(i), y = yp(d.baseRate);
-        if (!pfStarted) { ctx.moveTo(x, y); pfStarted = true; } else ctx.lineTo(x, y);
+    if (indexOnly) {
+      const data = portfolio.map(d => ({ date: d.date, value: d.indexRate }));
+      chartUtil.drawLineChart(ctx, { w, h, data, xField: 'date', yField: 'value',
+        color: '#E4393C', padding: p });
+    } else if (isComparing) {
+      const color = this._getPfColor(portfolio);
+      chartUtil.drawDualLineChart(ctx, {
+        w, h, data: portfolio, padding: p,
+        fieldA: 'baseRate', fieldB: 'indexRate',
+        colorA: color, colorB: '#1976D2',
+        labelA: '我的', labelB: this.data.compareLabel,
       });
-      if (pfStarted) {
-        ctx.lineTo(xp(list.length - 1), h - m.bottom);
-        ctx.lineTo(xp(0), h - m.bottom);
-        ctx.closePath();
-        ctx.setFillStyle(gradient);
-        ctx.fill();
-        ctx.beginPath();
-        pfStarted = false;
-        list.forEach((d, i) => {
-          if (d.baseRate === null) { pfStarted = false; return; }
-          const x = xp(i), y = yp(d.baseRate);
-          if (!pfStarted) { ctx.moveTo(x, y); pfStarted = true; } else ctx.lineTo(x, y);
-        });
-        ctx.setStrokeStyle(pfColor);
-        ctx.setLineWidth(2);
-        ctx.stroke();
-      }
+    } else {
+      const data = portfolio.map(d => ({ date: d.date, value: d.baseRate }));
+      const color = this._getPfColor(portfolio);
+      chartUtil.drawLineChart(ctx, { w, h, data, xField: 'date', yField: 'value',
+        color, padding: p });
     }
+    ctx.draw();
+  },
 
-    // 指数线（有数据时始终画）
-    if (idxVals.length >= 2) {
-      const showCompare = isComparing || indexOnly;
-      const idxColor = indexOnly ? '#E4393C' : '#1976D2';
-      ctx.beginPath();
-      let started = false;
-      list.forEach((d, i) => {
-        if (d.indexRate === null) { started = false; return; }
-        const x = xp(i), y = yp(d.indexRate);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  onProfitTouch(e) {
+    const { portfolio, isComparing, indexOnly } = this.getChartData();
+    if (!portfolio || portfolio.length < 2) return;
+    const ctx = wx.createCanvasContext('profitCanvas', this);
+    const w = this._canvasW || 340, h = this._canvasH || 200;
+    const p = { top: 36, right: 12, bottom: 36, left: 52 };
+    const baseOpts = { w, h, padding: p };
+
+    if (e.type === 'touchend') {
+      this.drawChart();
+      return;
+    }
+    if (e.type === 'touchstart') this.drawChart();
+
+    if (indexOnly) {
+      const data = portfolio.map(d => ({ date: d.date, value: d.indexRate }));
+      chartUtil.handleTouch(ctx, e, { ...baseOpts, data, color: '#E4393C' });
+    } else if (isComparing) {
+      const color = this._getPfColor(portfolio);
+      chartUtil.handleDualTouch(ctx, e, {
+        ...baseOpts, data: portfolio,
+        fieldA: 'baseRate', fieldB: 'indexRate',
+        colorA: color, colorB: '#1976D2',
+        labelA: '我的', labelB: this.data.compareLabel,
       });
-      ctx.setStrokeStyle(idxColor);
-      ctx.setLineWidth(2);
-      ctx.stroke();
-
-      if (showCompare) {
-        ctx.setFontSize(9);
-        ctx.setTextBaseline('top');
-        if (indexOnly) {
-          ctx.setFillStyle('#E4393C');
-          ctx.fillRect(m.left + 4, 4, 10, 3);
-          ctx.setFillStyle('#666');
-          ctx.setTextAlign('left');
-          ctx.fillText(this.data.compareLabel, m.left + 17, 1);
-        } else {
-          const pfColor = vals[vals.length - 1] >= vals[0] ? '#E4393C' : '#2E8B57';
-          ctx.setFillStyle(pfColor);
-          ctx.fillRect(m.left + 4, 4, 10, 3);
-          ctx.setFillStyle('#666');
-          ctx.setTextAlign('left');
-          ctx.fillText('我的', m.left + 17, 1);
-          ctx.setFillStyle('#1976D2');
-          ctx.fillRect(m.left + 50, 4, 10, 3);
-          ctx.setFillStyle('#666');
-          ctx.fillText(this.data.compareLabel, m.left + 63, 1);
-        }
-      }
+    } else {
+      const data = portfolio.map(d => ({ date: d.date, value: d.baseRate }));
+      const color = this._getPfColor(portfolio);
+      chartUtil.handleTouch(ctx, e, { ...baseOpts, data, color });
     }
-
-    // Y轴
-    ctx.setFillStyle('#999');
-    ctx.setFontSize(10);
-    ctx.setTextAlign('right');
-    ctx.setTextBaseline('middle');
-    for (let i = 0; i <= 4; i++) {
-      const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(1) + '%', m.left - 6, yp(val));
-    }
-
-    // X轴
-    ctx.setTextAlign('center');
-    ctx.setTextBaseline('top');
-    const steps = Math.min(5, list.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (list.length - 1));
-      let label = list[idx].date.slice(5);
-      if (this.data.activeTab === 'year') label = list[idx].date.slice(5, 7) + '月';
-      ctx.fillText(label, xp(idx), h - m.bottom + 8);
-    }
-
     ctx.draw();
   },
 });

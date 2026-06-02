@@ -6,8 +6,8 @@ const PAGE_SIZE = 8;
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
   { code: "399001", name: "深证成指" },
-  { code: "000300", name: "沪深300" },
   { code: "399006", name: "创业板指" },
+  { code: "000300", name: "沪深300" },
   { code: "HSTECH", name: "恒生科技" },
   { code: "HSI", name: "恒生指数" },
   { code: "SPX", name: "标普500" },
@@ -45,6 +45,7 @@ Page({
     indexBarHeight: 110,
     refresherTriggered: false,
     fromCache: false,
+    allUpdated: false,
     sortField: "todayProfit",
     sortOrder: "desc",
     listScrollX: 0,
@@ -52,6 +53,12 @@ Page({
     batchMode: false,
     selectedCount: 0,
     allSelected: false,
+    loadError: false,
+    demoFunds: [
+      { name: "易方达蓝筹精选", code: "005827", amount: "¥12,580.00", return: "+1,280.50", isUp: true },
+      { name: "招商中证白酒", code: "161725", amount: "¥8,320.00", return: "-320.00", isUp: false },
+      { name: "天弘沪深300", code: "005918", amount: "¥5,600.00", return: "+458.20", isUp: true },
+    ],
   },
 
   onLoad() {
@@ -98,6 +105,7 @@ Page({
       if (cached && cached.holdings && cached.holdings.length > 0) {
         let holdings = cached.holdings;
         holdings = this.sortHoldings(holdings);
+        const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
           holdings,
           displayCount: PAGE_SIZE,
@@ -109,6 +117,7 @@ Page({
           totalReturnRate: cached.totalReturnRate,
           updateTime: cached.updateTime || "",
           fromCache: true,
+          allUpdated,
         });
       }
     } catch (e) { /* ignore cache read error */ }
@@ -153,9 +162,10 @@ Page({
         const d = res.result.data;
         let holdings = (d.holdings || []);
         holdings = this.sortHoldings(holdings);
+        const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
-          loading: false,
-          holdings,
+          loading: false, loadError: false,
+          holdings, allUpdated,
           displayCount: PAGE_SIZE,
           hasMore: holdings.length > PAGE_SIZE,
           totalAmount: d.totalAmount,
@@ -169,7 +179,7 @@ Page({
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
       }
     } catch (e) {
-      this.setData({ loading: false });
+      this.setData({ loading: false, loadError: this.data.holdings.length === 0 });
       console.error("获取持仓失败:", e);
     }
   },
@@ -214,54 +224,59 @@ Page({
       this.setData({ indexCards: [], indexLoading: false, indexBarHeight: 0 });
       return;
     }
-    try {
-      const FETCH_TIMEOUT = 6000;
-      const A_CODES = ["000001", "399001", "000300", "399006"];
-      const fetchOne = async (idx) => {
-        // A股指数走客户端直连（无云函数冷启动，更快）
-        if (A_CODES.includes(idx.code)) {
-          const clientRes = await Promise.race([
-            api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
-            new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
-          ]);
-          if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) {
-            return clientRes.data;
-          }
-        }
-        // 兜底走云函数
-        const res = await Promise.race([
-          api.fetchMarketIndex(idx.code, 2).catch(() => null),
+    const FETCH_TIMEOUT = 3000;
+    const A_CODES = ["000001", "399001", "000300", "399006"];
+    const fetchOne = async (idx) => {
+      if (A_CODES.includes(idx.code)) {
+        const clientRes = await Promise.race([
+          api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
           new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
         ]);
-        return (res && res.result && res.result.code === 0 && res.result.data) || [];
-      };
-      const results = await Promise.all(activeIndices.map(fetchOne));
-      const indexCards = activeIndices.map((idx, i) => {
-        const data = results[i] || [];
-        if (data.length >= 1) {
-          const latest = data[data.length - 1];
-          const prev = data.length >= 2 ? data[data.length - 2] : latest;
-          const change = +(latest.close - prev.close).toFixed(2);
-          const changeRate = prev.close && prev.close !== 0
-            ? +((change / prev.close) * 100).toFixed(2) : 0;
-          return {
-            name: idx.name,
-            code: idx.code,
-            price: latest.close.toFixed(2),
-            change: change > 0 ? `+${change}` : `${change}`,
-            changeRate: changeRate > 0 ? `+${changeRate}` : `${changeRate}`,
-            isUp: change >= 0,
-          };
+        if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) {
+          return clientRes.data;
         }
-        return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
-      });
+      }
+      const res = await Promise.race([
+        api.fetchMarketIndex(idx.code, 2).catch(() => null),
+        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+      ]);
+      return (res && res.result && res.result.code === 0 && res.result.data) || [];
+    };
+
+    const buildCard = (idx, data) => {
+      if (data && data.length >= 1) {
+        const latest = data[data.length - 1];
+        const prev = data.length >= 2 ? data[data.length - 2] : latest;
+        const change = +(latest.close - prev.close).toFixed(2);
+        const changeRate = prev.close && prev.close !== 0
+          ? +((change / prev.close) * 100).toFixed(2) : 0;
+        return {
+          name: idx.name, code: idx.code,
+          price: latest.close.toFixed(2),
+          change: change > 0 ? `+${change}` : `${change}`,
+          changeRate: changeRate > 0 ? `+${changeRate}` : `${changeRate}`,
+          isUp: change >= 0,
+        };
+      }
+      return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
+    };
+
+    // 逐指数更新，不等全部完成
+    const cards = [...this.data.indexCards];
+    const promises = activeIndices.map((idx, i) =>
+      fetchOne(idx).then((data) => {
+        cards[i] = buildCard(idx, data);
+        this.setData({ indexCards: [...cards] });
+        return cards[i];
+      })
+    );
+
+    Promise.all(promises).then(() => {
       const codes = activeIndices.map((i) => i.code).join(",");
-      wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards: indexCards, ts: Date.now() } });
-      this.setData({ indexCards, indexLoading: false, indexBarHeight: 110 });
-    } catch (e) {
-      this.setData({ indexLoading: false });
-      console.error("获取指数失败:", e);
-    }
+      wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards, ts: Date.now() } });
+    }).catch(() => {});
+
+    this.setData({ indexLoading: false });
   },
 
   onToggleIndex() {
@@ -406,8 +421,8 @@ Page({
   onTouchStart(e) {
     this._touchData = {
       startX: e.touches[0].clientX,
-      startY: e.touches[0].clientY,
       baseScroll: this.data.listScrollX,
+      currentX: this.data.listScrollX,
       moved: false,
     };
   },
@@ -415,21 +430,21 @@ Page({
   onTouchMove(e) {
     if (!this._touchData) return;
     const dx = e.touches[0].clientX - this._touchData.startX;
-    const dy = e.touches[0].clientY - this._touchData.startY;
-    if (!this._touchData.moved && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
+    if (!this._touchData.moved && Math.abs(dx) > 3) {
       this._touchData.moved = true;
     }
     if (!this._touchData.moved) return;
     const px = this.rpxToPx(EXTRA_WIDTH);
     let newX = this._touchData.baseScroll + dx;
     newX = Math.min(0, Math.max(-px, newX));
+    this._touchData.currentX = newX;
     this.setData({ listScrollX: newX, listSliding: true });
   },
 
   onTouchEnd(e) {
     if (!this._touchData) return;
     const px = this.rpxToPx(EXTRA_WIDTH);
-    const cur = this.data.listScrollX;
+    const cur = this._touchData.currentX;
     const snapX = Math.abs(cur) > px * 0.3 ? -px : 0;
     this.setData({ listScrollX: snapX, listSliding: false });
     this._touchData = null;
@@ -477,7 +492,7 @@ Page({
                 })
                 .catch(() => {
                   wx.hideLoading();
-                  wx.showToast({ title: "删除失败", icon: "none" });
+                  wx.showToast({ title: "删除失败，请重试", icon: "none" });
                 });
             },
           });

@@ -23,8 +23,8 @@
         <view class="item-code">{{item.fundCode}}</view>
       </view>
       <view class="item-right">
-        <view class="item-rate {{item.estimatedChangeRate > 0 ? 'up' : item.estimatedChangeRate < 0 ? 'down' : ''}}">
-          {{item.estimatedChangeRate > 0 ? '+' : ''}}{{item.estimatedChangeRate != null ? item.estimatedChangeRate : '--'}}%
+        <view class="item-rate {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">
+          {{item.displayChangeRate > 0 ? '+' : ''}}{{item.displayChangeRate != null ? item.displayChangeRate : '--'}}%
         </view>
         <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
       </view>

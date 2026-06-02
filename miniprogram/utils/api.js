@@ -20,6 +20,9 @@ const api = {
   fetchFundProfile(fundCode) {
     return this.callFunction("fetchFundProfile", { fundCode });
   },
+  fetchFundOverview(fundCode) {
+    return this.callFunction("fetchFundOverview", { fundCode });
+  },
   userLogin() {
     return this.callFunction("userLogin", {});
   },

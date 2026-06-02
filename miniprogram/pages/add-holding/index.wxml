@@ -3,6 +3,17 @@
   <!-- ========== 截图导入模式 ========== -->
   <block wx:if="{{mode === 'screenshot'}}">
 
+    <!-- 截图样例 -->
+    <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="demo-bar">
+      <view class="demo-phone">
+        <image class="demo-img" src="/images/index_demo.png" mode="widthFix" />
+        <view class="demo-phone-notch"></view>
+        <view class="demo-phone-bar"></view>
+      </view>
+      <text class="demo-tip">参考样例：支付宝 APP 持仓截图</text>
+      <text class="demo-sub-tip">识别结果可能有偏差，请核对后保存，或手动添加</text>
+    </view>
+
     <!-- 未选图 -->
     <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
       <view class="import-btn" bind:tap="onImportScreenshot">

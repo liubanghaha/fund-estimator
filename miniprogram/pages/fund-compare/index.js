@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
+const chartUtil = require("../../utils/chart");
 
 Page({
   data: {
@@ -22,7 +23,12 @@ Page({
     const rawName = options.fundName ? decodeURIComponent(options.fundName) : "";
     const code = (rawCode && rawCode !== "undefined") ? rawCode : "";
     const name = (rawName && rawName !== "undefined") ? rawName : "";
-    this.setData({ "fundA.code": code, "fundA.name": name });
+    const { windowWidth } = wx.getSystemInfoSync();
+    const canvasW = windowWidth - 24;
+    const canvasH = Math.round(canvasW * 0.62);
+    this._canvasW = canvasW;
+    this._canvasH = canvasH;
+    this.setData({ "fundA.code": code, "fundA.name": name, canvasW, canvasH });
     if (code) {
       this.fetchFundAData();
       this.fetchWatchlist();
@@ -33,22 +39,15 @@ Page({
 
   async fetchFundAData() {
     try {
-      const [estRes, histRes, profRes] = await Promise.all([
-        api.fetchFundEstimate(this.data.fundA.code),
-        api.fetchFundNAVHistory(this.data.fundA.code, 260),
-        api.fetchFundProfile(this.data.fundA.code),
-      ]);
-
-      const est = (estRes.result && estRes.result.code === 0) ? estRes.result.data : {};
-      const history = (histRes.result && histRes.result.code === 0) ? histRes.result.data : [];
-      const profile = (profRes.result && profRes.result.code === 0) ? profRes.result.data : {};
+      const res = await api.fetchFundOverview(this.data.fundA.code);
+      const d = (res.result && res.result.code === 0) ? res.result.data : {};
 
       this.setData({
-        "fundA.nav": est.actualNav || est.nav || null,
-        "fundA.changeRate": est.estimatedChangeRate != null ? est.estimatedChangeRate : est.actualChangeRate,
-        "fundA.history": history,
-        "fundA.profile": profile.profile || {},
-        "fundA.manager": profile.manager || {},
+        "fundA.nav": d.actualNav || d.nav || null,
+        "fundA.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
+        "fundA.history": d.history || [],
+        "fundA.profile": d.profile || {},
+        "fundA.manager": d.manager || {},
         loading: false,
       });
     } catch (e) {
@@ -98,25 +97,18 @@ Page({
     });
 
     try {
-      const [estRes, histRes, profRes] = await Promise.all([
-        api.fetchFundEstimate(code),
-        api.fetchFundNAVHistory(code, 260),
-        api.fetchFundProfile(code),
-      ]);
-
-      const est = (estRes.result && estRes.result.code === 0) ? estRes.result.data : {};
-      const history = (histRes.result && histRes.result.code === 0) ? histRes.result.data : [];
-      const profile = (profRes.result && profRes.result.code === 0) ? profRes.result.data : {};
+      const res = await api.fetchFundOverview(code);
+      const d = (res.result && res.result.code === 0) ? res.result.data : {};
 
       this.setData({
-        "fundB.nav": est.actualNav || est.nav || null,
-        "fundB.changeRate": est.estimatedChangeRate != null ? est.estimatedChangeRate : est.actualChangeRate,
-        "fundB.history": history,
-        "fundB.profile": profile.profile || {},
-        "fundB.manager": profile.manager || {},
+        "fundB.nav": d.actualNav || d.nav || null,
+        "fundB.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
+        "fundB.history": d.history || [],
+        "fundB.profile": d.profile || {},
+        "fundB.manager": d.manager || {},
       }, () => {
         this.buildComparison();
-        setTimeout(() => this.drawChart(), 500);
+        this.drawChart();
       });
     } catch (e) {
       wx.showToast({ title: "加载失败", icon: "none" });
@@ -243,85 +235,41 @@ Page({
     return result;
   },
 
+  _getCompareOpts() {
+    return {
+      w: this._canvasW || 340,
+      h: this._canvasH || 212,
+      padding: { top: 36, right: 12, bottom: 36, left: 52 },
+      fieldA: 'rateA', fieldB: 'rateB',
+      colorA: '#E4393C', colorB: '#1976D2',
+      labelA: (this.data.fundA.name || '').slice(0, 10),
+      labelB: (this.data.fundB.name || '').slice(0, 10),
+    };
+  },
+
   drawChart() {
     const chartData = this.data.chartData;
     if (!chartData || chartData.length < 2) return;
-
     const ctx = wx.createCanvasContext('compareCanvas', this);
-    const w = 340, h = 212;
-
-    const ratesA = chartData.map(d => d.rateA).filter(v => v !== null);
-    const ratesB = chartData.map(d => d.rateB).filter(v => v !== null);
-    const allVals = [...ratesA, ...ratesB];
-    if (allVals.length === 0) return;
-    const min = Math.min(...allVals), max = Math.max(...allVals);
-    const range = max - min || 0.01;
-    const pad = range * 0.15;
-    const yMin = min - pad, yMax = max + pad;
-
-    const m = { top: 36, right: 12, bottom: 36, left: 52 };
-    const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
-    const xp = (i) => m.left + (pw / (chartData.length - 1)) * i;
-    const yp = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
-
-    ctx.setFillStyle('#FFFFFF');
-    ctx.fillRect(0, 0, w, h);
-
-    // Draw fund A line (red)
-    this.drawLine(ctx, chartData, 'rateA', xp, yp, '#E4393C', h, m);
-    // Draw fund B line (blue)
-    this.drawLine(ctx, chartData, 'rateB', xp, yp, '#1976D2', h, m);
-
-    // Legend — 分两行显示，避免基金名称重叠
-    ctx.setFontSize(9);
-    ctx.setTextBaseline('middle');
-    const legendY1 = 10, legendY2 = 22;
-    // 基金A
-    ctx.setFillStyle('#E4393C');
-    ctx.fillRect(m.left + 4, legendY1 - 2, 12, 4);
-    ctx.setFillStyle('#666');
-    ctx.setTextAlign('left');
-    ctx.fillText((this.data.fundA.name || '基金A').slice(0, 10), m.left + 20, legendY1);
-    // 基金B
-    ctx.setFillStyle('#1976D2');
-    ctx.fillRect(m.left + 4, legendY2 - 2, 12, 4);
-    ctx.setFillStyle('#666');
-    ctx.fillText((this.data.fundB.name || '基金B').slice(0, 10), m.left + 20, legendY2);
-
-    // Y-axis
-    ctx.setFillStyle('#999');
-    ctx.setFontSize(10);
-    ctx.setTextAlign('right');
-    ctx.setTextBaseline('middle');
-    for (let i = 0; i <= 4; i++) {
-      const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(1) + '%', m.left - 6, yp(val));
-    }
-
-    // X-axis
-    ctx.setTextAlign('center');
-    ctx.setTextBaseline('top');
-    ctx.setFillStyle('#999');
-    const steps = Math.min(5, chartData.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (chartData.length - 1));
-      ctx.fillText(chartData[idx].date.slice(5), xp(idx), h - m.bottom + 8);
-    }
-
+    chartUtil.drawDualLineChart(ctx, { ...this._getCompareOpts(), data: chartData });
     ctx.draw();
   },
 
-  drawLine(ctx, data, field, xp, yp, color, h, m) {
-    let started = false;
-    ctx.beginPath();
-    data.forEach((d, i) => {
-      if (d[field] === null) { started = false; return; }
-      const x = xp(i), y = yp(d[field]);
-      if (!started) { ctx.moveTo(x, y); started = true; }
-      else { ctx.lineTo(x, y); }
-    });
-    ctx.setStrokeStyle(color);
-    ctx.setLineWidth(2);
-    ctx.stroke();
+  onCompareTouch(e) {
+    const chartData = this.data.chartData;
+    if (!chartData || chartData.length < 2) return;
+    const ctx = wx.createCanvasContext('compareCanvas', this);
+    const opts = { ...this._getCompareOpts(), data: chartData };
+    if (e.type === 'touchend') {
+      chartUtil.drawDualLineChart(ctx, opts);
+      ctx.draw();
+      return;
+    }
+    if (e.type === 'touchstart') {
+      chartUtil.drawDualLineChart(ctx, opts);
+      ctx.draw();
+    }
+    chartUtil.handleDualTouch(ctx, e, opts);
+    ctx.draw();
   },
 });
