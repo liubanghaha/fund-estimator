@@ -42,8 +42,7 @@
 .t-left{flex:1;min-width:0;padding-left:16rpx;font-size:28rpx;font-weight:500;color:#333;position:relative;z-index:2;background:#F5F5F5;box-shadow:6rpx 0 10rpx -4rpx rgba(0,0,0,.10)}
 .t-slide{flex-shrink:0;display:flex;gap:20rpx;position:relative;z-index:1}
 .swipe-hint{font-size:22rpx;color:#CCC;font-weight:400;margin-left:8rpx}
-.updated-tag{font-size:14rpx;color:#FFF;background:#1976D2;border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle;flex-shrink:0}
-.updated-tag.hidden{visibility:hidden}
+.updated-tag{font-size:14rpx;color:#FFF;background:#1976D2;border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle}
 
 /* 列标题（在标题栏滑动区内，可点击排序） */
 .hd-text{font-size:22rpx;font-weight:500;color:#999;line-height:1}

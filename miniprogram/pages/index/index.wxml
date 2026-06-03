@@ -3,6 +3,7 @@
     scroll-y
     class="page-scroll"
     refresher-enabled
+    refresher-background="#F5F5F5"
     refresher-triggered="{{refresherTriggered}}"
     bindrefresherrefresh="onScrollRefresh"
     bindscrolltolower="onScrollToLower"
@@ -119,7 +120,7 @@
               <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}">{{item._checked ? '✓' : ''}}</view>
               <view class="card-left">
                 <view class="card-row"><view class="c-name name-text">{{item.fundName}}</view></view>
-                <view class="card-row"><view class="c-name code-text"><text class="updated-tag {{item.estimateUpdated ? '' : 'hidden'}}">✓</text>{{item.fundCode}}</view></view>
+                <view class="card-row"><view class="c-name code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view></view>
               </view>
               <view class="card-right" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
                 <view class="card-row">

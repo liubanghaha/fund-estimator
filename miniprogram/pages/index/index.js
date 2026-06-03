@@ -149,13 +149,13 @@ Page({
 
   onScrollRefresh() {
     this._lastFetch = Date.now();
-    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
+    Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
     });
   },
 
-  async fetchPortfolio() {
-    this.setData({ loading: true });
+  async fetchPortfolio(showLoading = true) {
+    if (showLoading) this.setData({ loading: true });
     try {
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
