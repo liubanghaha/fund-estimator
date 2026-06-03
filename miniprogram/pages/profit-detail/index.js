@@ -3,7 +3,6 @@ const calc = require("../../utils/calculator");
 const chartUtil = require("../../utils/chart");
 
 const CACHE_KEY = "profit_detail_cache";
-const PORTFOLIO_CACHE_KEY = "portfolio_cache";
 
 Page({
   data: {
@@ -57,19 +56,7 @@ Page({
           weekProfit: c.summary.weekProfit, monthProfit: c.summary.monthProfit, yearProfit: c.summary.yearProfit,
           weekProfitRate: c.summary.weekProfitRate, monthProfitRate: c.summary.monthProfitRate, yearProfitRate: c.summary.yearProfitRate,
           earliestCreate: c.summary.earliestCreate,
-        });
-        this._drawPending = true;
-      }
-    } catch (e) { /* ignore */ }
-    // 兜底：用首页缓存的当日数据
-    try {
-      const pc = wx.getStorageSync(PORTFOLIO_CACHE_KEY);
-      if (pc && !this._allDaily) {
-        this.setData({
-          ready: true, totalCost: 0,
-          todayProfit: pc.todayProfit || "0.00", todayProfitRate: pc.todayProfitRate || "0.00",
-          weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
-        });
+        }, () => this.drawChart());
       }
     } catch (e) { /* ignore */ }
   },
@@ -144,6 +131,7 @@ Page({
         earliestCreate: earliest,
       };
 
+      this._calBuilt = false;
       this.setData({ ready: true, ...summary }, () => this._drawChartIfReady());
 
       // 写缓存
