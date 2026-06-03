@@ -1,22 +1,29 @@
 const api = require("../../utils/api");
-const calc = require("../../utils/calculator");
-const chartUtil = require("../../utils/chart");
-
-const CACHE_KEY = "profit_detail_cache";
 
 Page({
   data: {
     activeTab: "week",
-    ready: false,
+    loading: true,
     empty: false,
     totalCost: 0,
-    todayProfit: "0.00", todayProfitRate: "0.00",
-    weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
-    weekProfitRate: "0.00", monthProfitRate: "0.00", yearProfitRate: "0.00",
+    todayProfit: "0.00",
+    todayProfitRate: "0.00",
+    weekProfit: "0.00",
+    monthProfit: "0.00",
+    yearProfit: "0.00",
+    weekProfitRate: "0.00",
+    monthProfitRate: "0.00",
+    yearProfitRate: "0.00",
     calendarView: "day",
-    selectedMonth: "", availableMonths: [], dayCalendar: [],
-    selectedYear: "", availableYears: [], monthCalendar: [], yearData: [],
-    compareIndex: "000300", compareLabel: "沪深300",
+    selectedMonth: "",
+    availableMonths: [],
+    dayCalendar: [],
+    monthCalendar: [],
+    yearData: [],
+    selectedYear: "",
+    availableYears: [],
+    compareIndex: "000300",
+    compareLabel: "沪深300",
     availableIndices: [
       { code: "000300", name: "沪深300" },
       { code: "000001", name: "上证指数" },
@@ -30,301 +37,477 @@ Page({
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH });
-    // 先展示缓存，再后台拉取
-    this._applyCache();
-    this._loadFresh();
+    this.loadData();
   },
 
   onPullDownRefresh() {
-    this._loadFresh().finally(() => wx.stopPullDownRefresh());
+    this.loadData().finally(() => wx.stopPullDownRefresh());
   },
 
-  // ======== 缓存：瞬开 ========
-
-  _applyCache() {
-    try {
-      const c = wx.getStorageSync(CACHE_KEY);
-      if (c && c.summary && c.chartData) {
-        this._allDaily = c.chartData.allDaily;
-        this._dailyChange = c.chartData.dailyChange;
-        this._indexDaily = c.chartData.indexDaily || [];
-        this._totalCost = c.summary.totalCost;
-        this.setData({
-          ready: true,
-          totalCost: c.summary.totalCost,
-          todayProfit: c.summary.todayProfit, todayProfitRate: c.summary.todayProfitRate,
-          weekProfit: c.summary.weekProfit, monthProfit: c.summary.monthProfit, yearProfit: c.summary.yearProfit,
-          weekProfitRate: c.summary.weekProfitRate, monthProfitRate: c.summary.monthProfitRate, yearProfitRate: c.summary.yearProfitRate,
-          earliestCreate: c.summary.earliestCreate,
-        }, () => this.drawChart());
-      }
-    } catch (e) { /* ignore */ }
-  },
-
-  async _loadFresh() {
+  async loadData() {
+    this.setData({ loading: true });
     try {
       const [pfRes, idxRes] = await Promise.all([
         api.getPortfolio(30),
-        this._fetchIndex(this.data.compareIndex),
+        this.loadIndexData(this.data.compareIndex),
       ]);
+
       if (!pfRes.result || pfRes.result.code !== 0) {
-        this.setData({ ready: true });
+        this.setData({ loading: false });
         return;
       }
-      const d = pfRes.result.data;
-      const holdings = d.holdings || [];
-      if (holdings.length === 0) { this.setData({ ready: true, empty: true }); return; }
+      const data = pfRes.result.data;
+      const holdings = data.holdings || [];
+      if (holdings.length === 0) {
+        this.setData({ loading: false, empty: true });
+        return;
+      }
+
+      // 有持仓但没有历史走势数据（刚导入），不算 empty
+      const empty = false;
 
       const totalCost = holdings.reduce((sum, h) => sum + h.buyPrice * h.shares, 0);
-      const navHistoryMap = d.navHistoryMap || {};
-      const dailyChange = {};
-      const dateMap = {};
-      let earliest = "9999-99-99";
+      const navHistoryMap = data.navHistoryMap || {};
 
-      holdings.forEach(h => {
-        const hist = navHistoryMap[h.fundCode] || [];
+      // 用全部净值历史算日变动
+      const dailyChange = {};
+      holdings.forEach((h) => {
+        const history = navHistoryMap[h.fundCode] || [];
         let shares = parseFloat(h.shares || h.amount || 0);
-        if (!shares && h.marketValue && h.currentNav) shares = parseFloat(h.marketValue) / parseFloat(h.currentNav);
-        const startDate = h.createTime ? calc.formatDate(h.createTime) : null;
-        if (startDate && startDate < earliest) earliest = startDate;
-        hist.forEach(item => { if (!dateMap[item.date]) dateMap[item.date] = 0; dateMap[item.date] += item.nav * h.shares; });
-        if (!shares || hist.length < 2) return;
-        for (let i = 1; i < hist.length; i++) {
-          const date = hist[i].date;
-          if (startDate && date < startDate) continue;
+        if (!shares && h.marketValue && h.currentNav) {
+          shares = parseFloat(h.marketValue) / parseFloat(h.currentNav);
+        }
+        if (!shares || history.length < 2) return;
+        for (let i = 1; i < history.length; i++) {
+          const date = history[i].date;
+          const chg = (history[i].nav - history[i - 1].nav) * shares;
           if (!dailyChange[date]) dailyChange[date] = 0;
-          dailyChange[date] += (hist[i].nav - hist[i - 1].nav) * shares;
+          dailyChange[date] += chg;
         }
       });
-      Object.keys(dailyChange).forEach(k => { dailyChange[k] = +dailyChange[k].toFixed(2); });
+      for (const d of Object.keys(dailyChange)) {
+        dailyChange[d] = +dailyChange[d].toFixed(2);
+      }
 
-      const allDaily = Object.entries(dateMap)
-        .filter(([date]) => date >= earliest)
-        .map(([date, value]) => ({ date, value: +value.toFixed(2), profit: +(value - totalCost).toFixed(2) }))
+      // 如果持仓刚创建尚无所史变动，todayProfit 即为首日收益
+      const hasHistory = Object.keys(dailyChange).length > 0;
+      const todayProfit = parseFloat(data.todayProfit) || 0;
+
+      const indexDaily = idxRes || [];
+
+      // 每日总市值
+      const dateMap = {};
+      holdings.forEach((h) => {
+        (navHistoryMap[h.fundCode] || []).forEach((item) => {
+          if (!dateMap[item.date]) dateMap[item.date] = 0;
+          dateMap[item.date] += item.nav * h.shares;
+        });
+      });
+
+      let allDaily = Object.entries(dateMap)
+        .map(([date, value]) => ({
+          date,
+          value: +value.toFixed(2),
+          profit: +(value - totalCost).toFixed(2),
+        }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
+      // 日历数据（即使走势图为空也生成结构）
       const now = new Date();
-      const todayStr = calc.formatDate(now);
-      const weekStart = this._getWeekStart(now);
-      const curMonth = todayStr.slice(0, 7);
-      const curYear = todayStr.slice(0, 4);
-      const sumSince = (pfx, len) => { let s = 0; for (const [dt, chg] of Object.entries(dailyChange)) { if (dt.slice(0, len) === pfx) s += chg; } return +s.toFixed(2); };
-      const hasHistory = Object.keys(dailyChange).length > 0;
-      const tp = parseFloat(d.todayProfit) || 0;
-      const w = hasHistory ? sumSince(weekStart, 10) : tp;
-      const m = hasHistory ? sumSince(curMonth, 7) : tp;
-      const y = hasHistory ? sumSince(curYear, 4) : tp;
-      const fmtR = (v) => totalCost > 0 ? +((v / totalCost) * 100).toFixed(2) : 0;
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const currentMonth = todayStr.slice(0, 7);
+      const currentYear = todayStr.slice(0, 4);
+      const availableMonths = [...new Set(Object.keys(dateMap).map(d => d.slice(0, 7)))].sort().reverse();
+      const availableYears = [...new Set(Object.keys(dateMap).map(d => d.slice(0, 4)))].sort().reverse();
+      const selectedMonth = availableMonths.length > 0 ? availableMonths[0] : currentMonth;
+      const selectedYear = availableYears.length > 0 ? availableYears[0] : currentYear;
+      const dayCalendar = this.buildDayCalendar(allDaily, dailyChange, selectedMonth);
+      const monthCalendar = this.buildMonthCalendar(dailyChange, selectedYear);
+      const yearData = this.buildYearData(allDaily, dailyChange);
+
+      if (allDaily.length < 2) {
+        const showProfit = todayProfit.toFixed(2);
+        const showRate = parseFloat(data.todayProfitRate || 0);
+        this._allDaily = [];
+        this._dailyChange = dailyChange;
+        this._indexDaily = indexDaily;
+        const e = allDaily.length > 0 ? allDaily[0].date : todayStr;
+        this.setData({
+          totalCost, earliestCreate: e,
+          todayProfit: showProfit, todayProfitRate: showRate,
+          weekProfit: showProfit, monthProfit: showProfit, yearProfit: showProfit,
+          weekProfitRate: showRate, monthProfitRate: showRate, yearProfitRate: showRate,
+          loading: false,
+          selectedMonth, availableMonths,
+          selectedYear, availableYears,
+          dayCalendar, monthCalendar, yearData,
+        }, () => {
+          setTimeout(() => this.drawChart(), 800);
+        });
+        return;
+      }
+
+      // 本周/本月/本年 收益
+      const weekStart = this.getWeekStart(now);
+
+      const sumSince = (prefix, len) => {
+        let sum = 0;
+        for (const [date, chg] of Object.entries(dailyChange)) {
+          if (date.slice(0, len) === prefix) sum += chg;
+        }
+        return +sum.toFixed(2);
+      };
+
+      let weekSum = 0;
+      for (const [date, chg] of Object.entries(dailyChange)) {
+        if (date >= weekStart) weekSum += chg;
+      }
+      weekSum = +weekSum.toFixed(2);
+
+      const monthSum = sumSince(currentMonth, 7);
+      const yearSum = sumSince(currentYear, 4);
+
+      const finalWeekSum = hasHistory ? weekSum : todayProfit;
+      const finalMonthSum = hasHistory ? monthSum : todayProfit;
+      const finalYearSum = hasHistory ? yearSum : todayProfit;
+
+      console.log("=== profit sums ===", { hasHistory, todayProfit, weekSum: finalWeekSum, monthSum: finalMonthSum, yearSum: finalYearSum });
+
+      const fmtRate = (profit) => totalCost > 0 ? +((profit / totalCost) * 100).toFixed(2) : 0;
 
       this._allDaily = allDaily;
       this._dailyChange = dailyChange;
-      this._indexDaily = idxRes || [];
+      this._indexDaily = indexDaily;
       this._totalCost = totalCost;
 
-      const summary = {
-        totalCost,
-        todayProfit: tp.toFixed(2), todayProfitRate: parseFloat(d.todayProfitRate || 0),
-        weekProfit: w.toFixed(2), monthProfit: m.toFixed(2), yearProfit: y.toFixed(2),
-        weekProfitRate: fmtR(parseFloat(w)),
-        monthProfitRate: fmtR(parseFloat(m)),
-        yearProfitRate: fmtR(parseFloat(y)),
-        earliestCreate: earliest,
-      };
+      console.log("=== indexDaily loaded ===", indexDaily.length, "points, first:", indexDaily[0], "last:", indexDaily[indexDaily.length - 1]);
+      console.log("=== allDaily ===", allDaily.length, "points, first:", allDaily[0], "last:", allDaily[allDaily.length - 1]);
 
-      this._calBuilt = false;
-      this.setData({ ready: true, ...summary }, () => this._drawChartIfReady());
-
-      // 写缓存
-      try {
-        wx.setStorage({ key: CACHE_KEY, data: { summary, chartData: { allDaily, dailyChange, indexDaily: this._indexDaily }, ts: Date.now() } });
-      } catch (e) { /* ignore */ }
-    } catch (e) {
-      this.setData({ ready: true });
-    }
-  },
-
-  // ======== Chart ========
-
-  _drawChartIfReady() {
-    if (!this._canvasW) { this._drawPending = true; return; }
-    this._drawPending = false;
-    this.drawChart();
-  },
-
-  _getChartData() {
-    const all = this._allDaily || [];
-    const idx = this._indexDaily || [];
-    if (all.length < 2) {
-      // 无组合数据，画指数
-      if (idx.length < 2) return null;
-      const now = new Date();
-      const ts = calc.formatDate(now);
-      let start;
-      if (this.data.activeTab === "week") start = this._getWeekStart(now);
-      else if (this.data.activeTab === "month") start = ts.slice(0, 7) + "-01";
-      else start = ts.slice(0, 4) + "-01-01";
-      const f = idx.filter(d => d.date >= start);
-      if (f.length < 2) return null;
-      const base = f[0].close;
-      return {
-        data: f.map(d => ({ date: d.date, baseRate: null, indexRate: base > 0 ? +((d.close / base - 1) * 100).toFixed(2) : 0 })),
-        hasIndex: true, indexOnly: true,
-      };
-    }
-
-    const now = new Date();
-    const ts = calc.formatDate(now);
-    let start;
-    if (this.data.activeTab === "week") start = this._getWeekStart(now);
-    else if (this.data.activeTab === "month") start = ts.slice(0, 7) + "-01";
-    else start = ts.slice(0, 4) + "-01-01";
-
-    const pf = all.filter(d => d.date >= start);
-    if (pf.length < 2) return null;
-    const baseVal = pf[0].value;
-
-    const idxMap = {}; idx.forEach(d => { idxMap[d.date] = d.close; });
-    const idxDates = Object.keys(idxMap).sort();
-    const findClose = (ds) => {
-      if (idxMap[ds] !== undefined) return idxMap[ds];
-      for (let i = idxDates.length - 1; i >= 0; i--) { if (idxDates[i] <= ds) return idxMap[idxDates[i]]; }
-      return null;
-    };
-    const idxBase = findClose(pf[0].date);
-    const data = pf.map(p => {
-      const c = findClose(p.date);
-      return {
-        date: p.date,
-        baseRate: +((p.value / baseVal - 1) * 100).toFixed(2),
-        indexRate: (idxBase && c && idxBase > 0) ? +((c / idxBase - 1) * 100).toFixed(2) : null,
-      };
-    });
-    return { data, hasIndex: idxBase !== null && data.some(d => d.indexRate !== null) };
-  },
-
-  drawChart() {
-    const result = this._getChartData();
-    if (!result) return;
-    const { data, hasIndex, indexOnly } = result;
-    const ctx = wx.createCanvasContext('profitCanvas', this);
-    const w = this._canvasW, h = this._canvasH;
-    const p = { top: 40, right: 12, bottom: 36, left: 52 };
-
-    const color = !data.length ? '#E4393C' : (data[data.length - 1].baseRate >= (data[0].baseRate || 0) ? '#E4393C' : '#2E8B57');
-
-    if (indexOnly) {
-      const items = data.map(d => ({ date: d.date, value: d.indexRate }));
-      chartUtil.drawLineChart(ctx, { w, h, data: items, color: '#E4393C', padding: p });
-    } else if (hasIndex) {
-      chartUtil.drawDualLineChart(ctx, {
-        w, h, data, padding: p,
-        fieldA: 'baseRate', fieldB: 'indexRate',
-        colorA: color, colorB: '#1976D2',
-        labelA: '我的收益', labelB: this.data.compareLabel,
+      const earliestCreate = allDaily.length > 0 ? allDaily[0].date : todayStr;
+      this.setData({
+        totalCost, earliestCreate,
+        todayProfit: todayProfit.toFixed(2),
+        todayProfitRate: parseFloat(data.todayProfitRate || 0),
+        weekProfit: finalWeekSum.toFixed(2),
+        monthProfit: finalMonthSum.toFixed(2),
+        yearProfit: finalYearSum.toFixed(2),
+        weekProfitRate: fmtRate(parseFloat(finalWeekSum)),
+        monthProfitRate: fmtRate(parseFloat(finalMonthSum)),
+        yearProfitRate: fmtRate(parseFloat(finalYearSum)),
+        loading: false,
+        selectedMonth, availableMonths,
+        selectedYear, availableYears,
+        dayCalendar, monthCalendar, yearData,
+      }, () => {
+        setTimeout(() => this.drawChart(), 500);
       });
-    } else {
-      const items = data.map(d => ({ date: d.date, value: d.baseRate }));
-      chartUtil.drawLineChart(ctx, { w, h, data: items, color, padding: p });
+    } catch (e) {
+      console.error("加载收益数据失败:", e);
+      this.setData({ loading: false });
     }
-    ctx.draw();
   },
 
-  // Calendar (lazy)
-  _ensureCalendar() {
-    if (this._calBuilt) return;
-    this._calBuilt = true;
-    const all = this._allDaily, dc = this._dailyChange;
-    if (!all || !dc) return;
-    const dm = {}; all.forEach(d => { dm[d.date] = d; });
-    const mons = [...new Set(Object.keys(dm).map(d => d.slice(0, 7)))].sort().reverse();
-    const yrs = [...new Set(Object.keys(dm).map(d => d.slice(0, 4)))].sort().reverse();
-    const now = new Date();
-    const sm = mons[0] || calc.formatDate(now).slice(0, 7);
-    const sy = yrs[0] || String(now.getFullYear());
-    this.setData({
-      availableMonths: mons, selectedMonth: sm,
-      availableYears: yrs, selectedYear: sy,
-      dayCalendar: this._buildDays(all, dc, sm),
-      monthCalendar: this._buildMonths(dc, sy),
-      yearData: this._buildYears(dc),
+  getWeekStart(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    d.setDate(d.getDate() - diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  onSummaryTap(e) {
+    this.setData({ activeTab: e.currentTarget.dataset.tab }, () => {
+      setTimeout(() => this.drawChart(), 300);
     });
   },
 
-  _buildDays(all, dc, month) {
-    const map = {}; all.forEach(d => { map[d.date] = d; });
-    const [y, m] = month.split('-').map(Number);
-    const fd = new Date(y, m - 1, 1).getDay();
-    const dim = new Date(y, m, 0).getDate();
-    const weeks = []; let w = [];
-    for (let i = 0; i < fd; i++) w.push({ day: '', empty: true });
-    for (let d = 1; d <= dim; d++) {
-      const ds = `${month}-${String(d).padStart(2, '0')}`;
-      const chg = dc[ds];
-      w.push({ day: d, date: ds, profit: chg !== undefined ? chg : null, empty: chg === undefined });
-      if (w.length === 7) { weeks.push(w); w = []; }
+  buildDayCalendar(allDaily, dailyChange, month) {
+    const dataMap = {};
+    allDaily.forEach(d => { dataMap[d.date] = d; });
+    const [year, mon] = month.split('-').map(Number);
+    const firstDay = new Date(year, mon - 1, 1).getDay();
+    const daysInMonth = new Date(year, mon, 0).getDate();
+    const weeks = [];
+    let week = [];
+    for (let i = 0; i < firstDay; i++) week.push({ day: '', empty: true });
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+      const chg = dailyChange[dateStr];
+      week.push({ day: d, date: dateStr, profit: chg !== undefined ? chg : null, empty: chg === undefined });
+      if (week.length === 7) { weeks.push(week); week = []; }
     }
-    while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true });
-    if (w.length === 7) weeks.push(w);
+    while (week.length > 0 && week.length < 7) week.push({ day: '', empty: true });
+    if (week.length === 7) weeks.push(week);
     return weeks;
   },
 
-  _buildMonths(dc, year) {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => {
-      const pfx = `${year}-${String(m).padStart(2, '0')}`;
-      let s = 0, h = false;
-      for (const [d, chg] of Object.entries(dc)) { if (d.startsWith(pfx)) { s += chg; h = true; } }
-      return { month: m, date: pfx, profit: +s.toFixed(2), empty: !h };
-    });
-  },
-
-  _buildYears(dc) {
-    const ys = [...new Set(Object.keys(dc).map(d => d.slice(0, 4)))].sort();
-    return ys.map(y => {
-      let s = 0;
-      for (const [d, chg] of Object.entries(dc)) { if (d.startsWith(y)) s += chg; }
-      return { date: y + '-12-31', profit: +s.toFixed(2) };
-    });
-  },
-
-  // ======== Events ========
-
-  onSummaryTap(e) { this.setData({ activeTab: e.currentTarget.dataset.tab }, () => this.drawChart()); },
-  onCalendarTab(e) { this._ensureCalendar(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
-  onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
-
   onMonthChange(e) {
-    const m = this.data.availableMonths[e.detail.value];
-    this.setData({ selectedMonth: m, dayCalendar: this._buildDays(this._allDaily, this._dailyChange, m) });
+    const idx = e.detail.value;
+    const selectedMonth = this.data.availableMonths[idx];
+    const dayCalendar = this.buildDayCalendar(this._allDaily, this._dailyChange, selectedMonth);
+    this.setData({ selectedMonth, dayCalendar });
   },
+
   onYearChange(e) {
-    const y = this.data.availableYears[e.detail.value];
-    this.setData({ selectedYear: y, monthCalendar: this._buildMonths(this._dailyChange, y) });
+    const idx = e.detail.value;
+    const selectedYear = this.data.availableYears[idx];
+    const monthCalendar = this.buildMonthCalendar(this._dailyChange, selectedYear);
+    this.setData({ selectedYear, monthCalendar });
+  },
+
+  onCalendarTab(e) {
+    this.setData({ calendarView: e.currentTarget.dataset.tab });
+  },
+
+  buildMonthCalendar(dailyChange, year) {
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => {
+      const prefix = `${year}-${String(m).padStart(2, '0')}`;
+      let profit = 0;
+      let hasData = false;
+      for (const [date, chg] of Object.entries(dailyChange)) {
+        if (date.startsWith(prefix)) { profit += chg; hasData = true; }
+      }
+      profit = +profit.toFixed(2);
+      return { month: m, date: prefix, profit, empty: !hasData };
+    });
+  },
+
+  buildYearData(allDaily, dailyChange) {
+    const years = [...new Set(Object.keys(dailyChange).map(d => d.slice(0, 4)))].sort();
+    return years.map(y => {
+      let profit = 0;
+      for (const [date, chg] of Object.entries(dailyChange)) {
+        if (date.startsWith(y)) profit += chg;
+      }
+      profit = +profit.toFixed(2);
+      return { date: y + '-12-31', profit };
+    });
   },
 
   async onSelectIndex(e) {
     const { code, name } = e.currentTarget.dataset;
     if (code === this.data.compareIndex) return;
-    const idx = await this._fetchIndex(code);
-    this._indexDaily = idx;
-    this.setData({ compareIndex: code, compareLabel: name }, () => this.drawChart());
+    wx.showLoading({ title: "加载指数..." });
+    const indexDaily = await this.loadIndexData(code);
+    this._indexDaily = indexDaily;
+    console.log("=== onSelectIndex ===", code, indexDaily.length, indexDaily.slice(0, 2));
+    this.setData({ compareIndex: code, compareLabel: name }, () => {
+      wx.hideLoading();
+      setTimeout(() => this.drawChart(), 300);
+    });
   },
 
-  onProfitTouch() {},
-
-  // ======== Helpers ========
-
-  _getWeekStart(date) {
-    const d = new Date(date);
-    const day = d.getDay();
-    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-    return calc.formatDate(d);
+  onGoHome() {
+    wx.switchTab({ url: "/pages/index/index" });
   },
 
-  async _fetchIndex(code) {
+  async loadIndexData(indexCode) {
     try {
-      const res = await api.fetchMarketIndexClient(code, 30);
-      if (res && res.code === 0 && res.data) return res.data.map(d => ({ date: d.date, close: d.close }));
-    } catch (e) { /* ignore */ }
+      const res = await api.fetchMarketIndexClient(indexCode, 30);
+      console.log("=== idx res ===", indexCode, res ? res.code : 'null', res && res.data ? res.data.length : 0);
+      if (res && res.code === 0 && res.data && res.data.length > 0) {
+        return res.data.map(d => ({ date: d.date, close: d.close }));
+      }
+    } catch (e) { console.error("加载指数失败:", e); }
     return [];
+  },
+
+  // ======== 走势图 ========
+
+  getChartData() {
+    const { activeTab } = this.data;
+    const allDaily = this._allDaily || [];
+    const indexDaily = this._indexDaily || [];
+
+    // 无组合数据但有指数数据 → 只画指数
+    if (allDaily.length < 2) {
+      console.log("=== getChartData indexOnly ===", { idxLen: indexDaily.length, activeTab });
+      if (indexDaily.length < 2) return { portfolio: [], isComparing: false };
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      let startDate;
+      if (activeTab === "week") startDate = this.getWeekStart(today);
+      else if (activeTab === "month") startDate = todayStr.slice(0, 7) + "-01";
+      else startDate = todayStr.slice(0, 4) + "-01-01";
+      const filtered = indexDaily.filter(d => d.date >= startDate);
+      if (filtered.length < 2) return { portfolio: [], isComparing: false };
+      const base = filtered[0].close;
+      const merged = filtered.map(d => ({
+        date: d.date, baseRate: null,
+        indexRate: base > 0 ? +((d.close / base - 1) * 100).toFixed(2) : 0,
+      }));
+      return { portfolio: merged, isComparing: false, indexOnly: true };
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    let startDate;
+    if (activeTab === "week") startDate = this.getWeekStart(today);
+    else if (activeTab === "month") startDate = todayStr.slice(0, 7) + "-01";
+    else startDate = todayStr.slice(0, 4) + "-01-01";
+
+    const portfolio = allDaily.filter(d => d.date >= startDate);
+    if (portfolio.length < 2) { console.log("=== getChartData: portfolio too short ===", startDate, portfolio.length); return { portfolio: [], isComparing: false }; }
+
+    const baseVal = portfolio[0].value;
+
+    // 构建指数日期映射
+    const idxByDate = {};
+    indexDaily.forEach(d => { idxByDate[d.date] = d.close; });
+    const idxDates = Object.keys(idxByDate).sort();
+
+    const findClose = (dateStr) => {
+      if (idxByDate[dateStr] !== undefined) return idxByDate[dateStr];
+      for (let i = idxDates.length - 1; i >= 0; i--) {
+        if (idxDates[i] <= dateStr) return idxByDate[idxDates[i]];
+      }
+      return null;
+    };
+
+    const indexBase = findClose(portfolio[0].date);
+
+    const merged = portfolio.map(p => {
+      const c = findClose(p.date);
+      return {
+        date: p.date,
+        baseRate: +((p.value / baseVal - 1) * 100).toFixed(2),
+        indexRate: (indexBase && c && indexBase > 0) ? +((c / indexBase - 1) * 100).toFixed(2) : null,
+      };
+    });
+
+    const hasCompare = indexBase !== null && merged.some(d => d.indexRate !== null);
+    console.log("=== getChartData ===", {
+      tab: activeTab, startDate, actualStart: portfolio[0].date,
+      pfLen: portfolio.length, idxLen: indexDaily.length,
+      indexBase, hasCompare,
+      idxFirst: idxDates[0], idxLast: idxDates[idxDates.length - 1],
+      firstMerged: merged[0], lastMerged: merged[merged.length - 1],
+    });
+
+    return { portfolio: merged, isComparing: hasCompare };
+  },
+
+  drawChart() {
+    const { portfolio, isComparing, indexOnly } = this.getChartData();
+    if (!portfolio || portfolio.length < 2) return;
+
+    const ctx = wx.createCanvasContext('profitCanvas', this);
+    const w = this._canvasW || 340, h = this._canvasH || 200;
+    const list = portfolio;
+
+    // 取值：indexOnly 时只用 indexRate，否则优先 baseRate
+    const vals = indexOnly
+      ? list.map(d => d.indexRate)
+      : list.map(d => d.baseRate);
+    const idxVals = list.filter(d => d.indexRate !== null).map(d => d.indexRate);
+    const allVals = [...vals.filter(v => v != null), ...idxVals];
+    if (allVals.length === 0) return;
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const range = max - min || 0.01;
+    const yMin = min - range * 0.15, yMax = max + range * 0.15;
+
+    const m = { top: 24, right: 12, bottom: 36, left: 52 };
+    const pw = w - m.left - m.right, ph = h - m.top - m.bottom;
+    const xp = (i) => m.left + (pw / (list.length - 1)) * i;
+    const yp = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
+
+    ctx.setFillStyle('#FFFFFF');
+    ctx.fillRect(0, 0, w, h);
+
+    if (!indexOnly) {
+      const isUp = vals[vals.length - 1] >= vals[0];
+      const pfColor = isUp ? '#E4393C' : '#2E8B57';
+      const gradient = ctx.createLinearGradient(0, m.top, 0, h - m.bottom);
+      gradient.addColorStop(0, isUp ? 'rgba(228,57,60,0.10)' : 'rgba(46,139,87,0.10)');
+      gradient.addColorStop(1, isUp ? 'rgba(228,57,60,0.01)' : 'rgba(46,139,87,0.01)');
+      ctx.beginPath();
+      let pfStarted = false;
+      list.forEach((d, i) => {
+        if (d.baseRate === null) { pfStarted = false; return; }
+        const x = xp(i), y = yp(d.baseRate);
+        if (!pfStarted) { ctx.moveTo(x, y); pfStarted = true; } else ctx.lineTo(x, y);
+      });
+      if (pfStarted) {
+        ctx.lineTo(xp(list.length - 1), h - m.bottom);
+        ctx.lineTo(xp(0), h - m.bottom);
+        ctx.closePath();
+        ctx.setFillStyle(gradient);
+        ctx.fill();
+        ctx.beginPath();
+        pfStarted = false;
+        list.forEach((d, i) => {
+          if (d.baseRate === null) { pfStarted = false; return; }
+          const x = xp(i), y = yp(d.baseRate);
+          if (!pfStarted) { ctx.moveTo(x, y); pfStarted = true; } else ctx.lineTo(x, y);
+        });
+        ctx.setStrokeStyle(pfColor);
+        ctx.setLineWidth(2);
+        ctx.stroke();
+      }
+    }
+
+    // 指数线（有数据时始终画）
+    if (idxVals.length >= 2) {
+      const showCompare = isComparing || indexOnly;
+      const idxColor = indexOnly ? '#E4393C' : '#1976D2';
+      ctx.beginPath();
+      let started = false;
+      list.forEach((d, i) => {
+        if (d.indexRate === null) { started = false; return; }
+        const x = xp(i), y = yp(d.indexRate);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      });
+      ctx.setStrokeStyle(idxColor);
+      ctx.setLineWidth(2);
+      ctx.stroke();
+
+      if (showCompare) {
+        ctx.setFontSize(9);
+        ctx.setTextBaseline('top');
+        if (indexOnly) {
+          ctx.setFillStyle('#E4393C');
+          ctx.fillRect(m.left + 4, 4, 10, 3);
+          ctx.setFillStyle('#666');
+          ctx.setTextAlign('left');
+          ctx.fillText(this.data.compareLabel, m.left + 17, 1);
+        } else {
+          const pfColor = vals[vals.length - 1] >= vals[0] ? '#E4393C' : '#2E8B57';
+          ctx.setFillStyle(pfColor);
+          ctx.fillRect(m.left + 4, 4, 10, 3);
+          ctx.setFillStyle('#666');
+          ctx.setTextAlign('left');
+          ctx.fillText('我的', m.left + 17, 1);
+          ctx.setFillStyle('#1976D2');
+          ctx.fillRect(m.left + 50, 4, 10, 3);
+          ctx.setFillStyle('#666');
+          ctx.fillText(this.data.compareLabel, m.left + 63, 1);
+        }
+      }
+    }
+
+    // Y轴
+    ctx.setFillStyle('#999');
+    ctx.setFontSize(10);
+    ctx.setTextAlign('right');
+    ctx.setTextBaseline('middle');
+    for (let i = 0; i <= 4; i++) {
+      const val = yMax - (yMax - yMin) / 4 * i;
+      ctx.fillText(val.toFixed(1) + '%', m.left - 6, yp(val));
+    }
+
+    // X轴
+    ctx.setTextAlign('center');
+    ctx.setTextBaseline('top');
+    const steps = Math.min(5, list.length);
+    for (let i = 0; i < steps; i++) {
+      const idx = Math.round((i / (steps - 1)) * (list.length - 1));
+      let label = list[idx].date.slice(5);
+      if (this.data.activeTab === 'year') label = list[idx].date.slice(5, 7) + '月';
+      ctx.fillText(label, xp(idx), h - m.bottom + 8);
+    }
+
+    ctx.draw();
   },
 });

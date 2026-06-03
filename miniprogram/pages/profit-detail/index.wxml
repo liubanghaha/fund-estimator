@@ -1,4 +1,14 @@
 <view class="page">
+  <view wx:if="{{loading}}" class="skeleton-wrap">
+    <view class="sk-summary-bar">
+      <view class="sk-summary-item skeleton"></view>
+      <view class="sk-summary-item skeleton"></view>
+      <view class="sk-summary-item skeleton"></view>
+    </view>
+    <view class="sk-chart skeleton"></view>
+  </view>
+
+  <view wx:else>
     <view wx:if="{{empty}}" class="empty-wrap">
       <view class="empty-icon">📉</view>
       <view class="empty-text">暂无收益数据</view>
@@ -6,7 +16,7 @@
       <button class="empty-btn" bind:tap="onGoHome">返回首页</button>
     </view>
 
-    <view wx:elif="{{ready}}">
+    <block wx:else>
     <view wx:if="{{earliestCreate && earliestCreate !== '9999-99-99'}}" class="tip-inline">收益自 {{earliestCreate}} 起计，随交易日积累</view>
     <!-- 收益摘要：本周/本月/本年 -->
     <view class="summary-bar">
@@ -52,7 +62,7 @@
           </view>
         </view>
       </view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onProfitTouch" bindtouchmove="onProfitTouch" bindtouchend="onProfitTouch"></canvas>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:360rpx" width="{{canvasW}}" height="{{canvasH}}"></canvas>
     </view>
 
     <!-- 日/月/年 统计 -->
@@ -113,5 +123,6 @@
         </view>
       </view>
     </view>
+    </block>
   </view>
 </view>
