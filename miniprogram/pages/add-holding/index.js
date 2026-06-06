@@ -25,6 +25,7 @@ Page({
     const app = getApp();
     if (app.globalData._ocrFunds && this.data.mode === "screenshot") {
       const funds = app.globalData._ocrFunds;
+      app.globalData._ocrFunds = null;
       const unsaved = funds.filter((f) => !f._saved).length;
       this.setData({ ocrFunds: funds, unsavedCount: unsaved });
     }
@@ -34,6 +35,7 @@ Page({
     if (options.editScreenshot) {
       const app = getApp();
       const funds = app.globalData._ocrFunds || [];
+      app.globalData._ocrFunds = null;
       const idx = parseInt(options.idx) || 0;
       const fund = funds[idx] || {};
       this.setData({
@@ -215,7 +217,7 @@ Page({
         showCancel: false,
         confirmText: added > 0 ? "查看持仓" : "知道了",
         success: () => {
-          if (added > 0) wx.switchTab({ url: "/pages/index/index" });
+          if (added > 0) { app.globalData._ocrFunds = null; wx.switchTab({ url: "/pages/index/index" }); }
         },
       });
     } else {
@@ -224,6 +226,13 @@ Page({
         setTimeout(() => wx.switchTab({ url: "/pages/index/index" }), 800);
       }
     }
+  },
+
+  onOcrCodeInput(e) {
+    const idx = parseInt(e.currentTarget.dataset.index);
+    const funds = [...this.data.ocrFunds];
+    funds[idx].fundCode = e.detail.value;
+    this.setData({ ocrFunds: funds });
   },
 
   onEditFund(e) {

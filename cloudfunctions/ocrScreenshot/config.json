@@ -1,6 +1,8 @@
 {
   "timeout": 30,
-  "permissions": {
-    "openapi": []
+  "permissions": { "openapi": [] },
+  "envVariables": {
+    "TC_SECRET_ID": "your-tencent-secret-id",
+    "TC_SECRET_KEY": "your-tencent-secret-key"
   }
 }

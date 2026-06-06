@@ -5,48 +5,49 @@ exports.main = async (event) => {
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
 
-  let text = "";
-  let method = "";
+  const results = await Promise.allSettled([
+    wxOcr(fileID),
+    spaceOcr(fileID),
+  ]);
 
-  try {
-    const ocrRes = await cloud.openapi.ocr.printedText({ imgUrl: fileID, type: "photo" });
-    if (ocrRes.items && ocrRes.items.length > 0) {
-      text = ocrRes.items.map((item) => item.text).join("\n");
-      method = "wechat_ocr";
-    }
-  } catch (e) {
-    console.log("微信OCR不可用:", e.message);
+  const texts = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) texts.push(r.value);
   }
 
-  if (!text) {
-    try {
-      const tempRes = await cloud.getTempFileURL({ fileList: [fileID] });
-      const tempUrl = tempRes.fileList[0] && tempRes.fileList[0].tempFileURL;
-      if (tempUrl) {
-        text = await ocrSpace(tempUrl);
-        method = "ocrspace";
-      }
-    } catch (e) {
-      console.log("OCR.space不可用:", e.message);
-    }
-  }
+  if (texts.length === 0) return { code: 500, msg: "OCR识别失败" };
 
-  if (!text) {
-    return { code: 500, msg: "OCR识别失败" };
-  }
-
-  const transactions = parseTransactions(text);
+  // 合并去重：各引擎结果拼在一起跑（更全）
+  const merged = texts.join('\n');
+  const transactions = parseTransactions(merged);
 
   return {
     code: 0,
-    data: {
-      raw: text, method, transactions,
-      ...(transactions[0] || {}),
-    },
+    data: { raw: merged, method: 'dual_ocr', transactions, ...(transactions[0] || {}) },
   };
 };
 
-// ========== OCR.space 兜底 ==========
+// ========== 并行 OCR ==========
+
+async function wxOcr(fileID) {
+  try {
+    const res = await cloud.openapi.ocr.printedText({ imgUrl: fileID, type: "photo" });
+    if (res.items && res.items.length > 0) {
+      return res.items.map(item => item.text).join("\n");
+    }
+  } catch (e) { console.log("微信OCR:", e.message); }
+  return null;
+}
+
+async function spaceOcr(fileID) {
+  try {
+    const tempRes = await cloud.getTempFileURL({ fileList: [fileID] });
+    const url = tempRes.fileList[0] && tempRes.fileList[0].tempFileURL;
+    if (!url) return null;
+    return await ocrSpace(url);
+  } catch (e) { console.log("OCR.space:", e.message); }
+  return null;
+}
 
 function ocrSpace(imageUrl) {
   const https = require("https");
@@ -58,11 +59,7 @@ function ocrSpace(imageUrl) {
     });
     const req = https.request({
       hostname: "api.ocr.space", path: "/parse/image", method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        apikey: "helloworld",
-        "Content-Length": Buffer.byteLength(body),
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", apikey: "helloworld", "Content-Length": Buffer.byteLength(body) },
     }, (res) => {
       let data = "";
       res.on("data", (c) => { data += c; });
@@ -70,15 +67,12 @@ function ocrSpace(imageUrl) {
         try {
           const json = JSON.parse(data);
           const parsed = json.ParsedResults || [];
-          if (parsed.length > 0 && parsed[0].ParsedText) {
-            resolve(parsed[0].ParsedText);
-          } else {
-            reject(new Error("无识别结果"));
-          }
+          if (parsed.length > 0 && parsed[0].ParsedText) resolve(parsed[0].ParsedText);
+          else reject(new Error("无识别结果"));
         } catch (e) { reject(e); }
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error("请求超时")); });
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error("超时")); });
     req.on("error", reject);
     req.write(body);
     req.end();
@@ -88,10 +82,7 @@ function ocrSpace(imageUrl) {
 // ========== 交易解析 ==========
 
 function parseTransactions(text) {
-  // 预处理：修复 OCR 偶尔在 "基金 |" 中插入空格
   text = text.replace(/基金\s+[|｜]/g, "基金|");
-
-  // 按 "基金|" 分段
   const blocks = text.split(/基金[|｜]/);
   if (blocks.length <= 1) return [];
 
@@ -106,7 +97,7 @@ function parseTransactions(text) {
 function parseBlock(block) {
   const tx = {};
 
-  // 基金名：逐行拼接，遇到日期/金额/关键字停
+  // 基金名：逐行拼接直到遇到日期/金额
   const lines = block.split("\n");
   let nameStr = "";
   for (const line of lines) {
@@ -114,21 +105,18 @@ function parseBlock(block) {
     if (!t) continue;
     if (/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(t)) break;
     if (/^\d[\d,]*\.?\d{1,2}\s*(?:元|$)/.test(t)) break;
-    if (/交易进行中|确认中|已完成|全部～/.test(t)) break;
+    if (/交易进行中|确认中|已完成/.test(t)) break;
     nameStr += t;
   }
   tx.fundName = extractFundName(nameStr) || extractFundName(block.replace(/\n/g, ""));
   if (!tx.fundName) return tx;
 
-  // 日期+时间：下午3点后算次日
+  // 日期+时间
   const dtm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/);
   if (dtm) {
     const rawDate = dtm[1].replace(/[./]/g, "-").substring(0, 10);
-    const timeStr = dtm[2];
-    // 解析时间判断是否在15:00之后
-    const hour = parseInt(timeStr.split(":")[0], 10);
+    const hour = parseInt(dtm[2].split(":")[0], 10);
     if (hour >= 15) {
-      // 次日（简化：+1天，不处理周末/节假日）
       const d = new Date(rawDate);
       d.setDate(d.getDate() + 1);
       const pad = (n) => String(n).padStart(2, "0");
@@ -136,19 +124,23 @@ function parseBlock(block) {
     } else {
       tx.date = rawDate;
     }
-    tx.time = timeStr;
+    tx.time = dtm[2];
   } else {
-    // 兜底：仅日期
     const dm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/);
     if (dm) tx.date = dm[1].replace(/[./]/g, "-").substring(0, 10);
   }
 
-  // 金额：优先匹配"XXX元"，兜底取行尾最大数字
-  const am = block.match(/([\d,]+\.?\d{1,2})\s*元/);
-  if (am) {
-    const v = parseFloat(am[1].replace(/,/g, ""));
+  // 金额：多版本匹配
+  const am1 = block.match(/([\d,]+\.?\d{1,2})\s*元/);
+  if (am1) {
+    const v = parseFloat(am1[1].replace(/,/g, ""));
     if (v >= 1) tx.amount = String(v);
-  } else {
+  }
+  if (!tx.amount) {
+    const am2 = block.match(/(?:金额|买入|卖出|成交)[^\d]*[¥￥]?([\d,]+\.?\d{0,2})/);
+    if (am2) tx.amount = String(parseFloat(am2[1].replace(/,/g, "")));
+  }
+  if (!tx.amount) {
     const nums = block.match(/\d[\d,]*\.\d{1,2}/g);
     if (nums) {
       for (let j = nums.length - 1; j >= 0; j--) {
@@ -158,7 +150,6 @@ function parseBlock(block) {
     }
   }
 
-  // 类型
   tx.type = /卖出|赎回|减仓|转出/.test(block) ? "sell" : "buy";
   return tx;
 }

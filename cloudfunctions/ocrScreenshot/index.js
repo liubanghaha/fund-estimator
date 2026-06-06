@@ -1,418 +1,338 @@
 const cloud = require("wx-server-sdk");
+const crypto = require("crypto");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+
+const TC_SECRET_ID = process.env.TC_SECRET_ID || "your-tencent-secret-id";
+const TC_SECRET_KEY = process.env.TC_SECRET_KEY || "your-tencent-secret-key";
 
 exports.main = async (event) => {
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
 
-  let text = "";
-  let method = "";
-  let errLog = [];
+  const engines = [wxOcr(fileID)];
+  if (TC_SECRET_ID && TC_SECRET_KEY) engines.push(tencentOcr(fileID));
+  engines.push(spaceOcr(fileID));
 
-  try {
-    const ocrRes = await cloud.openapi.ocr.printedText({ imgUrl: fileID, type: "photo" });
-    if (ocrRes.items && ocrRes.items.length > 0) {
-      text = ocrRes.items.map((item) => item.text).join("\n");
-      method = "wechat_ocr";
-    } else {
-      errLog.push("wechat_ocr: items为空");
-    }
-  } catch (e) {
-    errLog.push("wechat_ocr异常: " + e.message);
-    console.log("微信OCR不可用:", e.message);
+  const results = await Promise.allSettled(engines);
+  const texts = [];
+  for (const r of results) { if (r.status === 'fulfilled' && r.value) texts.push(r.value); }
+  if (texts.length === 0) return { code: 500, msg: "OCR识别失败" };
+
+  let best = [];
+  for (const t of texts) {
+    const h = parseTencentFormat(t);
+    if (h.length > 0) { best = h; break; }
   }
-
-  if (!text) {
-    try {
-      const tempRes = await cloud.getTempFileURL({ fileList: [fileID] });
-      const tempUrl = tempRes.fileList[0] && tempRes.fileList[0].tempFileURL;
-      if (tempUrl) {
-        text = await ocrSpace(tempUrl);
-        method = "ocrspace";
-        if (!text) errLog.push("ocrspace: 返回空文本");
-      } else {
-        errLog.push("getTempFileURL: 未获取到临时链接");
-      }
-    } catch (e) {
-      errLog.push("ocrspace异常: " + e.message);
-      console.log("OCR.space不可用:", e.message);
+  if (best.length === 0) {
+    for (const t of texts) {
+      const h = parseGeneric(t);
+      if (h.length > best.length) best = h;
     }
   }
 
-  if (!text) {
-    return { code: 500, msg: "OCR识别失败，请对照截图手动输入", debug: errLog };
-  }
-
-  const holdings = parseFundInfo(text);
-
-  // 为缺失代码的基金搜索代码
   const lookupDebug = [];
-  for (const h of holdings) {
+  for (const h of best) {
     if (!h.fundCode && h.fundName) {
-      const result = await lookupFundCodeWithDebug(h.fundName);
-      h.fundCode = result.code;
-      lookupDebug.push({ name: h.fundName, code: result.code, ...result.debug });
+      const r = await lookupFundCodeWithDebug(h.fundName);
+      h.fundCode = r.code || undefined;
+      lookupDebug.push(r);
     }
   }
+  await crossValidate(best);
 
-  if (holdings.length === 0) {
-    return { code: 0, data: { raw: text, method }, msg: "未能识别出基金信息" };
-  }
-
-  return { code: 0, data: { raw: text, method, holdings, lookupDebug } };
+  return { code: 0, data: { raw: texts.join('\n---\n'), method: 'multi_ocr', holdings: best, lookupDebug } };
 };
 
-// ========== OCR.space 兜底 ==========
-
-function ocrSpace(imageUrl) {
-  const http = require("http");
-  const https = require("https");
-  const querystring = require("querystring");
-  const body = querystring.stringify({
-    url: imageUrl, language: "chs", isOverlayRequired: "false",
-    detectOrientation: "true", OCREngine: "2",
-  });
-
-  const doRequest = (mod) => new Promise((resolve, reject) => {
-    const req = mod.request({
-      hostname: "api.ocr.space", path: "/parse/image", method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        apikey: "helloworld",
-        "Content-Length": Buffer.byteLength(body),
-      },
-    }, (res) => {
-      let data = "";
-      res.on("data", (c) => { data += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.ErrorMessage) console.log("OCR.space错误:", json.ErrorMessage);
-          const parsed = json.ParsedResults || [];
-          if (parsed.length > 0 && parsed[0].ParsedText) {
-            resolve(parsed[0].ParsedText);
-          } else {
-            reject(new Error("无识别结果"));
-          }
-        } catch (e) { reject(e); }
-      });
-    });
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error("请求超时")); });
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-
-  // 先试 HTTP，失败再试 HTTPS
-  return doRequest(http).catch(() => doRequest(https));
-}
-
-// ========== 基金代码查询 v2 ==========
-
-async function lookupFundCodeWithDebug(name) {
-  const debug = { attempts: [] };
-  const code = await findFundCode(name, debug);
-  return { code, debug };
-}
-
-async function lookupFundCode(name) {
-  return findFundCode(name, {});
-}
-
-async function findFundCode(name, debug) {
-  // 生成搜索关键词列表
-  const keywords = [name];
-  // 去掉括号及内容（LOF、QDII 等）
-  let s = name.replace(/[（(][^）)]*[）)]/g, "").trim();
-  if (s && s !== name && !keywords.includes(s)) keywords.push(s);
-  // 去类型后缀
-  s = name.replace(/(?:混合|股票|债券|指数|联接|ETF联接|精选|优选|产业|制造|创新)[AC]?$/, "").trim();
-  if (s && s !== name && !keywords.includes(s)) keywords.push(s);
-  // 去 A/C
-  s = name.replace(/[AC]$/, "").trim();
-  if (s && s !== name && !keywords.includes(s)) keywords.push(s);
-  // 去 OCR 误加词
-  s = name.replace(/瑞信|瑞银/g, "").trim();
-  if (s && s !== name && !keywords.includes(s)) keywords.push(s);
-  // 公司名+首关键词
-  const kwRe = /(?:多元|前沿|资源|消费|蓝筹|医疗|医药|科技|新能源|半导体|军工|全球|海外|港股|沪港深|量化|策略|灵活|配置|成长|价值|红利|信息|制造|高端|环保|健康|文体|娱乐|安全|合润)/g;
-  const kws = name.match(kwRe);
-  const company = name.match(/^[一-鿿]{2,4}/);
-  if (kws && company) {
-    s = company[0] + kws[0];
-    if (!keywords.includes(s)) keywords.push(s);
-    if (kws.length >= 2) {
-      s = kws[0] + kws[1];
-      if (!keywords.includes(s)) keywords.push(s);
-    }
-  }
-  // 去公司前缀搜纯名
-  s = name.replace(/^(?:前海开源|易方达|嘉实|工银瑞信|工银|华夏|南方|广发|富国|博时|华安|招商|天弘|景顺长城|兴全|中欧|交银|银华|万家|大成|鹏华|汇添富|国泰|建信|海富通|诺安|融通|长城|泰达|华宝|华泰柏瑞|上投)/, "").replace(/[（(][^）)]*[）)]/g, "").replace(/(?:混合|股票|债券|指数)[AC]?$/, "").trim();
-  if (s && s.length >= 4 && !keywords.includes(s)) keywords.push(s);
-
-  debug.keywords = keywords;
-
-  for (const kw of keywords) {
-    const datas = await searchFund(kw);
-    if (!datas.length) continue;
-
-    const match = pickBest(name, datas);
-    if (match) {
-      debug.matchedBy = kw;
-      debug.code = match;
-      return match;
-    }
-  }
+async function wxOcr(fileID) {
+  try { const r = await cloud.openapi.ocr.printedText({ imgUrl: fileID, type: "photo" }); if (r.items && r.items.length) return r.items.map(i => i.text).join("\n"); } catch (e) {}
   return null;
 }
 
-function searchFund(keyword) {
-  const https = require("https");
+async function spaceOcr(fileID) {
+  try { const r = await cloud.getTempFileURL({ fileList: [fileID] }); const u = r.fileList[0] && r.fileList[0].tempFileURL; if (u) return await ocrSpaceAPI(u); } catch (e) {}
+  return null;
+}
+
+function ocrSpaceAPI(url) {
+  const http = require("http"), https = require("https"), qs = require("querystring");
+  const body = qs.stringify({ url, language: "chs", isOverlayRequired: "false", detectOrientation: "true", OCREngine: "2" });
+  const req = (m) => new Promise((resolve, reject) => {
+    const r = m.request({ hostname: "api.ocr.space", path: "/parse/image", method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", apikey: "helloworld", "Content-Length": Buffer.byteLength(body) } },
+    (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => {
+      try { const j = JSON.parse(d); const p = j.ParsedResults || []; p.length && p[0].ParsedText ? resolve(p[0].ParsedText) : reject(new Error("empty")); }
+      catch (e) { reject(e); }
+    });});
+    r.setTimeout(15000, () => { r.destroy(); reject(new Error("timeout")); });
+    r.on("error", reject); r.write(body); r.end();
+  });
+  return req(http).catch(() => req(https));
+}
+
+async function tencentOcr(fileID) {
+  try {
+    const r = await cloud.getTempFileURL({ fileList: [fileID] });
+    const url = r.fileList[0] && r.fileList[0].tempFileURL;
+    if (!url) return null;
+    const imgBase64 = await downloadAsBase64(url);
+    if (!imgBase64) return null;
+    return await tencentGeneralOCR(imgBase64);
+  } catch (e) { return null; }
+}
+
+function downloadAsBase64(url) {
+  const https = require("https"), http = require("http");
+  const mod = url.startsWith("https") ? https : http;
   return new Promise((resolve) => {
-    const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(keyword)}&type=14&token=DGCE23MHKBN23AKDN23&count=5`;
-    const req = https.get(url, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          resolve((json.QuotationCodeTable && json.QuotationCodeTable.Data) || []);
-        } catch (e) { resolve([]); }
+    mod.get(url, (res) => {
+      const chunks = [];
+      res.on("data", c => chunks.push(c));
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("base64")));
+      res.on("error", () => resolve(null));
+    }).on("error", () => resolve(null));
+  });
+}
+
+function tencentGeneralOCR(imgBase64) {
+  const https = require("https");
+  const host = "ocr.tencentcloudapi.com", service = "ocr", action = "GeneralBasicOCR", version = "2018-11-19";
+  const timestamp = Math.floor(Date.now() / 1000), date = new Date(timestamp * 1000).toISOString().slice(0, 10);
+  const payload = JSON.stringify({ ImageBase64: imgBase64, LanguageType: "zh" });
+  const hashedPayload = crypto.createHash("sha256").update(payload).digest("hex");
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\n`, signedHeaders = "content-type;host";
+  const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${hashedPayload}`;
+  const credentialScope = `${date}/${service}/tc3_request`;
+  const hashedCanonicalRequest = crypto.createHash("sha256").update(canonicalRequest).digest("hex");
+  const stringToSign = `TC3-HMAC-SHA256\n${timestamp}\n${credentialScope}\n${hashedCanonicalRequest}`;
+  const kDate = crypto.createHmac("sha256", `TC3${TC_SECRET_KEY}`).update(date).digest();
+  const kService = crypto.createHmac("sha256", kDate).update(service).digest();
+  const kSigning = crypto.createHmac("sha256", kService).update("tc3_request").digest();
+  const signature = crypto.createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  const authorization = `TC3-HMAC-SHA256 Credential=${TC_SECRET_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return new Promise((resolve) => {
+    const req = https.request({ hostname: host, path: "/", method: "POST",
+      headers: { "Content-Type": "application/json", "Host": host, "X-TC-Action": action, "X-TC-Version": version, "X-TC-Timestamp": String(timestamp), "Authorization": authorization } },
+    (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => {
+      try { const j = JSON.parse(d); if (j.Response && j.Response.TextDetections) resolve(j.Response.TextDetections.map(t => t.DetectedText).join("\n")); else resolve(null); }
+      catch (e) { resolve(null); }
+    });});
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+    req.write(payload);
+    req.end();
+  });
+}
+
+const FUND_KW_RE = /混合|股票|债券|指数|ETF|联接|精选|优选|产业|制造|创新|成长|价值|蓝筹|配置|灵活|国防|军工|医疗|医药|科技|新能源|消费|资源|信息|高端|沪港深|环保|健康|文体|娱乐|安全|量化|策略|全球|海外|港股|LOF|QDII/;
+const SKIP_RE = /^(?:持有|基金|代码|金额|收益|份额|净值|成本|买入|¥|累计|昨日|中高|详情|资产|日涨|待确认|讨论|理财|投资|收益明|交易记|业绩走|黄金|名称|全部|我的|截图|添加|金选|金送|偏股|偏债)/;
+
+function parseTencentFormat(text) {
+  const lines = text.split("\n").map(l => l.trim());
+  const holdings = [];
+  for (let i = 2; i < lines.length - 2; i++) {
+    const name = lines[i];
+    const isComplete = /(A|C|混合|股票|债券|ETF|LOF|联接)$/.test(name);
+    if (isComplete && name.length >= 6 && !SKIP_RE.test(name)) {
+      const amt = lines[i + 1], ret = lines[i + 2];
+      const amtMatch = amt && amt.match(/^([\d,]+\.?\d{0,2})$/);
+      const retMatch = ret && ret.match(/^([+-][\d,]+\.?\d{0,2})$/);
+      if (amtMatch && parseFloat(amtMatch[1].replace(/,/g, "")) >= 100 && retMatch) {
+        const suffix = lines[i + 3];
+        const finalName = (suffix && /^[AC]$/.test(suffix)) ? name + suffix : name;
+        holdings.push({ fundCode: undefined, fundName: finalName, marketValue: amtMatch[1].replace(/,/g, ""), holdingReturn: retMatch[1].replace(/,/g, "") });
+        continue;
+      }
+    }
+    const cur = lines[i];
+    const isSuffix = (FUND_KW_RE.test(cur) && cur.length >= 2) || /^[一-鿿A-Za-z]{0,2}[AC]$/.test(cur);
+    if (!isSuffix || /^[\d.,+\-%]+$/.test(cur)) continue;
+    const hr = lines[i - 1], hrMatch = hr.match(/^([+-][\d,]+\.?\d{0,2})$/);
+    if (!hrMatch) continue;
+    const holdingReturn = hrMatch[1].replace(/,/g, "");
+    const amt = lines[i - 2], amtMatch = amt.match(/^([\d,]+\.?\d{0,2})$/);
+    if (!amtMatch || parseFloat(amtMatch[1].replace(/,/g, "")) < 100) continue;
+    const amount = amtMatch[1].replace(/,/g, "");
+    const prefix = lines[i - 3] || "";
+    if (!/^[一-鿿A-Za-z（）()／&]{2,}$/.test(prefix) || SKIP_RE.test(prefix)) {
+      if (FUND_KW_RE.test(prefix) && /^[AC]$/.test(cur)) {
+        holdings.push({ fundCode: undefined, fundName: prefix + cur, marketValue: amount, holdingReturn });
+      }
+      continue;
+    }
+    holdings.push({ fundCode: undefined, fundName: prefix + cur, marketValue: amount, holdingReturn });
+  }
+  const seen = new Set();
+  return holdings.filter(h => { if (seen.has(h.marketValue)) return false; seen.add(h.marketValue); return true; });
+}
+
+function parseGeneric(text) {
+  text = text.replace(/(混合|股票|债券|指数|货币|联接|灵活)\n([AC])\b/g, "$1$2");
+  const lines = text.split("\n").map(l => l.trim());
+  const codeRe = /\b(\d{6})\b/g;
+  const codes = []; let cm;
+  while ((cm = codeRe.exec(text)) !== null) {
+    if (parseInt(cm[1]) > 1000 && parseInt(cm[1]) < 600000) codes.push({ code: cm[1], index: cm.index });
+  }
+  const holdings = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    const cur = lines[i], next = lines[i + 1];
+    const amtMatch = cur.match(/^([\d,]+\.?\d{0,2})$/);
+    if (!amtMatch || parseFloat(amtMatch[1].replace(/,/g, "")) < 100) continue;
+    if (!/^0\.?0*$/.test(next)) continue;
+    const amount = amtMatch[1].replace(/,/g, "");
+    let fundName = null;
+    for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
+      const line = lines[j];
+      if (!line || SKIP_RE.test(line) || /\d{6}/.test(line)) continue;
+      if (FUND_KW_RE.test(line) && line.length >= 3 && !/^[\d.,+\-%]+$/.test(line)) {
+        if (j > 0) {
+          const prev = lines[j - 1];
+          if (prev && /^[一-鿿A-Za-z（）()／]{2,}$/.test(prev) && !FUND_KW_RE.test(prev) && !SKIP_RE.test(prev) && !/\d/.test(prev)) {
+            fundName = prev + line; break;
+          }
+        }
+        fundName = line; break;
+      }
+    }
+    if (!fundName) continue;
+    let holdingReturn = null;
+    for (let k = i + 2; k < Math.min(i + 6, lines.length); k++) {
+      const m = lines[k].match(/^([+-][\d,]+\.?\d{0,2})/);
+      if (m) { holdingReturn = m[1].replace(/,/g, ""); break; }
+    }
+    holdings.push({ fundCode: undefined, fundName, marketValue: amount, holdingReturn: holdingReturn || undefined });
+    i += 4;
+  }
+  for (const h of holdings) {
+    if (!h.fundCode) {
+      for (const c of codes) {
+        if (text.indexOf(c.code) >= Math.max(0, text.indexOf(h.fundName) - 100) && text.indexOf(c.code) < text.indexOf(h.fundName) + h.fundName.length + 200) {
+          h.fundCode = c.code; break;
+        }
+      }
+    }
+  }
+  const foundNames = new Set(holdings.map(h => h.fundName));
+  for (let ci = 0; ci < codes.length; ci++) {
+    const e = codes[ci], end = ci + 1 < codes.length ? codes[ci + 1].index : text.length;
+    const win = text.substring(e.index, end), before = text.substring(Math.max(0, e.index - 80), e.index);
+    const name = extractFundName(e.code, win, before);
+    if (!name || foundNames.has(name)) continue;
+    const mv = tryExtract(win, [/(?:持有金额|持仓金额|市值)[^\d]*[¥￥]?([\d,]+\.?\d{0,2})/]);
+    const hr = tryExtract(win, [/(?:持有收益|累计收益|持仓收益)[^+\-\d]*([+-]?[\d,]+(?:\.\d{1,2})?)/]);
+    holdings.push({ fundCode: e.code, fundName: name, marketValue: mv || undefined, holdingReturn: hr || undefined });
+  }
+  return holdings;
+}
+
+function tryExtract(text, regexes) { for (const re of regexes) { const m = text.match(re); if (m) return m[1].replace(/,/g, ""); } return null; }
+
+function extractFundName(code, window, before) {
+  const ci = window.indexOf(code);
+  if (ci !== -1) {
+    const ls = window.lastIndexOf("\n", ci), le = window.indexOf("\n", ci);
+    const line = window.substring(ls + 1, le === -1 ? window.length : le);
+    const bc = line.substring(0, line.indexOf(code)), m = bc.match(/[一-鿿A-Za-z（）()／]{3,}/);
+    if (m) return m[0].trim();
+    const ac = line.substring(line.indexOf(code) + 6), m2 = ac.match(/[一-鿿A-Za-z（）()／]{3,}/);
+    if (m2) return m2[0].trim();
+  }
+  let t = before.replace(/\n$/, ""); const ln = t.lastIndexOf("\n");
+  const pl = t.substring(ln + 1).trim();
+  if (pl.length >= 3 && !SKIP_RE.test(pl)) return pl.replace(/^[#\s]+/, "").replace(/基金名称[:\s：]*/, "");
+  return null;
+}
+
+async function lookupFundCodeWithDebug(name) {
+  const kws = getKeywords(name);
+  const result = { name, keywords: kws, attempts: [] };
+  for (const kw of kws) {
+    const ds = await searchFund(kw);
+    if (!ds.length) { result.attempts.push({ kw, found: 0 }); continue; }
+    result.attempts.push({ kw, found: ds.length, samples: ds.slice(0, 3).map(d => d.Name + '|' + d.Code) });
+    const m = pickBest(name, ds);
+    if (m) { result.code = m; result.matchedBy = kw; return result; }
+  }
+  return result;
+}
+
+function getKeywords(name) {
+  const kws = [name];
+  // 去括号
+  let s = name.replace(/[（(][^）)]*[）)]/g, "").trim(); if (s !== name) kws.push(s);
+  // 去类型后缀
+  s = name.replace(/(?:混合|股票|债券|指数|联接|ETF联接|精选|优选|产业|制造|创新)[AC]?$/g, "").trim(); if (s !== name) kws.push(s);
+  // 去A/C后缀
+  s = name.replace(/[AC]$/, "").trim(); if (s !== name) kws.push(s);
+  // 公司名(2-4字)+核心关键词
+  const company = (name.match(/^[一-鿿]{2,4}/) || [])[0] || "";
+  const kwMatch = name.match(/(?:ETF|联接|混合|股票|债券|指数|LOF|QDII|医药|军工|新能源|半导体|互联网|白酒|蓝筹|消费|科技|产业|信息|港股|全球)/g);
+  if (company && kwMatch) {
+    for (const kw of kwMatch) { s = company + kw; if (!kws.includes(s)) kws.push(s); }
+  }
+  // 公司名+ETF联接兜底
+  if (company) { s = company + 'ETF联接'; if (!kws.includes(s)) kws.push(s); }
+  return kws;
+}
+
+function searchFund(kw) {
+  const https = require("https");
+  return new Promise(r => {
+    const req = https.get(`https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(kw)}&type=14&token=DGCE23MHKBN23AKDN23&count=5`, res => {
+      let b = ""; res.on("data", c => b += c); res.on("end", () => {
+        try { r((JSON.parse(b).QuotationCodeTable && JSON.parse(b).QuotationCodeTable.Data) || []); } catch (e) { r([]); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    req.setTimeout(8000, () => { req.destroy(); r([]); }); req.on("error", () => r([]));
   });
 }
 
 function pickBest(ocrName, datas) {
-  const ocrSuffix = (ocrName.endsWith("C") || ocrName.endsWith("A")) ? ocrName.slice(-1) : "";
-  const cleanOcr = ocrName.replace(/[AC]$/, "").replace(/瑞信|瑞银/g, "");
-
-  // 检查 apiName 的字符是否按顺序出现在 ocrName 中
-  const charsMatch = (apiName) => {
-    const clean = apiName.replace(/[AC]$/, "");
-    let pos = 0;
-    for (const ch of clean) {
-      pos = cleanOcr.indexOf(ch, pos);
-      if (pos === -1) return false;
-      pos++;
-    }
-    return true;
-  };
-
-  // 收集匹配项
+  // 先过滤：基金名必须包含类型关键词（排除股票、公司名）
+  const TYPE_KW = /混合|股票|债券|指数|ETF|联接|货币|FOF|LOF|QDII|债/;
+  const fundDatas = datas.filter(d => TYPE_KW.test(d.Name || ""));
+  if (fundDatas.length === 0) fundDatas.push(...datas);
+  const sfx = (ocrName.endsWith("C") || ocrName.endsWith("A")) ? ocrName.slice(-1) : "";
+  const clean = ocrName.replace(/[（(][^）)]*[）)]/g, "").replace(/[AC]$/, "").replace(/瑞信|瑞银/g, "");
   const matched = [];
-  for (const d of datas) {
-    if (charsMatch(d.Name || "")) {
-      const dSuffix = (d.Name || "").slice(-1);
-      matched.push({ code: d.Code, sameSuffix: ocrSuffix && dSuffix === ocrSuffix });
-    }
+  for (const d of fundDatas) {
+    const apiClean = (d.Name || "").replace(/[（(][^）)]*[）)]/g, "").replace(/[AC]$/, "");
+    let pos = 0, ok = true;
+    for (const ch of apiClean) { pos = clean.indexOf(ch, pos); if (pos === -1) { ok = false; break; } pos++; }
+    if (ok) matched.push({ code: d.Code, sameSuffix: sfx && (d.Name || "").slice(-1) === sfx });
   }
-
-  if (matched.length === 0) {
-    // 模糊匹配
+  if (!matched.length) {
     for (const d of datas) {
-      const cleanName = (d.Name || "").replace(/[AC]$/, "");
-      const set = new Set(cleanOcr);
-      let common = 0;
-      for (const c of cleanName) { if (set.has(c)) common++; }
-      if (common / Math.max(cleanOcr.length, cleanName.length) > 0.7) {
-        return d.Code;
-      }
+      const apiClean = (d.Name || "").replace(/[（(][^）)]*[）)]/g, "").replace(/[AC]$/, "");
+      const s = new Set(clean); let c = 0;
+      for (const ch of apiClean) { if (s.has(ch)) c++; }
+      if (c / Math.max(clean.length, apiClean.length) > 0.7) return d.Code;
     }
     return null;
   }
-
-  // 优先同后缀
-  const preferred = matched.find(m => m.sameSuffix);
-  return preferred ? preferred.code : matched[0].code;
+  const p = matched.find(m => m.sameSuffix);
+  return p ? p.code : matched[0].code;
 }
 
-// ========== 持仓解析 ==========
-
-function extractAmount(text, regex) {
-  const match = text.match(regex);
-  if (match) return match[1].replace(/,/g, "");
-  return null;
-}
-
-function parseFundInfo(text) {
-  // 预处理：合并被换行拆开的基金名
-  text = text.replace(/(混合|股票|债券|指数|货币|联接|灵活)\n([AC])\b/g, "$1$2");
-
-  // 1. 以 6 位基金代码为锚点
-  const codeRe = /\b(\d{6})\b/g;
-  const codes = [];
-  let cm;
-  while ((cm = codeRe.exec(text)) !== null) {
-    const code = cm[1];
-    if (parseInt(code) > 1000 && parseInt(code) < 600000) {
-      codes.push({ code, index: cm.index });
+async function crossValidate(hs) {
+  for (const h of hs) {
+    if (h.fundCode && h.marketValue) {
+      try {
+        const nav = await fetchNAV(h.fundCode);
+        if (nav > 0) h._estShares = +(parseFloat(h.marketValue) / nav).toFixed(2);
+      } catch (e) {}
     }
   }
+}
 
-  // 无代码：走基金名锚点解析（投资组合列表截图）
-  if (codes.length === 0) return parseByNameAnchor(text);
-
-  // 2. 每个代码切窗口，窗口内提取基金名和金额
-  const holdings = [];
-  for (let i = 0; i < codes.length; i++) {
-    const entry = codes[i];
-    const nextIdx = i + 1 < codes.length ? codes[i + 1].index : text.length;
-    const window = text.substring(entry.index, nextIdx);
-    // 往前取一行（基金名可能在代码上方）
-    const before = text.substring(Math.max(0, entry.index - 60), entry.index);
-
-    // 提取基金名
-    let fundName = extractFundName(entry.code, window, before);
-
-    // 窗口内提取金额
-    console.log("=== code window ===", entry.code, JSON.stringify(window));
-    const marketValue = extractAmount(window, /(?:持有金额|持仓金额|市值|持仓市值|金额(?!\/))[^\d]*[¥￥]?([\d,]+\.?\d{0,2})/);
-    const holdingReturn = extractAmount(window, /(?:持有收益|累计收益|持仓收益)[^+\-\d]*([+-]?[\d,]+(?:\.\d{1,2})?)/);
-    const shares = extractAmount(window, /(?:持有份额|份额|持仓份额)[^\d]*([\d,]+\.?\d*)/);
-    const buyAmount = extractAmount(window, /(?:买入金额|投入金额|投入成本)[^\d]*[¥￥]?([\d,]+\.?\d{0,2})/);
-    const buyPrice = extractAmount(window, /(?:成本价|净值|买入价|单位净值|持有成本)[^\d]*(\d+\.\d{2,4})/);
-    console.log("=== extracted ===", { marketValue, holdingReturn, shares });
-
-    holdings.push({
-      fundCode: entry.code,
-      fundName: fundName || undefined,
-      buyPrice: buyPrice || undefined,
-      shares: shares || undefined,
-      marketValue: marketValue || undefined,
-      holdingReturn: holdingReturn || undefined,
-      buyAmount: buyAmount || undefined,
+function fetchNAV(code) {
+  const https = require("https");
+  return new Promise(r => {
+    const req = https.get(`https://fundgz.1234567.com.cn/js/${code}.js`, res => {
+      let b = ""; res.on("data", c => b += c); res.on("end", () => {
+        try { r(parseFloat(JSON.parse(b.replace(/^jsonpgz\(/, "").replace(/\);?$/, "")).gsz) || 0); } catch (e) { r(0); }
+      });
     });
-  }
-
-  return holdings;
-}
-
-function extractFundName(code, window, before) {
-  const codeInWindow = window.indexOf(code);
-
-  // A: 基金代码所在行前面或后面的中文文本
-  if (codeInWindow !== -1) {
-    const lineStart = window.lastIndexOf("\n", codeInWindow);
-    const lineEnd = window.indexOf("\n", codeInWindow);
-    const line = window.substring(lineStart + 1, lineEnd === -1 ? window.length : lineEnd);
-
-    // 代码前面的中文
-    const beforeCode = line.substring(0, line.indexOf(code));
-    const cnBefore = beforeCode.match(/[一-鿿A-Za-z（）()／]{3,}/);
-    if (cnBefore) return cnBefore[0].trim();
-
-    // 代码后面的中文
-    const afterCode = line.substring(line.indexOf(code) + 6);
-    const cnAfter = afterCode.match(/[一-鿿A-Za-z（）()／]{3,}/);
-    if (cnAfter) return cnAfter[0].trim();
-  }
-
-  // B: 上一行（去末尾换行符后再取最后一行）
-  let temp = before.replace(/\n$/, "");
-  const lastNewline = temp.lastIndexOf("\n");
-  const prevLine = temp.substring(lastNewline + 1).trim();
-  // 过滤已知 UI 标签
-  const skipRe = /^(持有|基金|代码|金额|收益|份额|净值|成本|买入|¥|累计|昨日|中高|详情|资产|日涨|待确认|讨论|理财|投资|收益明|交易记|业绩走)/;
-  if (prevLine.length >= 3 && !skipRe.test(prevLine)) {
-    return prevLine.replace(/^[#\s]+/, "").replace(/基金名称[:\s：]*/, "");
-  }
-
-  return null;
-}
-
-// 投资组合列表截图：无基金代码，以基金名称为锚点
-function parseByNameAnchor(text) {
-  let lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-
-  // 合并被 OCR 拆行的基金名
-  const fundKW = /混合|股票|债券|指数|ETF|联接|精选|优选|产业|制造|创新|成长|价值|蓝筹|配置|灵活|国防|军工|医疗|医药|科技|新能源|消费|资源|信息|高端|沪港深|环保|健康|文体|娱乐|安全|量化|策略|全球|海外|港股|LOF|QDII/;
-  const merged = [];
-  for (let i = 0; i < lines.length; i++) {
-    const cur = lines[i];
-    const prev = merged.length > 0 ? merged[merged.length - 1] : "";
-    const hasDigits = /\d/.test(cur);
-    const prevHasDigits = /\d/.test(prev);
-    // prev 必须像基金名：6-25字中文 或 含基金关键词
-    const prevLikeFund = (/[一-鿿]{6,}/.test(prev) && prev.length <= 25) || fundKW.test(prev);
-    const curLikeSuffix = cur.length <= 3 || fundKW.test(cur);
-    if (!hasDigits && !prevHasDigits && prevLikeFund && curLikeSuffix) {
-      merged[merged.length - 1] = prev + cur;
-    } else {
-      merged.push(cur);
-    }
-  }
-
-  console.log("=== merged lines ===", JSON.stringify(merged));
-
-  // 基金类型关键词（用于识别基金名）
-  const TYPE_KEYWORDS = "混合|股票|债券|指数|ETF|联接|货币|FOF|精选|优选|产业|制造|创新|成长|价值|蓝筹|红利|消费|医疗|医药|科技|新能源|半导体|军工|全球|海外|港股|沪港深|量化|策略|LOF|QDII";
-  const typeRe = new RegExp(TYPE_KEYWORDS);
-  // 基金名特征：以中文/A-Z开头，包含类型关键词，可能以A/C结尾，允许括号
-  const nameRe = new RegExp(`^[一-鿿A-Z]{2,30}(?:${TYPE_KEYWORDS})[一-鿿A-Za-z（）()LOF／QDII]*[AC]?$`);
-
-  // 找到所有基金名位置
-  const namePositions = [];
-  for (let i = 0; i < merged.length; i++) {
-    const line = merged[i];
-    if (nameRe.test(line) && typeRe.test(line)) {
-      console.log("=== found fund name ===", line, "at index", i);
-      namePositions.push({ name: line, lineIdx: i });
-    }
-  }
-  console.log("=== namePositions count ===", namePositions.length);
-
-  if (namePositions.length === 0) return [];
-
-  // 为每个基金名提取随后的金额数据
-  const holdings = [];
-  for (let pi = 0; pi < namePositions.length; pi++) {
-    const { name, lineIdx } = namePositions[pi];
-    const nextNameIdx = pi + 1 < namePositions.length
-      ? namePositions[pi + 1].lineIdx
-      : merged.length;
-
-    let marketValue = null;
-    let holdingReturn = null;
-    const signedNums = []; // 收集所有带符号数，取绝对值最大的
-
-    for (let j = lineIdx + 1; j < nextNameIdx && j < merged.length; j++) {
-      const line = merged[j];
-      const nums = line.match(/[+-]?[\d,]+\.?\d{0,2}(?![%\d])/g);
-      if (!nums) continue;
-
-      for (const n of nums) {
-        const val = parseFloat(n.replace(/[,+]/g, ""));
-        if (isNaN(val)) continue;
-
-        if (!marketValue && val >= 100) {
-          marketValue = n.replace(/,/g, "");
-          continue;
-        }
-        if (marketValue && (n.startsWith("+") || n.startsWith("-"))) {
-          signedNums.push({ val: Math.abs(val), raw: n.replace(/,/g, "") });
-        }
-      }
-    }
-
-    if (signedNums.length > 0) {
-      signedNums.sort((a, b) => b.val - a.val);
-      holdingReturn = signedNums[0].raw;
-    }
-
-    console.log("=== fund ===", name, "mv:", marketValue, "hr:", holdingReturn);
-    holdings.push({
-      fundCode: null,
-      fundName: name,
-      marketValue: marketValue || undefined,
-      holdingReturn: holdingReturn || undefined,
-      buyPrice: undefined,
-      shares: undefined,
-      buyAmount: undefined,
-    });
-  }
-
-  return holdings;
+    req.setTimeout(5000, () => { req.destroy(); r(0); }); req.on("error", () => r(0));
+  });
 }

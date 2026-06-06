@@ -17,15 +17,6 @@
         <button class="login-btn" bind:tap="onLogin">微信授权登录</button>
       </view>
 
-      <view wx:elif="{{loading}}" class="skeleton-wrap">
-        <view class="sk-asset skeleton"></view>
-        <view class="sk-actions">
-          <view class="sk-action-item skeleton"></view>
-          <view class="sk-action-item skeleton"></view>
-        </view>
-        <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-holding-item skeleton"></view>
-      </view>
-
       <view wx:elif="{{loadError}}" class="empty-state">
         <view class="empty-icon">🔌</view>
         <view class="empty-desc">网络异常，请检查网络后重试</view>

@@ -1,14 +1,5 @@
 <view class="page">
-  <view wx:if="{{loading}}" class="skeleton-wrap">
-    <view class="sk-header">
-      <view class="sk-title skeleton"></view>
-      <view class="sk-code skeleton"></view>
-    </view>
-    <view class="sk-nav-card skeleton"></view>
-    <view class="sk-tabs skeleton"></view>
-    <view class="sk-content skeleton"></view>
-  </view>
-  <view wx:else class="page-body">
+  <view class="page-body">
     <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation>
     <view class="fund-header">
       <view class="header-top">

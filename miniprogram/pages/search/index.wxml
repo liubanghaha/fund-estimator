@@ -3,9 +3,6 @@
     <input class="search-input" placeholder="输入6位基金代码，如 000001" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>
   </view>
-  <view wx:if="{{isLoading}}" class="skeleton-wrap">
-    <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-search-item skeleton"></view>
-  </view>
   <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
   <view wx:if="{{fundList.length > 0}}" class="result-list">
     <view wx:for="{{fundList}}" wx:key="fundCode" class="result-item" bind:tap="onTapFund" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">

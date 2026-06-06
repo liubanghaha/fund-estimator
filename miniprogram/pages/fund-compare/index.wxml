@@ -1,16 +1,5 @@
 <view class="page">
-  <view wx:if="{{loading}}" class="skeleton-wrap">
-    <view class="sk-compare-header">
-      <view class="sk-fund-col skeleton"></view>
-      <view class="sk-vs">VS</view>
-      <view class="sk-fund-col skeleton"></view>
-    </view>
-    <view class="sk-compare-chart skeleton"></view>
-    <view class="sk-compare-metrics skeleton"></view>
-  </view>
-
-  <view wx:else>
-    <!-- Fund A header -->
+  <!-- Fund A header -->
     <view class="compare-header">
       <view class="fund-col">
         <view class="fund-name">{{fundA.name || fundA.code}}</view>
@@ -117,5 +106,4 @@
         <button class="btn-switch" bind:tap="onRemoveFundB">更换对比基金</button>
       </view>
     </view>
-  </view>
 </view>
