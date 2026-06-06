@@ -46,7 +46,11 @@
 .index-opt{font-size:22rpx;color:#999;padding:6rpx 14rpx;border-radius:16rpx;background:#F5F5F5}
 .index-opt.active{color:#1976D2;background:rgba(25,118,210,0.08);font-weight:500}
 
-.tab-bar{display:flex;align-items:center;gap:16rpx;background:#FFF;margin:0 24rpx;border-radius:20rpx 20rpx 0 0;padding:16rpx 24rpx;border-bottom:1rpx solid #F0F0F0}
+.cal-top-row{display:flex;justify-content:space-between;align-items:center;background:#FFF;margin:0 24rpx;padding:20rpx 24rpx 8rpx;border-radius:20rpx 20rpx 0 0}
+.cal-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
+.cal-mode-toggle{font-size:22rpx;color:#1976D2;padding:6rpx 16rpx;background:rgba(25,118,210,0.06);border-radius:16rpx}
+
+.tab-bar{display:flex;align-items:center;gap:16rpx;background:#FFF;margin:0 24rpx;border-radius:0;padding:16rpx 24rpx;border-bottom:1rpx solid #F0F0F0}
 .tab-item{font-size:26rpx;color:#999;padding:8rpx 0;position:relative}
 .tab-item.active{color:#E4393C;font-weight:600}
 .tab-item.active::after{content:'';position:absolute;bottom:-17rpx;left:50%;transform:translateX(-50%);width:32rpx;height:4rpx;background:#E4393C;border-radius:2rpx}
@@ -56,16 +60,15 @@
 /* 日历 */
 .calendar-card{background:#FFF;margin:0 24rpx;border-radius:0 0 20rpx 20rpx;padding:16rpx 16rpx 24rpx}
 
-.weekday-row{display:flex;padding:8rpx 0 12rpx}
-.weekday{flex:1;text-align:center;font-size:22rpx;color:#BBB}
+.day-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:8rpx 0 12rpx}
+.weekday{text-align:center;font-size:22rpx;color:#BBB;padding-bottom:12rpx}
 
-.week-row{display:flex}
-.day-cell{flex:1;text-align:center;padding:12rpx 2rpx;min-height:90rpx;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.day-cell{text-align:center;padding:12rpx 2rpx;min-height:90rpx;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.day-profit{font-size:20rpx;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .day-cell.empty{opacity:.4}
 .day-cell.empty .day-num{font-size:20rpx;color:#CCC}
 .day-cell.up .day-num,.day-cell.down .day-num{font-size:26rpx;color:#333;font-weight:500}
 .day-num{font-size:20rpx;color:#CCC;margin-bottom:2rpx}
-.day-profit{font-size:22rpx;font-weight:600;white-space:nowrap}
 .day-profit.up{color:#E4393C}
 .day-profit.down{color:#2E8B57}
 

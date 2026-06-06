@@ -141,27 +141,24 @@ const api = {
   fetchMarketIndexTencent(indexCode, days = 80) {
     const S = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006" };
     const sym = (S[indexCode] || "1.000001").split(".")[1];
-    console.log('[TX] start:', indexCode, 'sym:', sym, 'days:', days);
     return new Promise((resolve) => {
       wx.request({
         url: `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?_var=kline_dayqfq&param=${sym},day,,,${days},qfq`,
         header: { Referer: "https://gu.qq.com/" },
         success(res) {
           try {
-            console.log('[TX] raw:', indexCode, typeof res.data === 'string' ? res.data.slice(0, 200) : JSON.stringify(res.data).slice(0, 200));
             const str = res.data.replace(/^(var\s+)?\w+\s*=\s*/, "").replace(/;?\s*$/, "");
             const json = JSON.parse(str);
             const list = (json.data && json.data[sym] && json.data[sym].day) || json.data || [];
-            console.log('[TX] keys:', Object.keys(json).join(','), 'data keys:', Object.keys(json.data || {}).join(','), 'list len:', list.length);
-            if (!Array.isArray(list) || !list.length) { console.log('[TX]', indexCode, 'empty list'); resolve({ code: 500 }); return; }
+            if (!Array.isArray(list) || !list.length) { resolve({ code: 500 }); return; }
             const data = list.map(item => {
               const parts = Array.isArray(item) ? item : typeof item === 'string' ? item.split(",") : [];
               return { date: parts[0] || "", close: +parts[2] || 0 };
             });
             resolve({ code: 0, data });
-          } catch (e) { console.log('[TX]', indexCode, 'parse err:', e.message); resolve({ code: 500 }); }
+          } catch (e) { resolve({ code: 500 }); }
         },
-        fail(e) { console.log('[TX] fail:', indexCode, e.errMsg); resolve({ code: 500 }); },
+        fail() { resolve({ code: 500 }); },
       });
     });
   },

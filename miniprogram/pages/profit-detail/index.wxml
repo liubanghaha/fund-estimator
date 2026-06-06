@@ -55,37 +55,41 @@
       <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}"></canvas>
     </view>
 
-    <!-- 日/月/年 统计 -->
-    <view class="tab-bar">
-      <view class="tab-item {{calendarView === 'day' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="day">日</view>
-      <view class="tab-item {{calendarView === 'month' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="month">月</view>
-      <view class="tab-item {{calendarView === 'year' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="year">年</view>
-      <view wx:if="{{calendarView === 'day'}}" class="tab-picker">
-        <picker mode="selector" range="{{availableMonths}}" bindchange="onMonthChange">
-          <view class="picker-label">{{selectedMonth}} ▼</view>
-        </picker>
-      </view>
-      <view wx:if="{{calendarView === 'month'}}" class="tab-picker">
-        <picker mode="selector" range="{{availableYears}}" bindchange="onYearChange">
-          <view class="picker-label">{{selectedYear}} ▼</view>
-        </picker>
-      </view>
+    <!-- 盈亏日历 -->
+    <view class="cal-top-row">
+      <view class="cal-title">盈亏日历</view>
+      <view class="cal-mode-toggle" bind:tap="onToggleMode">{{profitMode === 'amount' ? '收益率' : '收益金额'}}</view>
     </view>
+    <view class="tab-bar">
+        <view class="tab-item {{calendarView === 'day' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="day">日</view>
+        <view class="tab-item {{calendarView === 'month' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="month">月</view>
+        <view class="tab-item {{calendarView === 'year' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="year">年</view>
+        <view wx:if="{{calendarView === 'day'}}" class="tab-picker">
+          <picker mode="selector" range="{{availableMonths}}" bindchange="onMonthChange">
+            <view class="picker-label">{{selectedMonth}} ▼</view>
+          </picker>
+        </view>
+        <view wx:if="{{calendarView === 'month'}}" class="tab-picker">
+          <picker mode="selector" range="{{availableYears}}" bindchange="onYearChange">
+            <view class="picker-label">{{selectedYear}} ▼</view>
+          </picker>
+        </view>
+      </view>
 
     <!-- 日视图 -->
     <view wx:if="{{calendarView === 'day'}}" class="calendar-card">
-      <view class="weekday-row">
+      <view class="day-grid">
         <view class="weekday">日</view><view class="weekday">一</view><view class="weekday">二</view>
         <view class="weekday">三</view><view class="weekday">四</view><view class="weekday">五</view><view class="weekday">六</view>
-      </view>
-      <view wx:for="{{dayCalendar}}" wx:key="index" class="week-row">
-        <view wx:for="{{item}}" wx:for-item="d" wx:for-index="di" wx:key="di"
-          class="day-cell {{d.empty ? 'empty' : (d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : '')}}">
-          <view class="day-num">{{d.day}}</view>
-          <view wx:if="{{!d.empty && d.profit !== null}}" class="day-profit {{d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : ''}}">
-            {{d.profit > 0 ? '+' : ''}}{{d.profit}}
+        <block wx:for="{{dayCalendar}}" wx:for-item="row" wx:key="index">
+          <view wx:for="{{row}}" wx:for-item="d" wx:for-index="di" wx:key="di"
+            class="day-cell {{d.empty ? 'empty' : (d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : '')}}">
+            <view class="day-num">{{d.day}}</view>
+            <view wx:if="{{!d.empty && d.profit !== null}}" class="day-profit {{d.profit > 0 ? 'up' : d.profit < 0 ? 'down' : ''}}">
+              {{profitMode === 'rate' ? (d.rate > 0 ? '+' : '') + d.rate + '%' : (d.profit > 0 ? '+' : '') + d.profit}}
+            </view>
           </view>
-        </view>
+        </block>
       </view>
     </view>
 
@@ -95,7 +99,7 @@
         <view wx:for="{{monthCalendar}}" wx:key="month" class="month-cell {{item.empty ? 'empty' : (item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : '')}}">
           <view class="month-name">{{item.month}}月</view>
           <view wx:if="{{!item.empty && item.profit !== null}}" class="month-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-            {{item.profit > 0 ? '+' : ''}}{{item.profit}}
+            {{profitMode === 'rate' ? (item.rate > 0 ? '+' : '') + item.rate + '%' : (item.profit > 0 ? '+' : '') + item.profit}}
           </view>
           <view wx:else class="month-profit empty-text">--</view>
         </view>
@@ -108,7 +112,7 @@
         <view wx:for="{{yearData}}" wx:key="date" class="year-row {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
           <view class="year-label">{{item.date.slice(0, 4)}}年</view>
           <view class="year-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-            {{item.profit > 0 ? '+' : ''}}{{item.profit}}
+            {{profitMode === 'rate' ? (item.rate > 0 ? '+' : '') + item.rate + '%' : (item.profit > 0 ? '+' : '') + item.profit}}
           </view>
         </view>
       </view>

@@ -1,11 +1,12 @@
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
 
-const CACHE = "profit_detail_cache";
+const CACHE = "profit_detail_cache_v2";
 
 Page({
   data: {
     activeTab: "week",
+    profitMode: "amount",
     empty: false,
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
@@ -51,7 +52,6 @@ Page({
   _fromCache() {
     try {
       const c = wx.getStorageSync(CACHE);
-      console.log('[1_CACHE] hit:', !!(c && c.d && c.idx));
       if (c && c.d && c.d.length && c.idx && c.idx.length) {
         this._lastFetch = c.ts || 0;
         this._allDaily = c.d;
@@ -67,7 +67,7 @@ Page({
           todayProfit: cacheIsTrading ? c.s.tp : "0.00", todayProfitRate: cacheIsTrading ? c.s.tpr : 0,
           weekProfit: c.s.w, monthProfit: c.s.m, yearProfit: c.s.y,
           weekProfitRate: c.s.wr, monthProfitRate: c.s.mr, yearProfitRate: c.s.yr,
-          earliestDate: c.d[0] ? c.d[0].date : "",
+          earliestDate: c.ed || c.d[0] ? (c.ed || c.d[0].date) : "",
           availableMonths: c.cal.months || [], selectedMonth: c.cal.sm || "",
           availableYears: c.cal.years || [], selectedYear: c.cal.sy || "",
           dayCalendar: c.cal.days || [], monthCalendar: c.cal.mons || [], yearData: c.cal.yrs || [],
@@ -93,7 +93,6 @@ Page({
       ]);
       this.data.availableIndices.forEach((i, n) => { idxMap[i.code] = idxResults[n] || []; });
       this._idxMap = idxMap;
-      console.log('[FETCH] idxMap:', Object.entries(idxMap).map(([k,v]) => k+':'+v.length).join(','));
       if (!pfRes.result || pfRes.result.code !== 0) {
         if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
         return;
@@ -151,18 +150,24 @@ Page({
       this._totalCost = totalCost;
       this._fromCache = false;
 
+      const earliestCreate = hs.reduce((min, h) => { if (!h.createTime) return min; const d = calc.formatDate(h.createTime); return d < min ? d : min; }, "9999-99-99");
+
       this.setData({
         totalCost,
         todayProfit: tp.toFixed(2), todayProfitRate: isTradingDay ? parseFloat(d.todayProfitRate || 0) : 0,
         weekProfit: w, monthProfit: m, yearProfit: y,
         weekProfitRate: rt(parseFloat(w)), monthProfitRate: rt(parseFloat(m)), yearProfitRate: rt(parseFloat(y)),
-        earliestDate: allDaily[0] ? allDaily[0].date : today,
-      }, () => { console.log('[FETCH] callback -> _draw'); this._draw(); this._cal(); });
+        earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
+      }, () => { this._draw(); this._cal(); });
 
       const cal = this._calCached();
-      wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, tc: totalCost, s: { tp: tp.toFixed(2), tpr: isTradingDay ? parseFloat(d.todayProfitRate || 0) : 0, w, m, y, wr: rt(parseFloat(w)), mr: rt(parseFloat(m)), yr: rt(parseFloat(y)) }, cal, ts: Date.now() } });
-      if (Object.values(idxMap).every(arr => !arr || !arr.length)) {
-        setTimeout(() => this._fetch(), 2000);
+      const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
+      if (hasIndex) {
+        this._retryCount = 0;
+        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, s: { tp: tp.toFixed(2), tpr: isTradingDay ? parseFloat(d.todayProfitRate || 0) : 0, w, m, y, wr: rt(parseFloat(w)), mr: rt(parseFloat(m)), yr: rt(parseFloat(y)) }, cal, ts: Date.now() } });
+      } else {
+        this._retryCount = (this._retryCount || 0) + 1;
+        if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
       }
     } catch (e) {
       if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
@@ -173,13 +178,11 @@ Page({
 
   _data() {
     const all = this._allDaily || [], idx = this._indexDaily || [];
-    console.log('[DATA] all:', all.length, 'idx:', idx.length, 'tab:', this.data.activeTab);
     if (!all.length) return null;
     const now = new Date(), today = calc.formatDate(now);
     let st; if (this.data.activeTab === "week") st = this._mon(now); else if (this.data.activeTab === "month") st = today.slice(0, 7) + "-01"; else st = today.slice(0, 4) + "-01-01";
     const pm = {}; all.forEach(d => { pm[d.date] = d; });
     const fi = idx.filter(d => d.date >= st);
-    console.log('[DATA] st:', st, 'fi:', fi.length);
 
     if (fi.length < 2) {
       const pf = all.filter(d => d.date >= st);
@@ -196,8 +199,7 @@ Page({
   },
 
   _draw() {
-    const r = this._data(); if (!r) { console.log('[DRAW] null'); return; }
-    console.log('[DRAW] hasP:', r.hasP, 'noIdx:', r.noIdx, 'pts:', r.data.length);
+    const r = this._data(); if (!r) return;
     const ctx = wx.createCanvasContext('profitCanvas', this);
     const w = this._canvasW || 340, h = this._canvasH || 200;
     const p = { t: 40, r: 12, b: 36, l: 52 };
@@ -257,58 +259,49 @@ Page({
   _cal() { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); },
   _calCached() {
     const a = this._allDaily, c = this._dailyChange; if (!a || !c) return null;
-    const dm = {}; a.forEach(d => { dm[d.date] = d; });
+    const dm = {}; a.forEach(d => { dm[d.date] = d.value; });
     const ms = [...new Set(Object.keys(dm).map(d => d.slice(0, 7)))].sort().reverse();
     const ys = [...new Set(Object.keys(dm).map(d => d.slice(0, 4)))].sort().reverse();
     const now = new Date(); const sm = ms[0] || calc.formatDate(now).slice(0, 7); const sy = ys[0] || String(now.getFullYear());
-    return { months: ms, sm, years: ys, sy, days: this._days(c, sm), mons: this._mons(c, sy), yrs: this._yrs(c) };
+    return { months: ms, sm, years: ys, sy, days: this._days(c, sm, dm), mons: this._mons(c, sy, dm), yrs: this._yrs(c, dm) };
   },
 
-  _days(c, month) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; w.push({ day: d, date: ds, profit: chg !== undefined ? chg : null, empty: chg === undefined }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
-  _mons(c, year) { return [1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const pfx = `${year}-${String(m).padStart(2, '0')}`; let s = 0, h = false; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(pfx)) { s += chg; h = true; } } return { month: m, date: pfx, profit: +s.toFixed(2), empty: !h }; }); },
-  _yrs(c) { return [...new Set(Object.keys(c).map(d => d.slice(0, 4)))].sort().map(y => { let s = 0; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(y)) s += chg; } return { date: y + '-12-31', profit: +s.toFixed(2) }; }); },
+  _days(c, month, dm) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; const empty = chg === undefined; const mv = dm[ds] || 0; w.push({ day: d, date: ds, profit: empty ? null : chg, rate: empty ? null : (mv > 0 ? +((chg / mv) * 100).toFixed(2) : 0), empty }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
+  _mons(c, year, dm) { return [1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const pfx = `${year}-${String(m).padStart(2, '0')}`; let s = 0, h = false; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(pfx)) { s += chg; h = true; } } const v = +s.toFixed(2); const keys = Object.keys(dm).filter(k => k.startsWith(pfx)).sort(); const mv = keys.length ? dm[keys[keys.length - 1]] : 0; return { month: m, date: pfx, profit: v, rate: mv > 0 ? +((v / mv) * 100).toFixed(2) : 0, empty: !h }; }); },
+  _yrs(c, dm) { return [...new Set(Object.keys(c).map(d => d.slice(0, 4)))].sort().map(y => { let s = 0; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(y)) s += chg; } const v = +s.toFixed(2); const keys = Object.keys(dm).filter(k => k.startsWith(y)).sort(); const mv = keys.length ? dm[keys[keys.length - 1]] : 0; return { date: y + '-12-31', profit: v, rate: mv > 0 ? +((v / mv) * 100).toFixed(2) : 0 }; }); },
 
   // ============ 事件 ============
 
   onSummaryTap(e) { this.setData({ activeTab: e.currentTarget.dataset.tab }, () => this._draw()); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
-  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m) }); },
-  onYearChange(e) { const y = this.data.availableYears[e.detail.value]; this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y) }); },
+  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
+  onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
+  onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
   onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
 
   _mon(d) { const c = new Date(d); c.setDate(c.getDate() - (c.getDay() === 0 ? 6 : c.getDay() - 1)); return calc.formatDate(c); },
   async _idx(code, days) {
-    const SOURCES = ['cloud', 'eastmoney'];
     const tryAll = async () => {
       const results = await Promise.allSettled([
         api.fetchMarketIndex(code, days),
         api.fetchMarketIndexClient(code, days),
       ]);
-      const status = [];
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        if (r.status === 'rejected') { status.push(SOURCES[i] + ':rejected'); continue; }
-        const v = r.value;
-        if (v && v.result && v.result.code === 0 && v.result.data && v.result.data.length > 0) {
-          console.log('[IDX]', code, 'OK from', SOURCES[i], 'len:', v.result.data.length);
-          return v.result.data.map(d => ({ date: d.date, close: d.close }));
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          const v = r.value;
+          if (v && v.result && v.result.code === 0 && v.result.data && v.result.data.length > 0) {
+            return v.result.data.map(d => ({ date: d.date, close: d.close }));
+          }
+          if (v && v.code === 0 && v.data && v.data.length > 0) {
+            return v.data.map(d => ({ date: d.date, close: d.close }));
+          }
         }
-        if (v && v.code === 0 && v.data && v.data.length > 0) {
-          console.log('[IDX]', code, 'OK from', SOURCES[i], 'len:', v.data.length);
-          return v.data.map(d => ({ date: d.date, close: d.close }));
-        }
-        const err = v ? (v.result ? 'code=' + v.result.code : 'code=' + (v.code || '?')) : 'null';
-        status.push(SOURCES[i] + ':' + err);
       }
-      console.log('[IDX]', code, 'fail:', status.join(', '));
       return null;
     };
     const r1 = await tryAll();
     if (r1) return r1;
-    const r2 = await tryAll();
-    if (r2) return r2;
-    console.log('[IDX]', code, 'ALL FAIL');
-    return [];
+    return (await tryAll()) || [];
   },
 });
