@@ -57,9 +57,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-## 项目专属铁律
+## 系统铁律（所有项目通用）
 
-### 0. 定位 → 方案 → 确认 → 开发（铁律第一条）
+### 定位 → 方案 → 确认 → 开发
 **禁止拿到问题就直接改代码。** 必须走完这四步：
 1. **定位**：加日志 / 读数据 / 追踪代码路径，找到根因
 2. **方案**：把根因和修复思路写清楚，发给用户
@@ -68,24 +68,26 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 跳过任何一步 = 浪费时间。改错一次带来的额外排查成本远高于多想 30 秒。
 
-### 1. 数据先行，再动模板
-渲染问题 → 先 `console.log` 确认数据到了客户端 → 数据不到查云函数 → 数据到了才改模板。
+### 需求复述确认
+**收到需求后，先用自己的话复述理解，确认搞明白了再动手。**
+- 一句话说清楚：你要改什么、为什么改、预期效果是什么
+- 如果不确定，直接问，不要猜
+- 用户说"对"或"是"之后再执行
 
-### 2. 新 API 先验域名
+**Why:** 多次误删、误改的根因都是没确认需求就直接写代码。
+
+### 调试流程
+日志 → 定位 → 修改 → 验证
+
+---
+
+## 项目专属
+
+### 1. 新 API 先验域名
 调外部 URL 先确认在微信小程序白名单。已有白名单：`api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundgz.1234567.com.cn`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。不在白名单里的优先走客户端 `wx.request`。
 
-### 3. 云函数出口限制
-云函数 HTTPS 请求可能被远端拒绝。外部行情 API 优先走客户端请求。
-
-### 4. Canvas 旧 API 限制
-- `ctx.draw()` 每次清空重绘，无法增量叠加，触摸滑动 tooltip 必然闪烁
-- Canvas 2D (`type="2d"`) 是原生组件，不能放在 scroll-view 里
-- 折线图触摸：旧 API + 点按展示 tooltip（2 秒自动消失）
-
-### 5. 部署 = 云函数 + 前端
+### 2. 部署 = 云函数 + 前端
 改云函数后要做 `cli cloud functions deploy`。
-
-### 6. 调试流程：日志 → 定位 → 修改 → 验证
 
 ## 技术栈
 - 微信小程序 + 云开发

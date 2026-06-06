@@ -247,17 +247,22 @@ function formatDate(d) {
 
 function httpGet(urlOrOpts, headers, timeoutMs = 10000) {
   const https = require("https");
+  const label = typeof urlOrOpts === "string" ? urlOrOpts.slice(0, 60) : (urlOrOpts.hostname + urlOrOpts.path).slice(0, 60);
   return new Promise((resolve) => {
-    const opts = typeof urlOrOpts === "string"
-      ? [urlOrOpts, { headers: headers || {} }]
-      : [{ hostname: urlOrOpts.hostname, path: urlOrOpts.path }, { headers: headers || {} }];
-    const req = https.get(opts[0], opts[1], (res) => {
+    const h = headers || {};
+    const onResponse = (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
-      res.on("end", () => resolve(body));
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(""); });
-    req.on("error", () => resolve(""));
+      res.on("end", () => {
+        console.log("[httpGet]", res.statusCode, label, "len:", body.length);
+        resolve(body);
+      });
+    };
+    const req = typeof urlOrOpts === "string"
+      ? https.get(urlOrOpts, { headers: h }, onResponse)
+      : https.get({ ...urlOrOpts, headers: h }, onResponse);
+    req.setTimeout(timeoutMs, () => { req.destroy(); console.log("[httpGet] timeout", label); resolve(""); });
+    req.on("error", (e) => { console.log("[httpGet] error", label, e.message); resolve(""); });
   });
 }
 
