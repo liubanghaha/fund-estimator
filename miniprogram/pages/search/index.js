@@ -1,6 +1,8 @@
 const api = require("../../utils/api");
 Page({
-  data: { keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
+  data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
+  onLoad() { this._loaded = true; },
+  onShow() { if (!this._loaded) { wx.switchTab({ url: "/pages/index/index" }); return; } this.setData({ ready: true }); },
   onInput(e) { this.setData({ keyword: e.detail.value }); },
   async onSearch() {
     const { keyword } = this.data;

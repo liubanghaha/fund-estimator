@@ -10,7 +10,7 @@ Page({
       if (res.result && res.result.code === 0) {
         wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
         wx.showToast({ title: "登录成功", icon: "success" });
-        setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
+        setTimeout(() => { wx.reLaunch({ url: "/pages/index/index" }); }, 800);
       } else {
         wx.showToast({ title: "登录失败，请重试", icon: "none" });
       }

@@ -253,16 +253,13 @@ function httpGet(urlOrOpts, headers, timeoutMs = 10000) {
     const onResponse = (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        console.log("[httpGet]", res.statusCode, label, "len:", body.length);
-        resolve(body);
-      });
+      res.on("end", () => { resolve(body); });
     };
     const req = typeof urlOrOpts === "string"
       ? https.get(urlOrOpts, { headers: h }, onResponse)
       : https.get({ ...urlOrOpts, headers: h }, onResponse);
-    req.setTimeout(timeoutMs, () => { req.destroy(); console.log("[httpGet] timeout", label); resolve(""); });
-    req.on("error", (e) => { console.log("[httpGet] error", label, e.message); resolve(""); });
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(""); });
+    req.on("error", (e) => { resolve(""); });
   });
 }
 

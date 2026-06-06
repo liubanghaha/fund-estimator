@@ -21,8 +21,7 @@ exports.main = async (event) => {
       },
     };
   } catch (e) {
-    console.error("获取基金概览失败:", JSON.stringify(e));
-    return { code: 500, msg: "获取基金概览失败" };
+    return { code: 500, msg: e.message || "获取基金概览失败" };
   }
 };
 

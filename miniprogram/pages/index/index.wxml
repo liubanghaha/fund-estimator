@@ -17,6 +17,10 @@
         <button class="login-btn" bind:tap="onLogin">微信授权登录</button>
       </view>
 
+      <view wx:elif="{{!dataReady}}" class="empty-state">
+        <view class="empty-desc">加载中...</view>
+      </view>
+
       <view wx:elif="{{loadError}}" class="empty-state">
         <view class="empty-icon">🔌</view>
         <view class="empty-desc">网络异常，请检查网络后重试</view>
@@ -81,7 +85,7 @@
           </view>
           <view class="action-item" bind:tap="onToggleBatch">
             <view class="action-icon">📋</view>
-            <view class="action-text">编辑</view>
+            <view class="action-text">批量</view>
           </view>
         </view>
 

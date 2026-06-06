@@ -6,6 +6,6 @@ App({
         traceUser: true,
       });
     }
-    this.globalData = {};
+    this.globalData = { _ocrFunds: null, _screenshotPath: null, _syncTradeFund: null };
   },
 });

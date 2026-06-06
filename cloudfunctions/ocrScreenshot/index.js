@@ -2,8 +2,8 @@ const cloud = require("wx-server-sdk");
 const crypto = require("crypto");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const TC_SECRET_ID = process.env.TC_SECRET_ID || "your-tencent-secret-id";
-const TC_SECRET_KEY = process.env.TC_SECRET_KEY || "your-tencent-secret-key";
+const TC_SECRET_ID = process.env.TC_SECRET_ID;
+const TC_SECRET_KEY = process.env.TC_SECRET_KEY;
 
 exports.main = async (event) => {
   const { fileID } = event;

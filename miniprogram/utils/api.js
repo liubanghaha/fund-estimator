@@ -5,9 +5,6 @@ const api = {
   searchFund(keyword) {
     return this.callFunction("searchFund", { keyword });
   },
-  fetchFundInfo(fundCode) {
-    return this.callFunction("fetchFundInfo", { fundCode });
-  },
   fetchFundEstimate(fundCode) {
     return this.callFunction("fetchFundEstimate", { fundCode });
   },
@@ -44,17 +41,11 @@ const api = {
   watchlistCheck(fundCode) {
     return this.callFunction("manageWatchlist", { action: "check", fundCode });
   },
-  holdingAdd(data) {
-    return this.callFunction("manageHolding", { action: "add", data });
-  },
   holdingUpdate(id, data) {
     return this.callFunction("manageHolding", { action: "update", id, data });
   },
   holdingRemove(id) {
     return this.callFunction("manageHolding", { action: "remove", id });
-  },
-  holdingList() {
-    return this.callFunction("manageHolding", { action: "list" });
   },
   holdingGet(id) {
     return this.callFunction("manageHolding", { action: "get", id });

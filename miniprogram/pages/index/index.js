@@ -21,6 +21,7 @@ Page({
   data: {
     isLoggedIn: false,
     loading: false,
+    dataReady: false,
     holdings: [],
     displayCount: PAGE_SIZE,
     hasMore: false,
@@ -54,11 +55,6 @@ Page({
     selectedCount: 0,
     allSelected: false,
     loadError: false,
-    demoFunds: [
-      { name: "易方达蓝筹精选", code: "005827", amount: "¥12,580.00", return: "+1,280.50", isUp: true },
-      { name: "招商中证白酒", code: "161725", amount: "¥8,320.00", return: "-320.00", isUp: false },
-      { name: "天弘沪深300", code: "005918", amount: "¥5,600.00", return: "+458.20", isUp: true },
-    ],
   },
 
   onLoad() {
@@ -96,6 +92,8 @@ Page({
       }
     } else {
       this.setData({ isLoggedIn: false, holdings: [] });
+      wx.removeStorageSync("portfolio_cache");
+      wx.removeStorageSync("profit_detail_cache");
     }
   },
 
@@ -164,7 +162,7 @@ Page({
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
-          loading: false, loadError: false,
+          loading: false, loadError: false, dataReady: true,
           holdings, allUpdated,
           displayCount: PAGE_SIZE,
           hasMore: holdings.length > PAGE_SIZE,
@@ -179,7 +177,7 @@ Page({
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
       }
     } catch (e) {
-      this.setData({ loading: false, loadError: this.data.holdings.length === 0 });
+      this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
       console.error("获取持仓失败:", e);
     }
   },
@@ -468,16 +466,12 @@ Page({
     const { id } = e.currentTarget.dataset;
     const _this = this;
     wx.showActionSheet({
-      itemList: ['编辑', '加减持仓', '删除'],
+      itemList: ['编辑', '删除'],
       success(res) {
         const h = _this.data.holdings.find((x) => x._id === id);
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
-          const app = getApp();
-          app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
-          wx.navigateTo({ url: `/pages/adjust-holding/index?fundCode=${h.fundCode}` });
-        } else if (res.tapIndex === 2) {
           wx.showModal({
             title: "确认删除",
             content: "确定要删除此条持仓吗？",

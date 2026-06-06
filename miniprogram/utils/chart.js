@@ -4,27 +4,6 @@
 
 const chart = {
   /**
-   * 初始化 Canvas 2D 上下文。返回 ctx，如果失败返回 null。
-   * page: Page 实例 (this)
-   * canvasId: canvas 元素的 id（不带 #）
-   * logicalW, logicalH: 逻辑像素宽高（如 340, 180）
-   */
-  initCanvas(page, canvasId, logicalW, logicalH) {
-    const query = wx.createSelectorQuery().in(page);
-    return new Promise((resolve) => {
-      query.select('#' + canvasId).fields({ node: true, size: true }).exec((res) => {
-        if (!res || !res[0] || !res[0].node) { resolve(null); return; }
-        const canvas = res[0].node;
-        const dpr = wx.getSystemInfoSync().pixelRatio;
-        canvas.width = logicalW * dpr;
-        canvas.height = logicalH * dpr;
-        const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        resolve(ctx);
-      });
-    });
-  },
-  /**
    * 绘制单条折线图（含渐变填充、坐标轴）
    */
   drawLineChart(ctx, opts = {}) {
@@ -96,62 +75,6 @@ const chart = {
 
     // 保存渲染数据供 tooltip 使用
     this._lastDraw = { data, xp, yp, yField, xField, w, h, p, yMin, yMax, vals };
-  },
-
-  /**
-   * 处理触摸事件 — 仅绘制覆盖层，不重绘底图
-   */
-  handleTouch(ctx, e, opts = {}) {
-    const now = Date.now();
-    if (this._touchLastTime && now - this._touchLastTime < 60) return;
-    this._touchLastTime = now;
-
-    const d = this._lastDraw;
-    if (!d || !d.data || d.data.length < 2) return;
-    const { data, xp, yp, yField, xField, w, h, p } = d;
-
-    const touch = e.touches[0];
-    const px = touch.x != null ? touch.x : (touch.clientX || 0);
-
-    let nearest = 0, minDist = Infinity;
-    data.forEach((_, i) => {
-      const dist = Math.abs(xp(i) - px);
-      if (dist < minDist) { minDist = dist; nearest = i; }
-    });
-
-    // 快速重绘底图
-    this._drawFastLine(ctx, d, opts);
-
-    const pt = data[nearest];
-    const cx = xp(nearest), cy = yp(pt[yField]);
-
-    // 竖线
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(cx, p.top); ctx.lineTo(cx, h - p.bottom); ctx.stroke();
-
-    // 数据点
-    ctx.beginPath();
-    ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-    ctx.fillStyle = '#FFFFFF'; ctx.fill();
-    ctx.strokeStyle = opts.color || '#E4393C'; ctx.lineWidth = 2; ctx.stroke();
-
-    // Tooltip
-    const label = `${pt[xField]}  ${pt[yField]}`;
-    ctx.font = '11px sans-serif';
-    const tw = label.length * 7 + 8;
-    const tx = Math.max(p.left + 4, Math.min(w - p.right - tw - 8, cx - tw / 2));
-    const ty = Math.max(p.top + 2, cy - 28);
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(tx, ty, tw, 20);
-    ctx.fillStyle = '#FFF';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, tx + 4, ty + 10);
-  },
-
-  clearTouch(ctx, opts = {}) {
-    this.drawLineChart(ctx, opts);
   },
 
   /**

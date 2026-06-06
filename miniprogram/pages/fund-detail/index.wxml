@@ -1,6 +1,13 @@
 <view class="page">
   <view class="page-body">
     <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation>
+    <view wx:if="{{errorMsg}}" class="error-wrap">
+      <view class="error-text">{{errorMsg}}</view>
+      <button class="retry-btn" bind:tap="fetchAll">重试</button>
+    </view>
+    <view wx:if="{{loading}}" class="loading-wrap">
+      <view class="loading-text">加载中...</view>
+    </view>
     <view class="fund-header">
       <view class="header-top">
         <view class="header-info">
@@ -90,7 +97,7 @@
       <view class="tab-item {{activeTab === 'profile' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="profile">档案</view>
     </view>
 
-    <view wx:if="{{activeTab === 'trend'}}">
+    <view hidden="{{activeTab !== 'trend'}}">
       <view wx:if="{{navHistory.length > 1}}" class="chart-card">
         <view class="section-title">收益走势</view>
         <view class="period-tabs">

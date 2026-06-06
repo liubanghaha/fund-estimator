@@ -7,11 +7,14 @@
       <view class="ac-title">截图导入</view>
       <view class="ac-desc">识别交易记录自动填写</view>
     </view>
+    <!-- TODO: 微信审核金融功能，手动加减仓暂时注释，后续实现 -->
+    <!--
     <view class="action-card" bind:tap="onManual">
       <view class="ac-icon">✏️</view>
       <view class="ac-title">手动加减仓</view>
       <view class="ac-desc">选择基金手动输入份额</view>
     </view>
+    -->
   </view>
 
   <!-- 识别中 -->
@@ -49,7 +52,7 @@
     <button wx:if="{{ocrResults.length > 0}}" class="submit-all-btn" bind:tap="onConfirmAll">确认</button>
   </view>
 
-  <!-- 选基金弹窗 -->
+  <!-- TODO: 微信审核金融功能，选基金弹窗暂时注释
   <view wx:if="{{showPicker}}" class="picker-mask" bind:tap="onClosePicker">
     <view class="picker-panel" catch:tap="noop">
       <view class="picker-title">选择基金</view>
@@ -61,5 +64,6 @@
       </scroll-view>
     </view>
   </view>
+  -->
 
 </view>

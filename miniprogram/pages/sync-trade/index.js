@@ -92,28 +92,23 @@ Page({
 
     wx.showLoading({ title: "保存中..." });
     try {
-      console.log("=== sync-trade start ===", { tradeType, fundCode, fundName, finalAmount, selectedDate, effectiveDate: effectiveDate });
 
       // 获取当前净值
       let nav = 0, actualNavForMV = 0;
       try {
         const estRes = await api.fetchFundEstimate(fundCode);
-        console.log("=== fetchFundEstimate ===", JSON.stringify(estRes));
         if (estRes.result && estRes.result.code === 0 && estRes.result.data) {
           const ed = estRes.result.data;
           const raw = parseFloat(ed.estimatedNav || ed.actualNav || ed.nav);
           actualNavForMV = parseFloat(ed.actualNav) || 0;
-          console.log("=== nav sources ===", { estimatedNav: ed.estimatedNav, actualNav: ed.actualNav, nav_yesterday: ed.nav, picked: raw, actualNavForMV });
           if (!isNaN(raw) && raw > 0) nav = raw;
         }
-      } catch (e) { console.error("=== fetchFundEstimate error ===", e); }
+      } catch (e) { wx.showToast({ title: "获取净值失败", icon: "none" }); }
 
       const price = nav;
       const shares = price > 0 ? parseFloat((finalAmount / price).toFixed(2)) : 0;
-      console.log("=== calc ===", { nav, price, shares, finalAmount });
 
       const txData = { fundCode, fundName, type: tradeType, amount: finalAmount, fee: parseFloat(fee) || 0, grossAmount: parseFloat(amount) || 0, shares: parseFloat(shares), price, date: effectiveDate };
-      console.log("=== transactionAdd ===", JSON.stringify(txData));
       await api.transactionAdd(txData);
 
       // 2. 更新持仓（客户端直查兜底，兼容 _openid 问题）
@@ -129,7 +124,6 @@ Page({
           if (cr.data && cr.data.length > 0) holding = cr.data[0];
         } catch (e) { /* ignore */ }
       }
-      console.log("=== holding found ===", holding ? JSON.stringify({ id: holding._id, shares: holding.shares, buyPrice: holding.buyPrice, marketValue: holding.marketValue, holdingReturn: holding.holdingReturn, buyAmount: holding.buyAmount }) : "NOT FOUND");
       if (holding) {
         let oldShares = parseFloat(holding.shares || 0);
         let oldBuyPrice = parseFloat(holding.buyPrice || holding.nav || 0);
@@ -142,9 +136,8 @@ Page({
           if (!oldShares) oldShares = mv / fallbackNav;
           if (!oldBuyPrice && oldShares > 0) oldBuyPrice = fallbackNav - (hr / oldShares);
           if (!oldBuyPrice || oldBuyPrice <= 0) oldBuyPrice = fallbackNav;
-          console.log("=== OCR fallback ===", { oldShares, oldBuyPrice, mv, fallbackNav, hr });
         }
-        console.log("=== pre-update ===", { oldShares, oldBuyPrice, oldCost: +(oldShares * oldBuyPrice).toFixed(2), oldMarketValue: parseFloat(holding.marketValue || 0) });
+
         const oldCost = oldBuyPrice * oldShares;
         const newSharesVal = tradeType === "buy"
           ? oldShares + shares
@@ -159,7 +152,6 @@ Page({
           ? oldMarketValue + finalAmount
           : oldMarketValue - finalAmount).toFixed(2);
         const newHoldingReturn = +(newMarketValue - newCost).toFixed(2);
-        console.log("=== marketValue calc ===", { oldMarketValue, finalAmount, newMarketValue, newHoldingReturn });
         const updateData = {
           shares: parseFloat(newSharesVal.toFixed(2)),
           buyPrice: parseFloat(newBuyPrice.toFixed(4)),
@@ -167,22 +159,14 @@ Page({
           marketValue: parseFloat(newMarketValue.toFixed(2)),
           holdingReturn: parseFloat(newHoldingReturn.toFixed(2)),
         };
-        console.log("=== 同步交易 更新持仓 ===");
-        console.log("旧:", { shares: holding.shares, buyPrice: holding.buyPrice, buyAmount: holding.buyAmount, nav: holding.nav });
-        console.log("新:", updateData);
-        console.log("中间值:", { oldShares, oldBuyPrice, oldCost, newSharesVal, newCost, newBuyPrice, nav, shares, finalAmount });
         // 直接客户端更新
         const db = wx.cloud.database();
-        const updateResult = await db.collection("holdings").doc(holding._id).update({ data: updateData });
-        console.log("更新结果:", updateResult);
-        // 验证更新是否生效
-        const verify = await db.collection("holdings").doc(holding._id).get();
-        console.log("验证DB数据:", { shares: verify.data.shares, buyPrice: verify.data.buyPrice, buyAmount: verify.data.buyAmount });
+        await db.collection("holdings").doc(holding._id).update({ data: updateData });
         // 清除首页缓存并强制刷新
         wx.removeStorageSync("portfolio_cache");
         wx.setStorageSync("portfolio_force_refresh", true);
       } else {
-        console.log("=== holding NOT found, only transaction saved ===");
+        // 新基金没有持仓记录，只保存交易
       }
 
       wx.hideLoading();

@@ -319,6 +319,34 @@ Page({
 
   onChartTouch(e) {
     if (!this._baseData) return;
+
+    // 滚动方向判断：区分横向滑动（查数据）和纵向滚动（滚页面）
+    if (e.type === 'touchstart') {
+      this._touchSY = e.touches[0].y;
+      this._touchSX = e.touches[0].x;
+      this._touchActive = false;
+      return;
+    }
+
+    if (e.type === 'touchend') {
+      this._touchActive = false;
+      this.drawChart();
+      return;
+    }
+
+    if (!this._touchActive) {
+      const dy = Math.abs(e.touches[0].y - this._touchSY);
+      const dx = Math.abs(e.touches[0].x - this._touchSX);
+      if (dy > dx && dy > 8) return;
+      if (dx > dy && dx > 8) this._touchActive = true;
+    }
+    if (!this._touchActive) return;
+
+    // 60fps 节流
+    const now = Date.now();
+    if (this._touchT && now - this._touchT < 60) return;
+    this._touchT = now;
+
     const { data, opts } = this._baseData;
     const ctx = wx.createCanvasContext('navCanvas', this);
     const p = opts.padding;
@@ -330,13 +358,7 @@ Page({
     const xp = (i) => p.left + (pw / (data.length - 1)) * i;
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
-    if (e.type === 'touchend') {
-      this.drawChart();
-      return;
-    }
-
-    const touch = e.touches[0];
-    const px = touch.x;
+    const px = e.touches[0].x;
     let nearest = 0, minDist = Infinity;
     data.forEach((_, i) => {
       const dist = Math.abs(xp(i) - px);
@@ -346,12 +368,6 @@ Page({
     const pt = data[nearest];
     const cx = xp(nearest), cy = yp(pt.value);
 
-    // touchstart: 先画完整底图（同时更新 chart._lastDraw）
-    if (e.type === 'touchstart') {
-      chart.drawLineChart(ctx, opts);
-    }
-
-    // 快速线 + 标记点（用 chart._lastDraw 中的 yMin/yMax）
     chart._drawFastLine(ctx, chart._lastDraw, opts);
     ctx.setStrokeStyle('rgba(0,0,0,0.12)');
     ctx.setLineWidth(1);
@@ -395,9 +411,6 @@ Page({
       if (cr.data && cr.data.length > 0) {
         this._rawHolding = cr.data[0];
         this.setData({ hasHolding: true, holdingId: cr.data[0]._id });
-        const raw = cr.data[0];
-        console.log("=== 详情页 checkHolding ===");
-        console.log("DB原始数据:", JSON.stringify({ _id: raw._id, shares: raw.shares, buyPrice: raw.buyPrice, buyAmount: raw.buyAmount, marketValue: raw.marketValue, holdingReturn: raw.holdingReturn, nav: raw.nav, amount: raw.amount }));
         return;
       }
     } catch (e) { console.error("checkHolding 客户端失败:", e); }
@@ -509,7 +522,7 @@ Page({
     wx.showLoading({ title: "识别中..." });
     try {
       const up = await wx.cloud.uploadFile({ cloudPath: `holdings/${Date.now()}.jpg`, filePath: tempPath });
-      const res = await wx.cloud.callFunction({ name: "ocrScreenshot", data: { fileID: up.fileID } });
+      const res = await api.ocrScreenshot(up.fileID);
       wx.hideLoading();
       if (res.result && res.result.code === 0 && res.result.data) {
         const d = res.result.data;

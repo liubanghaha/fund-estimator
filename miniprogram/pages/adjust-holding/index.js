@@ -38,8 +38,6 @@ Page({
       const db = wx.cloud.database();
       const cr = await db.collection("holdings").get();
       const data = cr.data || [];
-      console.log("=== loadHoldings ===", data.length, "funds");
-      console.log("持仓列表:", data.map(h => h.fundName));
       this.setData({
         holdings: data.map((h) => {
           const s = h.shares || h.amount || 0;
@@ -173,7 +171,7 @@ Page({
     }, 200);
     try {
       const up = await wx.cloud.uploadFile({ cloudPath: `transactions/${Date.now()}.jpg`, filePath: tempPath });
-      const res = await wx.cloud.callFunction({ name: "ocrTransaction", data: { fileID: up.fileID } });
+      const res = await api.ocrTransaction(up.fileID);
 
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
@@ -186,9 +184,6 @@ Page({
         }
 
         // 匹配持仓
-        console.log("=== OCR识别结果 ===");
-        console.log("持仓列表:", this.data.holdings.map(h => h.fundName));
-        console.log("OCR交易:", txs.map(t => t.fundName));
         const matchedList = [];
         for (const tx of txs) {
           let matched = false, idx = -1, currentShares = "", currentBuyPrice = "";
@@ -208,7 +203,7 @@ Page({
         const estimateReqs = matchedList
           .filter((m) => m.matched)
           .map((m) =>
-            wx.cloud.callFunction({ name: "fetchFundEstimate", data: { fundCode: this.data.holdings[m.idx].fundCode } })
+            api.fetchFundEstimate(this.data.holdings[m.idx].fundCode)
               .then((r) => {
                 if (r.result && r.result.code === 0) {
                   const ed = r.result.data;
@@ -346,10 +341,7 @@ Page({
       if (!oldS) oldS = mv / liveNav;
       if (!oldP && oldS > 0) oldP = liveNav - (hr / oldS);
       if (!oldP || oldP <= 0) oldP = liveNav;
-      console.log("=== adjust OCR fallback ===", { oldS, oldP, mv, liveNav, hr });
     }
-    console.log("=== adjust processItem ===", { oldS, oldP, amount, price, shares: s, type });
-
     const now = new Date();
     const today = calc.formatDate(now);
 
@@ -375,34 +367,31 @@ Page({
       marketValue: newMarketValue,
       holdingReturn: +(newMarketValue - ns * np).toFixed(2),
     });
-    console.log("=== adjust update ===", { oldMV, newMarketValue, ns, np, holdingReturn: +(newMarketValue - ns * np).toFixed(2) });
     if (!updateRes.result || updateRes.result.code !== 0) {
       throw new Error("持仓更新失败");
     }
   },
 
-  // ==== 手动加减仓 ====
-  async onManual() {
-    wx.showLoading({ title: "加载中..." });
-    await this.loadHoldings();
-    wx.hideLoading();
-    if (this.data.holdings.length === 0) {
-      wx.showToast({ title: "暂无持仓", icon: "none" });
-      return;
-    }
-    this.setData({ showPicker: true });
-  },
-
-  onClosePicker() { this.setData({ showPicker: false }); },
-
-  onSelectFund(e) {
-    const idx = e.currentTarget.dataset.index;
-    const h = this.data.holdings[idx];
-    this.setData({ showPicker: false });
-    const app = getApp();
-    app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
-    wx.navigateTo({ url: `/pages/sync-trade/index?fundCode=${h.fundCode}` });
-  },
+  // TODO: 微信审核金融功能，手动加减仓暂时注释，后续实现
+  // async onManual() {
+  //   wx.showLoading({ title: "加载中..." });
+  //   await this.loadHoldings();
+  //   wx.hideLoading();
+  //   if (this.data.holdings.length === 0) {
+  //     wx.showToast({ title: "暂无持仓", icon: "none" });
+  //     return;
+  //   }
+  //   this.setData({ showPicker: true });
+  // },
+  // onClosePicker() { this.setData({ showPicker: false }); },
+  // onSelectFund(e) {
+  //   const idx = e.currentTarget.dataset.index;
+  //   const h = this.data.holdings[idx];
+  //   this.setData({ showPicker: false });
+  //   const app = getApp();
+  //   app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
+  //   wx.navigateTo({ url: `/pages/sync-trade/index?fundCode=${h.fundCode}` });
+  // },
 
   // ==== 通用表单 ====
   openForm(idx, h, prefill) {

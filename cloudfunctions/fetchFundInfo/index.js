@@ -42,5 +42,6 @@ async function fetchFundDetail(fundCode) {
         });
       })
       .on("error", reject);
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error("请求超时")); });
   });
 }

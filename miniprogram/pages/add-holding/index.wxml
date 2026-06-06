@@ -1,4 +1,5 @@
-<view class="container">
+<view wx:if="{{!mode}}" style="display:flex;align-items:center;justify-content:center;min-height:100vh"><text style="color:#CCC;font-size:28rpx">加载中...</text></view>
+<view wx:else class="container">
 
   <!-- ========== 截图导入模式 ========== -->
   <block wx:if="{{mode === 'screenshot'}}">
@@ -105,8 +106,11 @@
 
     <view wx:if="{{isEdit}}" class="edit-actions">
       <view class="action-row">
+        <!-- TODO: 微信审核金融功能，同步加减仓暂时注释，后续实现 -->
+        <!--
         <button class="action-btn sync-buy" bind:tap="onSyncBuy">同步加仓</button>
         <button class="action-btn sync-sell" bind:tap="onSyncSell">同步减仓</button>
+        -->
       </view>
       <view class="action-row">
         <button class="action-btn update-btn" bind:tap="onSubmit">更新持仓</button>

@@ -1,4 +1,5 @@
-<view class="container">
+<view wx:if="{{!ready}}" class="container" style="display:flex;align-items:center;justify-content:center;min-height:100vh"><text style="color:#CCC;font-size:28rpx">加载中...</text></view>
+<view wx:else class="container">
   <view class="search-bar">
     <input class="search-input" placeholder="输入6位基金代码，如 000001" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>
