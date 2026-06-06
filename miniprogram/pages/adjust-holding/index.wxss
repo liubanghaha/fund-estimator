@@ -15,12 +15,6 @@
 /* OCR 结果列表 */
 .results-section{margin-top:24rpx}
 .results-title{display:flex;justify-content:space-between;align-items:center;font-size:26rpx;font-weight:600;color:#333;margin-bottom:14rpx}
-.raw-toggle{font-size:22rpx;color:#1976D2;font-weight:400;padding:4rpx 8rpx}
-.raw-text-box{background:#F8F8F8;border-radius:10rpx;padding:18rpx;margin-bottom:14rpx}
-.raw-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8rpx}
-.raw-method{font-size:20rpx;color:#BBB}
-.raw-copy-btn{font-size:20rpx;color:#1976D2;padding:4rpx 8rpx}
-.raw-content{font-size:22rpx;color:#666;line-height:1.6;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text}
 .result-card{position:relative;background:#FFF;border-radius:14rpx;padding:24rpx 28rpx;margin-bottom:14rpx}
 .rc-del{position:absolute;top:0;right:20rpx;font-size:28rpx;color:#CCC;padding:8rpx;z-index:1}
 .rc-main{display:flex;align-items:center;gap:16rpx}

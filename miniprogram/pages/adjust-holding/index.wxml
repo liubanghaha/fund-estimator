@@ -27,14 +27,6 @@
   <view wx:if="{{ocrResults.length > 0}}" class="results-section">
     <view class="results-title">
       <text>识别到 {{ocrResults.length}} 笔交易</text>
-      <text class="raw-toggle" bind:tap="onToggleRaw">{{ocrShowRaw ? '隐藏原文' : '查看原文'}}</text>
-    </view>
-    <view wx:if="{{ocrShowRaw}}" class="raw-text-box">
-      <view class="raw-head">
-        <text class="raw-method">识别方式：{{ocrMethod}}</text>
-        <text class="raw-copy-btn" bind:tap="onCopyRawText">复制文本</text>
-      </view>
-      <text class="raw-content" selectable="true">{{ocrRawText}}</text>
     </view>
     <view wx:for="{{ocrResults}}" wx:key="index" class="result-card">
       <view class="rc-del" bind:tap="onRemoveItem" data-index="{{index}}">×</view>

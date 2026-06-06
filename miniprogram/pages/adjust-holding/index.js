@@ -6,10 +6,7 @@ Page({
     holdings: [],
     ocrLoading: false,
     ocrResults: [],
-    ocrRawText: "",
-    ocrMethod: "",
     redirecting: false,
-    ocrShowRaw: false,
     matchedCount: 0,
     loadPercent: 0,
     showPicker: false,
@@ -98,16 +95,6 @@ Page({
     if (idx >= 0) return idx;
 
     return -1;
-  },
-
-  onToggleRaw() {
-    this.setData({ ocrShowRaw: !this.data.ocrShowRaw });
-  },
-  onCopyRawText() {
-    wx.setClipboardData({
-      data: this.data.ocrRawText,
-      success: () => wx.showToast({ title: "已复制", icon: "success" }),
-    });
   },
 
   // ==== 截图导入 ====
@@ -239,8 +226,6 @@ Page({
           this.setData({
             ocrLoading: false,
             ocrResults: results,
-            ocrRawText: d.raw || "",
-            ocrMethod: d.method || "",
             matchedCount: results.filter((r) => r.matched).length,
           });
         }, 600);
@@ -489,13 +474,6 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: "保存失败，请重试", icon: "none" });
     }
-  },
-
-  onCopyRaw(e) {
-    wx.setClipboardData({
-      data: e.currentTarget.dataset.text,
-      success: () => wx.showToast({ title: "已复制", icon: "success" }),
-    });
   },
 
   noop() {},
