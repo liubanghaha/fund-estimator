@@ -1,5 +1,5 @@
 <view class="page">
-  <!-- Fund A header -->
+    <!-- Fund A header -->
     <view class="compare-header">
       <view class="fund-col">
         <view class="fund-name">{{fundA.name || fundA.code}}</view>
@@ -25,6 +25,9 @@
       </view>
     </view>
 
+    <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+
+    <block wx:if="{{!loading}}">
     <!-- Selection area (search + watchlist) -->
     <view wx:if="{{!fundB.code}}" class="select-area">
       <!-- Search -->
@@ -106,4 +109,5 @@
         <button class="btn-switch" bind:tap="onRemoveFundB">更换对比基金</button>
       </view>
     </view>
+    </block>
 </view>

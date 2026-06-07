@@ -1,13 +1,5 @@
 <view class="page">
   <view class="page-body">
-    <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation>
-    <view wx:if="{{errorMsg}}" class="error-wrap">
-      <view class="error-text">{{errorMsg}}</view>
-      <button class="retry-btn" bind:tap="fetchAll">重试</button>
-    </view>
-    <view wx:if="{{loading}}" class="loading-wrap">
-      <view class="loading-text">加载中...</view>
-    </view>
     <view class="fund-header">
       <view class="header-top">
         <view class="header-info">
@@ -20,6 +12,17 @@
       </view>
     </view>
 
+    <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation>
+    <view wx:if="{{errorMsg}}" class="error-wrap">
+      <view class="error-text">{{errorMsg}}</view>
+      <button class="retry-btn" bind:tap="fetchAll">重试</button>
+    </view>
+
+    <view wx:if="{{loading}}" class="loading-inline">
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <block wx:if="{{!loading}}">
     <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
@@ -54,7 +57,6 @@
         </view>
       </view>
     </view>
-
 
     <!-- 我的持仓 -->
     <view wx:if="{{hasHolding && holdingData}}" class="my-holding-card">
@@ -156,6 +158,10 @@
     </view>
 
     <view wx:if="{{activeTab === 'profile'}}">
+      <view wx:if="{{profileLoading}}" class="loading-compact">
+        <text class="loading-text">加载中...</text>
+      </view>
+      <block wx:elif="{{profileLoaded}}">
       <view wx:if="{{manager && manager.name}}" class="info-card">
         <view class="section-title">基金经理</view>
         <view class="manager-row">
@@ -177,27 +183,30 @@
           <view class="profile-item full" wx:if="{{profile.company}}"><view class="profile-label">基金公司</view><view class="profile-value">{{profile.company}}</view></view>
         </view>
       </view>
+      </block>
     </view>
 
-      <view wx:if="{{showTransactions}}" class="tx-list-card" id="txSection">
-        <view class="section-title">交易记录</view>
-        <view wx:if="{{transactionList.length === 0}}" class="empty-text">暂无交易记录</view>
-        <view wx:if="{{transactionList.length > 0}}" class="tx-row tx-header">
-          <text class="tx-type">类型</text>
-          <text class="tx-shares">份额</text>
-          <text class="tx-price">净值</text>
-          <text class="tx-amount">金额</text>
-          <text class="tx-date">日期</text>
-        </view>
-        <view wx:for="{{transactionList}}" wx:key="_id" class="tx-row">
-          <text class="tx-type {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
-          <text class="tx-shares">{{item.shares > 0 ? item.shares + '份' : '--'}}</text>
-          <text class="tx-price">{{item.price > 0 ? item.price + '元' : '--'}}</text>
-          <text class="tx-amount">{{item.amount || '--'}}元</text>
-          <text class="tx-date">{{item.date}}</text>
-        </view>
+    <view wx:if="{{showTransactions}}" class="tx-list-card" id="txSection">
+      <view class="section-title">交易记录</view>
+      <view wx:if="{{transactionList.length === 0}}" class="empty-text">暂无交易记录</view>
+      <view wx:if="{{transactionList.length > 0}}" class="tx-row tx-header">
+        <text class="tx-type">类型</text>
+        <text class="tx-shares">份额</text>
+        <text class="tx-price">净值</text>
+        <text class="tx-amount">金额</text>
+        <text class="tx-date">日期</text>
       </view>
+      <view wx:for="{{transactionList}}" wx:key="_id" class="tx-row">
+        <text class="tx-type {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
+        <text class="tx-shares">{{item.shares > 0 ? item.shares + '份' : '--'}}</text>
+        <text class="tx-price">{{item.price > 0 ? item.price + '元' : '--'}}</text>
+        <text class="tx-amount">{{item.amount || '--'}}元</text>
+        <text class="tx-date">{{item.date}}</text>
+      </view>
+    </view>
+    </block>
     </scroll-view>
+
     <view class="bottom-bar">
       <button class="btn-add" bind:tap="onAddHolding">
         <text class="btn-icon">{{hasHolding ? '✏️' : '➕'}}</text>

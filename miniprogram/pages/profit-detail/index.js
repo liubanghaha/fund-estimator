@@ -7,6 +7,7 @@ Page({
   data: {
     activeTab: "week",
     profitMode: "amount",
+    loading: true,
     empty: false,
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
@@ -63,6 +64,7 @@ Page({
         const cacheIsTrading = cacheLastDate === calc.formatDate(new Date());
         this._fromCache = true;
         this.setData({
+          loading: false,
           totalCost: c.tc,
           todayProfit: cacheIsTrading ? c.s.tp : "0.00", todayProfitRate: cacheIsTrading ? c.s.tpr : 0,
           weekProfit: c.s.w, monthProfit: c.s.m, yearProfit: c.s.y,
@@ -95,11 +97,12 @@ Page({
       this._idxMap = idxMap;
       if (!pfRes.result || pfRes.result.code !== 0) {
         if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
+        this.setData({ loading: false });
         return;
       }
       const d = pfRes.result.data;
       const hs = d.holdings || [];
-      if (!hs.length) { this.setData({ empty: true }); return; }
+      if (!hs.length) { this.setData({ empty: true, loading: false }); return; }
 
       const totalCost = hs.reduce((s, h) => s + h.buyPrice * h.shares, 0);
       const navMap = d.navHistoryMap || {};
@@ -153,6 +156,7 @@ Page({
       const earliestCreate = hs.reduce((min, h) => { if (!h.createTime) return min; const d = calc.formatDate(h.createTime); return d < min ? d : min; }, "9999-99-99");
 
       this.setData({
+        loading: false,
         totalCost,
         todayProfit: tp.toFixed(2), todayProfitRate: isTradingDay ? parseFloat(d.todayProfitRate || 0) : 0,
         weekProfit: w, monthProfit: m, yearProfit: y,

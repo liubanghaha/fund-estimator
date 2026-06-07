@@ -43,6 +43,20 @@ Page({
       success: (res) => {
         if (res.confirm) {
           wx.removeStorageSync("userInfo");
+          wx.removeStorageSync("watchlist_cache");
+          wx.removeStorageSync("portfolio_cache");
+          wx.removeStorageSync("portfolio_force_refresh");
+          wx.removeStorageSync("profit_detail_cache_v2");
+          wx.removeStorageSync("profit_detail_cache");
+          wx.removeStorageSync("index_cache");
+          wx.removeStorageSync("indexCodes");
+          wx.removeStorageSync("amountVisible");
+          const app = getApp();
+          if (app && app.globalData) {
+            app.globalData._ocrFunds = null;
+            app.globalData._screenshotPath = null;
+            app.globalData._syncTradeFund = null;
+          }
           this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "" });
         }
       },

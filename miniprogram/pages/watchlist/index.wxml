@@ -1,7 +1,5 @@
 <view class="page">
-  <view wx:if="{{!loaded}}" class="empty-wrap">
-    <view class="empty-text">加载中...</view>
-  </view>
+  <view wx:if="{{!loaded}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{watchlist.length === 0}}" class="empty-wrap">
     <view class="empty-icon">⭐</view>
     <view class="empty-text">暂无自选基金</view>

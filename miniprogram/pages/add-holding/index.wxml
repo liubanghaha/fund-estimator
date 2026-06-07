@@ -1,4 +1,4 @@
-<view wx:if="{{!mode}}" style="display:flex;align-items:center;justify-content:center;min-height:100vh"><text style="color:#CCC;font-size:28rpx">加载中...</text></view>
+<view wx:if="{{!mode}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 <view wx:else class="container">
 
   <!-- ========== 截图导入模式 ========== -->

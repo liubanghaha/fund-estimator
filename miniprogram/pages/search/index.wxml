@@ -1,11 +1,12 @@
-<view wx:if="{{!ready}}" class="container" style="display:flex;align-items:center;justify-content:center;min-height:100vh"><text style="color:#CCC;font-size:28rpx">加载中...</text></view>
+<view wx:if="{{!ready}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 <view wx:else class="container">
   <view class="search-bar">
     <input class="search-input" placeholder="输入6位基金代码，如 000001" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>
   </view>
   <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
-  <view wx:if="{{fundList.length > 0}}" class="result-list">
+  <view wx:if="{{isLoading}}" class="loading-compact"><text class="loading-text">搜索中...</text></view>
+  <view wx:elif="{{fundList.length > 0}}" class="result-list">
     <view wx:for="{{fundList}}" wx:key="fundCode" class="result-item" bind:tap="onTapFund" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
       <view class="item-left">
         <text class="item-name">{{item.fundName}}</text>
@@ -14,5 +15,5 @@
       <view class="item-arrow">></view>
     </view>
   </view>
-  <view wx:if="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关基金</view>
+  <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关基金</view>
 </view>

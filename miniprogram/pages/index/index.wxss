@@ -121,13 +121,13 @@
 .index-edit-panel{padding:12rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
 .idx-edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8rpx}
 .idx-edit-title{font-size:24rpx;color:#999}
-.idx-edit-done{font-size:24rpx;color:#1976D2;padding:8rpx 12rpx}
+.idx-edit-done{display:inline-flex;align-items:center;justify-content:center;font-size:24rpx;color:#E4393C;padding:8rpx 20rpx;min-width:80rpx;min-height:48rpx}
 .idx-check-item{display:flex;align-items:center;padding:10rpx 0}
 .idx-checkbox{width:36rpx;height:36rpx;border:2rpx solid #DDD;border-radius:6rpx;margin-right:16rpx;text-align:center;line-height:36rpx;font-size:22rpx;color:#FFF}
 .idx-checkbox.checked{background:#E4393C;border-color:#E4393C}
 .idx-check-label{font-size:26rpx;color:#333}
-.idx-edit-actions{text-align:right;padding-top:12rpx}
-.idx-save-btn{font-size:26rpx;color:#E4393C;padding:8rpx 20rpx}
+.idx-edit-actions{text-align:center;padding-top:16rpx}
+.idx-save-btn{display:inline-flex;align-items:center;justify-content:center;font-size:28rpx;color:#FFF;background:#E4393C;border-radius:8rpx;padding:12rpx 48rpx;min-width:200rpx;min-height:72rpx}
 /* 收起态 */
 .index-collapsed{display:flex;align-items:baseline;padding:6rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
 .idx-name{font-size:26rpx;color:#333;flex-shrink:0}

@@ -2,9 +2,6 @@
 .page-body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .detail-scroll{flex:1;overflow-y:auto}
 
-.loading-wrap{display:flex;align-items:center;justify-content:center;padding-top:200rpx}
-.loading-text{font-size:28rpx;color:#999}
-
 /* 骨架屏 */
 .skeleton-wrap{padding:24rpx}
 .sk-header{padding:32rpx;margin-bottom:16rpx}

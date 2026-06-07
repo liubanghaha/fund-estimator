@@ -259,8 +259,13 @@ Page({
       return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
     };
 
-    // 逐指数更新，不等全部完成
-    const cards = [...this.data.indexCards];
+    // 以 activeIndices 为准构建 cards，避免与旧 indexCards 长度/顺序不一致
+    const cards = activeIndices.map((idx) => {
+      const old = this.data.indexCards.find(c => c.code === idx.code);
+      return old ? { ...old } : { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
+    });
+    this.setData({ indexCards: cards, indexLoading: true });
+
     const promises = activeIndices.map((idx, i) =>
       fetchOne(idx).then((data) => {
         cards[i] = buildCard(idx, data);
@@ -272,9 +277,9 @@ Page({
     Promise.all(promises).then(() => {
       const codes = activeIndices.map((i) => i.code).join(",");
       wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards, ts: Date.now() } });
-    }).catch(() => {});
-
-    this.setData({ indexLoading: false });
+    }).catch(() => {}).finally(() => {
+      this.setData({ indexLoading: false });
+    });
   },
 
   onToggleIndex() {
@@ -319,13 +324,19 @@ Page({
     }
     wx.setStorageSync("indexCodes", codes);
     const activeIndices = ALL_INDICES.filter((idx) => codes.indexOf(idx.code) !== -1);
+    const indexCards = activeIndices.map((idx) => ({
+      name: idx.name, code: idx.code,
+      price: "--", change: "--", changeRate: "--", isUp: true,
+    }));
     this.setData({
       showIndexEdit: false,
       activeIndices,
+      indexCards,
       indexBarHeight: 110,
       indexExpanded: false,
     });
     this.fetchIndices();
+    wx.showToast({ title: "已保存", icon: "success", duration: 1200 });
   },
 
   onScrollToLower() {

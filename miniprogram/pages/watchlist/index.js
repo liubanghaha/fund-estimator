@@ -14,7 +14,13 @@ Page({
   },
 
   onShow() {
-    this.fetchWatchlist();
+    const userInfo = wx.getStorageSync("userInfo");
+    if (userInfo && userInfo.loggedIn) {
+      this.fetchWatchlist();
+    } else {
+      this.setData({ watchlist: [], loaded: true });
+      wx.removeStorageSync(CACHE_KEY);
+    }
   },
 
   onPullDownRefresh() {
@@ -100,6 +106,8 @@ Page({
   },
 
   applyCache() {
+    const userInfo = wx.getStorageSync("userInfo");
+    if (!userInfo || !userInfo.loggedIn) return;
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.watchlist && cached.watchlist.length > 0) {

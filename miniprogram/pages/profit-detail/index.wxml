@@ -1,10 +1,13 @@
 <view class="page">
-  <view wx:if="{{empty}}" class="empty-wrap">
+  <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+  <block wx:elif="{{empty}}">
+    <view class="empty-wrap">
       <view class="empty-icon">📉</view>
       <view class="empty-text">暂无收益数据</view>
       <view class="empty-hint">添加持仓后可查看收益走势</view>
       <button class="empty-btn" bind:tap="onGoHome">返回首页</button>
     </view>
+  </block>
 
     <block wx:else>
     <view wx:if="{{earliestDate}}" class="tip-inline">收益自 {{earliestDate}} 起计，随交易日积累</view>

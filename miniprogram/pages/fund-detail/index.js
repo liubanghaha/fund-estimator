@@ -20,6 +20,7 @@ Page({
     showTransactions: false,
     scrollToTx: "",
     quarterNet: 0,
+    profileLoading: false, profileLoaded: false,
   },
 
   onLoad(options) {
@@ -498,10 +499,10 @@ Page({
     this.setData({ activeTab: tab }, () => {
       if (tab === 'trend') this.drawChart();
     });
-    if ((tab === 'holdings' || tab === 'profile') && !this.data.profile) {
-      wx.showLoading({ title: '加载中...' });
+    if ((tab === 'holdings' || tab === 'profile') && !this.data.profile && !this.data.profileLoading) {
+      this.setData({ profileLoading: true });
       await this.fetchProfile();
-      wx.hideLoading();
+      this.setData({ profileLoading: false, profileLoaded: true });
     }
   },
   onImportScreenshot() {
