@@ -86,7 +86,7 @@
           <view class="mh-label">单位净值</view>
           <view class="mh-value">{{actualNav || nav || '--'}}</view>
         </view>
-        <view wx:if="{{quarterNet !== 0}}" class="mh-item">
+        <view wx:if="{{quarterNet != null && quarterNet !== 0}}" class="mh-item">
           <view class="mh-label">近3月变动</view>
           <view class="mh-value {{quarterNet > 0 ? 'up' : 'down'}}">{{quarterNet > 0 ? '+' : ''}}{{quarterNet}}</view>
         </view>
@@ -109,7 +109,7 @@
           <view class="period-item {{chartPeriod === '1Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1Y">近一年</view>
           <view class="period-item {{chartPeriod === '3Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3Y">近三年</view>
         </view>
-        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:360rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
+        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
       </view>
       <view class="info-card"><view class="section-title">收益表现</view>
         <view class="metrics-grid">

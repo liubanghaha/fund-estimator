@@ -21,7 +21,7 @@ async function fetchFundDetail(fundCode) {
   const https = require("https");
   return new Promise((resolve, reject) => {
     const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js`;
-    https
+    const req = https
       .get(url, (res) => {
         let body = "";
         res.on("data", (chunk) => { body += chunk; });

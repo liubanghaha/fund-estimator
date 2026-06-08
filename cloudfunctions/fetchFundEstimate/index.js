@@ -15,7 +15,8 @@ exports.main = async (event) => {
       data: { ...estimate, ...actual },
     };
   } catch (e) {
-    return { code: 500, msg: e.message || "获取估值失败" };
+    console.error("获取估值失败:", e.message);
+    return { code: 500, msg: "获取估值失败" };
   }
 };
 

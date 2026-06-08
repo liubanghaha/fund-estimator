@@ -83,12 +83,12 @@ exports.main = async (event) => {
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
       const costValue = buyPrice * shares;
-      const ocrMarketValue = dbMarketValue > 0 ? dbMarketValue : (currentNav * shares);
-      const totalReturn = dbHoldingReturn || (ocrMarketValue - costValue);
+      const marketValue = currentNav * shares;
+      const totalReturn = marketValue - costValue;
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
 
       totalCost += costValue;
-      totalMarket += ocrMarketValue;
+      totalMarket += marketValue;
       totalTodayProfit += todayProfitAmount;
 
       // 判断当天实际净值是否已公布（eastmoney actualDate 为今天）
@@ -99,7 +99,7 @@ exports.main = async (event) => {
       enriched.push({
         ...h,
         currentNav: currentNav.toFixed(4),
-        marketValue: ocrMarketValue.toFixed(2),
+        marketValue: marketValue.toFixed(2),
         todayChangeRate: todayChangeRate.toFixed(2),
         todayProfit: todayProfitAmount.toFixed(2),
         totalReturn: totalReturn.toFixed(2),

@@ -129,7 +129,12 @@ Page({
 
       // 市值
       const dm = {};
-      hs.forEach(h => { (navMap[h.fundCode] || []).forEach(x => { if (!dm[x.date]) dm[x.date] = 0; dm[x.date] += x.nav * h.shares; }); });
+      hs.forEach(h => {
+        let s = parseFloat(h.shares || h.amount || 0);
+        if (!s && h.marketValue) { const cn = h.currentNav || h.buyPrice; if (cn > 0) s = parseFloat(h.marketValue) / cn; }
+        if (!s) return;
+        (navMap[h.fundCode] || []).forEach(x => { if (!dm[x.date]) dm[x.date] = 0; dm[x.date] += x.nav * s; });
+      });
       const allDaily = Object.entries(dm).map(([dt, v]) => ({ date: dt, value: +v.toFixed(2) })).sort((a, b) => a.date.localeCompare(b.date));
 
       const lastDate = allDaily.length ? allDaily[allDaily.length - 1].date : "";
@@ -174,6 +179,7 @@ Page({
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
       }
     } catch (e) {
+      this.setData({ loading: false });
       if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
     }
   },
@@ -189,8 +195,22 @@ Page({
     const fi = idx.filter(d => d.date >= st);
 
     if (fi.length < 2) {
-      const pf = all.filter(d => d.date >= st);
-      if (pf.length < 2) return null;
+      let pf = all.filter(d => d.date >= st);
+      if (pf.length < 2) {
+        // 当前周期数据不足 2 个点，取最近数据兜底
+        pf = all.slice(-5);
+        if (pf.length < 2) return null;
+      }
+      // 兜底时也尝试匹配指数数据
+      const fallbackStart = pf[0].date;
+      const idxFallback = idx.filter(d => d.date >= fallbackStart);
+      if (idxFallback.length >= 2) {
+        const ib2 = idxFallback[0].close;
+        let pb2 = null;
+        for (const d of idxFallback) { if (pm[d.date]) { pb2 = pm[d.date].value; break; } }
+        const hasP2 = pb2 !== null && pb2 > 0;
+        return { data: idxFallback.map(d => { const pv = pm[d.date]; return { date: d.date, baseRate: (hasP2 && pv) ? +((pv.value / pb2 - 1) * 100).toFixed(2) : null, indexRate: +((d.close / ib2 - 1) * 100).toFixed(2) }; }), hasP: hasP2 };
+      }
       const pb = pf[0].value;
       return { data: pf.map(d => ({ date: d.date, baseRate: +((d.value / pb - 1) * 100).toFixed(2), indexRate: null })), hasP: true, noIdx: true };
     }

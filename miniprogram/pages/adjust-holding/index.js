@@ -30,6 +30,10 @@ Page({
     if (this.data.holdings.length === 0) this.loadHoldings();
   },
 
+  onUnload() {
+    if (this._loadTimer) { clearInterval(this._loadTimer); this._loadTimer = null; }
+  },
+
   async loadHoldings() {
     try {
       const db = wx.cloud.database();

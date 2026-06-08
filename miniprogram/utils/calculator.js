@@ -4,16 +4,16 @@ const calculator = {
     const nav = parseFloat(yesterdayNav);
     const aNav = parseFloat(actualNav);
     const eNav = parseFloat(estimatedNav);
-    if (aNav && aNav !== nav) return aNav;
-    if (eNav) return eNav;
-    return aNav || nav;
+    if (!isNaN(aNav) && aNav !== nav) return aNav;
+    if (!isNaN(eNav)) return eNav;
+    return !isNaN(aNav) ? aNav : nav;
   },
 
   // 选择当前涨跌幅：与 selectNav 逻辑一致
   selectChangeRate(yesterdayNav, actualNav, estimatedChangeRate, actualChangeRate) {
     const nav = parseFloat(yesterdayNav);
     const aNav = parseFloat(actualNav);
-    if (aNav && aNav !== nav) return parseFloat(actualChangeRate) || 0;
+    if (!isNaN(aNav) && aNav !== nav) return parseFloat(actualChangeRate) || 0;
     if (estimatedChangeRate != null) return parseFloat(estimatedChangeRate);
     return parseFloat(actualChangeRate) || 0;
   },
@@ -30,7 +30,7 @@ const calculator = {
     const g = (days) => {
       if (history.length <= days) return null;
       const nav = history[days] && history[days].nav;
-      if (!nav) return null;
+      if (nav == null || isNaN(nav)) return null;
       return parseFloat(((latest - nav) / nav * 100).toFixed(2));
     };
     return { day: history[0].changeRate || 0, week: g(4), month: g(19), threeMonth: g(64), sixMonth: g(129), year: g(249), threeYear: g(749) };
@@ -38,7 +38,8 @@ const calculator = {
   formatPercent(value) {
     const v = parseFloat(value);
     if (isNaN(v)) return "--";
-    return v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`;
+    if (Math.abs(v) < 0.005) return "0.00%";
+    return v > 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`;
   },
 };
 module.exports = calculator;

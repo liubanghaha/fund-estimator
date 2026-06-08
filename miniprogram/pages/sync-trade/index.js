@@ -103,7 +103,12 @@ Page({
           actualNavForMV = parseFloat(ed.actualNav) || 0;
           if (!isNaN(raw) && raw > 0) nav = raw;
         }
-      } catch (e) { wx.showToast({ title: "获取净值失败", icon: "none" }); }
+      } catch (e) { /* handled below */ }
+      if (!nav || nav <= 0) {
+        wx.hideLoading();
+        wx.showToast({ title: "获取净值失败，请重试", icon: "none" });
+        return;
+      }
 
       const price = nav;
       const shares = price > 0 ? parseFloat((finalAmount / price).toFixed(2)) : 0;

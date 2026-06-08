@@ -2,6 +2,8 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 exports.main = async (event) => {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "请先登录" };
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
 
@@ -119,6 +121,7 @@ function parseBlock(block) {
     if (hour >= 15) {
       const d = new Date(rawDate);
       d.setDate(d.getDate() + 1);
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
       const pad = (n) => String(n).padStart(2, "0");
       tx.date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     } else {

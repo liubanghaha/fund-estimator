@@ -5,7 +5,7 @@
     <button class="search-btn" bind:tap="onSearch">搜索</button>
   </view>
   <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
-  <view wx:if="{{isLoading}}" class="loading-compact"><text class="loading-text">搜索中...</text></view>
+  <view wx:elif="{{isLoading}}" class="loading-compact"><text class="loading-text">搜索中...</text></view>
   <view wx:elif="{{fundList.length > 0}}" class="result-list">
     <view wx:for="{{fundList}}" wx:key="fundCode" class="result-item" bind:tap="onTapFund" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
       <view class="item-left">

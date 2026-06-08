@@ -17,9 +17,11 @@ exports.main = async (event) => {
         return { code: 0, msg: "success" };
       }
       case "list": {
+        const { skip = 0, limit = 100 } = event;
         const w = { _openid: OPENID };
         if (fundCode) w.fundCode = fundCode;
-        const res = await db.collection("transactions").where(w).get();
+        const res = await db.collection("transactions")
+          .where(w).orderBy("createTime", "desc").skip(skip).limit(Math.min(limit, 100)).get();
         return { code: 0, data: res.data || [] };
       }
       default:

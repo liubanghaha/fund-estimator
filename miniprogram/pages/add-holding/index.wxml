@@ -51,8 +51,8 @@
           <text wx:else class="card-code">{{item.fundCode || '--'}}</text>
           <text class="card-name">{{item.fundName}}</text>
           <view class="card-nums">
-            <text wx:if="{{item.marketValue}}" class="card-mv">持有金额 ¥{{item.marketValue}}</text>
-            <text wx:if="{{item.holdingReturn}}" class="card-hr">持有收益 {{item.holdingReturn}}</text>
+            <text wx:if="{{item.marketValue != null && item.marketValue !== ''}}" class="card-mv">持有金额 ¥{{item.marketValue}}</text>
+            <text wx:if="{{item.holdingReturn != null && item.holdingReturn !== ''}}" class="card-hr">持有收益 {{item.holdingReturn}}</text>
           </view>
         </view>
         <view class="card-right">

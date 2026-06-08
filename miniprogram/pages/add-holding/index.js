@@ -318,7 +318,9 @@ Page({
       }
 
       const hr = parseFloat(holdingReturn) || 0;
-      const shares = parseFloat((mv / nav).toFixed(2));
+      let shares = parseFloat((mv / nav).toFixed(2));
+      if (shares <= 0) shares = parseFloat((mv / nav).toFixed(4));
+      if (shares <= 0) shares = 0.01;
       const buyPrice = parseFloat((nav - hr / shares).toFixed(4));
       const buyAmount = parseFloat((shares * buyPrice).toFixed(2));
 

@@ -112,8 +112,9 @@ Page({
       });
     } catch (e) {
       wx.showToast({ title: "加载失败", icon: "none" });
+    } finally {
+      wx.hideLoading();
     }
-    wx.hideLoading();
   },
 
   onTapPlaceholder() {

@@ -15,6 +15,13 @@
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
   </view>
+  <view wx:if="{{showFeedback}}" class="feedback-form">
+    <textarea class="feedback-textarea" value="{{feedbackText}}" placeholder="请输入您的意见或建议（最多500字）" maxlength="500" auto-height bind:input="onFeedbackInput"/>
+    <view class="feedback-actions">
+      <button class="feedback-cancel" bind:tap="onFeedback">取消</button>
+      <button class="feedback-submit" bind:tap="onSubmitFeedback" loading="{{feedbackSubmitting}}">提交</button>
+    </view>
+  </view>
   <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
   <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
 </view>

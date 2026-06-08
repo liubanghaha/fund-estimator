@@ -23,6 +23,9 @@ const api = {
   userLogin() {
     return this.callFunction("userLogin", {});
   },
+  submitFeedback(content) {
+    return this.callFunction("submitFeedback", { content });
+  },
   ocrScreenshot(fileID) {
     return this.callFunction("ocrScreenshot", { fileID });
   },

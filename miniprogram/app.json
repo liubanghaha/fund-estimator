@@ -31,5 +31,11 @@
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+
+  "permission": {
+    "scope.writePhotosAlbum": {
+      "desc": "用于保存持仓收益截图"
+    }
+  }
 }

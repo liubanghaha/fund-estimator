@@ -269,12 +269,12 @@ Page({
     const promises = activeIndices.map((idx, i) =>
       fetchOne(idx).then((data) => {
         cards[i] = buildCard(idx, data);
-        this.setData({ indexCards: [...cards] });
         return cards[i];
       })
     );
 
     Promise.all(promises).then(() => {
+      this.setData({ indexCards: cards });
       const codes = activeIndices.map((i) => i.code).join(",");
       wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards, ts: Date.now() } });
     }).catch(() => {}).finally(() => {

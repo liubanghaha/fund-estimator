@@ -34,7 +34,7 @@ Page({
     const canvasH = Math.round(canvasW * 0.53);
     this._canvasW = canvasW;
     this._canvasH = canvasH;
-    this.setData({ canvasW, canvasH });
+    this.setData({ canvasW, canvasH, canvasHRpx: Math.round(canvasH * 750 / windowWidth) });
     this.fetchAll();
   },
 
@@ -50,7 +50,10 @@ Page({
     const now = Date.now();
     // 30s 内不重复拉取非估值数据，仅刷新估值
     if (this._lastRefresh && now - this._lastRefresh < 30000) {
-      this.fetchEstimate().then(() => this.updateDisplay());
+      this.fetchEstimate().then(() => {
+        this.updateDisplay();
+        this.recalcHoldingData();
+      });
       return;
     }
     this._lastRefresh = now;
@@ -282,7 +285,8 @@ Page({
     const ctx = wx.createCanvasContext('navCanvas', this);
     const w = this._canvasW || 340, h = this._canvasH || 180;
     const opts = { w, h, ...this._getChartOpts(), data,
-      padding: { top: 24, right: 12, bottom: 30, left: 52 } };
+      padding: { top: 24, right: 24, bottom: 30, left: 52 },
+      isReturn: result.isReturn };
     chart.drawLineChart(ctx, opts);
 
     // 交易标记点
@@ -379,7 +383,8 @@ Page({
     ctx.setStrokeStyle(opts.color || '#E4393C'); ctx.setLineWidth(2); ctx.stroke();
 
     const v = pt.value;
-    const label = `${pt.date}  ${v != null ? (v >= 0 ? '+' : '') + v : '--'}`;
+    const suffix = opts.isReturn ? '%' : '';
+    const label = `${pt.date}  ${v != null ? (v >= 0 ? '+' : '') + v + suffix : '--'}`;
     ctx.setFontSize(11);
     const tw = label.length * 7 + 8;
     const tx = Math.max(p.left + 4, Math.min(opts.w - p.right - tw - 8, cx - tw / 2));
@@ -420,7 +425,7 @@ Page({
   async fetchTransactions() {
     try {
       const res = await api.transactionList(this.data.fundCode);
-      const txns = (res.result && res.result.data) || [];
+      let txns = (res.result && res.result.data) || [];
       const map = {};
       // 季度净买入（最近90天）
       const now = new Date();
@@ -438,7 +443,7 @@ Page({
         if (tx.type === "buy") map[tx.date].buys++;
         else if (tx.type === "sell") map[tx.date].sells++;
       });
-      txns.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      txns = [...txns].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
       this.setData({ chartTxMap: map, transactionList: txns, quarterNet });
     } catch (e) { console.error("获取交易记录失败:", e); }
   },
@@ -466,23 +471,51 @@ Page({
       }
     }
 
-    const displayMarketValue = dbMarketValue > 0 ? dbMarketValue : (currentNav * shares);
+    const marketValue = currentNav * shares;
     const todayProfit = (currentNav - yesterdayNav) * shares;
     const costValue = buyPrice * shares;
-    const totalReturn = dbHoldingReturn || (displayMarketValue - costValue);
+    const totalReturn = marketValue - costValue;
     const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
+
+    this._holdingParams = { shares, buyPrice };
 
     this.setData({
       holdingData: {
         shares: shares.toFixed(2),
         buyPrice: buyPrice.toFixed(4),
-        marketValue: displayMarketValue.toFixed(2),
+        marketValue: marketValue.toFixed(2),
         todayProfit: todayProfit.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
       },
     });
     this._rawHolding = null;
+  },
+
+  recalcHoldingData() {
+    if (!this._holdingParams) return;
+    const { shares, buyPrice } = this._holdingParams;
+    const { nav, estimatedNav, actualNav } = this.data;
+    const yesterdayNav = parseFloat(nav || 0);
+    if (!yesterdayNav) return;
+
+    const currentNav = calc.selectNav(yesterdayNav, actualNav, estimatedNav);
+    const marketValue = currentNav * shares;
+    const todayProfit = (currentNav - yesterdayNav) * shares;
+    const costValue = buyPrice * shares;
+    const totalReturn = marketValue - costValue;
+    const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
+
+    this.setData({
+      holdingData: {
+        shares: shares.toFixed(2),
+        buyPrice: buyPrice.toFixed(4),
+        marketValue: marketValue.toFixed(2),
+        todayProfit: todayProfit.toFixed(2),
+        totalReturn: totalReturn.toFixed(2),
+        totalReturnRate: totalReturnRate.toFixed(2),
+      },
+    });
   },
 
   onRefresh() {

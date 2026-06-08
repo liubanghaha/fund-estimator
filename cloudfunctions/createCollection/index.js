@@ -4,7 +4,7 @@ const db = cloud.database();
 
 exports.main = async () => {
   const results = [];
-  const collections = ["holdings", "watchlist", "transactions"];
+  const collections = ["holdings", "watchlist", "transactions", "feedback"];
 
   for (const name of collections) {
     try {

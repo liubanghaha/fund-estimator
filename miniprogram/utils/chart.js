@@ -1,5 +1,5 @@
 /**
- * 共享折线图绘制工具。基于 Canvas 2D API（type="2d"），支持触摸 tooltip。
+ * 共享折线图绘制工具。基于旧版 Canvas API（wx.createCanvasContext）。
  */
 
 const chart = {
@@ -8,7 +8,7 @@ const chart = {
    */
   drawLineChart(ctx, opts = {}) {
     const { w = 340, h = 200, data = [], xField = 'date', yField = 'value',
-      color = '#E4393C', padding } = opts;
+      color = '#E4393C', padding, isReturn = false } = opts;
     const p = padding || { top: 24, right: 12, bottom: 36, left: 52 };
     const pw = w - p.left - p.right;
     const ph = h - p.top - p.bottom;
@@ -23,7 +23,7 @@ const chart = {
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
     // 背景
-    ctx.fillStyle = '#FFFFFF';
+    ctx.setFillStyle('#FFFFFF');
     ctx.fillRect(0, 0, w, h);
 
     // 渐变填充
@@ -40,7 +40,7 @@ const chart = {
     ctx.lineTo(xp(data.length - 1), h - p.bottom);
     ctx.lineTo(xp(0), h - p.bottom);
     ctx.closePath();
-    ctx.fillStyle = gradient;
+    ctx.setFillStyle(gradient);
     ctx.fill();
 
     // 折线
@@ -49,32 +49,35 @@ const chart = {
       const x = xp(i), y = yp(d[yField]);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.setStrokeStyle(color);
+    ctx.setLineWidth(2);
     ctx.stroke();
 
     // Y 轴刻度
-    ctx.fillStyle = '#999';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
+    ctx.setFillStyle('#999');
+    ctx.setFontSize(10);
+    ctx.setTextAlign('right');
+    ctx.setTextBaseline('middle');
+    const suffix = isReturn ? '%' : '';
     for (let i = 0; i <= 4; i++) {
       const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(2), p.left - 6, yp(val));
+      ctx.fillText(val.toFixed(isReturn ? 1 : 2) + suffix, p.left - 6, yp(val));
     }
 
     // X 轴日期
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const steps = Math.min(5, data.length);
+    ctx.setFontSize(9);
+    ctx.setTextBaseline('top');
+    const labelSteps = data.length <= 120 ? 5 : 6;
+    const steps = Math.min(labelSteps, data.length);
     for (let i = 0; i < steps; i++) {
       const idx = Math.round((i / (steps - 1)) * (data.length - 1));
-      const label = this._formatXLabel(data[idx][xField]);
+      const label = this._formatXLabel(data[idx][xField], data);
+      ctx.setTextAlign(i === 0 ? 'left' : i === steps - 1 ? 'right' : 'center');
       ctx.fillText(label, xp(idx), h - p.bottom + 8);
     }
 
     // 保存渲染数据供 tooltip 使用
-    this._lastDraw = { data, xp, yp, yField, xField, w, h, p, yMin, yMax, vals };
+    this._lastDraw = { data, xp, yp, yField, xField, w, h, p, yMin, yMax, vals, isReturn };
   },
 
   /**
@@ -88,8 +91,8 @@ const chart = {
     const pw = w - p.left - p.right;
     const ph = h - p.top - p.bottom;
 
-    const valsA = data.map(d => d[fieldA]).filter(v => v !== null);
-    const valsB = data.map(d => d[fieldB]).filter(v => v !== null);
+    const valsA = data.map(d => d[fieldA]).filter(v => v != null);
+    const valsB = data.map(d => d[fieldB]).filter(v => v != null);
     const allVals = [...valsA, ...valsB];
     if (allVals.length === 0) return;
     const min = Math.min(...allVals), max = Math.max(...allVals);
@@ -99,7 +102,7 @@ const chart = {
     const xp = (i) => p.left + (pw / (data.length - 1)) * i;
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
-    ctx.fillStyle = '#FFFFFF';
+    ctx.setFillStyle('#FFFFFF');
     ctx.fillRect(0, 0, w, h);
 
     // 两条折线
@@ -108,46 +111,48 @@ const chart = {
       let started = false;
       ctx.beginPath();
       data.forEach((d, i) => {
-        if (d[field] === null) { started = false; return; }
+        if (d[field] == null) { started = false; return; }
         const x = xp(i), y = yp(d[field]);
         if (!started) { ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.setStrokeStyle(color);
+      ctx.setLineWidth(2);
       ctx.stroke();
     });
 
     // 图例
-    ctx.font = '9px sans-serif';
-    ctx.textBaseline = 'middle';
+    ctx.setFontSize(9);
+    ctx.setTextBaseline('middle');
     [ { color: colorA, label: labelA, y: 10 },
       { color: colorB, label: labelB, y: 22 } ].forEach(lg => {
       if (!lg.label) return;
-      ctx.fillStyle = lg.color;
+      ctx.setFillStyle(lg.color);
       ctx.fillRect(p.left + 4, lg.y - 2, 12, 4);
-      ctx.fillStyle = '#666';
-      ctx.textAlign = 'left';
+      ctx.setFillStyle('#666');
+      ctx.setTextAlign('left');
       ctx.fillText(lg.label.slice(0, 10), p.left + 20, lg.y);
     });
 
     // Y轴
-    ctx.fillStyle = '#999';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
+    ctx.setFillStyle('#999');
+    ctx.setFontSize(10);
+    ctx.setTextAlign('right');
+    ctx.setTextBaseline('middle');
     for (let i = 0; i <= 4; i++) {
       const val = yMax - (yMax - yMin) / 4 * i;
       ctx.fillText(val.toFixed(1) + '%', p.left - 6, yp(val));
     }
 
     // X轴
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const steps = Math.min(5, data.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (data.length - 1));
-      ctx.fillText(data[idx].date.slice(5), xp(idx), h - p.bottom + 8);
+    ctx.setFontSize(9);
+    ctx.setTextBaseline('top');
+    const dSteps = data.length <= 120 ? 5 : 6;
+    const dsteps = Math.min(dSteps, data.length);
+    for (let i = 0; i < dsteps; i++) {
+      const idx = Math.round((i / (dsteps - 1)) * (data.length - 1));
+      ctx.setTextAlign(i === 0 ? 'left' : i === dsteps - 1 ? 'right' : 'center');
+      ctx.fillText(this._formatXLabel(data[idx].date, data), xp(idx), h - p.bottom + 8);
     }
 
     this._lastDualDraw = { data, xp, yp, fieldA, fieldB, w, h, p, yMin, yMax,
@@ -163,6 +168,7 @@ const chart = {
     if (!d || !d.data || d.data.length < 2) return;
     const { data, xp, yp, fieldA, fieldB, w, h, p, colorA, colorB, labelA, labelB } = d;
 
+    if (!e.touches || e.touches.length === 0) return;
     const touch = e.touches[0];
     const px = touch.x;
     let nearest = 0, minDist = Infinity;
@@ -179,17 +185,17 @@ const chart = {
     const cx = xp(nearest);
 
     // 竖线
-    ctx.strokeStyle =('rgba(0,0,0,0.1)');
-    ctx.lineWidth = 1;
+    ctx.setStrokeStyle('rgba(0,0,0,0.1)');
+    ctx.setLineWidth(1);
     ctx.beginPath(); ctx.moveTo(cx, p.top); ctx.lineTo(cx, h - p.bottom); ctx.stroke();
 
     // 数据点
     [ { v: va, c: colorA }, { v: vb, c: colorB } ].forEach(pt2 => {
-      if (pt2.v === null) return;
+      if (pt2.v == null) return;
       const y = yp(pt2.v);
       ctx.beginPath(); ctx.arc(cx, y, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = '#FFFFFF'; ctx.fill();
-      ctx.strokeStyle = pt2.c; ctx.lineWidth = 2; ctx.stroke();
+      ctx.setFillStyle('#FFFFFF'); ctx.fill();
+      ctx.setStrokeStyle(pt2.c); ctx.setLineWidth(2); ctx.stroke();
     });
 
     // Tooltip
@@ -200,18 +206,18 @@ const chart = {
     const tw = maxLen * 7 + 8;
     const lh = 18;
     const ty = Math.max(p.top + 4, yp(Math.max(va || -999, vb || -999)) - 36);
-    ctx.fillStyle =('rgba(0,0,0,0.75)');
+    ctx.setFillStyle('rgba(0,0,0,0.75)');
     ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
-    ctx.fillStyle = '#FFF';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
+    ctx.setFillStyle('#FFF');
+    ctx.setFontSize(11);
+    ctx.setTextAlign('left');
+    ctx.setTextBaseline('middle');
     lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
   },
 
   _drawFastLine(ctx, d, opts) {
-    const { data, xp, yp, yField, w, h, p } = d;
-    ctx.fillStyle = '#FFFFFF';
+    const { data, xp, yp, yField, w, h, p, isReturn } = d;
+    ctx.setFillStyle('#FFFFFF');
     ctx.fillRect(0, 0, w, h);
 
     ctx.beginPath();
@@ -219,36 +225,38 @@ const chart = {
       const x = xp(i), y = yp(d2[yField]);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = opts.color || '#E4393C';
-    ctx.lineWidth = 2;
+    ctx.setStrokeStyle(opts.color || '#E4393C');
+    ctx.setLineWidth(2);
     ctx.stroke();
 
-    // Y 轴刻度（保留，不跳过）
-    ctx.fillStyle = '#999';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
+    // Y 轴刻度
+    ctx.setFillStyle('#999');
+    ctx.setFontSize(10);
+    ctx.setTextAlign('right');
+    ctx.setTextBaseline('middle');
+    const suffix = isReturn ? '%' : '';
     for (let i = 0; i <= 4; i++) {
       const val = d.yMax - (d.yMax - d.yMin) / 4 * i;
-      ctx.fillText(val.toFixed(2), p.left - 6, d.yp(val));
+      ctx.fillText(val.toFixed(isReturn ? 1 : 2) + suffix, p.left - 6, d.yp(val));
     }
 
     // X 轴日期
-    ctx.fillStyle = '#CCC';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const steps = Math.min(5, data.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (data.length - 1));
-      ctx.fillText(this._formatXLabel(data[idx][d.xField]), xp(idx), h - p.bottom + 8);
+    ctx.setFillStyle('#CCC');
+    ctx.setFontSize(9);
+    ctx.setTextBaseline('top');
+    const fastSteps = data.length <= 120 ? 5 : 6;
+    const fSteps = Math.min(fastSteps, data.length);
+    for (let i = 0; i < fSteps; i++) {
+      const idx = Math.round((i / (fSteps - 1)) * (data.length - 1));
+      ctx.setTextAlign(i === 0 ? 'left' : i === fSteps - 1 ? 'right' : 'center');
+      ctx.fillText(this._formatXLabel(data[idx][d.xField], data), xp(idx), h - p.bottom + 8);
     }
     this._lastDraw = d;
   },
 
   _drawDualFast(ctx, d, opts) {
     const { data, xp, yp, fieldA, fieldB, w, h, p, colorA, colorB } = d;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.setFillStyle('#FFFFFF');
     ctx.fillRect(0, 0, w, h);
 
     [fieldA, fieldB].forEach((field, idx) => {
@@ -256,31 +264,34 @@ const chart = {
       let started = false;
       ctx.beginPath();
       data.forEach((d2, i) => {
-        if (d2[field] === null) { started = false; return; }
+        if (d2[field] == null) { started = false; return; }
         const x = xp(i), y = yp(d2[field]);
         if (!started) { ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.setStrokeStyle(color);
+      ctx.setLineWidth(2);
       ctx.stroke();
     });
 
-    ctx.fillStyle = '#CCC';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const steps = Math.min(5, data.length);
-    for (let i = 0; i < steps; i++) {
-      const idx = Math.round((i / (steps - 1)) * (data.length - 1));
-      ctx.fillText(data[idx].date.slice(5), xp(idx), h - p.bottom + 8);
+    ctx.setFillStyle('#CCC');
+    ctx.setFontSize(9);
+    ctx.setTextBaseline('top');
+    const dfSteps = data.length <= 120 ? 5 : 6;
+    const dFSteps = Math.min(dfSteps, data.length);
+    for (let i = 0; i < dFSteps; i++) {
+      const idx = Math.round((i / (dFSteps - 1)) * (data.length - 1));
+      ctx.setTextAlign(i === 0 ? 'left' : i === dFSteps - 1 ? 'right' : 'center');
+      ctx.fillText(this._formatXLabel(data[idx].date, data), xp(idx), h - p.bottom + 8);
     }
     this._lastDualDraw = d;
   },
 
-  _formatXLabel(dateStr) {
+  _formatXLabel(dateStr, data) {
     if (!dateStr) return '';
-    return dateStr.slice(5); // "YYYY-MM-DD" → "MM-DD"
+    // 1Y+ 长周期显示年月，短周期显示月-日
+    if (data && data.length > 250) return dateStr.slice(0, 7);
+    return dateStr.slice(5);
   },
 };
 

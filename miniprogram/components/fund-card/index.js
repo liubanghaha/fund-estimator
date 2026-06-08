@@ -10,12 +10,15 @@ Component({
     showTap: { type: Boolean, value: true },
   },
   observers: {
-    "nav, lastNav": function (nav, lastNav) {
-      if (nav != null && lastNav != null) {
-        const changeRate = calculator.formatPercent(((nav - lastNav) / lastNav) * 100);
-        const isPositive = nav > lastNav;
-        const isNegative = nav < lastNav;
-        this.setData({ changeRate, isPositive, isNegative });
+    "nav, lastNav, changeRate": function (nav, lastNav, changeRate) {
+      if (changeRate && changeRate !== "") {
+        const v = parseFloat(changeRate);
+        this.setData({ isPositive: v > 0, isNegative: v < 0 });
+        return;
+      }
+      if (nav != null && lastNav != null && lastNav !== 0) {
+        const cr = calculator.formatPercent(((nav - lastNav) / lastNav) * 100);
+        this.setData({ changeRate: cr, isPositive: nav > lastNav, isNegative: nav < lastNav });
       }
     },
   },

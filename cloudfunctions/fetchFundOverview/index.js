@@ -3,7 +3,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 exports.main = async (event) => {
   const { fundCode } = event;
-  if (!fundCode) return { code: 400, msg: "请提供基金代码" };
+  if (!fundCode || !/^\d{6}$/.test(fundCode)) return { code: 400, msg: "请提供有效的6位基金代码" };
 
   try {
     const [estimate, history, profileData] = await Promise.all([
@@ -21,7 +21,8 @@ exports.main = async (event) => {
       },
     };
   } catch (e) {
-    return { code: 500, msg: e.message || "获取基金概览失败" };
+    console.error("获取基金概览失败:", e.message);
+    return { code: 500, msg: "获取基金概览失败" };
   }
 };
 

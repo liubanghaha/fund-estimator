@@ -1,7 +1,7 @@
 const api = require("../../utils/api");
 
 Page({
-  data: { isLoggedIn: false, avatarUrl: "", nickName: "" },
+  data: { isLoggedIn: false, avatarUrl: "", nickName: "", showFeedback: false, feedbackText: "", feedbackSubmitting: false },
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
@@ -65,19 +65,24 @@ Page({
   onSearchFund() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
   onFeedback() {
-    wx.showModal({
-      title: "意见反馈",
-      content: "如有问题或建议，欢迎通过客服会话反馈",
-      confirmText: "联系客服",
-      cancelText: "取消",
-      success: (res) => {
-        if (res.confirm) {
-          wx.openCustomerServiceChat
-            ? wx.openCustomerServiceChat({})
-            : wx.showToast({ title: "请在小程序中联系客服", icon: "none" });
-        }
-      },
-    });
+    this.setData({ showFeedback: !this.data.showFeedback, feedbackText: "" });
+  },
+  onFeedbackInput(e) {
+    this.setData({ feedbackText: e.detail.value });
+  },
+  async onSubmitFeedback() {
+    const content = (this.data.feedbackText || "").trim();
+    if (!content) { wx.showToast({ title: "请输入反馈内容", icon: "none" }); return; }
+    if (content.length > 500) { wx.showToast({ title: "反馈内容不能超过500字", icon: "none" }); return; }
+    this.setData({ feedbackSubmitting: true });
+    try {
+      const res = await api.submitFeedback(content);
+      wx.showToast({ title: (res.result && res.result.code === 0) ? "感谢反馈！" : "提交失败，请重试", icon: "none" });
+      if (res.result && res.result.code === 0) this.setData({ showFeedback: false, feedbackText: "" });
+    } catch (e) {
+      wx.showToast({ title: "网络错误，请重试", icon: "none" });
+    }
+    this.setData({ feedbackSubmitting: false });
   },
   onShowVersion() {
     const accountInfo = wx.getAccountInfoSync ? wx.getAccountInfoSync() : {};

@@ -131,7 +131,7 @@ async function fetchHKIndexData(code, days) {
   if (sinaKline && sinaKline.length > 0) return sinaKline;
 
   // 7) Yahoo 兜底
-  return await fetchYahooKline(code, days);
+  return (await fetchYahooKline(code, days)) || [];
 }
 
 // ========== 美股指数 ==========
@@ -145,7 +145,7 @@ async function fetchUSIndexData(code, days) {
   const tencentKline = await fetchTencentHKKline(US_SINA_SYMBOLS[code], days);
   if (tencentKline && tencentKline.length > 0) return tencentKline;
 
-  return await fetchYahooKline(code, days);
+  return (await fetchYahooKline(code, days)) || [];
 }
 
 function fetchSinaUSQuote(symbol) {

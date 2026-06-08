@@ -6,6 +6,8 @@ const TC_SECRET_ID = process.env.TC_SECRET_ID;
 const TC_SECRET_KEY = process.env.TC_SECRET_KEY;
 
 exports.main = async (event) => {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "请先登录" };
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
 
