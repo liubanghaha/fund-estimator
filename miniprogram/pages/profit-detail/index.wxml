@@ -13,6 +13,15 @@
     <view wx:if="{{earliestDate}}" class="tip-inline">收益自 {{earliestDate}} 起计，随交易日积累</view>
     <!-- 收益摘要：本周/本月/本年 -->
     <view class="summary-bar">
+      <view class="summary-item {{activeTab === 'today' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="today">
+        <view class="summary-label">当天收益</view>
+        <view class="summary-value {{todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : ''}}">
+          {{todayProfit > 0 ? '+' : ''}}{{todayProfit}}
+        </view>
+        <view class="summary-rate {{todayProfitRate > 0 ? 'up' : todayProfitRate < 0 ? 'down' : ''}}">
+          {{todayProfitRate > 0 ? '+' : ''}}{{todayProfitRate}}%
+        </view>
+      </view>
       <view class="summary-item {{activeTab === 'week' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="week">
         <view class="summary-label">本周收益</view>
         <view class="summary-value {{weekProfit > 0 ? 'up' : weekProfit < 0 ? 'down' : ''}}">
@@ -45,13 +54,17 @@
     <!-- 走势图 -->
     <view class="chart-card">
       <view class="chart-header">
-        <view class="chart-title">{{activeTab === 'week' ? '本周' : activeTab === 'month' ? '本月' : '本年'}}走势</view>
-        <!-- 行内指数选择 -->
+        <view class="chart-title">{{activeTab === 'week' ? '本周' : activeTab === 'month' ? '本月' : activeTab === 'year' ? '本年' : '当天'}}走势</view>
         <view class="index-options">
           <view wx:for="{{availableIndices}}" wx:key="code" wx:for-item="idx"
+            wx:if="{{idx.code !== '000300'}}"
             class="index-opt {{compareIndex === idx.code ? 'active' : ''}}"
             bind:tap="onSelectIndex" data-code="{{idx.code}}" data-name="{{idx.name}}">
             {{idx.name}}
+          </view>
+          <view class="index-opt {{compareIndex === '000300' ? 'active' : ''}}"
+            bind:tap="onSelectIndex" data-code="000300" data-name="沪深300">
+            沪深300
           </view>
         </view>
       </view>

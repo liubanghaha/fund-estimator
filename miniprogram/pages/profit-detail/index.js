@@ -5,7 +5,7 @@ const CACHE = "profit_detail_cache_v2";
 
 Page({
   data: {
-    activeTab: "week",
+    activeTab: "today",
     profitMode: "amount",
     loading: true,
     empty: false,
@@ -13,12 +13,12 @@ Page({
     todayProfit: "0.00", todayProfitRate: "0.00",
     weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
     weekProfitRate: "0.00", monthProfitRate: "0.00", yearProfitRate: "0.00",
-    compareIndex: "000300", compareLabel: "沪深300",
+    compareIndex: "000001", compareLabel: "上证指数",
     availableIndices: [
-      { code: "000300", name: "沪深300" },
       { code: "000001", name: "上证指数" },
       { code: "399001", name: "深证成指" },
       { code: "399006", name: "创业板指" },
+      { code: "000300", name: "沪深300" },
     ],
     canvasHRpx: 0,
     earliestDate: "",
@@ -223,6 +223,7 @@ Page({
   },
 
   _draw() {
+    if (this.data.activeTab === 'today') { this._drawToday(); return; }
     const r = this._data(); if (!r) return;
     const ctx = wx.createCanvasContext('profitCanvas', this);
     const w = this._canvasW || 340, h = this._canvasH || 200;
@@ -278,6 +279,96 @@ Page({
 
   _line(ctx, data, f, xi, yi, c) { let s = false; ctx.beginPath(); data.forEach((d, i) => { if (d[f] === null) { s = false; return; } const x = xi(i), y = yi(d[f]); s ? ctx.lineTo(x, y) : ctx.moveTo(x, y); s = true; }); ctx.setStrokeStyle(c); ctx.setLineWidth(2); ctx.stroke(); },
 
+  async fetchIntraday() {
+    if (this._fetchingToday) return;
+    this._fetchingToday = true;
+    try {
+      const res = await api.fetchIndexIntraday(this.data.compareIndex);
+      console.log('[当天走势] API 返回:', res.code, '数据长度:', res.data ? res.data.length : 0);
+      if (res.code === 0 && res.data && res.data.length > 0) {
+        this._intradayRaw = res.data;
+        console.log('[当天走势] 首条数据:', JSON.stringify(res.data[0]));
+        this.setData({}, () => this._draw());
+      } else {
+        wx.showToast({ title: "暂无当天走势数据", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "获取失败", icon: "none" });
+    }
+    this._fetchingToday = false;
+  },
+
+  _drawToday() {
+    const raw = this._intradayRaw || [];
+    console.log('[当天走势] _drawToday 调用, raw长度:', raw.length, '_fetchingToday:', this._fetchingToday);
+    if (raw.length < 2) {
+      console.log('[当天走势] 数据不足，触发 fetchIntraday');
+      if (!this._fetchingToday) this.fetchIntraday();
+      return;
+    }
+
+    const ctx = wx.createCanvasContext('profitCanvas', this);
+    const w = this._canvasW || 340, h = this._canvasH || 200;
+    const p = { t: 40, r: 24, b: 36, l: 52 };
+
+    const data = raw.map(d => ({
+      date: d.time,
+      value: d.changeRate,
+    }));
+
+    const vals = data.map(d => d.value);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const range = max - min || 0.01;
+    const yMin = min - range * 0.15, yMax = max + range * 0.15;
+
+    const pw = w - p.l - p.r, ph = h - p.t - p.b;
+    const xp = i => p.l + (pw / (data.length - 1)) * i;
+    const yp = v => p.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
+
+    ctx.setFillStyle('#FFF'); ctx.fillRect(0, 0, w, h);
+
+    // 指数分时走势
+    this._line(ctx, data, 'value', xp, yp, '#1976D2');
+
+    // 持仓组合当日收益率参考线
+    const fundRate = parseFloat(this.data.todayProfitRate || 0);
+    const color = fundRate >= 0 ? '#E4393C' : '#2E8B57';
+    const fundY = yp(fundRate);
+    if (fundY >= p.t && fundY <= h - p.b) {
+      ctx.setStrokeStyle(color);
+      ctx.setLineWidth(1);
+      ctx.beginPath();
+      ctx.moveTo(p.l, fundY);
+      ctx.lineTo(w - p.r, fundY);
+      ctx.stroke();
+    }
+
+    // 图例
+    ctx.setFontSize(9); ctx.setTextBaseline('middle');
+    ctx.setFillStyle('#1976D2'); ctx.fillRect(p.l + 4, 10, 12, 4);
+    ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText(this.data.compareLabel, p.l + 20, 12);
+    ctx.setFillStyle(color); ctx.fillRect(p.l + 4, 22, 12, 4);
+    ctx.setFillStyle('#666'); ctx.fillText('我的收益 ' + (fundRate > 0 ? '+' : '') + fundRate + '%', p.l + 20, 24);
+
+    // Y轴
+    ctx.setFillStyle('#999'); ctx.setFontSize(10); ctx.setTextAlign('right'); ctx.setTextBaseline('middle');
+    for (let i = 0; i <= 4; i++) {
+      const v = yMax - (yMax - yMin) / 4 * i;
+      ctx.fillText(v.toFixed(1) + '%', p.l - 6, yp(v));
+    }
+
+    // X轴时间标签：均分 9:30 / 11:30 / 15:00
+    ctx.setFontSize(9); ctx.setTextBaseline('top');
+    ctx.setTextAlign('left');
+    ctx.fillText('09:30', p.l, h - p.b + 8);
+    ctx.setTextAlign('center');
+    ctx.fillText('11:30', p.l + pw / 2, h - p.b + 8);
+    ctx.setTextAlign('right');
+    ctx.fillText('15:00', w - p.r, h - p.b + 8);
+
+    ctx.draw();
+  },
+
   // ============ 日历 ============
 
   _cal() { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); },
@@ -296,13 +387,13 @@ Page({
 
   // ============ 事件 ============
 
-  onSummaryTap(e) { this.setData({ activeTab: e.currentTarget.dataset.tab }, () => this._draw()); },
+  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => this._draw()); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
-  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
+  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
 
   _mon(d) { const c = new Date(d); c.setDate(c.getDate() - (c.getDay() === 0 ? 6 : c.getDay() - 1)); return calc.formatDate(c); },
   async _idx(code, days) {

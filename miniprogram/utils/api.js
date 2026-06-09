@@ -132,6 +132,55 @@ const api = {
     });
   },
 
+  // 获取指数当天分时数据（腾讯分时 API）
+  fetchIndexIntraday(indexCode) {
+    const CODE_MAP = {
+      "000001": "sh000001",
+      "399001": "sz399001",
+      "000300": "sh000300",
+      "399006": "sz399006",
+    };
+    const code = CODE_MAP[indexCode] || "sh000001";
+    return new Promise((resolve) => {
+      wx.request({
+        url: `https://web.ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data&code=${code}`,
+        success(res) {
+          try {
+            const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+            const match = text.match(/min_data\s*=\s*(\{[\s\S]*\})/);
+            if (!match) { resolve({ code: 500, msg: "解析失败" }); return; }
+            const json = JSON.parse(match[1]);
+            const qt = (json.data && json.data[code]) || json.data || {};
+            const lines = qt.data || [];
+            if (!lines.length) { resolve({ code: 500, msg: "无数据" }); return; }
+            const preClose = parseFloat(qt.preClose) || parseFloat(lines[0].split(" ")[1]) || 0;
+            let prevClose = preClose;
+            const list = [];
+            lines.forEach((line) => {
+              const parts = line.split(" ");
+              const time = parts[0];
+              const price = parseFloat(parts[1]) || 0;
+              const changeRate = prevClose ? +((price / prevClose - 1) * 100).toFixed(2) : 0;
+              if (parts[0].length >= 3) {
+                list.push({
+                  time: time.slice(0, 2) + ":" + time.slice(2),
+                  close: price,
+                  changeRate,
+                });
+              }
+            });
+            resolve({ code: 0, data: list });
+          } catch (e) {
+            resolve({ code: 500, msg: e.message });
+          }
+        },
+        fail(err) {
+          resolve({ code: 500, msg: err.errMsg || "请求失败" });
+        },
+      });
+    });
+  },
+
   fetchMarketIndexTencent(indexCode, days = 80) {
     const S = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006" };
     const sym = (S[indexCode] || "1.000001").split(".")[1];
