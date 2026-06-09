@@ -284,10 +284,8 @@ Page({
     this._fetchingToday = true;
     try {
       const res = await api.fetchIndexIntraday(this.data.compareIndex);
-      console.log('[当天走势] API 返回:', res.code, '数据长度:', res.data ? res.data.length : 0);
       if (res.code === 0 && res.data && res.data.length > 0) {
         this._intradayRaw = res.data;
-        console.log('[当天走势] 首条数据:', JSON.stringify(res.data[0]));
         this.setData({}, () => this._draw());
       } else {
         wx.showToast({ title: "暂无当天走势数据", icon: "none" });
@@ -300,9 +298,7 @@ Page({
 
   _drawToday() {
     const raw = this._intradayRaw || [];
-    console.log('[当天走势] _drawToday 调用, raw长度:', raw.length, '_fetchingToday:', this._fetchingToday);
     if (raw.length < 2) {
-      console.log('[当天走势] 数据不足，触发 fetchIntraday');
       if (!this._fetchingToday) this.fetchIntraday();
       return;
     }
