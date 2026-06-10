@@ -68,7 +68,7 @@
           </view>
         </view>
       </view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" wx:if="{{activeTab !== 'today'}}" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}"></canvas>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" wx:if="{{activeTab !== 'today'}}" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
       <canvas type="2d" id="todayCanvas" wx:if="{{activeTab === 'today'}}" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onTodayTouch" bindtouchmove="onTodayTouch" bindtouchend="onTodayTouch"></canvas>
     </view>
 

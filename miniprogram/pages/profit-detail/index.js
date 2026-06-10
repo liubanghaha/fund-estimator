@@ -413,6 +413,9 @@ Page({
     if (noIdx) { const vs = data.filter(d => d.baseRate !== null).map(d => d.baseRate); if (vs.length >= 2) drawAxis(vs, 'baseRate', ''); }
     else if (hasP) { const av = [...data.map(d => d.baseRate).filter(v => v !== null), ...data.map(d => d.indexRate)]; if (av.length >= 2) drawAxis(av, 'dual'); }
     else { drawAxis(data.map(d => d.indexRate), 'index'); }
+
+    // 保存绘制参数供触摸 tooltip（周/月/年图表）
+    this._chartDraw = { data, p, w, h, noIdx, hasP, compareLabel: this.data.compareLabel };
   },
 
   _line(ctx, data, f, xi, yi, c) { let s = false; ctx.beginPath(); data.forEach((d, i) => { if (d[f] === null) { s = false; return; } const x = xi(i), y = yi(d[f]); s ? ctx.lineTo(x, y) : ctx.moveTo(x, y); s = true; }); ctx.setStrokeStyle(c); ctx.setLineWidth(2); ctx.stroke(); },
@@ -624,6 +627,114 @@ Page({
       ctx.textBaseline = 'middle';
       lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
     });
+  },
+
+  // 本周/本月/本年走势图触摸
+  onChartTouch(e) {
+    const d = this._chartDraw;
+    if (!d) return;
+
+    if (e.type === 'touchstart') {
+      this._ctSY = e.touches[0].y;
+      this._ctSX = e.touches[0].x;
+      this._ctActive = false;
+      return;
+    }
+    if (e.type === 'touchend') {
+      this._ctActive = false;
+      this._draw();
+      return;
+    }
+    if (!this._ctActive) {
+      const dy = Math.abs(e.touches[0].y - this._ctSY);
+      const dx = Math.abs(e.touches[0].x - this._ctSX);
+      if (dy > dx && dy > 8) return;
+      if (dx > dy && dx > 8) this._ctActive = true;
+    }
+    if (!this._ctActive) return;
+
+    const now = Date.now();
+    if (this._ctT && now - this._ctT < 60) return;
+    this._ctT = now;
+
+    const { data, p, w, h, noIdx, hasP, compareLabel } = d;
+    const ctx = wx.createCanvasContext('profitCanvas', this);
+    const pw = w - p.l - p.r, ph = h - p.t - p.b;
+
+    // 计算范围和坐标
+    const allVals = [];
+    data.forEach(pt => {
+      if (!noIdx && pt.indexRate != null) allVals.push(pt.indexRate);
+      if (hasP && pt.baseRate != null) allVals.push(pt.baseRate);
+      if (noIdx && pt.baseRate != null) allVals.push(pt.baseRate);
+      if (!noIdx && !hasP) allVals.push(pt.indexRate);
+    });
+    if (!allVals.length) return;
+    const mn = Math.min(...allVals), mx = Math.max(...allVals);
+    const rg = mx - mn || 0.01;
+    const y0 = mn - rg * 0.15, y1 = mx + rg * 0.15;
+    const xi = i => p.l + (pw / (data.length - 1)) * i;
+    const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
+
+    // 重绘底图
+    ctx.setFillStyle('#FFF');
+    ctx.fillRect(0, 0, w, h);
+    if (noIdx) {
+      this._line(ctx, data, 'baseRate', xi, yi, '#E4393C');
+    } else if (hasP) {
+      this._line(ctx, data, 'baseRate', xi, yi, '#2E8B57');
+      this._line(ctx, data, 'indexRate', xi, yi, '#1976D2');
+    } else {
+      this._line(ctx, data, 'indexRate', xi, yi, '#E4393C');
+    }
+
+    // 坐标轴
+    ctx.setFillStyle('#999'); ctx.setFontSize(10); ctx.setTextAlign('right'); ctx.setTextBaseline('middle');
+    for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
+    ctx.setTextBaseline('top'); ctx.setFontSize(11);
+    const last = data.length - 1;
+    [{ ix: 0, a: 'left' }, { ix: Math.floor(last / 2), a: 'center' }, { ix: last, a: 'right' }].forEach(m => {
+      ctx.setTextAlign(m.a);
+      ctx.fillText(data[m.ix].date.slice(5), xi(m.ix), h - p.b + 8);
+    });
+
+    // 找最近点
+    const px = e.touches[0].x;
+    let nearest = 0, minDist = Infinity;
+    data.forEach((pt, i) => {
+      const dist = Math.abs(xi(i) - px);
+      if (dist < minDist) { minDist = dist; nearest = i; }
+    });
+    const pt = data[nearest];
+    const cx = xi(nearest);
+    const v = !noIdx && pt.indexRate != null ? pt.indexRate : pt.baseRate;
+    const cy = yi(v);
+
+    // 竖线
+    ctx.setStrokeStyle('rgba(0,0,0,0.12)'); ctx.setLineWidth(1);
+    ctx.beginPath(); ctx.moveTo(cx, p.t); ctx.lineTo(cx, h - p.b); ctx.stroke();
+    // 圆点
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+    ctx.setFillStyle('#FFF'); ctx.fill();
+    ctx.setStrokeStyle('#1976D2'); ctx.setLineWidth(2); ctx.stroke();
+
+    // Tooltip
+    const fmt = (val) => val != null ? (val > 0 ? '+' : '') + val : '--';
+    const lines = [pt.date];
+    if (!noIdx) lines.push(compareLabel + ' ' + fmt(pt.indexRate != null ? pt.indexRate : null));
+    if (hasP && pt.baseRate != null) lines.push('我的收益 ' + fmt(pt.baseRate != null ? pt.baseRate : null) + '%');
+    const maxLen = Math.max(...lines.map(l => l.length));
+    const tw = maxLen * 7 + 8;
+    const lh = 18;
+    const ty = Math.max(p.t + 4, cy - 28);
+    ctx.setFillStyle('rgba(0,0,0,0.75)');
+    ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
+    ctx.setFillStyle('#FFF');
+    ctx.setFontSize(11);
+    ctx.setTextAlign('left');
+    ctx.setTextBaseline('middle');
+    lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
+    ctx.draw();
   },
 
   // ============ 收益轮询 ============
