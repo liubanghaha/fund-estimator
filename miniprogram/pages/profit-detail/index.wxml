@@ -68,7 +68,8 @@
           </view>
         </view>
       </view>
-      <canvas canvas-id="profitCanvas" id="profitCanvas" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}"></canvas>
+      <canvas canvas-id="profitCanvas" id="profitCanvas" wx:if="{{activeTab !== 'today'}}" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}"></canvas>
+      <canvas type="2d" id="todayCanvas" wx:if="{{activeTab === 'today'}}" style="width:100%;height:{{canvasHRpx}}rpx"></canvas>
     </view>
 
     <!-- 盈亏日历 -->
