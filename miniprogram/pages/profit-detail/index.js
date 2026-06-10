@@ -676,16 +676,28 @@ Page({
     const xi = i => p.l + (pw / (data.length - 1)) * i;
     const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
 
-    // 重绘底图
+    // 重绘底图+图例
     ctx.setFillStyle('#FFF');
     ctx.fillRect(0, 0, w, h);
     if (noIdx) {
       this._line(ctx, data, 'baseRate', xi, yi, '#E4393C');
+      ctx.setFontSize(9); ctx.setTextBaseline('middle');
+      ctx.setFillStyle('#E4393C'); ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益', p.l + 20, 12);
     } else if (hasP) {
-      this._line(ctx, data, 'baseRate', xi, yi, '#2E8B57');
+      const pc2 = data[data.length - 1].baseRate >= data[0].baseRate ? '#E4393C' : '#2E8B57';
+      this._line(ctx, data, 'baseRate', xi, yi, pc2);
       this._line(ctx, data, 'indexRate', xi, yi, '#1976D2');
+      ctx.setFontSize(9); ctx.setTextBaseline('middle');
+      ctx.setFillStyle(pc2); ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益', p.l + 20, 12);
+      ctx.setFillStyle('#1976D2'); ctx.fillRect(p.l + 4, 22, 12, 4);
+      ctx.setFillStyle('#666'); ctx.fillText(compareLabel, p.l + 20, 24);
     } else {
       this._line(ctx, data, 'indexRate', xi, yi, '#E4393C');
+      ctx.setFontSize(9); ctx.setTextBaseline('middle');
+      ctx.setFillStyle('#E4393C'); ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText(compareLabel, p.l + 20, 12);
     }
 
     // 坐标轴
@@ -693,9 +705,12 @@ Page({
     for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
     ctx.setTextBaseline('top'); ctx.setFontSize(11);
     const last = data.length - 1;
-    [{ ix: 0, a: 'left' }, { ix: Math.floor(last / 2), a: 'center' }, { ix: last, a: 'right' }].forEach(m => {
-      ctx.setTextAlign(m.a);
-      ctx.fillText(data[m.ix].date.slice(5), xi(m.ix), h - p.b + 8);
+    const positions = [0, Math.floor(last / 2), last];
+    const aligns = ['left', 'center', 'right'];
+    positions.forEach((ix, i) => {
+      ctx.setTextAlign(aligns[i]);
+      const x = i === 2 ? xi(ix) - 4 : i === 0 ? xi(ix) + 4 : xi(ix);
+      ctx.fillText(data[ix].date.slice(5), x, h - p.b + 8);
     });
 
     // 找最近点
