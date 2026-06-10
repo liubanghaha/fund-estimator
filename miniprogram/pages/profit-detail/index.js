@@ -351,8 +351,15 @@ Page({
         ctx.fillText('11:30', p.l + pw / 2, ch - p.b + 8);
         ctx.textAlign = 'right';
         ctx.fillText('15:00', cw - p.r, ch - p.b + 8);
-        console.log('[当天] 2d ctx 渲染完成, pts:', data.length, 'range:', mn.toFixed(2), '~', mx.toFixed(2));
+        // 保存绘制参数供触摸 tooltip
+        this._todayDraw = { raw, data, fundPoints, p, cw, ch, pw, ph, y0, y1, xi, yi, fundRate, color,
+          timeToX: (t) => {
+            const [hh, mm] = t.split(':').map(Number);
+            return p.l + (pw * ((hh - 9) * 60 + (mm - 30)) / 330);
+          },
+        };
       });
+
       return;
     }
 
@@ -452,6 +459,172 @@ Page({
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
   onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
+
+  onTodayTouch(e) {
+    const d = this._todayDraw;
+    if (!d) return;
+
+    if (e.type === 'touchstart') {
+      this._ttSY = e.touches[0].y;
+      this._ttSX = e.touches[0].x;
+      this._ttActive = false;
+      return;
+    }
+    if (e.type === 'touchend') {
+      this._ttActive = false;
+      this._draw();
+      return;
+    }
+    // 区分横向滑动和纵向滚动
+    if (!this._ttActive) {
+      const dy = Math.abs(e.touches[0].y - this._ttSY);
+      const dx = Math.abs(e.touches[0].x - this._ttSX);
+      if (dy > dx && dy > 8) return;
+      if (dx > dy && dx > 8) this._ttActive = true;
+    }
+    if (!this._ttActive) return;
+
+    // 60fps 节流
+    const now = Date.now();
+    if (this._ttT && now - this._ttT < 60) return;
+    this._ttT = now;
+
+    const { data, fundPoints, p, cw, ch, pw, ph, y0, y1, xi, yi, fundRate, color, timeToX } = d;
+    const query = wx.createSelectorQuery();
+    query.select('#todayCanvas').fields({ node: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return;
+      const canvas = res[0].node;
+      const ctx = canvas.getContext('2d');
+      const dpr = wx.getSystemInfoSync().pixelRatio;
+      canvas.width = cw * dpr;
+      canvas.height = ch * dpr;
+      ctx.scale(dpr, dpr);
+
+      // 重绘底图
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(0, 0, cw, ch);
+      let started = false;
+      ctx.beginPath();
+      data.forEach((pt, i) => {
+        const x = xi(i), y = yi(pt.value);
+        started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        started = true;
+      });
+      ctx.strokeStyle = '#1976D2';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 收益曲线
+      if (fundPoints.length >= 2) {
+        let fs = false;
+        ctx.beginPath();
+        fundPoints.forEach(pt => {
+          const x = timeToX(pt.time), y = yi(pt.rate);
+          fs ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          fs = true;
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        const fy = yi(fundRate);
+        if (fy >= p.t && fy <= ch - p.b) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(p.l, fy);
+          ctx.lineTo(cw - p.r, fy);
+          ctx.stroke();
+        }
+      }
+
+      // 补坐标轴和图例
+      ctx.fillStyle = '#1976D2';
+      ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.fillStyle = '#666';
+      ctx.font = '9px sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      const idxLabel2 = '指数 ' + (data[data.length - 1].value > 0 ? '+' : '') + data[data.length - 1].value + '%';
+      ctx.fillText(idxLabel2, p.l + 20, 12);
+      ctx.fillStyle = color;
+      ctx.fillRect(p.l + 4, 22, 12, 4);
+      ctx.fillStyle = '#666';
+      ctx.fillText('收益 ' + (fundRate > 0 ? '+' : '') + fundRate + '%', p.l + 20, 24);
+      ctx.fillStyle = '#999';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i <= 4; i++) {
+        const v = y1 - (y1 - y0) / 4 * i;
+        ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v));
+      }
+      ctx.font = '9px sans-serif';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillText('09:30', p.l, ch - p.b + 8);
+      ctx.textAlign = 'center';
+      ctx.fillText('11:30', p.l + pw / 2, ch - p.b + 8);
+      ctx.textAlign = 'right';
+      ctx.fillText('15:00', cw - p.r, ch - p.b + 8);
+
+      // 找最近的数据点
+      const px = e.touches[0].x;
+      let nearest = 0, minDist = Infinity;
+      data.forEach((pt, i) => {
+        const dist = Math.abs(xi(i) - px);
+        if (dist < minDist) { minDist = dist; nearest = i; }
+      });
+      const pt = data[nearest];
+      const cx = xi(nearest), cy = yi(pt.value);
+
+      // 竖线
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, p.t);
+      ctx.lineTo(cx, ch - p.b);
+      ctx.stroke();
+
+      // 数据点圆圈
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = '#FFF';
+      ctx.fill();
+      ctx.strokeStyle = '#1976D2';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 找最近的收益点
+      let fundAtTime = null;
+      if (fundPoints.length) {
+        let fNearest = 0, fMin = Infinity;
+        fundPoints.forEach((fp, i) => {
+          const dist = Math.abs(timeToX(fp.time) - cx);
+          if (dist < fMin) { fMin = dist; fNearest = i; }
+        });
+        fundAtTime = fundPoints[fNearest];
+      }
+
+      // Tooltip
+      const fmt = (v) => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
+      const lines = [pt.date];
+      lines.push('指数 ' + fmt(pt.value));
+      if (fundAtTime) lines.push('收益 ' + fmt(fundAtTime.rate));
+      else lines.push('收益 ' + fmt(fundRate));
+      const maxLen = Math.max(...lines.map(l => l.length));
+      const tw = maxLen * 7 + 8;
+      const lh = 18;
+      const ty = Math.max(p.t + 4, cy - 36);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
+      ctx.fillStyle = '#FFF';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
+    });
+  },
 
   // ============ 收益轮询 ============
 
