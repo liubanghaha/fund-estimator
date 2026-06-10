@@ -736,8 +736,8 @@ Page({
     // Tooltip
     const fmt = (val) => val != null ? (val > 0 ? '+' : '') + val : '--';
     const lines = [pt.date];
-    if (!noIdx) lines.push(compareLabel + ' ' + fmt(pt.indexRate != null ? pt.indexRate : null));
-    if (hasP && pt.baseRate != null) lines.push('我的收益 ' + fmt(pt.baseRate != null ? pt.baseRate : null) + '%');
+    if (!noIdx && pt.indexRate != null) lines.push(compareLabel + ' ' + fmt(pt.indexRate) + '%');
+    if (hasP && pt.baseRate != null) lines.push('我的收益 ' + fmt(pt.baseRate) + '%');
     const maxLen = Math.max(...lines.map(l => l.length));
     const tw = maxLen * 7 + 8;
     const lh = 18;
