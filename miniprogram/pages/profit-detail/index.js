@@ -666,9 +666,13 @@ Page({
     ctx.setFillStyle('#999'); ctx.setFontSize(10); ctx.setTextAlign('right'); ctx.setTextBaseline('middle');
     for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
     ctx.setTextBaseline('top'); ctx.setFontSize(11);
-    [{ ix: 0, a: 'left', ox: 4 }, { ix: Math.floor((data.length - 1) / 2), a: 'center', ox: 0 }, { ix: data.length - 1, a: 'right', ox: -4 }].forEach(m => {
-      ctx.setTextAlign(m.a);
-      ctx.fillText(data[m.ix].date.slice(5), xi(m.ix) + m.ox, h - p.b + 8);
+    const last = data.length - 1;
+    const positions = [0, Math.floor(last / 2), last];
+    const aligns = ['left', 'center', 'right'];
+    positions.forEach((ix, i) => {
+      ctx.setTextAlign(aligns[i]);
+      const x = i === 2 ? xi(ix) - 4 : i === 0 ? xi(ix) + 4 : xi(ix);
+      ctx.fillText(data[ix].date.slice(5), x, h - p.b + 8);
     });
 
     // 竖线+圆点
