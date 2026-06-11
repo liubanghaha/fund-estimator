@@ -93,6 +93,7 @@ Page({
     } catch (e) { /* ignore */ }
     this._first = true;
     this._fetch();
+    if (this.data.activeTab === 'today') this.fetchIntraday();
   },
 
   async _fetch() {
@@ -272,7 +273,11 @@ Page({
         const mn = Math.min(...allVals), mx = Math.max(...allVals);
         const rg = mx - mn || 0.01, y0 = mn - rg * 0.15, y1 = mx + rg * 0.15;
         const pw = cw - p.l - p.r, ph = ch - p.t - p.b;
-        const xi = i => p.l + (pw / (data.length - 1)) * i;
+        const timeToX = (t) => {
+          const [hh, mm] = (t || '09:30').split(':').map(Number);
+          const mins = (hh - 9) * 60 + (mm - 30);
+          return p.l + (pw * Math.max(0, Math.min(330, mins)) / 330);
+        };
         const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
 
         ctx.fillStyle = '#FFF';
@@ -282,7 +287,7 @@ Page({
         let started = false;
         ctx.beginPath();
         data.forEach((d, i) => {
-          const x = xi(i), y = yi(d.value);
+          const x = timeToX(d.date), y = yi(d.value);
           started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
           started = true;
         });
@@ -295,12 +300,6 @@ Page({
         const color = fundRate >= 0 ? '#E4393C' : '#2E8B57';
 
         if (fundPoints.length >= 2) {
-          // 有时间换算函数：HH:MM → 图表 X 坐标
-          const timeToX = (t) => {
-            const [hh, mm] = t.split(':').map(Number);
-            const mins = (hh - 9) * 60 + (mm - 30);
-            return p.l + (pw * mins / 330);
-          };
           let fs = false;
           ctx.beginPath();
           fundPoints.forEach(d => {
@@ -358,12 +357,7 @@ Page({
         ctx.textAlign = 'right';
         ctx.fillText('15:00', cw - p.r, ch - p.b + 8);
         // 保存绘制参数供触摸 tooltip
-        this._todayDraw = { raw, data, fundPoints, p, cw, ch, pw, ph, y0, y1, xi, yi, fundRate, color,
-          timeToX: (t) => {
-            const [hh, mm] = t.split(':').map(Number);
-            return p.l + (pw * ((hh - 9) * 60 + (mm - 30)) / 330);
-          },
-        };
+        this._todayDraw = { raw, data, fundPoints, p, cw, ch, pw, ph, y0, y1, yi, fundRate, color, timeToX };
       });
 
       return;
@@ -498,7 +492,7 @@ Page({
     if (this._ttT && now - this._ttT < 60) return;
     this._ttT = now;
 
-    const { data, fundPoints, p, cw, ch, pw, ph, y0, y1, xi, yi, fundRate, color, timeToX } = d;
+    const { data, fundPoints, p, cw, ch, pw, ph, y0, y1, yi, fundRate, color, timeToX } = d;
     const query = wx.createSelectorQuery();
     query.select('#todayCanvas').fields({ node: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
@@ -515,7 +509,7 @@ Page({
       let started = false;
       ctx.beginPath();
       data.forEach((pt, i) => {
-        const x = xi(i), y = yi(pt.value);
+        const x = timeToX(pt.date), y = yi(pt.value);
         started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
         started = true;
       });
@@ -550,8 +544,8 @@ Page({
       // 找最近点
       const px = e.touches[0].x;
       let nearest = 0, minDist = Infinity;
-      data.forEach((pt, i) => { const dist = Math.abs(xi(i) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
-      const pt = data[nearest], cx = xi(nearest), cy = yi(pt.value);
+      data.forEach((pt, i) => { const dist = Math.abs(timeToX(pt.date) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
+      const pt = data[nearest], cx = timeToX(pt.date), cy = yi(pt.value);
       const fmt = v => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
       // 找最近收益点
       let fundV = fundRate;
@@ -719,7 +713,7 @@ Page({
   _startPolling() {
     this._stopPolling();
     this._pollFundRate();
-    this._pollTimer = setInterval(() => this._pollFundRate(), 30000);
+    this._pollTimer = setInterval(() => this._pollFundRate(), 5000);
   },
 
   _stopPolling() {
