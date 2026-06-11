@@ -717,7 +717,6 @@ Page({
   },
 
   _startPolling() {
-    console.log('[轮询] 启动, 当前点数:', this._fundPoints.length);
     this._stopPolling();
     this._pollFundRate();
     this._pollTimer = setInterval(() => this._pollFundRate(), 30000);
@@ -739,7 +738,6 @@ Page({
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const last = this._fundPoints[this._fundPoints.length - 1];
-      console.log('[轮询] 时间:', time, 'rate:', rate, '已攒点数:', this._fundPoints.length + 1);
       if (!last || last.time !== time) {
         this._fundPoints.push({ time, rate });
         this._saveFundCache();
