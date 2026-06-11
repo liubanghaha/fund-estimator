@@ -744,7 +744,13 @@ Page({
         this._fundPoints.push({ time, rate });
         this._saveFundCache();
         this.setData({ todayProfitRate: rate, todayProfit: tp });
-        if (this.data.activeTab === 'today') this._draw();
+        // 同步刷新指数分时线，保证两条线点数一致
+        if (this.data.activeTab === 'today') {
+          api.fetchIndexIntraday(this.data.compareIndex).then(res => {
+            if (res.code === 0 && res.data) this._intradayRaw = res.data;
+            this._draw();
+          });
+        }
       }
     } catch (e) {}
     this._pollingNow = false;
