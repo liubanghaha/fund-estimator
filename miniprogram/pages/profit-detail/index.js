@@ -150,6 +150,12 @@ Page({
         (navMap[h.fundCode] || []).forEach(x => { if (!dm[x.date]) dm[x.date] = 0; dm[x.date] += x.nav * s; });
       });
       const allDaily = Object.entries(dm).map(([dt, v]) => ({ date: dt, value: +v.toFixed(2) })).sort((a, b) => a.date.localeCompare(b.date));
+      // 去掉最后一天不完整数据（部分基金净值未公布会导致市值虚降）
+      if (allDaily.length >= 2) {
+        const lastCnt = hs.reduce((c, h) => c + ((navMap[h.fundCode || ''] || []).some(x => x.date === allDaily[allDaily.length - 1].date) ? 1 : 0), 0);
+        const prevCnt = hs.reduce((c, h) => c + ((navMap[h.fundCode || ''] || []).some(x => x.date === allDaily[allDaily.length - 2].date) ? 1 : 0), 0);
+        if (lastCnt < prevCnt) allDaily.pop();
+      }
 
       const lastDate = allDaily.length ? allDaily[allDaily.length - 1].date : "";
       const isTradingDay = lastDate === today;
@@ -541,91 +547,39 @@ Page({
         }
       }
 
-      // 补坐标轴和图例
-      ctx.fillStyle = '#1976D2';
-      ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.fillStyle = '#666';
-      ctx.font = '9px sans-serif';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      const idxLabel2 = '指数 ' + (data[data.length - 1].value > 0 ? '+' : '') + data[data.length - 1].value + '%';
-      ctx.fillText(idxLabel2, p.l + 20, 12);
-      ctx.fillStyle = color;
-      ctx.fillRect(p.l + 4, 22, 12, 4);
-      ctx.fillStyle = '#666';
-      ctx.fillText('收益 ' + (fundRate > 0 ? '+' : '') + fundRate + '%', p.l + 20, 24);
-      ctx.fillStyle = '#999';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i <= 4; i++) {
-        const v = y1 - (y1 - y0) / 4 * i;
-        ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v));
-      }
-      ctx.font = '9px sans-serif';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
-      ctx.fillText('09:30', p.l, ch - p.b + 8);
-      ctx.textAlign = 'center';
-      ctx.fillText('11:30', p.l + pw / 2, ch - p.b + 8);
-      ctx.textAlign = 'right';
-      ctx.fillText('15:00', cw - p.r, ch - p.b + 8);
-
-      // 找最近的数据点
+      // 找最近点
       const px = e.touches[0].x;
       let nearest = 0, minDist = Infinity;
-      data.forEach((pt, i) => {
-        const dist = Math.abs(xi(i) - px);
-        if (dist < minDist) { minDist = dist; nearest = i; }
-      });
-      const pt = data[nearest];
-      const cx = xi(nearest), cy = yi(pt.value);
-
-      // 竖线
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx, p.t);
-      ctx.lineTo(cx, ch - p.b);
-      ctx.stroke();
-
-      // 数据点圆圈
-      ctx.beginPath();
-      ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = '#FFF';
-      ctx.fill();
-      ctx.strokeStyle = '#1976D2';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // 找最近的收益点
-      let fundAtTime = null;
+      data.forEach((pt, i) => { const dist = Math.abs(xi(i) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
+      const pt = data[nearest], cx = xi(nearest), cy = yi(pt.value);
+      const fmt = v => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
+      // 找最近收益点
+      let fundV = fundRate;
       if (fundPoints.length) {
-        let fNearest = 0, fMin = Infinity;
-        fundPoints.forEach((fp, i) => {
-          const dist = Math.abs(timeToX(fp.time) - cx);
-          if (dist < fMin) { fMin = dist; fNearest = i; }
-        });
-        fundAtTime = fundPoints[fNearest];
+        let fN = 0, fMin = Infinity;
+        fundPoints.forEach((fp, i) => { const dist = Math.abs(timeToX(fp.time) - cx); if (dist < fMin) { fMin = dist; fN = i; } });
+        fundV = fundPoints[fN].rate;
       }
 
-      // Tooltip
-      const fmt = (v) => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
-      const lines = [pt.date];
-      lines.push('指数 ' + fmt(pt.value));
-      if (fundAtTime) lines.push('收益 ' + fmt(fundAtTime.rate));
-      else lines.push('收益 ' + fmt(fundRate));
-      const maxLen = Math.max(...lines.map(l => l.length));
-      const tw = maxLen * 7 + 8;
-      const lh = 18;
-      const ty = Math.max(p.t + 4, cy - 36);
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
-      ctx.fillStyle = '#FFF';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
+      // 补坐标轴和图例(用触摸点的值)
+      ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.fillStyle = '#666'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.fillText(this.data.compareLabel + ' ' + fmt(pt.value), p.l + 20, 12);
+      ctx.fillStyle = color; ctx.fillRect(p.l + 4, 22, 12, 4);
+      ctx.fillStyle = '#666';
+      ctx.fillText('我的收益 ' + fmt(fundV), p.l + 20, 24);
+      ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
+      ctx.font = '9px sans-serif'; ctx.textBaseline = 'top';
+      ctx.textAlign = 'left'; ctx.fillText('09:30', p.l, ch - p.b + 8);
+      ctx.textAlign = 'center'; ctx.fillText('11:30', p.l + pw / 2, ch - p.b + 8);
+      ctx.textAlign = 'right'; ctx.fillText('15:00', cw - p.r, ch - p.b + 8);
+
+      // 竖线+圆点
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, p.t); ctx.lineTo(cx, ch - p.b); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI); ctx.fillStyle = '#FFF'; ctx.fill();
+      ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 2; ctx.stroke();
     });
   },
 
@@ -676,79 +630,53 @@ Page({
     const xi = i => p.l + (pw / (data.length - 1)) * i;
     const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
 
-    // 重绘底图+图例
-    ctx.setFillStyle('#FFF');
-    ctx.fillRect(0, 0, w, h);
+    // 找最近点
+    const px = e.touches[0].x;
+    let nearest = 0, minDist = Infinity;
+    data.forEach((pt, i) => { const dist = Math.abs(xi(i) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
+    const pt = data[nearest], cx = xi(nearest);
+    const tv = !noIdx && pt.indexRate != null ? pt.indexRate : pt.baseRate;
+    const cy = yi(tv);
+    const fmt = v => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
+
+    // 重绘底图+图例(用触摸点值)
+    ctx.setFillStyle('#FFF'); ctx.fillRect(0, 0, w, h);
     if (noIdx) {
       this._line(ctx, data, 'baseRate', xi, yi, '#E4393C');
       ctx.setFontSize(9); ctx.setTextBaseline('middle');
       ctx.setFillStyle('#E4393C'); ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益', p.l + 20, 12);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益 ' + fmt(pt.baseRate), p.l + 20, 12);
     } else if (hasP) {
-      const pc2 = data[data.length - 1].baseRate >= data[0].baseRate ? '#E4393C' : '#2E8B57';
+      const pc2 = pt.baseRate >= (data[0].baseRate || 0) ? '#E4393C' : '#2E8B57';
       this._line(ctx, data, 'baseRate', xi, yi, pc2);
       this._line(ctx, data, 'indexRate', xi, yi, '#1976D2');
       ctx.setFontSize(9); ctx.setTextBaseline('middle');
       ctx.setFillStyle(pc2); ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益', p.l + 20, 12);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText('我的收益 ' + fmt(pt.baseRate), p.l + 20, 12);
       ctx.setFillStyle('#1976D2'); ctx.fillRect(p.l + 4, 22, 12, 4);
-      ctx.setFillStyle('#666'); ctx.fillText(compareLabel, p.l + 20, 24);
+      ctx.setFillStyle('#666'); ctx.fillText(compareLabel + ' ' + fmt(pt.indexRate), p.l + 20, 24);
     } else {
       this._line(ctx, data, 'indexRate', xi, yi, '#E4393C');
       ctx.setFontSize(9); ctx.setTextBaseline('middle');
       ctx.setFillStyle('#E4393C'); ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText(compareLabel, p.l + 20, 12);
+      ctx.setFillStyle('#666'); ctx.setTextAlign('left'); ctx.fillText(compareLabel + ' ' + fmt(pt.indexRate), p.l + 20, 12);
     }
 
     // 坐标轴
     ctx.setFillStyle('#999'); ctx.setFontSize(10); ctx.setTextAlign('right'); ctx.setTextBaseline('middle');
     for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
     ctx.setTextBaseline('top'); ctx.setFontSize(11);
-    const last = data.length - 1;
-    const positions = [0, Math.floor(last / 2), last];
-    const aligns = ['left', 'center', 'right'];
-    positions.forEach((ix, i) => {
-      ctx.setTextAlign(aligns[i]);
-      const x = i === 2 ? xi(ix) - 4 : i === 0 ? xi(ix) + 4 : xi(ix);
-      ctx.fillText(data[ix].date.slice(5), x, h - p.b + 8);
+    [{ ix: 0, a: 'left', ox: 4 }, { ix: Math.floor((data.length - 1) / 2), a: 'center', ox: 0 }, { ix: data.length - 1, a: 'right', ox: -4 }].forEach(m => {
+      ctx.setTextAlign(m.a);
+      ctx.fillText(data[m.ix].date.slice(5), xi(m.ix) + m.ox, h - p.b + 8);
     });
 
-    // 找最近点
-    const px = e.touches[0].x;
-    let nearest = 0, minDist = Infinity;
-    data.forEach((pt, i) => {
-      const dist = Math.abs(xi(i) - px);
-      if (dist < minDist) { minDist = dist; nearest = i; }
-    });
-    const pt = data[nearest];
-    const cx = xi(nearest);
-    const v = !noIdx && pt.indexRate != null ? pt.indexRate : pt.baseRate;
-    const cy = yi(v);
-
-    // 竖线
+    // 竖线+圆点
     ctx.setStrokeStyle('rgba(0,0,0,0.12)'); ctx.setLineWidth(1);
     ctx.beginPath(); ctx.moveTo(cx, p.t); ctx.lineTo(cx, h - p.b); ctx.stroke();
-    // 圆点
     ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
     ctx.setFillStyle('#FFF'); ctx.fill();
     ctx.setStrokeStyle('#1976D2'); ctx.setLineWidth(2); ctx.stroke();
-
-    // Tooltip
-    const fmt = (val) => val != null ? (val > 0 ? '+' : '') + val : '--';
-    const lines = [pt.date];
-    if (!noIdx && pt.indexRate != null) lines.push(compareLabel + ' ' + fmt(pt.indexRate) + '%');
-    if (hasP && pt.baseRate != null) lines.push('我的收益 ' + fmt(pt.baseRate) + '%');
-    const maxLen = Math.max(...lines.map(l => l.length));
-    const tw = maxLen * 7 + 8;
-    const lh = 18;
-    const ty = Math.max(p.t + 4, cy - 28);
-    ctx.setFillStyle('rgba(0,0,0,0.75)');
-    ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
-    ctx.setFillStyle('#FFF');
-    ctx.setFontSize(11);
-    ctx.setTextAlign('left');
-    ctx.setTextBaseline('middle');
-    lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
     ctx.draw();
   },
 
