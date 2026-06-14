@@ -13,7 +13,7 @@ exports.main = async (event) => {
     const pubMonths = [12, 3, 6, 9];
     let curM = 3, curY = year;
     for (let i = 3; i >= 0; i--) {
-      if (month > pubMonths[i] + 1) { curM = pubMonths[i]; break; }
+      if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
       if (i === 0) { curY = year - 1; curM = 12; }
     }
     let prevY = curY, prevM = curM - 3;
@@ -31,7 +31,8 @@ exports.main = async (event) => {
     holdings.forEach(h => {
       const prev = prevMap[h.stockCode];
       if (prev && prev.navRatio) {
-        h.ratioChange = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
+        const v = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
+        h.ratioChange = isNaN(v) ? null : v;
       } else {
         h.ratioChange = null;
       }

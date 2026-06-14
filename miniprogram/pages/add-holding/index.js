@@ -76,12 +76,14 @@ Page({
   // ========== 截图导入 ==========
 
   onImportScreenshot() {
-    const _this = this;
-    wx.chooseMedia({
-      count: 1, mediaType: ["image"],
-      sourceType: ["album"], sizeType: ["compressed"],
-      success(mediaRes) {
-        _this.doOCR(mediaRes.tempFiles[0].tempFilePath);
+    wx.showActionSheet({
+      itemList: ["从相册选择"],
+      success: () => {
+        wx.chooseMedia({
+          count: 1, mediaType: ["image"],
+          sourceType: ["album"], sizeType: ["compressed"],
+          success: (mr) => this.doOCR(mr.tempFiles[0].tempFilePath),
+        });
       },
     });
   },
@@ -119,6 +121,8 @@ Page({
           _saved: false,
         }));
         this.setData({ ocrFunds: funds, unsavedCount: funds.length });
+        // 自动按名称匹配基金代码
+        this.autoMatchCodes(funds);
       } else {
         wx.showToast({ title: "识别失败", icon: "none" });
       }
@@ -127,6 +131,69 @@ Page({
       this.setData({ ocrLoading: false });
       wx.showToast({ title: "识别失败，请重试", icon: "none" });
     }
+  },
+
+  async autoMatchCodes(funds) {
+    const codesToSearch = funds.filter((f) => !f.fundCode && f.fundName && f.fundName !== "未知基金");
+    if (codesToSearch.length === 0) return;
+    for (const f of codesToSearch) {
+      try {
+        f.fundCode = await this.searchFundCode(f.fundName);
+      } catch (e) {
+        // 搜索失败不阻塞流程
+      }
+    }
+    this.setData({ ocrFunds: funds });
+  },
+
+  async searchFundCode(name) {
+    // 策略1：全名搜索
+    let code = await this.trySearch(name);
+    if (code) return code;
+
+    // 策略2：去掉后缀搜索（ETF联接C / 股票C / 指数C / 混合A 等）
+    const shortName = name.replace(/(?:ETF|LOF|QDII|FOF)?\s*联接\s*(?:\(QDII\))?\s*[AC]?\s*$/, "")
+      .replace(/(?:混合|股票|指数|债券|货币)\s*[AC]\s*$/, "")
+      .replace(/(?:混合|股票|指数|债券|货币)\s*$/, "")
+      .trim();
+    if (shortName && shortName !== name && shortName.length >= 3) {
+      code = await this.trySearch(shortName);
+      if (code) return code;
+    }
+
+    // 策略3：只取前6个字搜索
+    if (name.length > 6) {
+      const short = name.replace(/[（(].*$/, "").slice(0, 6);
+      code = await this.trySearch(short);
+      if (code) return code;
+    }
+
+    return "";
+  },
+
+  async trySearch(keyword) {
+    const res = await api.searchFund(keyword);
+    if (!res.result || res.result.code !== 0 || !res.result.data || res.result.data.length === 0) return null;
+    const results = res.result.data;
+    const clean = (s) => (s || "").replace(/\s/g, "").replace(/[（）()]/g, "");
+    const kw = clean(keyword);
+    // 优先精确匹配
+    let best = results.find((r) => clean(r.fundName || r.name) === kw);
+    // 其次包含匹配
+    if (!best) {
+      best = results.find((r) => {
+        const rn = clean(r.fundName || r.name);
+        return rn.includes(kw) || kw.includes(rn);
+      });
+    }
+    // 前缀匹配（前6个字符一致）
+    if (!best && kw.length >= 6) {
+      const prefix = kw.slice(0, 6);
+      best = results.find((r) => clean(r.fundName || r.name).startsWith(prefix));
+    }
+    // 最后取第一个
+    if (!best) best = results[0];
+    return best ? (best.code || best.fundCode || "") : null;
   },
 
   async onSaveAll() {

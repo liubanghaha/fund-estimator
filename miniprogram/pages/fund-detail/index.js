@@ -282,54 +282,58 @@ Page({
     const result = this._buildChartData();
     if (!result) return;
     const { items: data } = result;
-    const ctx = wx.createCanvasContext('navCanvas', this);
     const w = this._canvasW || 340, h = this._canvasH || 180;
-    const opts = { w, h, ...this._getChartOpts(), data,
-      padding: { top: 24, right: 24, bottom: 30, left: 52 },
-      isReturn: result.isReturn };
-    chart.drawLineChart(ctx, opts);
+    const query = wx.createSelectorQuery();
+    query.select('#navCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return;
+      const canvas = res[0].node;
+      const opts = { w, h, ...this._getChartOpts(), data,
+        padding: { top: 24, right: 24, bottom: 30, left: 52 },
+        isReturn: result.isReturn };
+      const ctx = chart.drawLineChart(canvas, opts);
+      if (!ctx) return;
 
-    // 交易标记点
-    const txMap = this.data.chartTxMap || {};
-    if (Object.keys(txMap).length > 0) {
-      const p = opts.padding;
-      const pw = w - p.left - p.right, ph = h - p.top - p.bottom;
-      const vals = data.map(d => d.value);
-      const min = Math.min(...vals), max = Math.max(...vals);
-      const range = max - min || 0.01;
-      const yMin = min - range * 0.15, yMax = max + range * 0.15;
-      const xp = (i) => p.left + (pw / (data.length - 1)) * i;
-      const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
-      data.forEach((d, i) => {
-        const tx = txMap[d.date];
-        if (!tx) return;
-        const x = xp(i), y = yp(d.value);
-        if (tx.buys > 0 && tx.sells > 0) {
-          ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI);
-          ctx.setStrokeStyle('#2E8B57'); ctx.setLineWidth(2); ctx.stroke();
-          ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
-          ctx.setFillStyle('#E4393C'); ctx.fill();
-        } else if (tx.buys > 0) {
-          ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.setFillStyle('#E4393C'); ctx.fill();
-        } else if (tx.sells > 0) {
-          ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.setFillStyle('#2E8B57'); ctx.fill();
-        }
-      });
-    }
-    ctx.draw();
-    this._baseData = { data, opts };
+      const txMap = this.data.chartTxMap || {};
+      if (Object.keys(txMap).length > 0) {
+        const p = opts.padding;
+        const pw = w - p.left - p.right, ph = h - p.top - p.bottom;
+        const vals = data.map(d => d.value);
+        const min = Math.min(...vals), max = Math.max(...vals);
+        const range = max - min || 0.01;
+        const yMin = min - range * 0.15, yMax = max + range * 0.15;
+        const xp = (i) => p.left + (pw / (data.length - 1)) * i;
+        const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
+        data.forEach((d, i) => {
+          const tx = txMap[d.date];
+          if (!tx) return;
+          const x = xp(i), y = yp(d.value);
+          if (tx.buys > 0 && tx.sells > 0) {
+            ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#2E8B57'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = '#E4393C'; ctx.fill();
+          } else if (tx.buys > 0) {
+            ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#E4393C'; ctx.fill();
+          } else if (tx.sells > 0) {
+            ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#2E8B57'; ctx.fill();
+          }
+        });
+      }
+      this._baseData = { data, opts, canvas };
+    });
   },
 
   onChartTouch(e) {
     if (!this._baseData) return;
+    const { data, opts, canvas } = this._baseData;
 
-    // 滚动方向判断：区分横向滑动（查数据）和纵向滚动（滚页面）
     if (e.type === 'touchstart') {
       this._touchSY = e.touches[0].y;
       this._touchSX = e.touches[0].x;
       this._touchActive = false;
+      this._touchTopCheck = e.touches[0].y < 100;
       return;
     }
 
@@ -342,18 +346,22 @@ Page({
     if (!this._touchActive) {
       const dy = Math.abs(e.touches[0].y - this._touchSY);
       const dx = Math.abs(e.touches[0].x - this._touchSX);
+      if (this._touchTopCheck && e.touches[0].y > this._touchSY && dy > dx) return;
       if (dy > dx && dy > 8) return;
       if (dx > dy && dx > 8) this._touchActive = true;
     }
     if (!this._touchActive) return;
 
-    // 60fps 节流
     const now = Date.now();
     if (this._touchT && now - this._touchT < 60) return;
     this._touchT = now;
 
-    const { data, opts } = this._baseData;
-    const ctx = wx.createCanvasContext('navCanvas', this);
+    const dpr = wx.getSystemInfoSync().pixelRatio;
+    canvas.width = opts.w * dpr;
+    canvas.height = opts.h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
     const p = opts.padding;
     const pw = opts.w - p.left - p.right, ph = opts.h - p.top - p.bottom;
     const vals = data.map(d => d.value);
@@ -374,28 +382,26 @@ Page({
     const cx = xp(nearest), cy = yp(pt.value);
 
     chart._drawFastLine(ctx, chart._lastDraw, opts);
-    ctx.setStrokeStyle('rgba(0,0,0,0.12)');
-    ctx.setLineWidth(1);
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx, p.top); ctx.lineTo(cx, opts.h - p.bottom); ctx.stroke();
     ctx.beginPath();
     ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-    ctx.setFillStyle('#FFFFFF'); ctx.fill();
-    ctx.setStrokeStyle(opts.color || '#E4393C'); ctx.setLineWidth(2); ctx.stroke();
+    ctx.fillStyle = '#FFFFFF'; ctx.fill();
+    ctx.strokeStyle = opts.color || '#E4393C'; ctx.lineWidth = 1; ctx.stroke();
 
     const v = pt.value;
     const suffix = opts.isReturn ? '%' : '';
     const label = `${pt.date}  ${v != null ? (v >= 0 ? '+' : '') + v + suffix : '--'}`;
-    ctx.setFontSize(11);
+    ctx.font = '11px sans-serif';
     const tw = label.length * 7 + 8;
     const tx = Math.max(p.left + 4, Math.min(opts.w - p.right - tw - 8, cx - tw / 2));
     const ty = Math.max(p.top + 2, cy - 28);
-    ctx.setFillStyle('rgba(0,0,0,0.75)');
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(tx, ty, tw, 20);
-    ctx.setFillStyle('#FFF');
-    ctx.setTextAlign('left');
-    ctx.setTextBaseline('middle');
+    ctx.fillStyle = '#FFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
     ctx.fillText(label, tx + 4, ty + 10);
-    ctx.draw();
   },
 
   async onChartPeriod(e) {
@@ -452,7 +458,7 @@ Page({
     if (!this._rawHolding) return;
     const raw = this._rawHolding;
     const { nav, estimatedNav, actualNav } = this.data;
-    const yesterdayNav = parseFloat(nav || 0);
+    let yesterdayNav = parseFloat(nav || actualNav || estimatedNav || 0);
     if (!yesterdayNav) return;
 
     let shares = parseFloat(raw.shares || raw.amount || 0);
@@ -496,7 +502,7 @@ Page({
     if (!this._holdingParams) return;
     const { shares, buyPrice } = this._holdingParams;
     const { nav, estimatedNav, actualNav } = this.data;
-    const yesterdayNav = parseFloat(nav || 0);
+    const yesterdayNav = parseFloat(nav || actualNav || estimatedNav || 0);
     if (!yesterdayNav) return;
 
     const currentNav = calc.selectNav(yesterdayNav, actualNav, estimatedNav);
@@ -539,14 +545,12 @@ Page({
     }
   },
   onImportScreenshot() {
-    const _this = this;
     wx.showActionSheet({
-      itemList: ["从相册选择", "拍照"],
-      success(res) {
-        const sourceType = res.tapIndex === 0 ? ["album"] : ["camera"];
+      itemList: ["从相册选择"],
+      success: () => {
         wx.chooseMedia({
-          count: 1, mediaType: ["image"], sourceType, sizeType: ["compressed"],
-          success(mediaRes) { _this.doOCR(mediaRes.tempFiles[0].tempFilePath); },
+          count: 1, mediaType: ["image"], sourceType: ["album"], sizeType: ["compressed"],
+          success: (mediaRes) => { this.doOCR(mediaRes.tempFiles[0].tempFilePath); },
         });
       },
     });
