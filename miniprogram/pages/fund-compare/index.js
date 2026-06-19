@@ -11,6 +11,7 @@ Page({
     searching: false,
     hasSearched: false,
     loading: true,
+    loadError: false,
     comparison: null,
     watchlist: [],
     watchlistLoaded: false,
@@ -48,10 +49,11 @@ Page({
         "fundA.history": d.history || [],
         "fundA.profile": d.profile || {},
         "fundA.manager": d.manager || {},
-        loading: false,
-      });
+      loading: false,
+      loadError: false,
+    });
     } catch (e) {
-      this.setData({ loading: false });
+      this.setData({ loading: false, loadError: true });
     }
   },
 
@@ -251,26 +253,58 @@ Page({
   drawChart() {
     const chartData = this.data.chartData;
     if (!chartData || chartData.length < 2) return;
-    const ctx = wx.createCanvasContext('compareCanvas', this);
-    chartUtil.drawDualLineChart(ctx, { ...this._getCompareOpts(), data: chartData });
-    ctx.draw();
+    const query = wx.createSelectorQuery();
+    query.select('#compareCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return;
+      const canvas = res[0].node;
+      const opts = { ...this._getCompareOpts(), data: chartData };
+      chartUtil.drawDualLineChart(canvas, opts);
+      this._compareCanvas = canvas;
+      this._compareOpts = opts;
+    });
   },
 
   onCompareTouch(e) {
     const chartData = this.data.chartData;
     if (!chartData || chartData.length < 2) return;
-    const ctx = wx.createCanvasContext('compareCanvas', this);
-    const opts = { ...this._getCompareOpts(), data: chartData };
-    if (e.type === 'touchend') {
-      chartUtil.drawDualLineChart(ctx, opts);
-      ctx.draw();
+    const canvas = this._compareCanvas;
+    if (!canvas) return;
+
+    if (e.type === 'touchstart') {
+      this._ctSY = e.touches[0].y;
+      this._ctSX = e.touches[0].x;
+      this._ctActive = false;
+      this._ctTopCheck = e.touches[0].y < 100;
       return;
     }
-    if (e.type === 'touchstart') {
-      chartUtil.drawDualLineChart(ctx, opts);
-      ctx.draw();
+    if (e.type === 'touchend') { this._ctActive = false; this.drawChart(); return; }
+    if (!this._ctActive) {
+      const dy = Math.abs(e.touches[0].y - this._ctSY);
+      const dx = Math.abs(e.touches[0].x - this._ctSX);
+      if (this._ctTopCheck && e.touches[0].y > this._ctSY && dy > dx) return;
+      if (dy > dx && dy > 8) return;
+      if (dx > dy && dx > 8) this._ctActive = true;
     }
+    if (!this._ctActive) return;
+
+    const now = Date.now();
+    if (this._ctT && now - this._ctT < 60) return;
+    this._ctT = now;
+
+    const opts = { ...this._compareOpts || this._getCompareOpts(), data: chartData };
+    const dpr = wx.getSystemInfoSync().pixelRatio;
+    const { canvasW: w, canvasH: h } = this.data;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    chartUtil.drawDualLineChart(canvas, opts);
     chartUtil.handleDualTouch(ctx, e, opts);
-    ctx.draw();
+  },
+
+  onRetry() {
+    this.setData({ loading: true, loadError: false });
+    this.fetchFundAData();
   },
 });

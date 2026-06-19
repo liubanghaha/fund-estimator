@@ -6,8 +6,6 @@
     refresher-background="#F5F5F5"
     refresher-triggered="{{refresherTriggered}}"
     bindrefresherrefresh="onScrollRefresh"
-    bindscrolltolower="onScrollToLower"
-    lower-threshold="100"
   >
     <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
       <view wx:if="{{!isLoggedIn}}" class="empty-state">
@@ -97,7 +95,7 @@
               </view>
             </view>
           </view>
-          <view wx:for="{{holdings}}" wx:key="_id" class="card-clip {{batchMode && item._checked ? 'selected' : ''}}" wx:if="{{index < displayCount}}">
+          <view wx:for="{{holdings}}" wx:key="_id" class="card-clip {{batchMode && item._checked ? 'selected' : ''}}">
             <view
               class="card-scroll"
               bind:tap="{{batchMode ? 'onToggleBatchSelect' : 'onTapHolding'}}"
@@ -134,10 +132,6 @@
                 </view>
               </view>
             </view>
-          </view>
-          <view wx:if="{{hasMore}}" class="load-more" bind:tap="loadMore">
-            <text>查看更多持仓</text>
-            <text class="load-more-count">（已显示{{displayCount}}/{{holdings.length}}）</text>
           </view>
         </view>
 

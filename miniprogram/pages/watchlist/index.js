@@ -6,6 +6,7 @@ Page({
   data: {
     watchlist: [],
     loaded: false,
+    loadError: false,
     batchMode: false,
   },
 
@@ -139,7 +140,7 @@ Page({
             estimateTime: e ? e.estimateTime : null,
           };
         });
-        this.setData({ watchlist, loaded: true });
+        this.setData({ watchlist, loaded: true, loadError: false });
 
         try {
           wx.setStorageSync(CACHE_KEY, { watchlist, time: Date.now() });
@@ -147,12 +148,15 @@ Page({
           // ignore cache error
         }
       } else {
-        this.setData({ watchlist: [], loaded: true });
+        this.setData({ watchlist: [], loaded: true, loadError: false });
       }
     } catch (e) {
-      if (!this.data.watchlist.length) {
-        this.setData({ loaded: true });
-      }
+      this.setData({ loaded: true, loadError: !this.data.watchlist.length });
     }
+  },
+
+  onRetry() {
+    this.setData({ loaded: false, loadError: false });
+    this.fetchWatchlist();
   },
 });

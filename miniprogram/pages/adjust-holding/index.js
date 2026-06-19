@@ -104,11 +104,11 @@ Page({
   // ==== 截图导入 ====
   onImportScreenshot() {
     wx.showActionSheet({
-      itemList: ["从相册选择", "拍照"],
-      success: (res) => {
+      itemList: ["从相册选择"],
+      success: () => {
         wx.chooseMedia({
           count: 1, mediaType: ["image"],
-          sourceType: res.tapIndex === 0 ? ["album"] : ["camera"],
+          sourceType: ["album"],
           sizeType: ["compressed"],
           success: (mr) => this.doOCR(mr.tempFiles[0].tempFilePath),
         });
@@ -169,8 +169,12 @@ Page({
         const txs = d.transactions || (d.fundName ? [d] : []);
         if (txs.length === 0) {
           clearInterval(this._loadTimer);
-          this.setData({ ocrLoading: false });
-          wx.showToast({ title: "未能识别", icon: "none" });
+          this.setData({ ocrLoading: false, showManualHint: true });
+          wx.showModal({
+            title: '识别失败 - 调试信息',
+            content: `引擎: ${d.method || '?'}\nDebug: ${JSON.stringify(d.debug)}\n\n原始文本:\n${(d.raw||'').slice(0, 500)}`,
+            showCancel: false,
+          });
           return;
         }
 
@@ -236,13 +240,20 @@ Page({
       } else {
         clearInterval(this._loadTimer);
         this.setData({ ocrLoading: false });
-        wx.showToast({ title: "未能识别", icon: "none" });
+        wx.showModal({ title: '接口返回异常', content: JSON.stringify(res.result).slice(0, 500), showCancel: false });
       }
     } catch (e) {
       clearInterval(this._loadTimer);
       this.setData({ ocrLoading: false });
-      wx.showToast({ title: "识别失败", icon: "none" });
+      wx.showModal({ title: '异常', content: (e.message || JSON.stringify(e)).slice(0, 500), showCancel: false });
     }
+  },
+
+  onAmountInput(e) {
+    const idx = e.currentTarget.dataset.index;
+    const results = [...this.data.ocrResults];
+    results[idx].amount = e.detail.value;
+    this.setData({ ocrResults: results });
   },
 
   onRemoveItem(e) {

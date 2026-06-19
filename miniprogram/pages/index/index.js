@@ -1,7 +1,6 @@
 const api = require("../../utils/api");
 
 const EXTRA_WIDTH = 280;
-const PAGE_SIZE = 8;
 
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
@@ -23,8 +22,6 @@ Page({
     loading: false,
     dataReady: false,
     holdings: [],
-    displayCount: PAGE_SIZE,
-    hasMore: false,
     amountVisible: true,
     totalAmount: "0.00",
     todayProfit: "0.00",
@@ -106,8 +103,6 @@ Page({
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
           holdings,
-          displayCount: PAGE_SIZE,
-          hasMore: holdings.length > PAGE_SIZE,
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
           todayProfitRate: cached.todayProfitRate,
@@ -164,31 +159,20 @@ Page({
         this.setData({
           loading: false, loadError: false, dataReady: true,
           holdings, allUpdated,
-          displayCount: PAGE_SIZE,
-          hasMore: holdings.length > PAGE_SIZE,
           totalAmount: d.totalAmount,
-          todayProfit: d.todayProfit,
-          todayProfitRate: d.todayProfitRate,
+          todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit,
+          todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate,
           totalReturn: d.totalReturn,
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
           fromCache: false,
         });
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
+        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
       }
     } catch (e) {
       this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
       console.error("获取持仓失败:", e);
     }
-  },
-
-  loadMore() {
-    const { holdings, displayCount } = this.data;
-    const next = displayCount + PAGE_SIZE;
-    this.setData({
-      displayCount: next,
-      hasMore: next < holdings.length,
-    });
   },
 
   onSortTap(e) {
@@ -200,7 +184,7 @@ Page({
       nextOrder = sortOrder === 'desc' ? 'asc' : 'desc';
     }
     const sorted = this.sortHoldings([...this.data.holdings], nextField, nextOrder);
-    this.setData({ sortField: nextField, sortOrder: nextOrder, holdings: sorted, displayCount: PAGE_SIZE, hasMore: sorted.length > PAGE_SIZE });
+    this.setData({ sortField: nextField, sortOrder: nextOrder, holdings: sorted });
   },
 
   sortHoldings(list, field, order) {
@@ -337,12 +321,6 @@ Page({
     });
     this.fetchIndices();
     wx.showToast({ title: "已保存", icon: "success", duration: 1200 });
-  },
-
-  onScrollToLower() {
-    if (this.data.hasMore) {
-      this.loadMore();
-    }
   },
 
   onTapProfit() {

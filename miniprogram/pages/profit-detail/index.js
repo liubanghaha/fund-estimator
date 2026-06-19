@@ -5,9 +5,10 @@ const CACHE = "profit_detail_cache_v2";
 
 Page({
   data: {
-    activeTab: "week", // 当天走势对比图已禁用，默认展示本周
+    activeTab: "today",
     profitMode: "amount",
     loading: true,
+    loadError: false,
     empty: false,
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
@@ -33,7 +34,6 @@ Page({
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
-    this._loadFundCache();
     this._fromCache();
   },
 
@@ -71,6 +71,9 @@ Page({
         this._lastFetch = c.ts || 0;
         this._allDaily = c.d;
         this._dailyChange = c.dc;
+        // 缓存的当日条目可能是非交易日残留，先移除；_fetch() 验证后加回
+        const cachedToday = calc.formatDate(new Date());
+        if (this._dailyChange[cachedToday]) delete this._dailyChange[cachedToday];
         this._indexDaily = c.idx;
         this._idxMap = c.im || {};
         this._totalCost = c.tc;
@@ -92,8 +95,6 @@ Page({
     } catch (e) { /* ignore */ }
     this._first = true;
     this._fetch();
-    // 当天走势对比图已禁用
-    // if (this.data.activeTab === 'today') this.fetchIntraday();
   },
 
   async _fetch() {
@@ -112,36 +113,15 @@ Page({
       this._idxMap = idxMap;
       if (!pfRes.result || pfRes.result.code !== 0) {
         if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
-        this.setData({ loading: false });
+        this.setData({ loading: false, loadError: true });
         return;
       }
       const d = pfRes.result.data;
 
-      // 合并服务端快照到收益曲线（去重）
-      const mergeSnapshots = (snapshots) => {
-        if (!snapshots || !snapshots.length) return;
-        const curMap = {};
-        (this._fundPoints || []).forEach(p => { curMap[p.time] = p.rate; });
-        snapshots.forEach(p => {
-          if (!curMap[p.time]) {
-            if (!this._fundPoints) this._fundPoints = [];
-            this._fundPoints.push({ time: p.time, rate: p.rate });
-          }
-        });
-        this._fundPoints.sort((a, b) => a.time.localeCompare(b.time));
-      };
-      mergeSnapshots(d.intradaySnapshots);
-
-      // 如果服务端没返回，直接客户端读 profit_snapshots（取最近有数据的日期）
-      if (!(d.intradaySnapshots && d.intradaySnapshots.length)) {
-        try {
-          const snapRes = await wx.cloud.database().collection("profit_snapshots")
-            .orderBy("date", "desc").limit(1).get();
-          if (snapRes.data && snapRes.data.length) {
-            mergeSnapshots(snapRes.data[0].points);
-          }
-        } catch (e) { /* ignore */ }
-      }
+      // 当天收益分时：优先用服务端 snapshotProfit 定时写入的快照（每分钟一个点，覆盖全天）
+      this._profitSnapshots = (d.intradaySnapshots && d.intradaySnapshots.length)
+        ? d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time))
+        : [];
 
       const hs = d.holdings || [];
       if (!hs.length) { this.setData({ empty: true, loading: false }); return; }
@@ -186,12 +166,15 @@ Page({
       }
 
       const lastDate = allDaily.length ? allDaily[allDaily.length - 1].date : "";
-      const isTradingDay = lastDate === today;
+      // 用数据驱动判断：NAV 已公布到今日 + 有日内快照，两信号均为 false 才是非交易日
+      // 不依赖 _isTradingNow()——它只看星期几，区分不了周五节假日
+      const hasTodaySnaps = d.intradaySnapshots && d.intradaySnapshots.length > 0;
+      const isTradingDay = lastDate === today || hasTodaySnaps;
       if (!isTradingDay) {
         Object.keys(idxMap).forEach(k => { idxMap[k] = (idxMap[k] || []).filter(d => d.date !== today); });
       }
       const tp = parseFloat(d.todayProfit) || 0;
-      if (tp !== 0) dcFinal[today] = tp;
+      if (isTradingDay && tp !== 0) dcFinal[today] = tp;
 
       // 收益
       const ws = this._mon(now);
@@ -219,6 +202,7 @@ Page({
         weekProfitRate: rtMV(parseFloat(w), mvBefore(ws)), monthProfitRate: rtMV(parseFloat(m), mvBefore(cm + "-01")), yearProfitRate: rtMV(parseFloat(y), mvBefore(cy + "-01-01")),
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => { this._draw(); this._cal(); });
+      if (this.data.activeTab === 'today') this.fetchIntraday();
 
       const cal = this._calCached();
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
@@ -230,9 +214,14 @@ Page({
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
       }
     } catch (e) {
-      this.setData({ loading: false });
+      this.setData({ loading: false, loadError: true });
       if (!this._fromCache) wx.showToast({ title: '数据加载失败', icon: 'none' });
     }
+  },
+
+  onRetry() {
+    this.setData({ loading: true, loadError: false });
+    this._fetch();
   },
 
   // ============ 图 ============
@@ -304,8 +293,6 @@ Page({
     const w = this._canvasW || 340, h = this._canvasH || 200;
     const isToday = this.data.activeTab === 'today';
 
-    if (isToday) return; // 当天走势对比图已禁用
-
     const r = isToday ? null : this._data();
 
     const query = wx.createSelectorQuery();
@@ -325,52 +312,181 @@ Page({
       ctx.fillRect(0, 0, targetW, targetH);
       ctx.scale(dpr, dpr);
 
-      if (!r) {
+      if (!isToday && !r) {
         ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, cw, ch);
         return;
       }
 
       if (isToday) {
-        this._drawToday(ctx, cw, ch);
+        this._drawIntraday(ctx, cw, ch);
       } else {
         this._drawHistory(ctx, cw, ch, r);
       }
     });
   },
 
-  _drawToday(ctx, cw, ch) {
-    const raw = this._intradayRaw || this._intradayRawCached || [];
-    const fundPoints = this._fundPoints || [];
-    const isCached = !this._intradayRaw && this._intradayRawCached;
-    const hasIndex = raw.length >= 2;
-    const p = { t: 40, r: 24, b: 36, l: 52 };
-    const data = hasIndex ? raw.map(d => ({ date: d.time, value: d.changeRate })) : [];
-    const allVals = data.map(d => d.value);
+  // ============ 当天走势图（新引擎） ============
+  // 收益线数据源：服务端 snapshotProfit 定时写入的 _profitSnapshots（每分钟一点，覆盖全天）
+  // 指数线数据源：fetchIndexIntraday 的 _intradayRaw（09:30-15:00 分时）
+  // 两条线都基于 timeToX 时间映射，等时间距，对比才有意义
+
+  _drawIntraday(ctx, cw, ch) {
+    const idxRaw = this._intradayRaw || [];
+    const profitSnaps = this._profitSnapshots || [];
     const fundRate = parseFloat(this.data.todayProfitRate || 0);
-    allVals.push(fundRate);
-    if (fundPoints.length) fundPoints.forEach(d => allVals.push(d.rate));
-    let mn = Math.min(...allVals), mx = Math.max(...allVals);
-    if (mn > 0) mn = 0; if (mx < 0) mx = 0;
-    const rg = mx - mn || 0.01, y0 = mn - rg * 0.15, y1 = mx + rg * 0.15;
+    const hasIndex = idxRaw.length >= 2;
+    const hasProfit = profitSnaps.length >= 1;
+    const p = { t: 36, r: 20, b: 32, l: 48 };
     const pw = cw - p.l - p.r, ph = ch - p.t - p.b;
+
+    // 时间→X：09:30-11:30(0-120分) + 13:00-15:00(120-240分)，午休段折叠
     const timeToX = (t) => {
       const [hh, mm] = (t || '09:30').split(':').map(Number);
       const total = hh * 60 + mm;
       let eff;
-      if (total <= 690) eff = Math.max(0, total - 570);
-      else if (total >= 780) eff = 120 + Math.min(120, total - 780);
-      else eff = 120;
+      if (total <= 690) eff = Math.max(0, total - 570);          // 09:30-11:30
+      else if (total >= 780) eff = 120 + Math.min(120, total - 780); // 13:00-15:00
+      else eff = 120;                                              // 11:30-13:00 映射到午休末端
       return p.l + (pw * eff / 240);
     };
-    const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
-    const color = fundRate >= 0 ? '#E4393C' : '#2E8B57';
+    const xToTime = (x) => {
+      const eff = (x - p.l) / pw * 240;
+      let total;
+      if (eff <= 120) total = 570 + eff;
+      else total = 660 + eff; // 跨过午休
+      const hh = Math.floor(total / 60), mm = Math.round(total % 60);
+      return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    };
 
+    // 指数分时点（changeRate%）
+    const idxData = hasIndex ? idxRaw.map(d => ({ time: d.time, value: d.changeRate })) : [];
+    // 收益分时点（rate%）
+    const profitData = profitSnaps.map(d => ({ time: d.time, value: d.rate }));
+    // 收益线末端补当前实时值（仅交易时段）
+    if (this._isTradingNow()) {
+      if (hasProfit) {
+        const last = profitData[profitData.length - 1];
+        const now = this._nowTimeStr();
+        if (now && (!last || last.time < now)) profitData.push({ time: now, value: fundRate });
+      } else if (profitSnaps.length === 0) {
+        profitData.push({ time: this._nowTimeStr(), value: fundRate });
+      }
+    }
+
+    // Y 轴范围：两条线取并集，对称包含 0
+    const allVals = [];
+    idxData.forEach(d => allVals.push(d.value));
+    profitData.forEach(d => allVals.push(d.value));
+    if (!allVals.length) allVals.push(0, 0);
+    let mn = Math.min(...allVals), mx = Math.max(...allVals);
+    const absMax = Math.max(Math.abs(mn), Math.abs(mx), 0.2);
+    const y0 = -absMax * 1.15, y1 = absMax * 1.15;
+    const yi = v => p.t + ph - ((v - y0) / (y1 - y0)) * ph;
+
+    this._intradayDraw = { idxData, profitData, p, cw, ch, pw, ph, y0, y1, yi, fundRate, hasIndex, hasProfit, timeToX, xToTime };
+
+    // 1. 白底
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, cw, ch);
+    if (!hasIndex && !hasProfit) {
+      ctx.fillStyle = '#BBB'; ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('今日暂无分时数据', cw / 2, ch / 2);
+      return;
+    }
+
+    // 2. 午休段浅灰背景
+    const lunchStart = timeToX('11:30'), lunchEnd = timeToX('13:00');
+    ctx.fillStyle = 'rgba(0,0,0,0.025)';
+    ctx.fillRect(lunchStart, p.t, lunchEnd - lunchStart, ph);
+
+    // 3. 网格 + 0% 基准虚线
     this._drawGrid(ctx, p, cw, ch, y0, y1, yi);
-    this._drawIndexCurve(ctx, data, hasIndex, timeToX, yi);
-    this._drawProfitCurve(ctx, fundPoints, fundRate, timeToX, yi);
-    this._drawLegend(ctx, p, cw, data, hasIndex, fundRate, color, isCached);
-    this._drawAxis(ctx, p, cw, ch, y0, y1, yi, timeToX, true);
-    this._todayDraw = { raw, data, fundPoints: this._fundPoints, p, cw, ch, pw, ph, y0, y1, yi, fundRate, color, timeToX, hasIndex };
+
+    // 4. 指数线（蓝虚线）
+    if (hasIndex) this._drawIdxLine(ctx, idxData, timeToX, yi, true);
+
+    // 5. 收益线（涨跌填充 + 实线）
+    if (profitData.length >= 1) this._drawProfitLine(ctx, profitData, timeToX, yi);
+
+    // 6. 图例
+    this._drawIntradayLegend(ctx, p, cw, idxData, profitData, hasIndex, fundRate);
+
+    // 7. 坐标轴
+    this._drawIntradayAxis(ctx, p, cw, ch, y0, y1, yi, timeToX);
+  },
+
+  _drawIdxLine(ctx, data, timeToX, yi, dashed) {
+    if (data.length < 2) return;
+    ctx.beginPath();
+    data.forEach((d, i) => { const x = timeToX(d.time); i === 0 ? ctx.moveTo(x, yi(d.value)) : ctx.lineTo(x, yi(d.value)); });
+    if (dashed) ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.setLineDash([]);
+  },
+
+  _drawProfitLine(ctx, data, timeToX, yi) {
+    const color = (data[data.length - 1].value || 0) >= 0 ? '#E4393C' : '#2E8B57';
+    const fillColor = color === '#E4393C' ? 'rgba(228,57,60,0.10)' : 'rgba(46,139,87,0.10)';
+    // 涨跌区域填充（以 0% 即 yi(0) 为基准）
+    if (data.length >= 2) {
+      ctx.beginPath();
+      data.forEach((d, i) => { const x = timeToX(d.time); i === 0 ? ctx.moveTo(x, yi(d.value)) : ctx.lineTo(x, yi(d.value)); });
+      const lastX = timeToX(data[data.length - 1].time);
+      const firstX = timeToX(data[0].time);
+      ctx.lineTo(lastX, yi(0));
+      ctx.lineTo(firstX, yi(0));
+      ctx.closePath();
+      ctx.fillStyle = fillColor; ctx.fill();
+    }
+    // 实线
+    ctx.beginPath();
+    data.forEach((d, i) => { const x = timeToX(d.time); i === 0 ? ctx.moveTo(x, yi(d.value)) : ctx.lineTo(x, yi(d.value)); });
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke();
+    // 末端点
+    const last = data[data.length - 1];
+    const lx = timeToX(last.time), ly = yi(last.value);
+    ctx.beginPath(); ctx.arc(lx, ly, 3, 0, 2 * Math.PI);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = '#FFF'; ctx.lineWidth = 1; ctx.stroke();
+  },
+
+  _drawIntradayLegend(ctx, p, cw, idxData, profitData, hasIndex, fundRate) {
+    ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
+    const fmt = v => (v > 0 ? '+' : '') + (v != null ? v.toFixed(2) : '0.00') + '%';
+    let yOff = 14;
+    // 收益
+    const pColor = fundRate >= 0 ? '#E4393C' : '#2E8B57';
+    ctx.fillStyle = pColor; ctx.fillRect(p.l, yOff - 4, 14, 3);
+    ctx.fillStyle = '#333'; ctx.textAlign = 'left';
+    const pVal = profitData.length ? profitData[profitData.length - 1].value : fundRate;
+    ctx.fillText('我的收益 ' + fmt(pVal), p.l + 18, yOff);
+    // 指数
+    if (hasIndex) {
+      yOff = 28;
+      ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l, yOff - 4, 14, 3);
+      ctx.fillStyle = '#333';
+      const iVal = idxData[idxData.length - 1].value;
+      ctx.fillText(this.data.compareLabel + ' ' + fmt(iVal), p.l + 18, yOff);
+    }
+  },
+
+  _drawIntradayAxis(ctx, p, cw, ch, y0, y1, yi, timeToX) {
+    // Y 轴刻度（% ）
+    ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1), p.l - 5, yi(v)); }
+    // X 轴时间刻度
+    ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top';
+    const labels = [{ t: '09:30', a: 'left' }, { t: '11:30/13:00', a: 'center' }, { t: '15:00', a: 'right' }];
+    labels.forEach(l => {
+      ctx.textAlign = l.a;
+      const x = l.t.includes('/') ? timeToX('11:30') + (timeToX('13:00') - timeToX('11:30')) / 2 : timeToX(l.t);
+      ctx.fillText(l.t, x, ch - p.b + 6);
+    });
+  },
+
+  _nowTimeStr() {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
   },
 
   _drawHistory(ctx, cw, ch, r) {
@@ -468,68 +584,6 @@ Page({
     }
   },
 
-  _drawIndexCurve(ctx, data, hasIndex, timeToX, yi) {
-    if (!hasIndex) return;
-    ctx.beginPath();
-    data.forEach((d, i) => { const x = timeToX(d.date); i === 0 ? ctx.moveTo(x, yi(d.value)) : ctx.lineTo(x, yi(d.value)); });
-    ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.beginPath();
-    data.forEach((d, i) => { const x = timeToX(d.date); i === 0 ? ctx.moveTo(x, yi(d.value)) : ctx.lineTo(x, yi(d.value)); });
-    ctx.lineTo(timeToX(data[data.length - 1].date), yi(0));
-    ctx.lineTo(timeToX(data[0].date), yi(0));
-    ctx.closePath(); ctx.fillStyle = 'rgba(25,118,210,0.06)'; ctx.fill();
-  },
-
-  _drawProfitCurve(ctx, fundPoints, fundRate, timeToX, yi) {
-    const color = fundRate >= 0 ? '#E4393C' : '#2E8B57';
-    if (fundPoints.length >= 2) {
-      ctx.beginPath();
-      fundPoints.forEach((d, i) => { const x = timeToX(d.time); i === 0 ? ctx.moveTo(x, yi(d.rate)) : ctx.lineTo(x, yi(d.rate)); });
-      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
-      ctx.beginPath();
-      fundPoints.forEach((d, i) => { const x = timeToX(d.time); i === 0 ? ctx.moveTo(x, yi(d.rate)) : ctx.lineTo(x, yi(d.rate)); });
-      ctx.lineTo(timeToX(fundPoints[fundPoints.length - 1].time), yi(0));
-      ctx.lineTo(timeToX(fundPoints[0].time), yi(0));
-      ctx.closePath(); ctx.fillStyle = color === '#E4393C' ? 'rgba(228,57,60,0.06)' : 'rgba(46,139,87,0.06)'; ctx.fill();
-    } else if (fundPoints.length === 1) {
-      const x = timeToX(fundPoints[0].time), y = yi(fundPoints[0].rate);
-      ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-    }
-  },
-
-  _drawLegend(ctx, p, cw, data, hasIndex, fundRate, color, isCached) {
-    ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
-    if (hasIndex) {
-      ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.fillStyle = '#666'; ctx.textAlign = 'left';
-      const idxRate = data[data.length - 1].value;
-      ctx.fillText(this.data.compareLabel + ' ' + (idxRate > 0 ? '+' : '') + idxRate + '%', p.l + 20, 12);
-      ctx.fillStyle = color; ctx.fillRect(p.l + 4, 22, 12, 4);
-      ctx.fillStyle = '#666';
-      ctx.fillText('我的收益 ' + (fundRate > 0 ? '+' : '') + fundRate + '%', p.l + 20, 24);
-    } else {
-      ctx.fillStyle = color; ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.fillStyle = '#666'; ctx.textAlign = 'left';
-      ctx.fillText('我的收益 ' + (fundRate > 0 ? '+' : '') + fundRate + '%', p.l + 20, 12);
-    }
-    if (isCached && this._intradayCacheDate) {
-      ctx.fillStyle = '#BBB'; ctx.font = '8px sans-serif'; ctx.textAlign = 'right';
-      ctx.fillText(this._intradayCacheDate + ' 数据', cw - p.r, 12);
-    }
-  },
-
-  _drawAxis(ctx, p, cw, ch, y0, y1, yi, timeToX, isToday) {
-    ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    for (let i = 0; i <= 4; i++) { const v = y1 - (y1 - y0) / 4 * i; ctx.fillText(v.toFixed(1) + '%', p.l - 6, yi(v)); }
-    ctx.font = '9px sans-serif'; ctx.textBaseline = 'top';
-    if (isToday) {
-      const xLabels = [{ t: '09:30', a: 'left' }, { t: '11:30', a: 'center' }, { t: '13:00', a: 'center' }, { t: '15:00', a: 'right' }];
-      xLabels.forEach(l => { ctx.textAlign = l.a; ctx.fillText(l.t, timeToX(l.t), ch - p.b + 8); });
-    }
-  },
-
   _line(ctx, data, f, xi, yi, c) {
     const pts = []; data.forEach((d, i) => { if (d[f] !== null) pts.push({ x: xi(i), y: yi(d[f]) }); });
     if (pts.length < 1) return;
@@ -556,15 +610,9 @@ Page({
       const res = await api.fetchIndexIntraday(this.data.compareIndex);
       if (res.code === 0 && res.data && res.data.length > 0) {
         this._intradayRaw = res.data;
-        this._intradayRawCached = res.data;
-        this._saveFundCache();
         this.setData({ _t: Date.now() }, () => this._draw());
-      } else if (!this._intradayRawCached) {
-        wx.showToast({ title: "暂无当天走势数据", icon: "none" });
       }
-    } catch (e) {
-      if (!this._intradayRawCached) wx.showToast({ title: "获取失败", icon: "none" });
-    }
+    } catch (e) { /* 静默降级，Canvas 已有空状态提示 */ }
     this._fetchingToday = false;
   },
 
@@ -586,17 +634,17 @@ Page({
 
   // ============ 事件 ============
 
-  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => this._draw()); },
+  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { if (tab === 'today') this.fetchIntraday(); else this._draw(); }); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
-  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); /* 当天走势对比图已禁用 if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } */ const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
+  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
 
   onCanvasTouch(e) {
     const isToday = this.data.activeTab === 'today';
-    const d = isToday ? this._todayDraw : this._chartDraw;
+    const d = isToday ? this._intradayDraw : this._chartDraw;
     if (!d) return;
 
     if (e.type === 'touchstart') {
@@ -636,60 +684,71 @@ Page({
       ctx.scale(dpr, dpr);
 
       if (isToday) {
-        this._touchToday(ctx, d, e.touches[0].x);
+        this._touchIntraday(ctx, d, e.touches[0].x);
       } else {
         this._touchHistory(ctx, d, e.touches[0].x);
       }
     });
   },
 
-  _touchToday(ctx, d, px) {
-    const { data, fundPoints, p, cw, ch, y0, y1, yi, fundRate, color, timeToX, hasIndex } = d;
-    ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, cw, ch);
+  _touchIntraday(ctx, d, px) {
+    const { idxData, profitData, p, cw, ch, y0, y1, yi, fundRate, hasIndex, hasProfit, timeToX, xToTime } = d;
+    if (!hasIndex && !hasProfit) return;
+    // 重绘底图（不含图例，腾出顶部空间给气泡）
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, cw, ch);
+    const lunchStart = timeToX('11:30'), lunchEnd = timeToX('13:00');
+    ctx.fillStyle = 'rgba(0,0,0,0.025)';
+    ctx.fillRect(lunchStart, p.t, lunchEnd - lunchStart, ch - p.t - p.b);
     this._drawGrid(ctx, p, cw, ch, y0, y1, yi);
-    this._drawIndexCurve(ctx, data, hasIndex, timeToX, yi);
-    this._drawProfitCurve(ctx, fundPoints, fundRate, timeToX, yi);
+    if (hasIndex) this._drawIdxLine(ctx, idxData, timeToX, yi, true);
+    if (hasProfit && profitData.length >= 1) this._drawProfitLine(ctx, profitData, timeToX, yi, y0);
+    this._drawIntradayAxis(ctx, p, cw, ch, y0, y1, yi, timeToX);
 
-    const fmt = v => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
-    let cx, cy, idxVal;
-    if (hasIndex) {
-      let nearest = 0, minDist = Infinity;
-      data.forEach((pt, i) => { const dist = Math.abs(timeToX(pt.date) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
-      cx = timeToX(data[nearest].date); cy = yi(data[nearest].value); idxVal = data[nearest].value;
-    } else if (fundPoints.length) {
-      let nearest = 0, minDist = Infinity;
-      fundPoints.forEach((pt, i) => { const dist = Math.abs(timeToX(pt.time) - px); if (dist < minDist) { minDist = dist; nearest = i; } });
-      cx = timeToX(fundPoints[nearest].time); cy = yi(fundPoints[nearest].rate);
+    // 限制在绘图区内
+    const clampedX = Math.max(p.l, Math.min(cw - p.r, px));
+    const tt = xToTime(clampedX);
+
+    // 找该时间点上两条线的值（按时间最近邻）
+    const nearest = (arr) => {
+      if (!arr || !arr.length) return null;
+      let ni = 0, nd = Infinity;
+      arr.forEach((pt, i) => { const dist = Math.abs(timeToX(pt.time) - clampedX); if (dist < nd) { nd = dist; ni = i; } });
+      return arr[ni];
+    };
+    const idxPt = hasIndex ? nearest(idxData) : null;
+    const pfPt = hasProfit ? nearest(profitData) : null;
+    const idxV = idxPt ? idxPt.value : null;
+    const pfV = pfPt ? pfPt.value : (hasProfit ? fundRate : null);
+
+    // 十字线
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(clampedX, p.t); ctx.lineTo(clampedX, ch - p.b); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 双圆点
+    const pColor = (pfV != null ? pfV : 0) >= 0 ? '#E4393C' : '#2E8B57';
+    if (pfV != null) {
+      ctx.beginPath(); ctx.arc(clampedX, yi(pfV), 3.5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#FFF'; ctx.fill(); ctx.strokeStyle = pColor; ctx.lineWidth = 1.5; ctx.stroke();
     }
-    let fundV = fundRate;
-    if (fundPoints.length) {
-      let fN = 0, fMin = Infinity;
-      fundPoints.forEach((fp, i) => { const dist = Math.abs(timeToX(fp.time) - (cx || px)); if (dist < fMin) { fMin = dist; fN = i; } });
-      fundV = fundPoints[fN].rate;
+    if (idxV != null) {
+      ctx.beginPath(); ctx.arc(clampedX, yi(idxV), 3.5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#FFF'; ctx.fill(); ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1.5; ctx.stroke();
     }
-    ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    if (hasIndex) {
-      ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.fillStyle = '#666'; ctx.fillText(this.data.compareLabel + ' ' + fmt(idxVal), p.l + 20, 12);
-      ctx.fillStyle = color; ctx.fillRect(p.l + 4, 22, 12, 4);
-      ctx.fillStyle = '#666'; ctx.fillText('我的收益 ' + fmt(fundV), p.l + 20, 24);
-    } else {
-      ctx.fillStyle = color; ctx.fillRect(p.l + 4, 10, 12, 4);
-      ctx.fillStyle = '#666'; ctx.fillText('我的收益 ' + fmt(fundV), p.l + 20, 12);
-    }
-    this._drawAxis(ctx, p, cw, ch, y0, y1, yi, timeToX, true);
-    if (cx != null) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(cx, p.t); ctx.lineTo(cx, ch - p.b); ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI); ctx.fillStyle = '#FFF'; ctx.fill();
-      ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1; ctx.stroke();
-      // 收益曲线上的对应点
-      if (fundPoints.length) {
-        const fy = yi(fundV);
-        ctx.beginPath(); ctx.arc(cx, fy, 4, 0, 2 * Math.PI); ctx.fillStyle = '#FFF'; ctx.fill();
-        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
-      }
-    }
+
+    // 顶部气泡：时间 + 双数值
+    const fmt = v => v == null ? '--' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+    ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
+    const parts = [{ t: tt, c: '#999' }];
+    if (pfV != null) parts.push({ t: '收益 ' + fmt(pfV), c: pColor });
+    if (idxV != null) parts.push({ t: this.data.compareLabel + ' ' + fmt(idxV), c: '#1976D2' });
+    let tx = p.l;
+    parts.forEach(part => {
+      const w = ctx.measureText(part.t).width;
+      ctx.fillStyle = part.c; ctx.textAlign = 'left';
+      ctx.fillText(part.t, tx, p.t / 2);
+      tx += w + 12;
+    });
   },
 
   _touchHistory(ctx, d, px) {
@@ -746,34 +805,6 @@ Page({
 
   // ============ 收益轮询 ============
 
-  _getFundCacheKey() { return `fund_intraday_cache`; },
-
-  _loadFundCache() {
-    try {
-      const cached = wx.getStorageSync(this._getFundCacheKey());
-      if (cached && cached.fp && Array.isArray(cached.fp) && cached.fp.length) {
-        this._fundPoints = cached.fp;
-      } else {
-        this._fundPoints = [];
-      }
-      if (cached && cached.ir && Array.isArray(cached.ir) && cached.ir.length) {
-        this._intradayRawCached = cached.ir;
-        this._intradayCacheDate = cached.d || '';
-      }
-    } catch (e) { this._fundPoints = []; }
-  },
-
-  _saveFundCache() {
-    try {
-      const raw = this._intradayRaw && this._intradayRaw.length ? this._intradayRaw : (this._intradayRawCached || null);
-      wx.setStorageSync(this._getFundCacheKey(), {
-        fp: this._fundPoints,
-        ir: raw,
-        d: calc.formatDate(new Date()),
-      });
-    } catch (e) {}
-  },
-
   _isTradingNow() {
     const now = new Date();
     const day = now.getDay();
@@ -790,7 +821,7 @@ Page({
   _startPolling() {
     this._stopPolling();
     this._pollFundRate();
-    this._pollTimer = setInterval(() => this._pollFundRate(), 5000);
+    this._pollTimer = setInterval(() => this._pollFundRate(), 15000);
   },
 
   _stopPolling() {
@@ -806,20 +837,18 @@ Page({
       if (!res.result || res.result.code !== 0) return;
       const rate = parseFloat(res.result.data.todayProfitRate || 0);
       const tp = res.result.data.todayProfit || "0";
-      const now = new Date();
-      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const last = this._fundPoints[this._fundPoints.length - 1];
-      if (!last || last.time !== time) {
-        this._fundPoints.push({ time, rate });
-        this._saveFundCache();
-        this.setData({ todayProfitRate: rate, todayProfit: tp });
-        // 当天走势对比图已禁用，不再同步刷新指数分时线
-        // if (this.data.activeTab === 'today') {
-        //   api.fetchIndexIntraday(this.data.compareIndex).then(res => {
-        //     if (res.code === 0 && res.data) this._intradayRaw = res.data;
-        //     this._draw();
-        //   });
-        // }
+      this.setData({ todayProfitRate: rate, todayProfit: tp });
+      // 同步刷新服务端快照（增量追加）
+      const snaps = res.result.data.intradaySnapshots;
+      if (snaps && snaps.length > (this._profitSnapshots || []).length) {
+        this._profitSnapshots = snaps.slice().sort((a, b) => a.time.localeCompare(b.time));
+      }
+      // today 模式下同步刷新指数分时线
+      if (this.data.activeTab === 'today') {
+        api.fetchIndexIntraday(this.data.compareIndex).then(ires => {
+          if (ires.code === 0 && ires.data) this._intradayRaw = ires.data;
+          this._draw();
+        });
       }
     } catch (e) {}
     this._pollingNow = false;

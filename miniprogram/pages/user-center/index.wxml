@@ -12,16 +12,93 @@
     <view class="menu-item" bind:tap="onAddHolding"><text>添加持仓</text><text class="arrow">></text></view>
   </view>
   <view class="menu-list">
-    <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">></text></view>
+    <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
   </view>
+
+  <!-- 反馈表单 -->
   <view wx:if="{{showFeedback}}" class="feedback-form">
-    <textarea class="feedback-textarea" value="{{feedbackText}}" placeholder="请输入您的意见或建议（最多500字）" maxlength="500" auto-height bind:input="onFeedbackInput"/>
-    <view class="feedback-actions">
-      <button class="feedback-cancel" bind:tap="onFeedback">取消</button>
-      <button class="feedback-submit" bind:tap="onSubmitFeedback" loading="{{feedbackSubmitting}}">提交</button>
+    <!-- 反馈类型 -->
+    <view class="fb-section">
+      <view class="fb-label">反馈类型</view>
+      <view class="fb-type-row">
+        <view
+          class="fb-type-item {{feedbackType === 'suggestion' ? 'active' : ''}}"
+          bind:tap="onTypeTap"
+          data-type="suggestion"
+        >💡 功能建议</view>
+        <view
+          class="fb-type-item {{feedbackType === 'bug' ? 'active' : ''}}"
+          bind:tap="onTypeTap"
+          data-type="bug"
+        >🐛 问题反馈</view>
+        <view
+          class="fb-type-item {{feedbackType === 'other' ? 'active' : ''}}"
+          bind:tap="onTypeTap"
+          data-type="other"
+        >💬 其他</view>
+      </view>
+    </view>
+
+    <!-- 联系方式 -->
+    <view class="fb-section">
+      <view class="fb-label">联系方式（选填）</view>
+      <input
+        class="fb-input"
+        value="{{feedbackContact}}"
+        placeholder="微信号 / 手机号，方便我们联系你"
+        maxlength="50"
+        bind:input="onContactInput"
+      />
+    </view>
+
+    <!-- 详细描述 -->
+    <view class="fb-section">
+      <view class="fb-label">详细描述</view>
+      <textarea
+        class="fb-textarea"
+        value="{{feedbackText}}"
+        placeholder="请详细描述你的建议或遇到的问题…"
+        maxlength="500"
+        auto-height
+        bind:input="onFeedbackInput"
+      />
+      <view class="fb-count">{{feedbackText.length}}/500</view>
+    </view>
+
+    <!-- 截图上传 -->
+    <view class="fb-section">
+      <view class="fb-label">截图（选填，最多3张）</view>
+      <view class="fb-images">
+        <block wx:for="{{feedbackImages}}" wx:key="index">
+          <view class="fb-img-item">
+            <image class="fb-img" src="{{item}}" mode="aspectFill" />
+            <view class="fb-img-del" bind:tap="onRemoveImage" data-index="{{index}}">×</view>
+          </view>
+        </block>
+        <view
+          wx:if="{{feedbackImages.length < 3}}"
+          class="fb-img-add"
+          bind:tap="onAddImage"
+        >
+          <text class="fb-img-add-icon">+</text>
+          <text class="fb-img-add-text">{{feedbackImages.length === 0 ? '添加截图' : ''}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 操作按钮 -->
+    <view class="fb-actions">
+      <button class="fb-cancel" bind:tap="onFeedback">取消</button>
+      <button
+        class="fb-submit"
+        bind:tap="onSubmitFeedback"
+        loading="{{feedbackSubmitting}}"
+        disabled="{{feedbackSubmitting}}"
+      >提交反馈</button>
     </view>
   </view>
+
   <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
   <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
 </view>

@@ -24,9 +24,10 @@
   </view>
 
   <!-- OCR 识别结果列表 -->
-  <view wx:if="{{ocrResults.length > 0}}" class="results-section">
+  <view wx:if="{{ocrResults.length > 0 || showManualHint}}" class="results-section">
     <view class="results-title">
-      <text>识别到 {{ocrResults.length}} 笔交易</text>
+      <text>{{ocrResults.length > 0 ? '识别到 ' + ocrResults.length + ' 笔交易' : '未识别到交易'}}</text>
+      <text wx:if="{{showManualHint}}" class="results-hint">请手动添加或重新截图</text>
     </view>
     <view wx:for="{{ocrResults}}" wx:key="index" class="result-card">
       <view class="rc-del" bind:tap="onRemoveItem" data-index="{{index}}">×</view>
@@ -38,7 +39,7 @@
           </view>
           <text class="rc-date">{{item.date || '--'}}{{item.time ? ' ' + item.time : ''}}</text>
         </view>
-        <text class="rc-amount">{{item.amount || '--'}} 元</text>
+        <input class="rc-amount-input" type="digit" value="{{item.amount}}" placeholder="金额" bind:input="onAmountInput" data-index="{{index}}"/>
       </view>
     </view>
     <button wx:if="{{ocrResults.length > 0}}" class="submit-all-btn" bind:tap="onConfirmAll">确认</button>

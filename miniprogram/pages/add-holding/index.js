@@ -200,83 +200,67 @@ Page({
     if (this.data.saving) return;
     this.setData({ saving: true });
     const funds = [...this.data.ocrFunds];
-    let added = 0, skipped = 0;
-    const skippedCodes = [];
+    const unsaved = funds.filter(f => !f._saved && f.fundCode);
+
+    if (unsaved.length === 0) {
+      this.setData({ saving: false });
+      wx.showToast({ title: "无有效持仓可保存", icon: "none" });
+      return;
+    }
 
     wx.showLoading({ title: "保存中..." });
     try {
-      for (const f of funds) {
-        if (f._saved) continue;
-        if (!f.fundCode) { skippedCodes.push("无代码"); skipped++; continue; }
-        try {
-          const db = wx.cloud.database();
-          const cr = await db.collection("holdings").where({ fundCode: f.fundCode }).get();
-          if (cr.data && cr.data.length > 0) {
-            skippedCodes.push(f.fundCode);
-            skipped++;
-            continue;
-          }
+      const res = await api.batchAddHoldings(unsaved.map(f => ({
+        fundCode: f.fundCode,
+        fundName: f.fundName,
+        marketValue: f.marketValue || "",
+        holdingReturn: f.holdingReturn || "",
+        buyDate: f.buyDate || "",
+        shares: f.shares || "",
+        buyPrice: f.buyPrice || "",
+      })));
 
-          const mv = parseFloat(f.marketValue) || 0;
-          const hr = parseFloat(f.holdingReturn) || 0;
-          let shares = 0, buyPrice = 0;
-
-          if (mv > 0) {
-            const estRes = await api.fetchFundEstimate(f.fundCode);
-            if (estRes.result && estRes.result.code === 0) {
-              const nav = estRes.result.data.actualNav || estRes.result.data.nav;
-              if (nav && nav > 0) {
-                shares = parseFloat((mv / nav).toFixed(2));
-                buyPrice = parseFloat((nav - hr / shares).toFixed(4));
-              }
-            }
-          }
-
-          await db.collection("holdings").add({
-            data: {
-              fundCode: f.fundCode, fundName: f.fundName,
-              buyPrice: buyPrice || 0,
-              shares: shares || 0,
-              marketValue: mv,
-              holdingReturn: hr,
-              buyAmount: shares > 0 && buyPrice > 0 ? parseFloat((shares * buyPrice).toFixed(2)) : 0,
-              buyDate: f.buyDate || "",
-              createTime: new Date(),
-            },
-          });
-          f._saved = true;
-          added++;
-          api.watchlistAdd(f.fundCode, f.fundName).catch(() => {});
-        } catch (err) {
-          console.error("保存失败:", f.fundCode, err);
-        }
-      }
-    } finally {
       wx.hideLoading();
       this.setData({ saving: false });
-    }
-    wx.removeStorageSync("portfolio_cache");
-    wx.setStorageSync("portfolio_force_refresh", true);
 
-    const unsaved = funds.filter((f) => !f._saved).length;
-    this.setData({ ocrFunds: funds, unsavedCount: unsaved });
+      if (res.result && res.result.code === 0) {
+        const d = res.result.data;
+        // 标记所有未保存为已保存
+        for (const f of funds) {
+          if (!f._saved && f.fundCode) f._saved = true;
+        }
+        const remaining = funds.filter(f => !f._saved).length;
+        this.setData({ ocrFunds: funds, unsavedCount: remaining });
+        wx.removeStorageSync("portfolio_cache");
+        wx.setStorageSync("portfolio_force_refresh", true);
 
-    if (skipped > 0) {
-      const codeList = skippedCodes.join("\n");
-      wx.showModal({
-        title: `添加 ${added} 个，${skipped} 个已存在`,
-        content: codeList,
-        showCancel: false,
-        confirmText: added > 0 ? "查看持仓" : "知道了",
-        success: () => {
-          if (added > 0) { getApp().globalData._ocrFunds = null; wx.switchTab({ url: "/pages/index/index" }); }
-        },
-      });
-    } else {
-      wx.showToast({ title: `已添加 ${added} 个`, icon: added > 0 ? "success" : "none" });
-      if (added > 0) {
-        setTimeout(() => wx.switchTab({ url: "/pages/index/index" }), 800);
+        const totalSkipped = (d.skippedList || []).length || d.skipped || 0;
+        if (d.added > 0 && totalSkipped > 0) {
+          const codeList = (d.skippedList || []).map(s => `${s.name || s.code} 已存在`).join("\n");
+          wx.showModal({
+            title: `已添加 ${d.added} 个，${totalSkipped} 个已存在`,
+            content: codeList,
+            showCancel: false,
+            confirmText: "查看持仓",
+            success: () => {
+              getApp().globalData._ocrFunds = null;
+              wx.switchTab({ url: "/pages/index/index" });
+            },
+          });
+        } else if (d.added > 0) {
+          wx.showToast({ title: `已添加 ${d.added} 个`, icon: "success" });
+          setTimeout(() => wx.switchTab({ url: "/pages/index/index" }), 800);
+        } else {
+          wx.showToast({ title: "所有持仓已存在", icon: "none" });
+        }
+      } else {
+        wx.showToast({ title: res.result?.msg || "保存失败", icon: "none" });
       }
+    } catch (e) {
+      wx.hideLoading();
+      this.setData({ saving: false });
+      console.error("批量保存失败:", e);
+      wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
   },
 

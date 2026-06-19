@@ -100,6 +100,7 @@
 .hold-h-ratio{width:100rpx;text-align:right;font-size:22rpx;color:#BBB}
 
 .hold-name{font-size:28rpx;color:#333;margin-left:16rpx;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hk-tag{display:inline-block;font-size:18rpx;color:#1976D2;background:#E3F2FD;border:1rpx solid #BBDEFB;border-radius:4rpx;padding:0 6rpx;margin-left:8rpx;vertical-align:middle;font-weight:600;line-height:1.4}
 .hold-code{font-size:22rpx;color:#999}
 .hold-change{font-size:24rpx;font-weight:500;width:120rpx;text-align:right;flex-shrink:0}
 .hold-ratio-change{font-size:22rpx;font-weight:400;width:120rpx;text-align:right;flex-shrink:0}

@@ -182,32 +182,37 @@ Page({
         else { p.fundSizeText = '--'; }
         const riskMap = { '1': '低风险', '2': '中低风险', '3': '中风险', '4': '中高风险', '5': '高风险' };
         p.riskText = riskMap[p.riskLevel] || p.riskLevel || '--';
+
         const holdings = res.result.data.holdings || [];
+        // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
+        this.setData({ profile: p, manager: res.result.data.manager, holdings });
 
-        // 只保留前10
-        const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
-
-        // 拉股票行情，完成后一次性 setData
-        const quotes = await this._fetchStockQuotes(top10);
-        const enriched = top10.map(h => ({
-          ...h,
-          stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : null,
-        }));
-        this.setData({ profile: p, manager: res.result.data.manager, holdings: enriched });
+        // 后台拉取股票行情，不阻塞渲染
+        this._fetchStockQuotes(holdings).then(quotes => {
+          if (!Object.keys(quotes).length) return;
+          const updated = holdings.map(h => ({
+            ...h,
+            stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
+            isHK: h.stockCode && h.stockCode.length === 5,
+          }));
+          this.setData({ holdings: updated });
+        });
       }
     } catch (e) { console.error("获取基金档案失败:", e); }
   },
 
-  async _fetchStockQuotes(holdings) {
+  // 兜底：客户端拉取股票行情（当云函数未返回时）
+  _fetchStockQuotes(holdings) {
     const map = {};
     const tasks = [];
     holdings.forEach(h => {
       const code = h.stockCode;
+      if (!code) return;
       let secid;
       if (code.length === 6) {
         secid = (code.startsWith("6") ? "1." : "0.") + code;
       } else if (code.length === 5) {
-        secid = "116." + code; // 港股
+        secid = "116." + code;
       } else {
         return;
       }
@@ -219,15 +224,14 @@ Page({
             try {
               const d = (res.data && res.data.data) || {};
               map[code] = d.f170 != null ? +(d.f170 / 100).toFixed(2) : null;
-            } catch (e) {}
+            } catch (e) { /* ignore */ }
             resolve();
           },
           fail() { resolve(); },
         });
       }));
     });
-    await Promise.all(tasks);
-    return map;
+    return Promise.all(tasks).then(() => map);
   },
 
   calcReturns(history) {

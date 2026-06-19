@@ -12,9 +12,37 @@
 .arrow{color:#CCC}
 .login-tip{text-align:center;padding:32rpx;font-size:28rpx;color:#07C160;background:#FFF;border-radius:16rpx}
 .logout-btn{text-align:center;padding:32rpx;font-size:28rpx;color:#CCC;background:#FFF;border-radius:16rpx}
-.feedback-form{margin-bottom:24rpx;background:#FFF;border-radius:16rpx;padding:24rpx}
-.feedback-textarea{width:100%;min-height:160rpx;font-size:28rpx;padding:16rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box}
-.feedback-actions{display:flex;justify-content:flex-end;gap:16rpx;margin-top:20rpx}
-.feedback-cancel,.feedback-submit{padding:12rpx 32rpx;font-size:26rpx;border-radius:8rpx;line-height:1.4}
-.feedback-cancel{background:#F5F5F5;color:#666}
-.feedback-submit{background:#E4393C;color:#FFF}
+
+/* ========== 反馈表单 ========== */
+.feedback-form{margin-bottom:24rpx;background:#FFF;border-radius:16rpx;padding:32rpx 24rpx 24rpx}
+
+.fb-section{margin-bottom:28rpx}
+.fb-label{font-size:28rpx;color:#333;font-weight:500;margin-bottom:14rpx}
+
+/* 类型选择 */
+.fb-type-row{display:flex;gap:16rpx}
+.fb-type-item{flex:1;text-align:center;padding:18rpx 0;font-size:26rpx;color:#666;background:#F5F5F5;border-radius:12rpx;border:2rpx solid transparent;transition:all .2s}
+.fb-type-item.active{color:#E4393C;background:#FFF5F5;border-color:#E4393C}
+
+/* 联系方式 */
+.fb-input{width:100%;height:80rpx;padding:0 20rpx;font-size:28rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box}
+
+/* 描述 */
+.fb-textarea{width:100%;min-height:180rpx;font-size:28rpx;padding:16rpx 20rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box;line-height:1.6}
+.fb-count{text-align:right;font-size:22rpx;color:#BBB;margin-top:8rpx}
+
+/* 图片上传 */
+.fb-images{display:flex;flex-wrap:wrap;gap:16rpx}
+.fb-img-item{position:relative;width:160rpx;height:160rpx;border-radius:12rpx;overflow:hidden}
+.fb-img{width:100%;height:100%}
+.fb-img-del{position:absolute;top:0;right:0;width:40rpx;height:40rpx;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);border-radius:0 12rpx 0 12rpx;color:#FFF;font-size:28rpx;line-height:1}
+.fb-img-add{width:160rpx;height:160rpx;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F5F5F5;border-radius:12rpx;border:2rpx dashed #DDD}
+.fb-img-add-icon{font-size:48rpx;color:#CCC;line-height:1}
+.fb-img-add-text{font-size:22rpx;color:#BBB;margin-top:4rpx}
+
+/* 操作按钮 */
+.fb-actions{display:flex;justify-content:flex-end;gap:20rpx;margin-top:8rpx}
+.fb-cancel,.fb-submit{padding:16rpx 40rpx;font-size:28rpx;border-radius:10rpx;line-height:1.4}
+.fb-cancel{background:#F5F5F5;color:#666}
+.fb-submit{background:#E4393C;color:#FFF}
+.fb-submit[disabled]{opacity:.6}

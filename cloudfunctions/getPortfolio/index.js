@@ -115,6 +115,19 @@ exports.main = async (event) => {
     // 按当日收益金额倒序排序
     enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
 
+    // 查询当天收益快照
+    const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+    let intradaySnapshots = [];
+    let snapDebug = {};
+    try {
+      const snapRes = await db.collection("profit_snapshots").where({ _openid: OPENID, date: today }).get();
+      snapDebug = { openid: OPENID, date: today, found: snapRes.data ? snapRes.data.length : 0 };
+      if (snapRes.data && snapRes.data.length > 0) {
+        intradaySnapshots = snapRes.data[0].points || [];
+        snapDebug.points = intradaySnapshots.length;
+      }
+    } catch (e) { snapDebug = { error: e.message }; }
+
     return {
       code: 0,
       data: {
@@ -126,6 +139,8 @@ exports.main = async (event) => {
         totalReturnRate: totalReturnRate.toFixed(2),
         updateTime,
         navHistoryMap: historyDays ? navHistoryMap : undefined,
+        intradaySnapshots,
+        snapDebug,
       },
     };
   } catch (e) {

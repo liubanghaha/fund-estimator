@@ -1,54 +1,59 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const SYMBOL_MAP = {
-  "000001": "sh000001",
-  "399001": "sz399001",
-  "000300": "sh000300",
-  "399006": "sz399006",
+const SECID = {
+  "000001": "1.000001",
+  "399001": "0.399001",
+  "000300": "1.000300",
+  "399006": "0.399006",
 };
 
 exports.main = async (event) => {
   const { indexCode } = event;
-  const symbol = SYMBOL_MAP[indexCode] || "sh000001";
+  const secid = SECID[indexCode] || "1.000001";
 
   try {
-    // 取 2 天新浪 5 分钟 K 线（96 根），从里面分离昨收和今日数据
-    let allData = await fetchSinaKline(symbol, 5, 96);
-    if (!allData || allData.length < 2) {
-      return { code: 500, msg: "无分时数据" };
-    }
-
-    // 按日期分组，取最新两天
-    const byDate = {};
-    allData.forEach(d => {
-      if (!byDate[d._date]) byDate[d._date] = [];
-      byDate[d._date].push(d);
+    const https = require("https");
+    const raw = await new Promise((resolve, reject) => {
+      const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=1&fqt=1&end=20500101&lmt=250`;
+      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(body);
+            const klines = (json.data && json.data.klines) || [];
+            resolve(klines);
+          } catch (e) { resolve([]); }
+        });
+      });
+      req.setTimeout(10000, () => { req.destroy(); resolve([]); });
+      req.on("error", () => resolve([]));
     });
-    const dates = Object.keys(byDate).sort();
-    if (dates.length < 1) return { code: 500, msg: "日期数据异常" };
 
-    // 最新日期 = 今天的数据
-    const todayDate = dates[dates.length - 1];
-    const intraday = byDate[todayDate];
-    if (!intraday || intraday.length < 2) return { code: 500, msg: "今日数据不足" };
+    if (!raw.length) return { code: 500, msg: "无分时数据" };
 
-    // 昨收 = 倒数第二个日期的最后一条收盘价
-    let prevClose = 0;
-    if (dates.length >= 2) {
-      const yesterdayData = byDate[dates[dates.length - 2]];
-      prevClose = yesterdayData[yesterdayData.length - 1].close;
-    }
-    if (!prevClose) {
-      prevClose = intraday[0].close;
-    }
+    // 解析 K 线：时间,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率
+    const parsed = raw.map(line => {
+      const parts = line.split(",");
+      return {
+        time: parts[0].length >= 16 ? parts[0].slice(11, 16) : parts[0],
+        date: parts[0].slice(0, 10),
+        close: parseFloat(parts[2]) || 0,
+        changeRate: parseFloat(parts[8]) || 0,
+      };
+    }).filter(d => d.time && d.time.length === 5);
 
-    console.log("昨收:", prevClose, "今日日期:", todayDate, "条数:", intraday.length);
+    // 取最新日期的数据
+    const dates = [...new Set(parsed.map(d => d.date))].sort();
+    const latestDate = dates[dates.length - 1];
+    const intraday = parsed.filter(d => d.date === latestDate);
+    if (intraday.length < 2) return { code: 500, msg: "今日数据不足" };
 
     const result = intraday.map(d => ({
       time: d.time,
       close: d.close,
-      changeRate: prevClose ? +((d.close / prevClose - 1) * 100).toFixed(2) : 0,
+      changeRate: d.changeRate,
     }));
 
     return { code: 0, msg: "success", data: result };
@@ -57,41 +62,3 @@ exports.main = async (event) => {
     return { code: 500, msg: "获取分时数据失败" };
   }
 };
-
-// 新浪 K 线
-function fetchSinaKline(symbol, scale, datalen) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=${scale}&ma=no&datalen=${datalen}`;
-    console.log("请求新浪K线:", url);
-    const req = https.get(url, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body);
-          if (!json || !json.length) { resolve([]); return; }
-          const list = json.map(item => {
-            const day = item.day || "";
-            return {
-              time: day.length >= 16 ? day.slice(11, 16) : day,
-              _date: day.slice(0, 10),
-              close: parseFloat(item.close) || 0,
-              changeRate: 0,
-            };
-          }).filter(d => d.time && d.time.length === 5 && d._date);
-          console.log("新浪解析条数:", list.length, "日期数:", new Set(list.map(d => d._date)).size);
-          resolve(list);
-        } catch (e) {
-          console.error("新浪解析失败:", e.message);
-          resolve([]);
-        }
-      });
-    });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", (e) => {
-      console.error("新浪请求失败:", e.message);
-      resolve([]);
-    });
-  });
-}

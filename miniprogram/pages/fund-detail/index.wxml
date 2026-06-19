@@ -109,7 +109,7 @@
           <view class="period-item {{chartPeriod === '1Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1Y">近一年</view>
           <view class="period-item {{chartPeriod === '3Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3Y">近三年</view>
         </view>
-        <canvas canvas-id="navCanvas" id="navCanvas" style="width:100%;height:{{canvasHRpx}}rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
+        <canvas type="2d" id="navCanvas" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
       </view>
       <view class="info-card"><view class="section-title">收益表现</view>
         <view class="metrics-grid">
@@ -144,14 +144,14 @@
         </view>
         <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
           <view class="hold-rank">{{item.rank}}</view>
-          <view class="hold-name">{{item.stockName}}</view>
+          <view class="hold-name">{{item.stockName}}<text wx:if="{{item.isHK}}" class="hk-tag">H</text></view>
           <view class="hold-change {{item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : ''}}">
             {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}
           </view>
           <view class="hold-ratio-change {{item.ratioChange > 0 ? 'up' : item.ratioChange < 0 ? 'down' : ''}}">
-            {{item.ratioChange != null ? (item.ratioChange > 0 ? '+' : '') + item.ratioChange + '%' : '--'}}
+            {{item.ratioChange != null && !isNaN(item.ratioChange) ? (item.ratioChange > 0 ? '+' : '') + item.ratioChange + '%' : '--'}}
           </view>
-          <view class="hold-ratio">{{item.navRatio}}</view>
+          <view class="hold-ratio">{{item.navRatio || '--'}}</view>
         </view>
       </view>
       <view wx:else class="info-card"><view class="empty-text">暂无持仓数据</view></view>

@@ -17,6 +17,15 @@
     { "name": "ocrTransaction", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "manageHolding", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "manageTransaction", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "batchFetchEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
+    { "name": "batchFetchEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    {
+      "name": "snapshotProfit",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "triggers": [
+        { "name": "snapshotTimer", "type": "timer", "config": "0 * 9-15 * * 1-5 *" }
+      ]
+    }
   ]
 }

@@ -1,8 +1,14 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const BAIDU_API_KEY = "G5gi89TGUmVjNYRFdfQIri43";
-const BAIDU_SECRET_KEY = "jaWrRLTqCv1UMALH8sRPJLk8pdUAVBpf";
+// 从 env.json 读取密钥（不提交 Git），fallback 到环境变量
+let BAIDU_API_KEY = process.env.BAIDU_API_KEY || "";
+let BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || "";
+try {
+  const env = require("./env.json");
+  BAIDU_API_KEY = env.BAIDU_API_KEY || BAIDU_API_KEY;
+  BAIDU_SECRET_KEY = env.BAIDU_SECRET_KEY || BAIDU_SECRET_KEY;
+} catch (e) { /* env.json 不存在则使用环境变量 */ }
 
 // ========== 解析器 ==========
 // 名称驱动解析：先识别所有基金名称（不依赖 OCR 读取顺序），

@@ -23,8 +23,11 @@ const api = {
   userLogin() {
     return this.callFunction("userLogin", {});
   },
-  submitFeedback(content) {
-    return this.callFunction("submitFeedback", { content });
+  submitFeedback({ content, type, contact, images } = {}) {
+    return this.callFunction("submitFeedback", { content, type, contact, images });
+  },
+  batchAddHoldings(funds) {
+    return this.callFunction("batchAddHoldings", { funds });
   },
   ocrScreenshot(fileID) {
     return this.callFunction("ocrScreenshot", { fileID });

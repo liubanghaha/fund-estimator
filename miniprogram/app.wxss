@@ -59,3 +59,24 @@ page {
   font-size: 24rpx;
   color: #BBB;
 }
+
+/* 错误重试按钮 */
+.retry-btn {
+  width: 200rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  font-size: 26rpx;
+  color: #E4393C;
+  background: #FFF;
+  border: 1rpx solid #E4393C;
+  border-radius: 32rpx;
+  text-align: center;
+  padding: 0;
+  margin-top: 24rpx;
+}
+.retry-btn::after { border: none; }
+.error-text {
+  font-size: 28rpx;
+  color: #999;
+  margin-bottom: 8rpx;
+}

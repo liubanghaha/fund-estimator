@@ -26,8 +26,12 @@
     </view>
 
     <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
-
-    <block wx:if="{{!loading}}">
+    <view wx:elif="{{loadError}}" class="empty-wrap">
+      <view class="empty-icon">😵</view>
+      <view class="empty-text">加载失败</view>
+      <button class="retry-btn" bind:tap="onRetry">点击重试</button>
+    </view>
+    <block wx:elif="{{!loading}}">
     <!-- Selection area (search + watchlist) -->
     <view wx:if="{{!fundB.code}}" class="select-area">
       <!-- Search -->
@@ -84,7 +88,7 @@
       <view wx:if="{{chartData.length > 1}}" class="section">
         <view class="section-title">走势对比（归一化）</view>
         <view class="chart-card">
-          <canvas canvas-id="compareCanvas" id="compareCanvas" style="width:100%;height:424rpx" width="{{canvasW}}" height="{{canvasH}}" bindtouchstart="onCompareTouch" bindtouchmove="onCompareTouch" bindtouchend="onCompareTouch"></canvas>
+          <canvas type="2d" id="compareCanvas" style="width:100%;height:424rpx" bindtouchstart="onCompareTouch" bindtouchmove="onCompareTouch" bindtouchend="onCompareTouch"></canvas>
         </view>
       </view>
 
