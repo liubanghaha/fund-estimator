@@ -1,7 +1,13 @@
 const api = require("../../utils/api");
 Page({
   data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
-  onLoad() { this._loaded = true; },
+  onLoad(options) {
+    this._loaded = true;
+    if (options.keyword) {
+      this.setData({ keyword: decodeURIComponent(options.keyword) });
+      wx.nextTick(() => this.onSearch());
+    }
+  },
   onShow() { if (!this._loaded) { wx.switchTab({ url: "/pages/index/index" }); return; } this.setData({ ready: true }); },
   onInput(e) { this.setData({ keyword: e.detail.value }); },
   async onSearch() {

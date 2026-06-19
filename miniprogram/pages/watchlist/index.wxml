@@ -1,4 +1,44 @@
 <view class="page">
+  <!-- 分组标签栏 -->
+  <view wx:if="{{loaded && !loadError && watchlist.length > 0}}" class="group-tabs-wrap">
+    <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部 {{groupCounts.all}}</view>
+      <view class="group-tab {{activeGroup === 'holding' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="holding">持有 {{groupCounts.holding}}</view>
+      <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组 {{groupCounts.ungrouped}}</view>
+      <block wx:for="{{groups}}" wx:key="*this">
+        <view
+          class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
+          style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
+          bind:tap="onGroupTap"
+          bind:touchstart="onGroupTouchStart"
+          bind:touchmove="onGroupTouchMove"
+          bind:touchend="onGroupTouchEnd"
+          data-group="{{item}}"
+          data-index="{{index}}"
+        >{{item}} {{groupCounts[item] || 0}}</view>
+      </block>
+      <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
+    </scroll-view>
+  </view>
+
+  <!-- 搜索栏 + 排序 -->
+  <view wx:if="{{loaded && !loadError && watchlist.length > 5}}" class="search-bar">
+    <input class="search-input" value="{{searchKeyword}}" placeholder="搜索基金" bind:input="onSearchInput"/>
+    <text wx:if="{{searchKeyword}}" class="search-clear" bind:tap="onClearSearch">✕</text>
+    <text class="search-sort-btn" bind:tap="onSortTap">{{sortField === 'change' ? (sortOrder === 'asc' ? '涨跌↑' : '涨跌↓') : sortField === 'name' ? '名称' : '排序'}}</text>
+  </view>
+  <view wx:elif="{{loaded && !loadError && watchlist.length > 0 && watchlist.length <= 5}}" class="search-bar">
+    <text class="search-sort-btn-only" bind:tap="onSortTap">{{sortField === 'change' ? (sortOrder === 'asc' ? '涨跌↑' : '涨跌↓') : sortField === 'name' ? '名称' : '排序'}}</text>
+  </view>
+
+  <!-- 涨跌汇总条 -->
+  <view wx:if="{{loaded && !loadError && watchlist.length > 0}}" class="summary-bar">
+    <text class="summary-item">{{summary.total}}只自选</text>
+    <text class="summary-item summary-avg {{summary.avg > 0 ? 'up' : summary.avg < 0 ? 'down' : ''}}">平均{{summary.avg > 0 ? '+' : ''}}{{summary.avg}}%</text>
+    <text class="summary-item summary-up">涨{{summary.up}}</text>
+    <text class="summary-item summary-down">跌{{summary.down}}</text>
+  </view>
+
   <view wx:if="{{!loaded}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{loadError}}" class="empty-wrap">
     <view class="empty-icon">😵</view>
@@ -10,34 +50,76 @@
     <view class="empty-text">暂无自选基金</view>
     <view class="empty-hint">在基金详情页点击「加自选」添加自选</view>
     <button class="search-btn" bind:tap="onSearch">去搜索基金</button>
+    <view class="hot-wrap">
+      <view class="hot-title">— 热门基金 —</view>
+      <view class="hot-list">
+        <view wx:for="{{hotFunds}}" wx:key="code" class="hot-item" bind:tap="onTapHotFund" data-code="{{item.code}}" data-name="{{item.name}}">
+          <text class="hot-name">{{item.name}}</text>
+          <text class="hot-code">{{item.code}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:elif="{{displayList.length === 0 && searchKeyword}}" class="empty-wrap">
+    <view class="empty-icon">🔍</view>
+    <view class="empty-text">自选中未找到「{{searchKeyword}}」</view>
+    <view class="empty-hint">去市场搜索添加该基金</view>
+    <button class="search-btn" bind:tap="onSearch">搜索市场</button>
+  </view>
+  <view wx:elif="{{displayList.length === 0 && activeGroup === 'holding'}}" class="empty-wrap">
+    <view class="empty-icon">📊</view>
+    <view class="empty-text">暂无持仓匹配</view>
+    <view class="empty-hint">添加持仓后，自选中持有的基金会自动出现在这里</view>
+  </view>
+  <view wx:elif="{{displayList.length === 0}}" class="empty-wrap">
+    <view class="empty-icon">📂</view>
+    <view class="empty-text">该分组暂无基金</view>
+    <view class="empty-hint">长按基金可移动到本分组</view>
+    <button class="add-fund-btn" bind:tap="onAddToGroup">添加基金</button>
   </view>
 
   <view wx:else class="list">
-    <view wx:for="{{watchlist}}" wx:key="fundCode" class="item {{batchMode ? 'batch-item' : ''}}"
-      bind:tap="onTapItem"
-      bind:longpress="onLongPressItem"
-      data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-index="{{index}}">
-      <view wx:if="{{batchMode}}" class="item-check {{item._checked ? 'checked' : ''}}">
-        {{item._checked ? '✓' : ''}}
-      </view>
-      <view class="item-left">
-        <view class="item-name">{{item.fundName}}</view>
-        <view class="item-code">{{item.fundCode}}</view>
-      </view>
-      <view class="item-right">
-        <view class="item-rate {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">
-          {{item.displayChangeRate > 0 ? '+' : ''}}{{item.displayChangeRate != null ? item.displayChangeRate : '--'}}%
+    <view wx:for="{{displayList}}" wx:key="fundCode" class="item-wrap">
+      <!-- 左滑露出的删除按钮 -->
+      <view class="swipe-del-btn" bind:tap="onSwipeDelete" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">删除</view>
+      <!-- 主体 -->
+      <view
+        class="item {{batchMode ? 'batch-item' : ''}}"
+        style="{{_swipeIdx === index ? 'transform:translateX(' + _swipeX + 'rpx)' : ''}}"
+        bind:tap="onTapItem"
+        bind:longpress="onLongPressItem"
+        bind:touchstart="onItemTouchStart"
+        bind:touchmove="onItemTouchMove"
+        bind:touchend="onItemTouchEnd"
+        data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-index="{{index}}">
+        <view wx:if="{{batchMode}}" class="item-check {{item._checked ? 'checked' : ''}}">
+          {{item._checked ? '✓' : ''}}
         </view>
-        <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
+        <view class="item-left">
+          <view class="item-name">
+            <text wx:if="{{item._isPinned}}" class="pin-mark">📌</text>
+            {{item.fundName}}
+            <text wx:if="{{(activeGroup === 'all' || activeGroup === 'holding') && item.group}}" class="group-tag">{{item.group}}</text>
+          </view>
+          <view class="item-code">{{item.fundCode}}</view>
+        </view>
+        <view class="item-right">
+          <view class="item-rate {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">
+            {{item.displayChangeRate > 0 ? '+' : ''}}{{item.displayChangeRate != null ? item.displayChangeRate : '--'}}%
+          </view>
+          <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
+        </view>
       </view>
     </view>
   </view>
 
   <!-- 批量操作栏 -->
   <view wx:if="{{watchlist.length > 0}}" class="batch-bar">
+    <text wx:if="{{updateTime}}" class="batch-time">更新于 {{updateTime}}</text>
     <text wx:if="{{!batchMode}}" class="batch-edit-btn" bind:tap="onToggleBatch">编辑</text>
     <block wx:else>
       <text class="batch-select-all" bind:tap="onSelectAll">全选</text>
+      <text class="batch-move-btn" bind:tap="onBatchMoveToGroup">移动到分组</text>
       <text class="batch-delete-btn" bind:tap="onBatchDelete">删除</text>
       <text class="batch-cancel-btn" bind:tap="onToggleBatch">取消</text>
     </block>

@@ -47,6 +47,18 @@ const api = {
   watchlistCheck(fundCode) {
     return this.callFunction("manageWatchlist", { action: "check", fundCode });
   },
+  watchlistSetGroup(fundCodes, group) {
+    return this.callFunction("manageWatchlist", { action: "setGroup", fundCodes, group });
+  },
+  watchlistGetGroups() {
+    return this.callFunction("manageWatchlist", { action: "getGroups" });
+  },
+  watchlistRenameGroup(group, newGroup) {
+    return this.callFunction("manageWatchlist", { action: "renameGroup", group, newGroup });
+  },
+  watchlistDeleteGroup(group) {
+    return this.callFunction("manageWatchlist", { action: "deleteGroup", group });
+  },
   holdingUpdate(id, data) {
     return this.callFunction("manageHolding", { action: "update", id, data });
   },

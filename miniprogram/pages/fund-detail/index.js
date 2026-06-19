@@ -105,13 +105,46 @@ Page({
           wx.showToast({ title: "操作失败", icon: "none" });
         }
       } else {
-        const res = await api.watchlistAdd(fundCode, fundName);
-        if (res.result && res.result.code === 0) {
-          this.setData({ followed: true });
-          wx.showToast({ title: "已加自选", icon: "success" });
-        } else {
-          wx.showToast({ title: res.result ? res.result.msg : "操作失败", icon: "none" });
-        }
+        // 拉取分组列表，让用户选择
+        let groups = [];
+        try {
+          const gRes = await api.watchlistGetGroups();
+          if (gRes.result && gRes.result.code === 0) groups = gRes.result.data || [];
+        } catch (e) { /* 忽略 */ }
+        const itemList = [...groups, "不分组", "新建分组"];
+        wx.showActionSheet({
+          itemList,
+          success: async (r) => {
+            const choice = itemList[r.tapIndex];
+            let group = "";
+            if (choice === "新建分组") {
+              // 使用模态框输入
+              const modalRes = await new Promise(resolve => {
+                wx.showModal({
+                  title: "新建分组", editable: true, placeholderText: "输入分组名称",
+                  content: "",
+                  success: res => resolve(res),
+                });
+              });
+              if (!modalRes.confirm || !modalRes.content) return;
+              group = modalRes.content.trim().slice(0, 20);
+            } else if (choice !== "不分组") {
+              group = choice;
+            }
+            // 加入自选
+            const addRes = await api.watchlistAdd(fundCode, fundName);
+            if (addRes.result && addRes.result.code === 0) {
+              this.setData({ followed: true });
+              // 设置分组
+              if (group) {
+                await api.watchlistSetGroup([fundCode], group).catch(() => {});
+              }
+              wx.showToast({ title: group ? `已加自选 · ${group}` : "已加自选", icon: "success" });
+            } else {
+              wx.showToast({ title: addRes.result?.msg || "操作失败", icon: "none" });
+            }
+          },
+        });
       }
     } catch (e) {
       wx.showToast({ title: "操作失败", icon: "none" });
