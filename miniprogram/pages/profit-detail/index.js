@@ -1,3 +1,9 @@
+
+const _getChartColors = () => {
+  const t = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'blue') : 'blue';
+  return t === 'red' ? { primary: '#E4393C', secondary: '#1976D2', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' }
+    : { primary: '#1976D2', secondary: '#E4393C', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' };
+};
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
 
@@ -522,10 +528,10 @@ Page({
       }
 
       if (marker === 'baseRate') {
-        this._fillArea(ctx, data, 'baseRate', xi, yi, '#E4393C');
-        this._line(ctx, data, 'baseRate', xi, yi, '#E4393C');
+        this._fillArea(ctx, data, 'baseRate', xi, yi, profitColor);
+        this._line(ctx, data, 'baseRate', xi, yi, profitColor);
         ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#E4393C'; ctx.fillRect(p.l + 4, 10, 12, 4);
+        ctx.fillStyle = profitColor; ctx.fillRect(p.l + 4, 10, 12, 4);
         ctx.fillStyle = '#666'; ctx.textAlign = 'left'; ctx.fillText(label || '收益', p.l + 20, 12);
       } else if (marker === 'dual') {
         this._fillArea(ctx, data, 'baseRate', xi, yi, profitColor);
@@ -538,10 +544,10 @@ Page({
         ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 22, 12, 4);
         ctx.fillStyle = '#666'; ctx.fillText(this.data.compareLabel, p.l + 20, 24);
       } else {
-        this._fillArea(ctx, data, 'indexRate', xi, yi, '#E4393C');
-        this._line(ctx, data, 'indexRate', xi, yi, '#E4393C');
+        this._fillArea(ctx, data, 'indexRate', xi, yi, '#1976D2');
+        this._line(ctx, data, 'indexRate', xi, yi, '#1976D2');
         ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#E4393C'; ctx.fillRect(p.l + 4, 10, 12, 4);
+        ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 10, 12, 4);
         ctx.fillStyle = '#666'; ctx.textAlign = 'left'; ctx.fillText(this.data.compareLabel, p.l + 20, 12);
       }
       ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
@@ -763,10 +769,11 @@ Page({
     const fmt = v => v != null ? (v > 0 ? '+' : '') + v + '%' : '--';
 
     if (noIdx) {
-      this._fillArea(ctx, data, 'baseRate', xi, yi, '#E4393C');
-      this._line(ctx, data, 'baseRate', xi, yi, '#E4393C');
+      const pc2 = pt.baseRate >= (data[0].baseRate || 0) ? '#E4393C' : '#2E8B57';
+      this._fillArea(ctx, data, 'baseRate', xi, yi, pc2);
+      this._line(ctx, data, 'baseRate', xi, yi, pc2);
       ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#E4393C'; ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.fillStyle = pc2; ctx.fillRect(p.l + 4, 10, 12, 4);
       ctx.fillStyle = '#666'; ctx.textAlign = 'left'; ctx.fillText('我的收益 ' + fmt(pt.baseRate), p.l + 20, 12);
     } else if (hasP) {
       const pc2 = pt.baseRate >= (data[0].baseRate || 0) ? '#E4393C' : '#2E8B57';
@@ -780,10 +787,10 @@ Page({
       ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 22, 12, 4);
       ctx.fillStyle = '#666'; ctx.fillText(compareLabel + ' ' + fmt(pt.indexRate), p.l + 20, 24);
     } else {
-      this._fillArea(ctx, data, 'indexRate', xi, yi, '#E4393C');
-      this._line(ctx, data, 'indexRate', xi, yi, '#E4393C');
+      this._fillArea(ctx, data, 'indexRate', xi, yi, '#1976D2');
+      this._line(ctx, data, 'indexRate', xi, yi, '#1976D2');
       ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#E4393C'; ctx.fillRect(p.l + 4, 10, 12, 4);
+      ctx.fillStyle = '#1976D2'; ctx.fillRect(p.l + 4, 10, 12, 4);
       ctx.fillStyle = '#666'; ctx.textAlign = 'left'; ctx.fillText(compareLabel + ' ' + fmt(pt.indexRate), p.l + 20, 12);
     }
     ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';

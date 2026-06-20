@@ -45,7 +45,7 @@
 .wl-left{flex:1}
 .wl-name{font-size:28rpx;color:#333;margin-bottom:4rpx}
 .wl-code{font-size:22rpx;color:#999}
-.wl-arrow{flex-shrink:0;font-size:24rpx;color:#E4393C;padding:8rpx 20rpx;border:1rpx solid #E4393C;border-radius:24rpx}
+.wl-arrow{flex-shrink:0;font-size:24rpx;color:var(--primary);padding:8rpx 20rpx;border:1rpx solid var(--primary);border-radius:24rpx}
 .watchlist-empty{text-align:center;padding:32rpx 24rpx}
 .empty-hint{font-size:24rpx;color:#CCC}
 
@@ -67,4 +67,4 @@
 .chart-card{background:#FFF;padding:12rpx 0}
 
 .btn-row{padding:24rpx}
-.btn-switch{width:100%;height:88rpx;line-height:88rpx;font-size:28rpx;color:#E4393C;background:#FFF;border:2rpx solid #E5E5E5;border-radius:44rpx;text-align:center}
+.btn-switch{width:100%;height:88rpx;line-height:88rpx;font-size:28rpx;color:var(--primary);background:#FFF;border:2rpx solid #E5E5E5;border-radius:44rpx;text-align:center}

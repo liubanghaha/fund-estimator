@@ -1,5 +1,5 @@
 <view wx:if="{{!mode}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
-<view wx:else class="container">
+<view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
 
   <!-- ========== 截图导入模式 ========== -->
   <block wx:if="{{mode === 'screenshot'}}">

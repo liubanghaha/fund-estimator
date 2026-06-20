@@ -24,7 +24,7 @@
 .pm-toggle{display:flex;align-items:center;justify-content:space-between;background:#FFF;border-radius:14rpx;padding:28rpx 24rpx;margin-bottom:24rpx}
 .pm-label{font-size:26rpx;color:#333}
 .pm-switch{width:80rpx;height:44rpx;border-radius:22rpx;background:#E5E5E5;position:relative;transition:background .3s}
-.pm-switch.on{background:#E4393C}
+.pm-switch.on{background:var(--primary)}
 .pm-knob{width:36rpx;height:36rpx;border-radius:50%;background:#FFF;position:absolute;top:4rpx;left:4rpx;transition:left .3s}
 .pm-switch.on .pm-knob{left:40rpx}
 
@@ -35,4 +35,4 @@
 .preview-mid{font-size:28rpx;color:#E4393C;font-weight:600}
 .preview-right{font-size:28rpx;color:#E4393C;font-weight:600}
 
-.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:#E4393C;border-radius:46rpx;text-align:center;padding:0;box-shadow:0 4rpx 16rpx rgba(228,57,60,.3)}
+.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:var(--primary-gradient);border-radius:46rpx;text-align:center;padding:0;box-shadow:0 4rpx 16rpx rgba(0,0,0,.15)}

@@ -11,6 +11,8 @@ Page({
   },
 
   onLoad(options) {
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
     const { fundCode, fundName, type } = options;
     const tradeType = type || "buy";
     // 如果 fundName 没通过 URL 传入，从 globalData 读取

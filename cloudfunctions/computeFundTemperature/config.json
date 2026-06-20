@@ -1,0 +1,11 @@
+{
+  "runtime": "Nodejs18.15",
+  "timeout": 60,
+  "triggers": [
+    {
+      "name": "dailyTrigger",
+      "type": "timer",
+      "config": "0 0 3 * * * *"
+    }
+  ]
+}

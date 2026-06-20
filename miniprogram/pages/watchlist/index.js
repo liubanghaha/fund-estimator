@@ -120,6 +120,8 @@ Page({
   },
 
   onLoad() {
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
     this.applyCache();
     this.setData({ pinnedCodes: this._getPinnedCodes() });
   },
@@ -513,9 +515,9 @@ Page({
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.watchlist && cached.watchlist.length > 0) {
+        this.updateGroupCounts();
         this.setData({ watchlist: cached.watchlist, loaded: true }, () => {
           this.applyGroupFilter();
-          this.updateGroupCounts();
         });
       }
       // 恢复缓存的分组
@@ -558,8 +560,8 @@ Page({
         api.watchlistGetGroups().catch(() => ({ result: { code: 0, data: [] } })),
       ]);
 
-      // 拉取持仓代码（用于「持有的」分组）
-      this._fetchHoldingCodes().catch(() => {});
+      // 先拉取持仓代码，再算分组数量（否则「持有」显示不准）
+      await this._fetchHoldingCodes().catch(() => {});
 
       // 处理分组列表（合并服务端 + 本地缓存）
       let serverGroups = [];
@@ -594,9 +596,9 @@ Page({
           return (e && e.estimateTime) || best;
         }, "") || this._nowStr();
 
+        this.updateGroupCounts();
         this.setData({ watchlist, loaded: true, loadError: false, updateTime }, () => {
           this.applyGroupFilter();
-          this.updateGroupCounts();
         });
 
         try {

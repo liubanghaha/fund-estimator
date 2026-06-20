@@ -1,4 +1,4 @@
-<view class="page-wrap" style="height: {{pageHeight}}px">
+<view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}" style="height: {{pageHeight}}px">
   <scroll-view
     scroll-y
     class="page-scroll"
@@ -85,54 +85,62 @@
           </view>
         </view>
 
+        <!-- 持仓穿透 -->
+        <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="asset-section">
+          <view class="asset-header" bind:tap="onToggleAssetAlloc">
+            <text class="asset-title">📊 持仓穿透</text>
+            <text class="asset-arrow {{showAssetAlloc ? 'open' : ''}}">{{showAssetAlloc ? '▼' : '▶'}}</text>
+          </view>
+          <view wx:if="{{showAssetAlloc}}" class="asset-body">
+            <view wx:for="{{assetAllocation.items}}" wx:key="industry" class="asset-row">
+              <text class="asset-name">{{item.industry}}</text>
+              <text class="asset-pct">{{item.percent}}%</text>
+              <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
+            </view>
+            <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
+          </view>
+        </view>
+
         <view wx:if="{{holdings.length > 0}}" class="holdings-section">
-          <view class="title-clip">
-            <view class="title-row">
-              <view class="t-left">持仓概览<text class="swipe-hint">← 左滑看更多</text></view>
-              <view class="t-slide" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
-                <view class="c-mid hd-text {{sortField === 'todayProfit' ? 'active' : ''}}" bind:tap="onSortTap" data-field="todayProfit">当日收益{{sortField === 'todayProfit' ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}}</view>
-                <view class="c-extra hd-text {{sortField === 'totalReturn' ? 'active' : ''}}" bind:tap="onSortTap" data-field="totalReturn">累计收益{{sortField === 'totalReturn' ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}}</view>
-              </view>
-            </view>
-          </view>
-          <view wx:for="{{holdings}}" wx:key="_id" class="card-clip {{batchMode && item._checked ? 'selected' : ''}}">
-            <view
-              class="card-scroll"
-              bind:tap="{{batchMode ? 'onToggleBatchSelect' : 'onTapHolding'}}"
-              data-code="{{item.fundCode}}"
-              data-name="{{item.fundName}}"
-              data-index="{{index}}"
-              data-id="{{item._id}}"
-              bind:touchstart="onTouchStart"
-              bind:touchmove="onTouchMove"
-              bind:touchend="onTouchEnd"
-              bind:longpress="onLongPressHolding"
-            >
-              <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}">{{item._checked ? '✓' : ''}}</view>
-              <view class="card-left">
-                <view class="card-row"><view class="c-name name-text">{{item.fundName}}</view></view>
-                <view class="card-row"><view class="c-name code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view></view>
-              </view>
-              <view class="card-right" style="transform:translateX({{listScrollX}}px);{{listSliding ? '' : 'transition:transform 0.25s ease'}}">
-                <view class="card-row">
-                  <view class="c-mid value-text {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">
-                    {{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%
-                  </view>
-                  <view class="c-extra value-text {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">
-                    {{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%
-                  </view>
+          <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
+            <view class="table-inner">
+              <view class="t-row t-head" bind:longpress="onLongPressHeader">
+                <view class="t-cell t-name">基金名称</view>
+                <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
+                  class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
+                  bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
+                  data-field="{{colDefs[col].sortable ? col : ''}}">
+                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable && sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
                 </view>
-                <view class="card-row">
-                  <view class="c-mid value-text {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">
-                    {{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}
-                  </view>
-                  <view class="c-extra value-text {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">
-                    {{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}
-                  </view>
+              </view>
+              <view wx:for="{{holdings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
+                bind:tap="onTapHolding" bind:longpress="onLongPressHolding"
+                data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-id="{{item._id}}">
+                <view class="t-cell t-name">
+                  <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
+                  <view class="name-text">{{item.fundName}}</view>
+                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view>
+                </view>
+                <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
+                  <block wx:if="{{col === 'todayProfit'}}">
+                    <view class="t-val {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">{{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%</view>
+                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}</view>
+                  </block>
+                  <block wx:elif="{{col === 'totalReturn'}}">
+                    <view class="t-val {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">{{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%</view>
+                    <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}</view>
+                  </block>
+                  <block wx:elif="{{col === 'valuation'}}">
+                    <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>
+                    <view wx:elif="{{item.position != null}}" class="t-val {{item.position <= 30 ? 't-low' : item.position >= 70 ? 't-high' : 't-mid'}}">{{item.position <= 30 ? '🟢低估' : item.position >= 70 ? '🔴高估' : '🟡正常'}}</view>
+                    <view wx:else class="t-val">--</view>
+                    <view wx:if="{{item.peTemp && item.peTemp.signal !== 'nodata'}}" class="t-sub">{{item.peTemp.normPE}}</view>
+                    <view wx:elif="{{item.navLow != null}}" class="t-sub">{{item.navLow}} ~ {{item.navHigh}}</view>
+                  </block>
                 </view>
               </view>
             </view>
-          </view>
+          </scroll-view>
         </view>
 
         <view wx:if="{{updateTime}}" class="update-time">估值时间：{{updateTime}}</view>
@@ -176,6 +184,32 @@
           </view>
         </view>
       </scroll-view>
+    </view>
+  </view>
+
+  <!-- 温度说明浮层（放在最外层，避免 scroll-view 内 fixed 失效） -->
+  <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
+    <view class="temp-tooltip-card" catch:tap="">
+      <view class="temp-tooltip-arrow"></view>
+      <view class="temp-tooltip-formula">基金估值 = 持仓股现价处于各自52周区间位置，按持仓占比加权</view>
+      <view class="temp-tooltip-rule">{{lt}} 0.7 低估 | 0.7~1.3 正常 | {{gt}} 1.3 高估</view>
+      <view class="temp-tooltip-source">数据来源：东方财富 · 每日更新</view>
+      <view class="temp-tooltip-disclaimer">仅供参考，不构成投资建议</view>
+    </view>
+  </view>
+
+  <!-- 列表头排序 -->
+  <view wx:if="{{showColEdit}}" class="col-edit-mask" bind:tap="onCloseColEdit">
+    <view class="col-edit-card" catch:tap="">
+      <view class="col-edit-title">调整列表头顺序<text class="col-edit-hint">（长按表头触发）</text></view>
+      <view wx:for="{{colOrder}}" wx:key="*this" class="col-edit-row">
+        <text class="col-edit-name">{{colDefs[item].label}}</text>
+        <view class="col-edit-btns">
+          <text class="col-edit-btn {{index === 0 ? 'disabled' : ''}}" bind:tap="onColMoveUp" data-index="{{index}}">↑</text>
+          <text class="col-edit-btn {{index === colOrder.length - 1 ? 'disabled' : ''}}" bind:tap="onColMoveDown" data-index="{{index}}">↓</text>
+        </view>
+      </view>
+      <view class="col-edit-close" bind:tap="onCloseColEdit">完成</view>
     </view>
   </view>
 </view>

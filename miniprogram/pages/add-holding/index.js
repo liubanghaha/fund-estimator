@@ -25,6 +25,8 @@ Page({
   },
 
   onLoad(options) {
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
     if (options.editScreenshot) {
       const app = getApp();
       const funds = app.globalData._ocrFunds || [];

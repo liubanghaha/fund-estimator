@@ -1,3 +1,9 @@
+
+const _getChartColors = () => {
+  const t = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'blue') : 'blue';
+  return t === 'red' ? { primary: '#E4393C', secondary: '#1976D2', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' }
+    : { primary: '#1976D2', secondary: '#E4393C', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' };
+};
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
 const chartUtil = require("../../utils/chart");
@@ -20,6 +26,8 @@ Page({
   },
 
   onLoad(options) {
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
     const rawCode = options.fundCode || "";
     const rawName = options.fundName ? decodeURIComponent(options.fundName) : "";
     const code = (rawCode && rawCode !== "undefined") ? rawCode : "";

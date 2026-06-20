@@ -1,6 +1,7 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
+const _ = db.command;
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
@@ -29,13 +30,18 @@ exports.main = async (event) => {
       holdings.map(async (h) => {
         try {
           const tiantian = tiantianMap[h.fundCode] || {};
-          const promises = [fetchEastMoney(h.fundCode)];
-          if (historyDays) promises.push(fetchNAVHistory(h.fundCode, historyDays));
+          const promises = [fetchEastMoney(h.fundCode), fetchNAVHistory(h.fundCode, 60)];
+          if (historyDays && historyDays !== 60) promises.push(fetchNAVHistory(h.fundCode, historyDays));
           const results = await Promise.all(promises);
-          return { h, tiantian, eastmoney: results[0], navHistory: historyDays ? results[1] : null };
+          return {
+            h, tiantian,
+            eastmoney: results[0],
+            nav60: results[1] || [],
+            navHistory: historyDays ? (results[2] || results[1]) : null,
+          };
         } catch (e) {
           console.error(`获取基金 ${h.fundCode} 失败:`, e);
-          return { h, tiantian: {}, eastmoney: {}, navHistory: [] };
+          return { h, tiantian: {}, eastmoney: {}, nav60: [], navHistory: [] };
         }
       })
     );
@@ -43,7 +49,7 @@ exports.main = async (event) => {
     const enriched = [];
     let totalMarket = 0;
 
-    for (const { h, tiantian, eastmoney, navHistory } of resultsList) {
+    for (const { h, tiantian, eastmoney, navHistory, nav60 } of resultsList) {
       // 向后兼容：旧数据用 amount/nav 字段，新数据用 shares/buyPrice
       let shares = h.shares || h.amount || 0;
       let buyPrice = h.buyPrice || h.nav || 0;
@@ -96,6 +102,20 @@ exports.main = async (event) => {
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const estimateUpdated = eastmoney.actualDate === todayStr;
 
+      // 60 日位置信号
+      let position = null, navHigh = null, navLow = null;
+      if (nav60 && nav60.length >= 5) {
+        const navs = nav60.map(d => d.nav || 0).filter(v => v > 0);
+        if (navs.length >= 5) {
+          const high = Math.max(...navs);
+          const low = Math.min(...navs);
+          navHigh = high;
+          navLow = low;
+          const range = high - low;
+          if (range > 0) position = Math.round(((currentNav - low) / range) * 100);
+        }
+      }
+
       enriched.push({
         ...h,
         currentNav: currentNav.toFixed(4),
@@ -105,6 +125,9 @@ exports.main = async (event) => {
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
         estimateUpdated,
+        position,
+        navHigh: navHigh != null ? navHigh.toFixed(4) : null,
+        navLow: navLow != null ? navLow.toFixed(4) : null,
       });
     }
 
@@ -112,11 +135,36 @@ exports.main = async (event) => {
     const totalReturn = totalMarket - totalCost;
     const totalReturnRate = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0;
 
+    const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+
     // 按当日收益金额倒序排序
     enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
 
+    // 读取 PE 温度缓存（由 computeFundTemperature 定时写入）
+    let tempMap = {};
+    try {
+        const codes = enriched.map(h => h.fundCode);
+        const tempRes = await db.collection("fund_temperatures")
+          .where({ fundCode: _.in(codes), date: today })
+          .get();
+        (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
+        enriched.forEach(h => {
+          const t = tempMap[h.fundCode];
+          if (t) {
+            h.peTemp = {
+              signal: t.signal,
+              label: t.label,
+              normPE: t.normPE,
+              weightedPE: t.weightedPE,
+              coverage: t.coverage,
+              stocksWith52w: t.stocksWith52w,
+              totalStocks: t.totalStocks,
+            };
+          }
+        });
+      } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
+
     // 查询当天收益快照
-    const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
     let intradaySnapshots = [];
     let snapDebug = {};
     try {
@@ -127,6 +175,45 @@ exports.main = async (event) => {
         snapDebug.points = intradaySnapshots.length;
       }
     } catch (e) { snapDebug = { error: e.message }; }
+
+    // 资产配置：按行业聚合持仓穿透
+    let assetAllocation = null;
+    try {
+      let enrichedCount = 0, withTempCount = 0, withDetailCount = 0;
+      const industryMap = {};
+      let totalWeight = 0;
+      for (const h of enriched) {
+        if (!h.peTemp || !h.peTemp.totalStocks) continue;
+        enrichedCount++;
+        const fundValue = (h.shares || 0) * (h.currentNav || 0);
+        if (fundValue <= 0) continue;
+        withTempCount++;
+        const t = tempMap[h.fundCode];
+        if (!t || !t.detailPEs || !t.detailPEs.length) continue;
+        withDetailCount++;
+        for (const pe of t.detailPEs) {
+          const w = fundValue * (pe.ratio / 100);
+          industryMap[pe.industry] = (industryMap[pe.industry] || 0) + w;
+          totalWeight += w;
+        }
+      }
+      if (totalWeight > 0) {
+        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
+        const list = Object.entries(industryMap)
+          .map(([industry, w]) => ({ industry, percent: +((w / totalWeight) * 100).toFixed(1) }))
+          .sort((a, b) => b.percent - a.percent);
+        const top10 = list.slice(0, 10);
+        const others = list.slice(10).reduce((s, i) => s + i.percent, 0);
+        if (others > 0) top10.push({ industry: "其他", percent: +others.toFixed(1) });
+        const maxPercent = top10[0]?.percent || 0;
+        assetAllocation = {
+          items: top10,
+          warning: maxPercent > 30 ? `单一行业「${top10[0].industry}」占比 ${maxPercent}%，建议分散配置` : null,
+        };
+      } else {
+        console.log(`[getPortfolio] 资产配置: 无有效数据 enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount}`);
+      }
+    } catch (e) { console.error("[getPortfolio] 资产配置失败:", e.message, e.stack); assetAllocation = null; }
 
     return {
       code: 0,
@@ -141,6 +228,7 @@ exports.main = async (event) => {
         navHistoryMap: historyDays ? navHistoryMap : undefined,
         intradaySnapshots,
         snapDebug,
+        assetAllocation,
       },
     };
   } catch (e) {

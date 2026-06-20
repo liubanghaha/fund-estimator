@@ -1,4 +1,4 @@
-<view class="page">
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="page-body">
     <view class="fund-header">
       <view class="header-top">
@@ -206,6 +206,47 @@
     </view>
     </block>
     </scroll-view>
+
+    <!-- 定投回测 -->
+    <view class="dca-section">
+      <view class="dca-header" bind:tap="onToggleDCA">
+        <view>
+          <text class="dca-title">📈 定投模拟</text>
+          <text class="dca-subtitle">基于历史净值模拟，过往收益不代表未来</text>
+        </view>
+        <text class="dca-arrow {{showDCA ? 'open' : ''}}">{{showDCA ? '▼' : '▶'}}</text>
+      </view>
+      <view wx:if="{{showDCA}}" class="dca-body">
+        <view class="dca-form">
+          <view class="dca-field">
+            <text class="dca-label">月投金额</text>
+            <input class="dca-input" type="digit" placeholder="1000" value="{{dcaAmount}}" bindinput="onDCAAmount" />
+            <text class="dca-unit">元</text>
+          </view>
+          <view class="dca-field">
+            <text class="dca-label">定投起始</text>
+            <picker mode="date" fields="month" value="{{dcaStartDate}}" bindchange="onDCAStartDate">
+              <text class="dca-input dca-picker">{{dcaStartDate || '选择年月'}}</text>
+            </picker>
+          </view>
+          <button class="dca-btn" bind:tap="onRunDCA" loading="{{dcaLoading}}">开始模拟</button>
+        </view>
+        <view wx:if="{{dcaResult}}" class="dca-result">
+          <view class="dca-stat-row">
+            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.totalInvested}}</text><text class="dca-stat-label">累计投入(元)</text></view>
+            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.currentValue}}</text><text class="dca-stat-label">当前市值(元)</text></view>
+          </view>
+          <view class="dca-stat-row">
+            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.totalReturn}}</text><text class="dca-stat-label">总收益(元)</text></view>
+            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.returnRate}}%</text><text class="dca-stat-label">总收益率</text></view>
+          </view>
+          <view class="dca-stat-row">
+            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.annualizedReturn}}%</text><text class="dca-stat-label">年化收益率</text></view>
+            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.months}}</text><text class="dca-stat-label">定投月数</text></view>
+          </view>
+        </view>
+      </view>
+    </view>
 
     <view class="bottom-bar">
       <button class="btn-add" bind:tap="onAddHolding">

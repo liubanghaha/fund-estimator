@@ -1,4 +1,4 @@
-<view class="page">
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{loadError}}" class="empty-wrap">
     <view class="empty-icon">😵</view>

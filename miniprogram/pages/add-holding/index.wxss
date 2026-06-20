@@ -29,12 +29,12 @@
 .card-hr{font-size:22rpx;color:#E4393C}
 
 .card-right{flex-shrink:0;margin-left:16rpx;display:flex;flex-direction:column;gap:10rpx;align-items:flex-end}
-.card-save{font-size:22rpx;color:#FFF;background:#E4393C;padding:8rpx 24rpx;border-radius:28rpx}
-.card-edit{font-size:22rpx;color:#1976D2;padding:8rpx 24rpx;border:1rpx solid #1976D2;border-radius:28rpx}
+.card-save{font-size:22rpx;color:#FFF;background:var(--primary);padding:8rpx 24rpx;border-radius:28rpx}
+.card-edit{font-size:22rpx;color:var(--primary);padding:8rpx 24rpx;border:1rpx solid var(--primary);border-radius:28rpx}
 .card-done{font-size:24rpx;color:#4CAF50}
 
 .cards-footer{text-align:center;padding:24rpx 0;font-size:24rpx;color:#CCC}
-.save-all-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#FFF;background:#E4393C;border-radius:44rpx;padding:0}
+.save-all-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#FFF;background:var(--primary-gradient);border-radius:44rpx;padding:0}
 .cards-footer-hint{font-size:24rpx;color:#4CAF50}
 
 /* ========== 手动填写 ========== */
@@ -47,16 +47,16 @@
 
 /* 正负号切换 */
 .signed-input{display:flex;align-items:center;gap:12rpx;flex:1;justify-content:flex-end}
-.sign-toggle{width:28rpx;height:28rpx;line-height:28rpx;text-align:center;font-size:18rpx;font-weight:600;color:#FFF;background:#E4393C;border-radius:14rpx;flex-shrink:0}
+.sign-toggle{width:28rpx;height:28rpx;line-height:28rpx;text-align:center;font-size:18rpx;font-weight:600;color:#FFF;background:var(--primary);border-radius:14rpx;flex-shrink:0}
 .sign-toggle.minus{background:#2E8B57}
 .signed-val{flex:1}
 
-.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:#E4393C;border-radius:46rpx;text-align:center;padding:0;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(228,57,60,.3)}
+.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:var(--primary-gradient);border-radius:46rpx;text-align:center;padding:0;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(0,0,0,.15)}
 
 /* 编辑模式 */
 .edit-actions{margin-bottom:24rpx}
 .action-row{display:flex;gap:16rpx;margin-bottom:16rpx}
 .action-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;border-radius:42rpx;text-align:center;padding:0}
 .sync-buy,.sync-sell{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
-.update-btn{background:#E4393C;color:#FFF}
+.update-btn{background:var(--primary);color:#FFF}
 .delete-btn{background:#E4393C;color:#FFF}

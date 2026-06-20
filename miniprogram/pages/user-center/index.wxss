@@ -22,7 +22,7 @@
 /* 类型选择 */
 .fb-type-row{display:flex;gap:16rpx}
 .fb-type-item{flex:1;text-align:center;padding:18rpx 0;font-size:26rpx;color:#666;background:#F5F5F5;border-radius:12rpx;border:2rpx solid transparent;transition:all .2s}
-.fb-type-item.active{color:#E4393C;background:#FFF5F5;border-color:#E4393C}
+.fb-type-item.active{color:var(--primary);background:var(--primary-bg);border-color:var(--primary)}
 
 /* 联系方式 */
 .fb-input{width:100%;height:80rpx;padding:0 20rpx;font-size:28rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box}
@@ -44,5 +44,5 @@
 .fb-actions{display:flex;justify-content:flex-end;gap:20rpx;margin-top:8rpx}
 .fb-cancel,.fb-submit{padding:16rpx 40rpx;font-size:28rpx;border-radius:10rpx;line-height:1.4}
 .fb-cancel{background:#F5F5F5;color:#666}
-.fb-submit{background:#E4393C;color:#FFF}
+.fb-submit{background:var(--primary);color:#FFF}
 .fb-submit[disabled]{opacity:.6}

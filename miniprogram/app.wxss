@@ -1,5 +1,4 @@
 page {
-  --color-primary: #E4393C;
   --color-green: #2E8B57;
   --color-bg: #F5F5F5;
   --color-text: #333333;
@@ -11,6 +10,18 @@ page {
   font-size: 28rpx;
   color: var(--color-text);
   line-height: 1.6;
+}
+
+/* 主题色 */
+.theme-blue {
+  --primary: #1976D2;
+  --primary-gradient: linear-gradient(135deg, #1976D2, #42A5F5);
+  --primary-bg: rgba(25,118,210,.1);
+}
+.theme-red {
+  --primary: #E4393C;
+  --primary-gradient: linear-gradient(135deg, #E4393C, #FF6B6B);
+  --primary-bg: rgba(228,57,60,.1);
 }
 
 /* 统一内联加载 */
@@ -26,7 +37,7 @@ page {
   width: 32rpx;
   height: 32rpx;
   border: 4rpx solid #E0E0E0;
-  border-top-color: #E4393C;
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -51,7 +62,7 @@ page {
   width: 24rpx;
   height: 24rpx;
   border: 3rpx solid #E0E0E0;
-  border-top-color: #E4393C;
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -66,9 +77,9 @@ page {
   height: 64rpx;
   line-height: 64rpx;
   font-size: 26rpx;
-  color: #E4393C;
+  color: var(--primary);
   background: #FFF;
-  border: 1rpx solid #E4393C;
+  border: 1rpx solid var(--primary);
   border-radius: 32rpx;
   text-align: center;
   padding: 0;

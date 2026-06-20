@@ -20,6 +20,18 @@ Page({
         nickName: userInfo.nickName || "",
       });
     }
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
+  },
+
+  onToggleTheme() {
+    const next = this.data.theme === "red" ? "blue" : "red";
+    this.setData({ theme: next });
+    wx.setStorageSync("theme", next);
+    const pages = getCurrentPages();
+    const idx = pages.findIndex(p => p.route === "pages/index/index");
+    if (idx >= 0) pages[idx].setData({ theme: next });
+    wx.showToast({ title: "重启小程序后全部生效", icon: "none", duration: 2000 });
   },
 
   async onLogin() {

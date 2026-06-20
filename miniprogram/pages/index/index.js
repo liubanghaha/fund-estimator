@@ -1,7 +1,5 @@
 const api = require("../../utils/api");
 
-const EXTRA_WIDTH = 280;
-
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
   { code: "399001", name: "深证成指" },
@@ -46,18 +44,31 @@ Page({
     allUpdated: false,
     sortField: "todayProfit",
     sortOrder: "desc",
-    listScrollX: 0,
-    listSliding: false,
     batchMode: false,
     selectedCount: 0,
     allSelected: false,
     loadError: false,
+    showTempInfo: false,
+    lt: '<',
+    gt: '>',
+    assetAllocation: null,
+    showAssetAlloc: false,
+    showColEdit: false,
+    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "valuation"],
+    colDefs: {
+      todayProfit: { label: "当日收益", sortable: true },
+      totalReturn: { label: "累计收益", sortable: true },
+      valuation: { label: "估值", sortable: false, isValuation: true },
+    },
   },
 
   onLoad() {
     const { windowHeight, windowWidth } = wx.getSystemInfoSync();
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
+    // 读取主题色
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
   },
 
   onShow() {
@@ -99,6 +110,7 @@ Page({
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.holdings && cached.holdings.length > 0) {
         let holdings = cached.holdings;
+        holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
@@ -109,6 +121,7 @@ Page({
           totalReturn: cached.totalReturn,
           totalReturnRate: cached.totalReturnRate,
           updateTime: cached.updateTime || "",
+          assetAllocation: cached.assetAllocation || null,
           fromCache: true,
           allUpdated,
         });
@@ -140,6 +153,37 @@ Page({
     wx.setStorageSync("amountVisible", v);
   },
 
+  onTempInfoTap() {
+    this.setData({ showTempInfo: !this.data.showTempInfo });
+  },
+
+  onToggleAssetAlloc() {
+    this.setData({ showAssetAlloc: !this.data.showAssetAlloc });
+  },
+
+  onLongPressHeader() {
+    this.setData({ showColEdit: true });
+  },
+  onColMoveUp(e) {
+    const idx = e.currentTarget.dataset.index;
+    const order = [...this.data.colOrder];
+    if (idx <= 0) return;
+    [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+    this.setData({ colOrder: order });
+    wx.setStorageSync("colOrder", order);
+  },
+  onColMoveDown(e) {
+    const idx = e.currentTarget.dataset.index;
+    const order = [...this.data.colOrder];
+    if (idx >= order.length - 1) return;
+    [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+    this.setData({ colOrder: order });
+    wx.setStorageSync("colOrder", order);
+  },
+  onCloseColEdit() {
+    this.setData({ showColEdit: false });
+  },
+
   onScrollRefresh() {
     this._lastFetch = Date.now();
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
@@ -154,6 +198,7 @@ Page({
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
         let holdings = (d.holdings || []);
+        holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         this.setData({
@@ -165,9 +210,11 @@ Page({
           totalReturn: d.totalReturn,
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
+          assetAllocation: d.assetAllocation || null,
+          showAssetAlloc: this.data.showAssetAlloc, // 保持展开状态
           fromCache: false,
         });
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, ts: Date.now() } });
+        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, ts: Date.now() } });
       }
     } catch (e) {
       this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
@@ -185,6 +232,14 @@ Page({
     }
     const sorted = this.sortHoldings([...this.data.holdings], nextField, nextOrder);
     this.setData({ sortField: nextField, sortOrder: nextOrder, holdings: sorted });
+  },
+
+  formatHoldings(list) {
+    return list.map(h => ({
+      ...h,
+      navHigh: h.navHigh != null ? parseFloat(h.navHigh).toFixed(2) : null,
+      navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
+    }));
   },
 
   sortHoldings(list, field, order) {
@@ -405,59 +460,20 @@ Page({
     wx.navigateTo({ url: "/pages/adjust-holding/index" });
   },
 
-  onTouchStart(e) {
-    this._touchData = {
-      startX: e.touches[0].clientX,
-      baseScroll: this.data.listScrollX,
-      currentX: this.data.listScrollX,
-      moved: false,
-    };
-  },
-
-  onTouchMove(e) {
-    if (!this._touchData) return;
-    const dx = e.touches[0].clientX - this._touchData.startX;
-    if (!this._touchData.moved && Math.abs(dx) > 3) {
-      this._touchData.moved = true;
-    }
-    if (!this._touchData.moved) return;
-    const px = this.rpxToPx(EXTRA_WIDTH);
-    let newX = this._touchData.baseScroll + dx;
-    newX = Math.min(0, Math.max(-px, newX));
-    this._touchData.currentX = newX;
-    this.setData({ listScrollX: newX, listSliding: true });
-  },
-
-  onTouchEnd(e) {
-    if (!this._touchData) return;
-    const px = this.rpxToPx(EXTRA_WIDTH);
-    const cur = this._touchData.currentX;
-    const snapX = Math.abs(cur) > px * 0.3 ? -px : 0;
-    this.setData({ listScrollX: snapX, listSliding: false });
-    this._touchData = null;
-  },
-
-  rpxToPx(rpx) {
-    return (rpx / 750) * (this._windowWidth || 375);
-  },
-
   onTapHolding(e) {
-    if (this._touchData && this._touchData.moved) return;
-    if (this.data.listScrollX < 0) {
-      this.setData({ listScrollX: 0, listSliding: false });
-      return;
-    }
+    if (this.data.batchMode) return;
     const { code, name } = e.currentTarget.dataset;
     wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
   },
 
   onLongPressHolding(e) {
     const { id } = e.currentTarget.dataset;
-    const _this = this;
+    const self = this;
     wx.showActionSheet({
       itemList: ['编辑', '删除'],
       success(res) {
-        const h = _this.data.holdings.find((x) => x._id === id);
+        const h = self.data.holdings.find((x) => x._id === id);
+        if (!h) return;
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
@@ -471,7 +487,7 @@ Page({
                 .then(() => {
                   wx.hideLoading();
                   wx.showToast({ title: "已删除", icon: "success" });
-                  _this.fetchPortfolio();
+                  self.fetchPortfolio();
                 })
                 .catch(() => {
                   wx.hideLoading();
@@ -483,4 +499,5 @@ Page({
       },
     });
   },
+
 });

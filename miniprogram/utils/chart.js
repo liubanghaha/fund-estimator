@@ -1,3 +1,9 @@
+
+const _getChartColors = () => {
+  const t = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'blue') : 'blue';
+  return t === 'red' ? { primary: '#E4393C', secondary: '#1976D2', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' }
+    : { primary: '#1976D2', secondary: '#E4393C', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' };
+};
 /**
  * 共享折线图绘制工具。基于 Canvas 2D API。
  */
@@ -14,7 +20,7 @@ const chart = {
 
   drawLineChart(canvas, opts = {}) {
     const { w = 340, h = 200, data = [], xField = 'date', yField = 'value',
-      color = '#E4393C', padding, isReturn = false } = opts;
+      color = '#1976D2', padding, isReturn = false } = opts;
     const p = padding || { top: 24, right: 24, bottom: 30, left: 52 };
     const pw = w - p.left - p.right, ph = h - p.top - p.bottom;
 
@@ -237,7 +243,7 @@ const chart = {
       const x = xp(i), y = yp(d2[yField]);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = opts.color || '#E4393C';
+    ctx.strokeStyle = opts.color || '#1976D2';
     ctx.lineWidth = 1;
     ctx.stroke();
 

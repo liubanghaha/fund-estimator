@@ -26,6 +26,15 @@
       "triggers": [
         { "name": "snapshotTimer", "type": "timer", "config": "0 * 9-15 * * 1-5 *" }
       ]
+    },
+    {
+      "name": "computeFundTemperature",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "triggers": [
+        { "name": "dailyTempTrigger", "type": "timer", "config": "0 0 3 * * * *" }
+      ]
     }
   ]
 }

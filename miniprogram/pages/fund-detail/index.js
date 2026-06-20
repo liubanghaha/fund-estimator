@@ -21,12 +21,18 @@ Page({
     scrollToTx: "",
     quarterNet: 0,
     profileLoading: false, profileLoaded: false,
+    // 定投回测
+    showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
+    // 同类排名
+    rankInfo: null,
   },
 
   onLoad(options) {
     if (!options.fundCode) return;
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
+    const theme = wx.getStorageSync("theme") || "blue";
+    this.setData({ theme });
     wx.setNavigationBarTitle({ title: fundName });
     this._firstLoad = true;
     const { windowWidth } = wx.getSystemInfoSync();
@@ -674,7 +680,52 @@ Page({
       fail: (err) => {
         console.error("跳转对比页失败:", err);
         wx.showToast({ title: err.errMsg || "跳转失败", icon: "none" });
-      },
-    });
+	      },
+	    });
+	  },
+
+  // ---- 定投回测 ----
+  onToggleDCA() {
+    this.setData({ showDCA: !this.data.showDCA });
+  },
+  onDCAAmount(e) { this.setData({ dcaAmount: e.detail.value }); },
+  onDCAStartDate(e) { this.setData({ dcaStartDate: e.detail.value }); },
+  async onRunDCA() {
+    const { fundCode, dcaAmount, dcaStartDate } = this.data;
+    if (!dcaAmount || !dcaStartDate) {
+      wx.showToast({ title: "请填写金额和起始时间", icon: "none" });
+      return;
+    }
+    const [startYear, startMonth] = dcaStartDate.split("-");
+    this.setData({ dcaLoading: true, dcaResult: null });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: "dcaBacktest",
+        data: { fundCode, monthlyAmount: parseFloat(dcaAmount), startYear, startMonth, monthlyDay: 1 },
+      });
+      if (res.result && res.result.code === 0) {
+        this.setData({ dcaResult: res.result.data });
+      } else {
+        wx.showToast({ title: res.result?.msg || "回测失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "回测失败", icon: "none" });
+    }
+    this.setData({ dcaLoading: false });
+  },
+
+  // ---- 同类排名 ----
+  async fetchRank() {
+    const { fundCode } = this.data;
+    if (!fundCode) return;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: "fetchFundRank",
+        data: { fundCode, fundType: "混合型" },
+      });
+      if (res.result && res.result.code === 0 && res.result.data) {
+        this.setData({ rankInfo: res.result.data });
+      }
+    } catch (e) { /* ignore */ }
   },
 });

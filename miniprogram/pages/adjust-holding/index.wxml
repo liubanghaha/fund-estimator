@@ -1,5 +1,5 @@
 <view wx:if="{{redirecting}}"></view>
-<view wx:else class="container">
+<view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <!-- 两个入口按钮（始终显示） -->
   <view class="main-actions">
     <view class="action-card" bind:tap="onImportScreenshot">

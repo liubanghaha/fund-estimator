@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="fund-info">
     <text class="fi-name">{{fundName}}</text>
     <text class="fi-code">{{fundCode}}</text>
