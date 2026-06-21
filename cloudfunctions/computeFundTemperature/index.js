@@ -7,14 +7,15 @@ const _ = db.command;
  * 定时任务：每日凌晨 3:00 计算所有持仓基金的估值温度
  *
  *  算法：
- *    每只股票独立打分 — 现价在自身 52周高低价区间的位置
+ *    每只股票独立打分 — 当前PE在自身历史 PE 区间的分位
+ *    亏损股用 PB 替代、周期股加风险提示
  *    基金估值 = 持仓股估值按持仓占比的几何加权平均
  *    判定：< 0.7 低估 | 0.7~1.3 正常 | > 1.3 高估
  *
  *  流程：
  *    1. 获取持仓基金代码（去重）
  *    2. 并发拉取基金前十大持仓股
- *    3. 批量查询所有持仓股的 PE + 行业 + 52周高低价
+ *    3. 批量查询所有持仓股的 PE+PB+行业（行情接口） + 历史PE区间（估值接口）
  *    4. 每只股票打分 → 基金加权汇总 → 写入 fund_temperatures
  */
 exports.main = async (event) => {
@@ -63,7 +64,7 @@ exports.main = async (event) => {
       }
     }
 
-    // 3. 收集所有唯一股票代码 & 批量查 PE + 行业 + 52周高低价
+    // 3. 收集所有唯一股票代码 & 批量查 PE+PB+行业（行情接口 + 历史PE接口）
     const stockMap = {};
     const allStockCodes = new Set();
     Object.values(fundHoldings).forEach(list => {
@@ -77,12 +78,28 @@ exports.main = async (event) => {
     console.log(`[computeFundTemperature] 持仓股去重数: ${codes.length}`);
 
     if (codes.length > 0) {
-      const peData = await batchFetchPE(codes);
-      Object.assign(stockMap, peData);
+      const [liveData, histData] = await Promise.all([
+        batchFetchLiveData(codes),
+        batchFetchHistoricalPE(codes),
+      ]);
+      // 合并数据
+      codes.forEach(code => {
+        const live = liveData[code] || {};
+        const hist = histData[code] || {};
+        stockMap[code] = {
+          pe: live.pe || null,
+          pb: live.pb || null,
+          price: live.price || null,
+          industry: live.industry || "其他",
+          peHistory: hist.peYears || [],
+          pbHistory: hist.pbYears || [],
+          totalYears: hist.totalYears || 0,
+        };
+      });
     }
 
-    const with52 = Object.values(stockMap).filter(s => s.high52w).length;
-    console.log(`[computeFundTemperature] 有52周数据: ${with52}/${codes.length}`);
+    const withHist = Object.values(stockMap).filter(s => s.totalYears > 0).length;
+    console.log(`[computeFundTemperature] 有历史PE数据: ${withHist}/${codes.length}`);
 
     // 4. 计算估值信号
     const candidates = [];
@@ -102,9 +119,10 @@ exports.main = async (event) => {
         normPE: c.normPE,
         weightedPE: c.weightedPE,
         coverage: c.coverage,
-        stocksWith52w: c.stocksWith52w,
+        stocksWithData: c.stocksWithData,
         totalStocks: c.totalStocks,
         detailPEs: c.detailPEs,
+        warnings: c.warnings || [],
         createTime: new Date(),
       });
     }
@@ -240,7 +258,7 @@ function fetchHoldings(fundCode) {
   });
 }
 
-async function batchFetchPE(codes) {
+async function batchFetchLiveData(codes) {
   const https = require("https");
   const map = {};
   const BATCH = 40;
@@ -254,12 +272,10 @@ async function batchFetchPE(codes) {
   for (let i = 0; i < codes.length; i += BATCH) {
     const batch = codes.slice(i, i + BATCH);
     const secids = batch.map(buildSecid).join(",");
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f350,f351&secids=${secids}`;
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}`;
 
     await new Promise((resolve) => {
-      const req = https.get(url, {
-        headers: { Referer: "https://quote.eastmoney.com/" },
-      }, (res) => {
+      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
         let body = "";
         res.on("data", (c) => { body += c; });
         res.on("end", () => {
@@ -268,19 +284,14 @@ async function batchFetchPE(codes) {
             if (data && data.diff) {
               data.diff.forEach(item => {
                 const pe = item.f9;
-                if (pe && pe > 0) {
+                if (pe !== undefined && pe !== null) {
                   const actualPE = pe > 500 ? pe / 100 : pe;
-                  let high52w = null, low52w = null;
-                  if (item.f350 > 0 && item.f351 > 0 && item.f350 < 1e6) {
-                    high52w = +item.f350;
-                    low52w = +item.f351;
-                  }
+                  const pb = item.f164 != null ? (+item.f164) : null;
                   map[item.f12] = {
                     pe: actualPE,
+                    pb: pb && pb > 0 ? pb : null,
                     price: item.f2 || null,
                     industry: item.f100 || "其他",
-                    high52w,
-                    low52w,
                   };
                 }
               });
@@ -296,108 +307,175 @@ async function batchFetchPE(codes) {
   return map;
 }
 
+async function batchFetchHistoricalPE(codes) {
+  const https = require("https");
+  const map = {};
+
+  for (const code of codes) {
+    await new Promise((resolve) => {
+      const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
+      const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const d = JSON.parse(body);
+            const data = (d.result && d.result.data) || [];
+            map[code] = {
+              peYears: data.map(r => ({
+                avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN,
+              })).filter(r => r.avg > 0 && r.avg < 10000),
+              pbYears: data.map(r => ({
+                avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN,
+              })).filter(r => r.avg > 0 && r.avg < 1000),
+              totalYears: data.length,
+            };
+          } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
+          resolve();
+        });
+      });
+      req.setTimeout(10000, () => { req.destroy(); resolve(); });
+      req.on("error", () => resolve());
+    });
+  }
+  return map;
+}
+
 /**
- * 计算基金估值信号（单一维度：52周价格位置）
- *
- * 每只股票独立打分：
- *   normPE = (现价 - 52周最低) / (52周最高 - 52周最低) × 2
- *   0 = 52周最低点, 2 = 52周最高点
- *
- * 基金估值 = exp( Σ(ln(clamp(normPE, 0.25, 4.0)) × 持仓占比) / Σ(持仓占比) )
+ * 行业分类 → 估值逻辑
+ */
+function classifyIndustry(industry) {
+  const cyc = ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃"];
+  const fin = ["银行","保险","证券","地产","房地产","多元金融"];
+  const tech = ["半导体","芯片","软件","计算机","通信","电子","光模块","互联网","游戏","传媒"];
+  const util = ["电力","水务","高速","公路","港口","铁路","燃气","环保"];
+  const biomed = ["医药","生物","医疗","中药","化学制药","医疗器械"];
+  const consume = ["白酒","食品","饮料","家电","汽车","服装","旅游","零售","免税","调味品","乳业","养殖"];
+  const mfg = ["机械","电气","新能源","电池","军工","航天","船舶","仪器仪表","电力设备"];
+
+  for (const kw of cyc) if (industry.includes(kw)) return "cycle";
+  for (const kw of fin) if (industry.includes(kw)) return "finance";
+  for (const kw of tech) if (industry.includes(kw)) return "tech";
+  for (const kw of util) if (industry.includes(kw)) return "utility";
+  for (const kw of biomed) if (industry.includes(kw)) return "biomed";
+  for (const kw of consume) if (industry.includes(kw)) return "consume";
+  for (const kw of mfg) if (industry.includes(kw)) return "mfg";
+  return "other";
+}
+
+function computePEPercentile(currentPE, peYears) {
+  if (!peYears || peYears.length < 3) return null;
+  const avgs = peYears.map(y => y.avg).sort((a, b) => a - b);
+  let below = 0;
+  for (const a of avgs) { if (currentPE > a) below++; }
+  return Math.round((below / avgs.length) * 100);
+}
+
+function getStockScore(pe, pePct, pb, pbPct, industryType) {
+  // 1. 亏损股 / 负PE
+  if (!pe || pe <= 0 || pe > 500) {
+    if (pb && pb > 0 && pbPct != null) {
+      return { score: pbPct < 25 ? 1.6 : pbPct < 65 ? 1.0 : 0.4, note: `PB${pbPct}%分位(PE无效)`, warn: false };
+    }
+    return { score: 1.0, note: "PE无效", warn: false };
+  }
+
+  // 2. 高PE绝对值 天花板限制
+  if (pe > 80 && pePct != null) {
+    return { score: 0.5, note: `PE${pe}倍·${pePct}%分位`, warn: false };
+  }
+  if (pe > 50 && pePct != null && pePct < 40) {
+    return { score: 0.7, note: `PE${pe}倍偏高·${pePct}%分位`, warn: false };
+  }
+
+  // 3. 金融股：PE + PB 各半
+  if (industryType === "finance" && pb && pb > 0 && pbPct != null) {
+    const peS = pePct != null ? (pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) : 1.0;
+    const pbS = pbPct < 25 ? 1.5 : pbPct < 65 ? 1.0 : 0.5;
+    return { score: +(peS * 0.5 + pbS * 0.5).toFixed(2), note: `PE${pePct}% PB${pbPct}%分位`, warn: false };
+  }
+
+  // 4. 周期股：PE 低位 + 警告
+  if (industryType === "cycle" && pePct != null && pePct < 40) {
+    return { score: pePct < 20 ? 1.4 : 1.0, note: `PE${pePct}%分位⚠️周期顶部`, warn: true };
+  }
+
+  // 5. 通用：PE 分位
+  if (pePct != null) {
+    return { score: pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5, note: `PE${pePct}%分位`, warn: false };
+  }
+
+  return { score: 1.0, note: "数据不足", warn: false };
+}
+
+/**
+ * 计算基金估值信号（PE 历史分位 + 行业修正）
  *
  * 判定：
- *   < 0.7 → 低估    0.7 ~ 1.3 → 正常    > 1.3 → 高估
- *   持仓占比 < 20% → 跳过
- *   全部持仓无52周数据 → 无数据
+ *   PE 分位 < 30% → 低估（normPE < 0.7）
+ *   30%-70% → 正常
+ *   > 70% → 高估（normPE > 1.3）
+ *
+ * 行业修正：
+ *   金融/银行 → 优先 PB 分位
+ *   周期 → 仅 PE 分位，分位 < 30% 时加风险提示
+ *   亏损股 → 仅 PB（如 PB 不可用则标注"PE无效"）
  */
 function calcSignal(fundCode, holdings, stockMap) {
-  const MIN_NORM = 0.25;
-  const MAX_NORM = 4.0;
   const MIN_COVERAGE = 20;
-
-  let totalRatio = 0;
-  let totalLogNormPE = 0;
-  let stocksWith52w = 0;
-  let totalStocks = 0;
+  let totalRatio = 0, totalScore = 0, stocksWithData = 0, totalStocks = 0;
   const detailPEs = [];
+  const warnings = [];
 
   holdings.forEach(h => {
     const stock = stockMap[h.stockCode];
-    if (!stock || !stock.pe || stock.pe <= 0) return;
+    if (!stock) return;
     totalStocks++;
 
-    let rawNormPE;
-    if (stock.high52w && stock.low52w && stock.price && stock.high52w > stock.low52w) {
-      const pos = (stock.price - stock.low52w) / (stock.high52w - stock.low52w);
-      rawNormPE = +(pos * 2).toFixed(3);
-      stocksWith52w++;
-    } else {
-      rawNormPE = 1.0;
-    }
+    const pePct = stock.pe && stock.pe > 0 ? computePEPercentile(stock.pe, stock.peHistory) : null;
+    const pbPct = stock.pb && stock.pb > 0 ? computePEPercentile(stock.pb, stock.pbHistory) : null;
+    const iType = classifyIndustry(stock.industry || "");
+    const sr = getStockScore(stock.pe, pePct, stock.pb, pbPct, iType);
 
-    const normPE = +Math.max(MIN_NORM, Math.min(MAX_NORM, rawNormPE)).toFixed(3);
-    totalLogNormPE += Math.log(normPE) * h.navRatio;
+    totalScore += sr.score * h.navRatio;
     totalRatio += h.navRatio;
+    stocksWithData++;
+    if (sr.warn) warnings.push(`${h.stockName}: ${sr.note}`);
 
     detailPEs.push({
-      code: h.stockCode,
-      name: h.stockName,
-      pe: +stock.pe.toFixed(2),
-      industry: stock.industry,
-      normPE,
-      ratio: h.navRatio,
+      code: h.stockCode, name: h.stockName,
+      pe: stock.pe ? +stock.pe.toFixed(2) : null,
+      pb: stock.pb ? +stock.pb.toFixed(2) : null,
+      industry: stock.industry, normPE: sr.score, ratio: h.navRatio, note: sr.note,
     });
   });
 
-  if (totalRatio < MIN_COVERAGE) {
-    console.log(`[computeFundTemperature] ${fundCode} 持仓股占比仅 ${totalRatio}%，低于${MIN_COVERAGE}%阈值，跳过`);
-    return null;
+  if (totalRatio < MIN_COVERAGE) return null;
+  if (stocksWithData === 0) {
+    const wp = totalRatio > 0 ? +(totalRatio / totalRatio).toFixed(2) : 0;
+    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWithData: 0, totalStocks, detailPEs, warnings };
   }
 
-  // 全部无52周数据 → 标记为无数据
-  if (stocksWith52w === 0 && totalStocks > 0) {
-    let totalPE = 0;
-    holdings.forEach(h => {
-      const stock = stockMap[h.stockCode];
-      if (stock && stock.pe > 0) totalPE += stock.pe * h.navRatio;
-    });
-    const wp = totalRatio > 0 ? +(totalPE / totalRatio).toFixed(2) : 0;
-    return {
-      fundCode,
-      signal: "nodata",
-      label: "--",
-      normPE: 0,
-      weightedPE: wp,
-      coverage: +totalRatio.toFixed(1),
-      stocksWith52w: 0,
-      totalStocks,
-      detailPEs,
-    };
-  }
-
-  const normPE = +(Math.exp(totalLogNormPE / totalRatio)).toFixed(3);
+  const avgScore = +(totalScore / totalRatio).toFixed(3);
+  const normPE = +(2.0 - avgScore).toFixed(3);
 
   let totalWeightedPE = 0;
   holdings.forEach(h => {
     const stock = stockMap[h.stockCode];
-    if (stock && stock.pe > 0) totalWeightedPE += stock.pe * h.navRatio;
+    if (stock && stock.pe && stock.pe > 0) totalWeightedPE += stock.pe * h.navRatio;
   });
   const weightedPE = totalRatio > 0 ? +(totalWeightedPE / totalRatio).toFixed(2) : 0;
 
   let signal, label;
-  if (normPE < 0.7) { signal = "low"; label = "低估"; }
-  else if (normPE > 1.3) { signal = "high"; label = "高估"; }
+  // 阈值放宽：avgScore ∈ [0.5, 1.5], normPE ∈ [0.5, 1.5]
+  // < 0.75 → 低估（avgScore > 1.25, 即组合里多数股票显著低估）
+  // 0.75-1.25 → 正常
+  // > 1.25 → 高估
+  if (normPE < 0.75) { signal = "low"; label = "低估"; }
+  else if (normPE > 1.25) { signal = "high"; label = "高估"; }
   else { signal = "mid"; label = "正常"; }
 
-  return {
-    fundCode,
-    signal,
-    label,
-    normPE,
-    weightedPE,
-    coverage: +totalRatio.toFixed(1),
-    stocksWith52w,
-    totalStocks,
-    detailPEs,
-  };
+  if (warnings.length > 0) label += "⚠️";
+
+  return { fundCode, signal, label, normPE, weightedPE, coverage: +totalRatio.toFixed(1), stocksWithData, totalStocks, detailPEs, warnings };
 }

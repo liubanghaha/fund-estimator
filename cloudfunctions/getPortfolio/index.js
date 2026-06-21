@@ -465,7 +465,17 @@ async function computeTemperaturesForCodes(fundCodes, today) {
     });
   });
   const stockCodes = [...stockSet];
-  const stockMap = stockCodes.length > 0 ? await batchFetchTempPE(stockCodes) : {};
+  const stockMap = stockCodes.length > 0 ? await batchFetchTempLive(stockCodes) : {};
+  if (stockCodes.length > 0) {
+    const histMap = await batchFetchTempHist(stockCodes);
+    stockCodes.forEach(code => {
+      if (stockMap[code] && histMap[code]) {
+        stockMap[code].peHistory = histMap[code].peYears || [];
+        stockMap[code].pbHistory = histMap[code].pbYears || [];
+        stockMap[code].totalYears = histMap[code].totalYears || 0;
+      }
+    });
+  }
 
   // 3. 计算信号
   for (const [code, holdings] of Object.entries(fundHoldings)) {
@@ -479,7 +489,7 @@ async function computeTemperaturesForCodes(fundCodes, today) {
         normPE: result.normPE,
         weightedPE: result.weightedPE,
         coverage: result.coverage,
-        stocksWith52w: result.stocksWith52w,
+        stocksWithData: result.stocksWithData,
         totalStocks: result.totalStocks,
         detailPEs: result.detailPEs,
         createTime: new Date(),
@@ -555,7 +565,7 @@ function fetchTempHoldings(fundCode) {
   });
 }
 
-async function batchFetchTempPE(codes) {
+async function batchFetchTempLive(codes) {
   const https = require("https");
   const map = {};
   const BATCH = 40;
@@ -567,7 +577,7 @@ async function batchFetchTempPE(codes) {
   for (let i = 0; i < codes.length; i += BATCH) {
     const batch = codes.slice(i, i + BATCH);
     const secids = batch.map(buildSecid).join(",");
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f350,f351&secids=${secids}`;
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}`;
     await new Promise((resolve) => {
       const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
         let body = "";
@@ -578,17 +588,14 @@ async function batchFetchTempPE(codes) {
             if (data && data.diff) {
               data.diff.forEach(item => {
                 const pe = item.f9;
-                if (pe && pe > 0) {
+                if (pe !== undefined && pe !== null) {
                   const actualPE = pe > 500 ? pe / 100 : pe;
-                  let high52w = null, low52w = null;
-                  if (item.f350 > 0 && item.f351 > 0 && item.f350 < 1e6) {
-                    high52w = +item.f350;
-                    low52w = +item.f351;
-                  }
+                  const pb = item.f164 != null ? (+item.f164) : null;
                   map[item.f12] = {
-                    pe: actualPE, price: item.f2 || null,
+                    pe: actualPE,
+                    pb: pb && pb > 0 ? pb : null,
+                    price: item.f2 || null,
                     industry: item.f100 || "其他",
-                    high52w, low52w,
                   };
                 }
               });
@@ -604,55 +611,127 @@ async function batchFetchTempPE(codes) {
   return map;
 }
 
+async function batchFetchTempHist(codes) {
+  const https = require("https");
+  const map = {};
+  for (const code of codes) {
+    await new Promise((resolve) => {
+      const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
+      const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const d = JSON.parse(body);
+            const data = (d.result && d.result.data) || [];
+            map[code] = {
+              peYears: data.map(r => ({ avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN })).filter(r => r.avg > 0 && r.avg < 10000),
+              pbYears: data.map(r => ({ avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN })).filter(r => r.avg > 0 && r.avg < 1000),
+              totalYears: data.length,
+            };
+          } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
+          resolve();
+        });
+      });
+      req.setTimeout(10000, () => { req.destroy(); resolve(); });
+      req.on("error", () => resolve());
+    });
+  }
+  return map;
+}
+
+function _classifyIndustry(industry) {
+  const cyc = ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃"];
+  const fin = ["银行","保险","证券","地产","房地产","多元金融"];
+  for (const kw of cyc) if (industry.includes(kw)) return "cycle";
+  for (const kw of fin) if (industry.includes(kw)) return "finance";
+  return "other";
+}
+
+function _pePct(currentPE, peYears) {
+  if (!peYears || peYears.length < 3) return null;
+  const avgs = peYears.map(y => y.avg).sort((a, b) => a - b);
+  let below = 0;
+  for (const a of avgs) { if (currentPE > a) below++; }
+  return Math.round((below / avgs.length) * 100);
+}
+
 function calcTempSignal(fundCode, holdings, stockMap) {
   const MIN_COVERAGE = 20;
-  let totalRatio = 0, totalLogNormPE = 0, stocksWith52w = 0, totalStocks = 0;
+  let totalRatio = 0, totalScore = 0, stocksWithData = 0, totalStocks = 0;
   const detailPEs = [];
 
   holdings.forEach(h => {
     const stock = stockMap[h.stockCode];
-    if (!stock || !stock.pe || stock.pe <= 0) return;
+    if (!stock) return;
     totalStocks++;
-    let rawNormPE;
-    if (stock.high52w && stock.low52w && stock.price && stock.high52w > stock.low52w) {
-      rawNormPE = +(((stock.price - stock.low52w) / (stock.high52w - stock.low52w)) * 2).toFixed(3);
-      stocksWith52w++;
-    } else {
-      rawNormPE = 1.0;
-    }
-    const normPE = +Math.max(0.25, Math.min(4.0, rawNormPE)).toFixed(3);
-    totalLogNormPE += Math.log(normPE) * h.navRatio;
+    const iType = _classifyIndustry(stock.industry || "");
+    let stockScore, note = "";
+
+	    if (!stock.pe || stock.pe <= 0 || stock.pe > 500) {
+	      if (stock.pb && stock.pb > 0 && iType === "finance") {
+	        const pp = _pePct(stock.pb, stock.pbHistory);
+	        stockScore = pp != null ? (pp < 25 ? 1.6 : pp < 65 ? 1.0 : 0.4) : 1.0;
+	        note = pp != null ? `PB${pp}%分位(PE无效)` : "PE无效";
+	      } else { stockScore = 1.0; note = "PE无效"; }
+	    } else if (stock.pe > 80) {
+	      const pePct = _pePct(stock.pe, stock.peHistory);
+	      stockScore = 0.5;
+	      note = `PE${stock.pe.toFixed(0)}倍·${pePct != null ? pePct + '%分位' : ''}`;
+	    } else if (stock.pe > 50) {
+	      const pePct = _pePct(stock.pe, stock.peHistory);
+	      if (pePct != null && pePct < 40) {
+	        stockScore = 0.7;
+	        note = `PE${stock.pe.toFixed(0)}倍偏高·${pePct}%分位`;
+	      } else {
+	        stockScore = pePct != null ? (pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) : 1.0;
+	        note = pePct != null ? `PE${pePct}%分位` : "数据不足";
+	      }
+	    } else {
+	      const pePct = _pePct(stock.pe, stock.peHistory);
+	      if (pePct == null) { stockScore = 1.0; note = "数据不足"; }
+	      else if (iType === "finance" && stock.pb && stock.pb > 0) {
+	        const pp = _pePct(stock.pb, stock.pbHistory);
+	        if (pp != null) {
+	          stockScore = +((pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) * 0.5 + (pp < 25 ? 1.5 : pp < 65 ? 1.0 : 0.5) * 0.5).toFixed(2);
+	          note = `PE${pePct}%分位 PB${pp}%分位`;
+	        } else { stockScore = pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5; note = `PE${pePct}%分位`; }
+	      } else if (iType === "cycle" && pePct < 40) {
+	        stockScore = pePct < 20 ? 1.4 : 1.0;
+	        note = pePct != null ? `PE${pePct}%分位⚠️周期顶` : "";
+	      } else {
+	        stockScore = pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5;
+	        note = `PE${pePct}%分位`;
+	      }
+	    }
+
+    totalScore += stockScore * h.navRatio;
     totalRatio += h.navRatio;
+    stocksWithData++;
     detailPEs.push({
       code: h.stockCode, name: h.stockName,
-      pe: +stock.pe.toFixed(2), industry: stock.industry,
-      normPE, ratio: h.navRatio,
+      pe: stock.pe ? +stock.pe.toFixed(2) : null,
+      pb: stock.pb ? +stock.pb.toFixed(2) : null,
+      industry: stock.industry, normPE: stockScore, ratio: h.navRatio, note,
     });
   });
 
   if (totalRatio < MIN_COVERAGE) return null;
-  if (stocksWith52w === 0 && totalStocks > 0) {
-    let totalPE = 0;
-    holdings.forEach(h => {
-      const stock = stockMap[h.stockCode];
-      if (stock && stock.pe > 0) totalPE += stock.pe * h.navRatio;
-    });
-    const wp = totalRatio > 0 ? +(totalPE / totalRatio).toFixed(2) : 0;
-    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWith52w: 0, totalStocks, detailPEs };
+  if (stocksWithData === 0) {
+    let tp = 0;
+    holdings.forEach(h => { const s = stockMap[h.stockCode]; if (s && s.pe > 0) tp += s.pe * h.navRatio; });
+    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: totalRatio > 0 ? +(tp / totalRatio).toFixed(2) : 0, coverage: +totalRatio.toFixed(1), stocksWithData: 0, totalStocks, detailPEs };
   }
-
-  const normPE = +(Math.exp(totalLogNormPE / totalRatio)).toFixed(3);
-  let totalWeightedPE = 0;
-  holdings.forEach(h => {
-    const stock = stockMap[h.stockCode];
-    if (stock && stock.pe > 0) totalWeightedPE += stock.pe * h.navRatio;
-  });
-  const weightedPE = totalRatio > 0 ? +(totalWeightedPE / totalRatio).toFixed(2) : 0;
+  const avgScore = +(totalScore / totalRatio).toFixed(3);
+  const normPE = +(2.0 - avgScore).toFixed(3);
+  let tp = 0;
+  holdings.forEach(h => { const s = stockMap[h.stockCode]; if (s && s.pe > 0) tp += s.pe * h.navRatio; });
+  const wp = totalRatio > 0 ? +(tp / totalRatio).toFixed(2) : 0;
   let signal, label;
   if (normPE < 0.7) { signal = "low"; label = "低估"; }
   else if (normPE > 1.3) { signal = "high"; label = "高估"; }
   else { signal = "mid"; label = "正常"; }
-  return { fundCode, signal, label, normPE, weightedPE, coverage: +totalRatio.toFixed(1), stocksWith52w, totalStocks, detailPEs };
+  return { fundCode, signal, label, normPE, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWithData, totalStocks, detailPEs };
 }
 
 async function recoverTempHoldings(fundCodes) {

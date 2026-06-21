@@ -185,9 +185,9 @@
   <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
     <view class="temp-tooltip-card" catch:tap="">
       <view class="temp-tooltip-arrow"></view>
-      <view class="temp-tooltip-formula">基金估值 = 持仓股现价处于各自52周区间位置，按持仓占比加权</view>
-      <view class="temp-tooltip-rule">{{lt}} 0.7 低估 | 0.7~1.3 正常 | {{gt}} 1.3 高估</view>
-      <view class="temp-tooltip-source">数据来源：东方财富 · 每日更新</view>
+      <view class="temp-tooltip-formula">基金估值 = 持仓股PE处于历史PE区间的位置，按持仓占比加权；金融股参考PB、周期股加注风险</view>
+      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 | 0.75~1.25 正常 | {{gt}} 1.25 高估</view>
+      <view class="temp-tooltip-source">数据来源：东方财富历史PE+PB · 每日更新</view>
       <view class="temp-tooltip-disclaimer">仅供参考，不构成投资建议</view>
     </view>
   </view>
