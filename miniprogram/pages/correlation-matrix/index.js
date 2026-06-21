@@ -91,40 +91,34 @@ Page({
     query.select('#healthCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
-      const w = 140 * (wx.getSystemInfoSync().pixelRatio || 2);
-      canvas.width = w;
-      canvas.height = w;
+      const dpr = wx.getSystemInfoSync().pixelRatio;
+      const w = res[0].width;
+      const h = res[0].height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
       const ctx = canvas.getContext('2d');
-      const cx = w / 2, cy = w / 2, r = w / 2 - 8;
-      const dpr = w / 140;
+      ctx.scale(dpr, dpr);
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 6;
 
       // 底色环
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-      ctx.lineWidth = 10 * dpr;
+      ctx.lineWidth = 8;
       ctx.strokeStyle = '#EEE';
       ctx.stroke();
 
       // 进度弧
-      const pct = score / 100;
+      const pct = Math.min(1, Math.max(0, score / 100));
       const startAngle = -Math.PI / 2;
       const endAngle = startAngle + pct * 2 * Math.PI;
       const color = score >= 80 ? '#4CAF50' : score >= 60 ? '#1976D2' : score >= 40 ? '#FF9800' : '#E4393C';
 
       ctx.beginPath();
       ctx.arc(cx, cy, r, startAngle, endAngle);
-      ctx.lineWidth = 10 * dpr;
+      ctx.lineWidth = 8;
       ctx.strokeStyle = color;
       ctx.lineCap = 'round';
       ctx.stroke();
-
-      // 末端圆点
-      const ex = cx + r * Math.cos(endAngle);
-      const ey = cy + r * Math.sin(endAngle);
-      ctx.beginPath();
-      ctx.arc(ex, ey, 5 * dpr, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.fill();
     });
   },
 
