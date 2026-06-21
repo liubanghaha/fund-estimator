@@ -156,7 +156,7 @@
         <view class="idx-save-btn" bind:tap="onSaveIndexPrefs">保存</view>
       </view>
     </view>
-    <view wx:elif="{{!indexExpanded}}" class="index-collapsed" bind:tap="onToggleIndex">
+    <view wx:if="{{!indexExpanded}}" class="index-collapsed" bind:tap="onToggleIndex">
       <view class="index-card {{indexCards[0].isUp ? 'card-up' : 'card-down'}}" style="flex:1;padding:10rpx 24rpx;flex-direction:row;justify-content:space-between;align-items:center">
         <text class="ic-name" style="margin-bottom:0">{{indexCards[0].name}}</text>
         <text class="ic-price {{indexCards[0].isUp ? 'up' : 'down'}}" style="margin-bottom:0">{{indexCards[0].price}}</text>
@@ -165,23 +165,21 @@
         <text class="idx-expand-hint">▼</text>
       </view>
     </view>
-    <view wx:elif="{{indexExpanded}}" class="index-expanded-panel">
+    <view wx:elif="{{indexExpanded}}" class="index-scroll-wrap">
       <view class="idx-expanded-top" bind:tap="onToggleIndex">
         <text class="idx-gear" catch:tap="onToggleIndexEdit">⚙</text>
-        <text class="idx-expand-hint">▲</text>
+        <text class="idx-collapse-btn">▲</text>
       </view>
-      <view class="index-scroll-anim {{indexExpanded ? 'open' : ''}}">
-        <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
-          <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}">
-            <view class="ic-name">{{item.name}}</view>
-            <view class="ic-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
-            <view class="ic-change-row">
-              <text class="{{item.isUp ? 'up' : 'down'}}">{{item.change}}</text>
-              <text class="{{item.isUp ? 'up' : 'down'}}">  {{item.changeRate}}%</text>
-            </view>
+      <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
+        <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}">
+          <view class="ic-name">{{item.name}}</view>
+          <view class="ic-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
+          <view class="ic-change-row">
+            <text class="{{item.isUp ? 'up' : 'down'}}">{{item.change}}</text>
+            <text class="{{item.isUp ? 'up' : 'down'}}">  {{item.changeRate}}%</text>
           </view>
-        </scroll-view>
-      </view>
+        </view>
+      </scroll-view>
     </view>
   </view>
 

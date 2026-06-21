@@ -72,10 +72,10 @@
     <view class="empty-hint">添加持仓后，自选中持有的基金会自动出现在这里</view>
   </view>
   <view wx:elif="{{displayList.length === 0}}" class="empty-wrap">
+    <button class="add-fund-btn" bind:tap="onAddToGroup">添加基金</button>
     <view class="empty-icon">📂</view>
     <view class="empty-text">该分组暂无基金</view>
     <view class="empty-hint">长按基金可移动到本分组</view>
-    <button class="add-fund-btn" bind:tap="onAddToGroup">添加基金</button>
   </view>
 
   <view wx:else class="list">

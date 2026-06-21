@@ -26,7 +26,7 @@
 
 /* 仪表盘 */
 .dashboard{padding:0 24rpx}
-.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:28rpx 32rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
+.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 32rpx 32rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
 .amount-toggle{position:absolute;right:24rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:20rpx;z-index:1}
 .asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
@@ -45,10 +45,10 @@
 .batch-top-delete{font-size:26rpx;color:#E4393C}
 
 /* 快捷操作 */
-.quick-actions{display:flex;justify-content:space-around;padding:16rpx 0;background:#FFF;border-radius:12rpx 12rpx 0 0;margin:0 4rpx;border-bottom:1rpx solid #F5F5F5}
-.action-item{display:flex;flex-direction:column;align-items:center;gap:6rpx}
-.action-icon{font-size:36rpx}
-.action-text{font-size:22rpx;color:#666}
+.quick-actions{display:flex;justify-content:space-around;padding:22rpx 0;background:#FFF;border-radius:12rpx 12rpx 0 0;margin:0 4rpx;border-bottom:1rpx solid #F5F5F5}
+.action-item{display:flex;flex-direction:column;align-items:center;gap:8rpx}
+.action-icon{font-size:40rpx}
+.action-text{font-size:24rpx;color:#666}
 
 /* 持仓穿透 */
 .asset-section{margin:0 0 12rpx;background:#FFF;border-radius:12rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
@@ -159,16 +159,11 @@
 /* 指数行情 */
 .index-bar{position:fixed;left:0;right:0;bottom:0;background:#FFF;border-top:1rpx solid #F0F0F0;z-index:100;padding:8rpx 0 0;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.04)}
 .index-collapsed{display:flex;align-items:center;justify-content:center;padding:4rpx 16rpx}
-.idx-collapse-tap{padding:4rpx 16rpx 0}
 .idx-expand-hint{font-size:20rpx;color:#CCC}
 .idx-gear{font-size:28rpx;padding:4rpx 8rpx;flex-shrink:0}
-.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 0}
-.index-expanded-panel{background:#FFF}
-.index-scroll-anim{overflow:hidden;animation:idxSlideIn .3s ease}
-@keyframes idxSlideIn{
-  from{max-height:0;opacity:0}
-  to{max-height:240rpx;opacity:1}
-}
+.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:0 24rpx 4rpx}
+.idx-collapse-btn{font-size:22rpx;color:#999}
+.index-scroll-wrap{background:#FFF}
 .index-scroll{width:100%;white-space:nowrap;padding:4rpx 0 12rpx}
 .index-card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:180rpx;padding:16rpx 0;margin:0 6rpx;border-radius:12rpx;border:1rpx solid #F0F0F0;white-space:normal}
 .index-card.card-up{background:linear-gradient(180deg,rgba(229,57,53,.06),rgba(229,57,53,.01));border-color:rgba(229,57,53,.15)}
