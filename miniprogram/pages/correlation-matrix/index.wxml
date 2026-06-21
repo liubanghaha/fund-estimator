@@ -8,10 +8,9 @@
     <view wx:if="{{healthScore}}" class="card">
       <view class="card-title">📊 持仓健康分</view>
       <view class="health-main">
-        <canvas type="2d" id="healthCanvas" class="health-canvas"></canvas>
-        <view class="health-ring-inner">
+        <view class="health-ring-wrap">
+          <canvas type="2d" id="healthCanvas" class="health-canvas"></canvas>
           <text class="health-score">{{healthScore.score}}</text>
-          <text class="health-label">健康分</text>
         </view>
         <view class="health-right">
           <view class="health-grade {{healthScore.grade === '优秀' ? 'up' : healthScore.grade === '较差' ? 'down' : ''}}">{{healthScore.grade}}</view>

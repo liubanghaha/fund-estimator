@@ -9,9 +9,9 @@
 /* 健康分 */
 .health-main{display:flex;align-items:center;position:relative}
 .health-canvas{width:140rpx;height:140rpx;flex-shrink:0}
-.health-ring-inner{position:absolute;left:0;top:0;width:140rpx;height:140rpx;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
-.health-score{font-size:40rpx;font-weight:700;color:var(--primary);line-height:1}
-.health-label{font-size:18rpx;color:#BBB}
+.health-ring-wrap{position:relative;width:140rpx;height:140rpx;flex-shrink:0}
+.health-canvas{width:140rpx;height:140rpx}
+.health-score{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:36rpx;font-weight:700;color:var(--primary);pointer-events:none}
 .health-right{flex:1;padding-left:24rpx}
 .health-grade{font-size:28rpx;font-weight:600;color:#333;margin-bottom:6rpx}
 .health-grade.up{color:#2E8B57}
