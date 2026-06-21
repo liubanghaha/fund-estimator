@@ -147,7 +147,7 @@
         <view class="hold-header">
           <text class="hold-h-name">名称</text>
           <text class="hold-h-change">今日涨跌</text>
-          <text class="hold-h-ratio-chg">较上季度</text>
+          <text class="hold-h-ratio-chg">调仓动向</text>
           <text class="hold-h-ratio">占比</text>
         </view>
         <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
@@ -156,10 +156,24 @@
           <view class="hold-change {{item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : ''}}">
             {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}
           </view>
-          <view class="hold-ratio-change {{item.ratioChange > 0 ? 'up' : item.ratioChange < 0 ? 'down' : ''}}">
-            {{item.ratioChange != null && !isNaN(item.ratioChange) ? (item.ratioChange > 0 ? '+' : '') + item.ratioChange + '%' : '--'}}
+          <view class="hold-ratio-change">
+            <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>
+            <text wx:elif="{{item.changeType === 'up'}}" class="change-tag up">📈+{{item.ratioChange}}%</text>
+            <text wx:elif="{{item.changeType === 'down'}}" class="change-tag down">📉{{item.ratioChange}}%</text>
+            <text wx:else>--</text>
           </view>
           <view class="hold-ratio">{{item.navRatio || '--'}}</view>
+        </view>
+        <!-- 退出的持仓 -->
+        <view wx:if="{{exited && exited.length > 0}}" style="margin-top:16rpx">
+          <view class="section-title" style="font-size:24rpx;color:#999">上季度退出</view>
+          <view wx:for="{{exited}}" wx:key="stockCode" class="hold-row" style="opacity:.5">
+            <view class="hold-rank">-</view>
+            <view class="hold-name">{{item.stockName}}</view>
+            <view class="hold-change">--</view>
+            <view class="hold-ratio-change"><text class="change-tag exit">🚫退出</text></view>
+            <view class="hold-ratio">--</view>
+          </view>
         </view>
       </view>
       <view wx:else class="info-card"><view class="empty-text">暂无持仓数据</view></view>

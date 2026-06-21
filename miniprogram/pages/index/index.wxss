@@ -163,7 +163,8 @@
 .idx-gear{font-size:28rpx;padding:4rpx 8rpx;flex-shrink:0}
 .idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:0 24rpx 4rpx}
 .idx-collapse-btn{font-size:22rpx;color:#999}
-.index-scroll-wrap{background:#FFF}
+.index-scroll-wrap{animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .index-scroll{width:100%;white-space:nowrap;padding:4rpx 0 12rpx}
 .index-card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:180rpx;padding:16rpx 0;margin:0 6rpx;border-radius:12rpx;border:1rpx solid #F0F0F0;white-space:normal}
 .index-card.card-up{background:linear-gradient(180deg,rgba(229,57,53,.06),rgba(229,57,53,.01));border-color:rgba(229,57,53,.15)}

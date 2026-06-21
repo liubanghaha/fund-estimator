@@ -98,6 +98,12 @@
 .hold-h-change{width:120rpx;text-align:right;font-size:22rpx;color:#BBB}
 .hold-h-ratio-chg{width:120rpx;text-align:right;font-size:22rpx;color:#BBB}
 .hold-h-ratio{width:100rpx;text-align:right;font-size:22rpx;color:#BBB}
+.hold-ratio-change{width:120rpx;text-align:right;font-size:24rpx;color:#999}
+.change-tag{font-size:22rpx;padding:2rpx 8rpx;border-radius:6rpx;white-space:nowrap}
+.change-tag.new{color:#4CAF50;background:rgba(76,175,80,.1)}
+.change-tag.up{color:#E4393C;background:rgba(228,57,60,.08)}
+.change-tag.down{color:#2E8B57;background:rgba(46,139,87,.08)}
+.change-tag.exit{color:#BBB;background:#F5F5F5}
 
 .hold-name{font-size:28rpx;color:#333;margin-left:16rpx;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hk-tag{display:inline-block;font-size:18rpx;color:var(--primary);background:var(--primary-bg);border:1rpx solid var(--primary);border-radius:4rpx;padding:0 6rpx;margin-left:8rpx;vertical-align:middle;font-weight:600;line-height:1.4}

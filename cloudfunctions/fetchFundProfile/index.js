@@ -35,13 +35,22 @@ exports.main = async (event) => {
       if (prev && prev.navRatio) {
         const v = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
         h.ratioChange = isNaN(v) ? null : v;
+        h.changeType = v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'hold';
+      } else if (prev) {
+        h.ratioChange = null;
+        h.changeType = 'hold';
       } else {
         h.ratioChange = null;
+        h.changeType = 'new';
       }
     });
+    // 上季度有但本季度没有的 → 退出
+    const currCodes = new Set(holdings.map(h => h.stockCode));
+    const exited = prevHoldings.filter(h => !currCodes.has(h.stockCode)).map(h => ({
+      ...h, changeType: 'exit', ratioChange: null,
+    }));
 
     // 提取前 10 持仓（排除带 * 的非固定持仓）
-    // 股票行情由客户端异步补拉，云函数不等待，优先返回持仓列表
     const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
 
     const enrichedHoldings = top10.map(h => ({
@@ -50,7 +59,14 @@ exports.main = async (event) => {
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings } };
+    // 退出的也传回去（前端按需显示）
+    const enrichedExited = exited.filter(h => !h.rank.includes('*')).map(h => ({
+      ...h,
+      stockChangeRate: null,
+      isHK: h.stockCode && h.stockCode.length === 5,
+    }));
+
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited } };
   } catch (e) {
     return { code: 500, msg: "获取基金信息失败" };
   }

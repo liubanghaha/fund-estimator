@@ -165,7 +165,7 @@
         <text class="idx-expand-hint">▼</text>
       </view>
     </view>
-    <view wx:elif="{{indexExpanded}}" class="index-scroll-wrap">
+    <view wx:else class="index-scroll-wrap">
       <view class="idx-expanded-top" bind:tap="onToggleIndex">
         <text class="idx-gear" catch:tap="onToggleIndexEdit">⚙</text>
         <text class="idx-collapse-btn">▲</text>
