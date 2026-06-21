@@ -191,6 +191,44 @@
           <view class="profile-item full" wx:if="{{profile.company}}"><view class="profile-label">基金公司</view><view class="profile-value">{{profile.company}}</view></view>
         </view>
       </view>
+      <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">
+        <view class="fee-header" bind:tap="onToggleFee">
+          <view>
+            <text class="fee-title">💰 费用黑洞</text>
+            <text class="fee-subtitle">年费率 {{totalFeeRate}}%</text>
+          </view>
+          <text class="fee-arrow {{showFee ? 'open' : ''}}">{{showFee ? '▼' : '▶'}}</text>
+        </view>
+        <view wx:if="{{showFee}}" class="fee-body">
+          <view class="fee-note">假设投资¥100,000，年化收益8%，费率差复利侵蚀：</view>
+          <view class="fee-table">
+            <view class="fee-row fee-row-head">
+              <text class="fee-col-label"></text>
+              <text class="fee-col">5年后</text>
+              <text class="fee-col">10年后</text>
+              <text class="fee-col">20年后</text>
+            </view>
+            <view class="fee-row">
+              <text class="fee-col-label">本基金</text>
+              <text class="fee-col">¥{{feeData.yr5.withFee}}</text>
+              <text class="fee-col">¥{{feeData.yr10.withFee}}</text>
+              <text class="fee-col">¥{{feeData.yr20.withFee}}</text>
+            </view>
+            <view class="fee-row">
+              <text class="fee-col-label">零费率</text>
+              <text class="fee-col">¥{{feeData.yr5.noFee}}</text>
+              <text class="fee-col">¥{{feeData.yr10.noFee}}</text>
+              <text class="fee-col">¥{{feeData.yr20.noFee}}</text>
+            </view>
+            <view class="fee-row fee-row-lost">
+              <text class="fee-col-label">被吞</text>
+              <text class="fee-col">¥{{feeData.yr5.lost}} ({{feeData.yr5.pct}}%)</text>
+              <text class="fee-col">¥{{feeData.yr10.lost}} ({{feeData.yr10.pct}}%)</text>
+              <text class="fee-col">¥{{feeData.yr20.lost}} ({{feeData.yr20.pct}}%)</text>
+            </view>
+          </view>
+        </view>
+      </view>
       </block>
     </view>
 
@@ -251,45 +289,6 @@
           <view class="dca-stat-row">
             <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.annualizedReturn}}%</text><text class="dca-stat-label">年化收益率</text></view>
             <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.months}}</text><text class="dca-stat-label">定投月数</text></view>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">
-      <view class="fee-header" bind:tap="onToggleFee">
-        <view>
-          <text class="fee-title">💰 费用黑洞</text>
-          <text class="fee-subtitle">年费率 {{totalFeeRate}}%</text>
-        </view>
-        <text class="fee-arrow {{showFee ? 'open' : ''}}">{{showFee ? '▼' : '▶'}}</text>
-      </view>
-      <view wx:if="{{showFee}}" class="fee-body">
-        <view class="fee-note">假设投资¥100,000，年化收益8%，费率差复利侵蚀：</view>
-        <view class="fee-table">
-          <view class="fee-row fee-row-head">
-            <text class="fee-col-label"></text>
-            <text class="fee-col">5年后</text>
-            <text class="fee-col">10年后</text>
-            <text class="fee-col">20年后</text>
-          </view>
-          <view class="fee-row">
-            <text class="fee-col-label">本基金</text>
-            <text class="fee-col">¥{{feeData.yr5.withFee}}</text>
-            <text class="fee-col">¥{{feeData.yr10.withFee}}</text>
-            <text class="fee-col">¥{{feeData.yr20.withFee}}</text>
-          </view>
-          <view class="fee-row">
-            <text class="fee-col-label">零费率</text>
-            <text class="fee-col">¥{{feeData.yr5.noFee}}</text>
-            <text class="fee-col">¥{{feeData.yr10.noFee}}</text>
-            <text class="fee-col">¥{{feeData.yr20.noFee}}</text>
-          </view>
-          <view class="fee-row fee-row-lost">
-            <text class="fee-col-label">被吞</text>
-            <text class="fee-col">¥{{feeData.yr5.lost}} ({{feeData.yr5.pct}}%)</text>
-            <text class="fee-col">¥{{feeData.yr10.lost}} ({{feeData.yr10.pct}}%)</text>
-            <text class="fee-col">¥{{feeData.yr20.lost}} ({{feeData.yr20.pct}}%)</text>
           </view>
         </view>
       </view>
