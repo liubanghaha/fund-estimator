@@ -66,9 +66,6 @@
       <!-- 基金对重合（空状态占位，已移除功能） -->
     </view>
 
-      <!-- 基金对重合（空状态占位，已移除功能） -->
-    </view>
-
     <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">暂无数据</view>
     <view wx:if="{{loadError}}" class="empty">加载失败，请稍后重试</view>
   </view>
