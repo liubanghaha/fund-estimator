@@ -46,36 +46,27 @@
       <!-- 重合股票 -->
       <view wx:if="{{sharedStocks.length > 0}}" class="shared-section">
         <view class="card-subtitle">重合持仓股</view>
-        <view wx:for="{{sharedStocks}}" wx:key="stockCode" class="shared-item" bind:tap="onToggleSharedStock" data-index="{{index}}">
-          <view class="shared-left">
-            <text class="shared-name">{{item.stockName}}（{{item.stockCode}}）</text>
-            <text class="shared-arrow {{item._open ? 'open' : ''}}">{{item._open ? '▼' : '▶'}}</text>
+        <block wx:for="{{sharedStocks}}" wx:key="stockCode">
+          <view class="shared-item" bind:tap="onToggleSharedStock" data-index="{{index}}">
+            <view class="shared-left">
+              <text class="shared-name">{{item.stockName}}（{{item.stockCode}}）</text>
+              <text class="shared-arrow {{item._open ? 'open' : ''}}">{{item._open ? '▼' : '▶'}}</text>
+            </view>
+            <text class="shared-count">{{item.fundCount}}只基金持有</text>
           </view>
-          <text class="shared-count">{{item.fundCount}}只基金持有</text>
-        </view>
-        <view wx:if="{{item._open}}" wx:for="{{sharedStocks}}" wx:key="stockCode" wx:for-item="stock" wx:for-index="idx" hidden="{{!stock._open}}" class="shared-funds">
-          <view wx:for="{{stock.funds}}" wx:key="fundCode" wx:for-item="f" class="shared-fund-item">
-            <text class="sfi-name">{{f.fundName || f.fundCode}}</text>
-            <text class="sfi-ratio">{{f.ratio}}%</text>
+          <view wx:if="{{item._open}}" class="shared-funds">
+            <view wx:for="{{item.funds}}" wx:key="fundCode" wx:for-item="f" class="shared-fund-item">
+              <text class="sfi-name">{{f.fundName || f.fundCode}}</text>
+              <text class="sfi-ratio">{{f.ratio}}%</text>
+            </view>
           </view>
-        </view>
+        </block>
       </view>
 
-      <!-- 基金对重合 -->
-      <view class="card-subtitle" style="margin-top:{{sharedStocks.length > 0 ? '20rpx' : '0'}}">基金重合度</view>
-      <view wx:for="{{pairs}}" wx:key="key" class="corr-item">
-        <view class="corr-names">
-          <text class="corr-name">{{item.nameA}}</text>
-          <text class="corr-vs">↔</text>
-          <text class="corr-name">{{item.nameB}}</text>
-        </view>
-        <view class="corr-right">
-          <view class="corr-bar-track">
-            <view class="corr-bar-fill {{item.overlapCount >= 3 ? 'high' : item.overlapCount >= 1 ? 'mid' : 'low'}}" style="width:{{item.overlapCount * 10}}%"></view>
-          </view>
-          <text class="corr-val {{item.overlapCount >= 3 ? 'high' : item.overlapCount >= 1 ? 'mid' : 'low'}}">{{item.overlapCount}}只</text>
-        </view>
-      </view>
+      <!-- 基金对重合（空状态占位，已移除功能） -->
+    </view>
+
+      <!-- 基金对重合（空状态占位，已移除功能） -->
     </view>
 
     <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">暂无数据</view>
