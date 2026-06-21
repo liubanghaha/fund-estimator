@@ -102,4 +102,19 @@
 
   <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
   <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
+
+  <!-- 版本更新日志 -->
+  <view wx:if="{{showVersionLog}}" class="ver-mask" bind:tap="onCloseVersionLog">
+    <view class="ver-card" catch:tap="">
+      <view class="ver-title">韭菜养基宝</view>
+      <view class="ver-version">版本号：{{appVersion}}</view>
+      <scroll-view scroll-y class="ver-body">
+        <view wx:for="{{versionLog}}" wx:key="version" class="ver-block">
+          <view class="ver-block-title">📋 {{item.version}} 更新</view>
+          <view wx:for="{{item.items}}" wx:key="*this" wx:for-item="li" class="ver-item">• {{li}}</view>
+        </view>
+      </scroll-view>
+      <view class="ver-close" bind:tap="onCloseVersionLog">知道了</view>
+    </view>
+  </view>
 </view>

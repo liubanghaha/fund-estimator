@@ -46,3 +46,13 @@
 .fb-cancel{background:#F5F5F5;color:#666}
 .fb-submit{background:var(--primary);color:#FFF}
 .fb-submit[disabled]{opacity:.6}
+
+.ver-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+.ver-card{width:580rpx;max-height:70vh;background:#FFF;border-radius:20rpx;display:flex;flex-direction:column;overflow:hidden}
+.ver-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;padding:36rpx 0 4rpx}
+.ver-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:20rpx}
+.ver-body{flex:1;overflow-y:auto;padding:0 32rpx 24rpx}
+.ver-block{margin-bottom:20rpx}
+.ver-block-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:10rpx}
+.ver-item{font-size:26rpx;color:#555;line-height:2;padding-left:4rpx}
+.ver-close{margin:0 32rpx 28rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx}

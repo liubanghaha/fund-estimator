@@ -204,18 +204,13 @@ Page({
   },
 
   onShowVersion() {
-    const appVersion = getApp().getVersion() || "1.0.0";
-    const changelog = getApp().getChangelog() || [];
-    const current = changelog.find(c => c.version === appVersion);
-    let content = `版本号：${appVersion}`;
-    if (current && current.items) {
-      content += `\n\n📋 ${current.version} 更新\n${current.items.map(i => '• ' + i).join('\n')}`;
-    }
-    wx.showModal({
-      title: "韭菜养基宝",
-      content,
-      showCancel: false,
-      confirmText: "知道了",
+    this.setData({
+      appVersion: getApp().getVersion() || "1.0.0",
+      versionLog: getApp().getChangelog() || [],
+      showVersionLog: true,
     });
+  },
+  onCloseVersionLog() {
+    this.setData({ showVersionLog: false });
   },
 });
