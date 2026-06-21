@@ -162,6 +162,7 @@
 .idx-collapse-tap{padding:4rpx 16rpx 0}
 .idx-expand-hint{font-size:20rpx;color:#CCC}
 .idx-gear{font-size:28rpx;padding:4rpx 8rpx;flex-shrink:0}
+.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 0}
 .index-expanded-panel{background:#FFF}
 .index-scroll-anim{overflow:hidden;animation:idxSlideIn .3s ease}
 @keyframes idxSlideIn{

@@ -166,15 +166,9 @@
       </view>
     </view>
     <view wx:elif="{{indexExpanded}}" class="index-expanded-panel">
-      <view class="index-collapsed idx-collapse-tap" bind:tap="onToggleIndex">
-        <view class="index-card {{indexCards[0].isUp ? 'card-up' : 'card-down'}}" style="flex:1;padding:10rpx 24rpx;flex-direction:row;justify-content:space-between;align-items:center">
-          <text class="ic-name" style="margin-bottom:0">{{indexCards[0].name}}</text>
-          <text class="ic-price {{indexCards[0].isUp ? 'up' : 'down'}}" style="margin-bottom:0">{{indexCards[0].price}}</text>
-          <text class="{{indexCards[0].isUp ? 'up' : 'down'}}" style="font-size:24rpx">{{indexCards[0].change}}</text>
-          <text class="{{indexCards[0].isUp ? 'up' : 'down'}}" style="font-size:24rpx">{{indexCards[0].changeRate}}%</text>
-          <text class="idx-expand-hint">▲</text>
-        </view>
-        <text class="idx-gear" catch:tap="onToggleIndexEdit" style="margin-left:12rpx">⚙</text>
+      <view class="idx-expanded-top" bind:tap="onToggleIndex">
+        <text class="idx-gear" catch:tap="onToggleIndexEdit">⚙</text>
+        <text class="idx-expand-hint">▲</text>
       </view>
       <view class="index-scroll-anim {{indexExpanded ? 'open' : ''}}">
         <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
