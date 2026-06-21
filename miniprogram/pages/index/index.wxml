@@ -105,7 +105,7 @@
           <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
               <view class="t-row t-head" bind:longpress="onLongPressHeader">
-                <view class="t-cell t-name">基金名称</view>
+                <view class="t-cell t-name">基金名称<text class="t-hint">长按排序</text></view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
@@ -163,11 +163,13 @@
       </view>
     </view>
     <view wx:elif="{{!indexExpanded}}" class="index-collapsed" bind:tap="onToggleIndex">
-      <text class="idx-name">{{indexCards[0].name}}</text>
-      <text class="idx-price {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].price}}</text>
-      <text class="idx-change {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].change}}</text>
-      <text class="idx-change-rate {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].changeRate}}%</text>
-      <text class="idx-expand-hint">▼</text>
+      <view class="index-card {{indexCards[0].isUp ? 'card-up' : 'card-down'}}" style="flex:1;padding:10rpx 24rpx;flex-direction:row;justify-content:space-between;align-items:center">
+        <text class="ic-name" style="margin-bottom:0">{{indexCards[0].name}}</text>
+        <text class="ic-price {{indexCards[0].isUp ? 'up' : 'down'}}" style="margin-bottom:0">{{indexCards[0].price}}</text>
+        <text class="{{indexCards[0].isUp ? 'up' : 'down'}}" style="font-size:24rpx">{{indexCards[0].change}}</text>
+        <text class="{{indexCards[0].isUp ? 'up' : 'down'}}" style="font-size:24rpx">{{indexCards[0].changeRate}}%</text>
+        <text class="idx-expand-hint">▼</text>
+      </view>
     </view>
     <view wx:elif="{{indexExpanded}}" class="index-expanded-panel">
       <view class="idx-expanded-top" bind:tap="onToggleIndex">
@@ -210,6 +212,18 @@
         </view>
       </view>
       <view class="col-edit-close" bind:tap="onCloseColEdit">完成</view>
+    </view>
+  </view>
+
+  <!-- 版本更新日志 -->
+  <view wx:if="{{showChangelog}}" class="changelog-mask" bind:tap="onCloseChangelog">
+    <view class="changelog-card" catch:tap="">
+      <view class="changelog-title">🎉 新版本更新</view>
+      <view class="changelog-version">{{changelog.version}} · {{changelog.date}}</view>
+      <view class="changelog-list">
+        <view wx:for="{{changelog.items}}" wx:key="*this" class="changelog-item">{{item}}</view>
+      </view>
+      <view class="changelog-close" bind:tap="onCloseChangelog">知道了</view>
     </view>
   </view>
 </view>

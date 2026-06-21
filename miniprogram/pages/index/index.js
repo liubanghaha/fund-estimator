@@ -75,6 +75,13 @@ Page({
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
+
+    // 版本更新日志
+    const app = getApp();
+    if (app.globalData._pendingChangelog) {
+      this.setData({ showChangelog: true, changelog: app.globalData._pendingChangelog });
+    }
+
     const savedCodes = wx.getStorageSync("indexCodes");
     let activeIndices = ALL_INDICES.slice(0, 6);
     if (savedCodes && savedCodes.length > 0) {
@@ -182,6 +189,10 @@ Page({
   },
   onCloseColEdit() {
     this.setData({ showColEdit: false });
+  },
+  onCloseChangelog() {
+    this.setData({ showChangelog: false });
+    getApp().markChangelogRead();
   },
 
   onScrollRefresh() {

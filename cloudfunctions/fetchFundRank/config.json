@@ -1,5 +1,5 @@
 {
-  "permissions": { "openapi": [] },
-  "triggers": [],
-  "timeout": 15
+  "runtime": "Nodejs20.19",
+  "timeout": 20,
+  "triggers": []
 }

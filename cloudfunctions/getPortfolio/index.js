@@ -5,10 +5,12 @@ const _ = db.command;
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
-  const { historyDays } = event || {};
+  const { historyDays, testOpenid } = event || {};
+  const uid = testOpenid || OPENID;
+  if (!uid) return { code: 400, msg: "无用户标识" };
 
   try {
-    const res = await db.collection("holdings").where({ _openid: OPENID }).get();
+    const res = await db.collection("holdings").where({ _openid: uid }).get();
     const holdings = res.data || [];
 
     if (holdings.length === 0) {
@@ -50,11 +52,16 @@ exports.main = async (event) => {
     let totalMarket = 0;
 
     for (const { h, tiantian, eastmoney, navHistory, nav60 } of resultsList) {
-      // 向后兼容：旧数据用 amount/nav 字段，新数据用 shares/buyPrice
-      let shares = h.shares || h.amount || 0;
+      // 向后兼容：旧数据用 amount/nav 字段（金额/净值），新数据用 shares/buyPrice
+      let shares = h.shares || 0;
       let buyPrice = h.buyPrice || h.nav || 0;
       const dbMarketValue = h.marketValue || 0;
       const dbHoldingReturn = h.holdingReturn || 0;
+
+      // 旧 schema { amount, nav } 修复：amount 是持仓金额不是份额
+      if (!shares && h.amount && buyPrice > 0) {
+        shares = parseFloat(h.amount) / buyPrice;
+      }
 
       let currentNav = eastmoney.actualNav || tiantian.nav || buyPrice;
       let todayChangeRate = 0;
@@ -118,6 +125,8 @@ exports.main = async (event) => {
 
       enriched.push({
         ...h,
+        shares,
+        buyPrice,
         currentNav: currentNav.toFixed(4),
         marketValue: marketValue.toFixed(2),
         todayChangeRate: todayChangeRate.toFixed(2),
@@ -140,17 +149,26 @@ exports.main = async (event) => {
     // 按当日收益金额倒序排序
     enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
 
-    // 读取 PE 温度缓存（由 computeFundTemperature 定时写入）
+    // 读取 PE 温度缓存（由 computeFundTemperature 定时写入或本地按需计算）
     let tempMap = {};
     try {
-        const codes = enriched.map(h => h.fundCode);
-        const tempRes = await db.collection("fund_temperatures")
-          .where({ fundCode: _.in(codes), date: today })
-          .get();
-        (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
-        enriched.forEach(h => {
-          const t = tempMap[h.fundCode];
-          if (t) {
+      const codes = enriched.map(h => h.fundCode);
+      const tempRes = await db.collection("fund_temperatures")
+        .where({ fundCode: _.in(codes), date: today })
+        .get();
+      (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
+
+      // 对缺失温度的基金，按需计算（只算当前用户的持仓）
+      const missingCodes = codes.filter(c => !tempMap[c]);
+      if (missingCodes.length > 0) {
+        console.log(`[getPortfolio] 按需计算温度: ${missingCodes.length} 只基金 ${missingCodes.join(',')}`);
+        const computed = await computeTemperaturesForCodes(missingCodes, today);
+        Object.assign(tempMap, computed);
+      }
+
+      enriched.forEach(h => {
+        const t = tempMap[h.fundCode];
+        if (t) {
             h.peTemp = {
               signal: t.signal,
               label: t.label,
@@ -168,8 +186,8 @@ exports.main = async (event) => {
     let intradaySnapshots = [];
     let snapDebug = {};
     try {
-      const snapRes = await db.collection("profit_snapshots").where({ _openid: OPENID, date: today }).get();
-      snapDebug = { openid: OPENID, date: today, found: snapRes.data ? snapRes.data.length : 0 };
+      const snapRes = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
+      snapDebug = { openid: uid, date: today, found: snapRes.data ? snapRes.data.length : 0 };
       if (snapRes.data && snapRes.data.length > 0) {
         intradaySnapshots = snapRes.data[0].points || [];
         snapDebug.points = intradaySnapshots.length;
@@ -185,7 +203,7 @@ exports.main = async (event) => {
       for (const h of enriched) {
         if (!h.peTemp || !h.peTemp.totalStocks) continue;
         enrichedCount++;
-        const fundValue = (h.shares || 0) * (h.currentNav || 0);
+        const fundValue = (parseFloat(h.shares) || 0) * (parseFloat(h.currentNav) || 0);
         if (fundValue <= 0) continue;
         withTempCount++;
         const t = tempMap[h.fundCode];
@@ -387,4 +405,256 @@ function fetchEastMoney(fundCode) {
       resolve({});
     });
   });
+}
+
+// ---- 按需温度计算（仅算当前用户的持仓基金） ----
+
+async function computeTemperaturesForCodes(fundCodes, today) {
+  const map = {};
+  const fundHoldings = {};
+
+  // 1. 拉取持仓股（并发 10 只）
+  const CONCURRENT = 10;
+  for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
+    const batch = fundCodes.slice(i, i + CONCURRENT);
+    const results = await Promise.all(batch.map(async (code) => {
+      try {
+        const h = await fetchTempHoldings(code);
+        return { code, holdings: h, ok: h.length > 0 };
+      } catch (e) { return { code, holdings: [], ok: false }; }
+    }));
+    results.forEach(r => { if (r.ok) fundHoldings[r.code] = r.holdings; });
+    if (i + CONCURRENT < fundCodes.length) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  // 持仓数据不足时从历史恢复
+  if (Object.keys(fundHoldings).length === 0) {
+    const recovered = await recoverTempHoldings(fundCodes);
+    Object.assign(fundHoldings, recovered);
+  }
+
+  // 2. 收集股票代码 & 批量查 PE
+  const stockSet = new Set();
+  Object.values(fundHoldings).forEach(list => {
+    list.forEach(h => {
+      if (h.stockCode && (h.stockCode.length === 6 || h.stockCode.length === 5)) {
+        stockSet.add(h.stockCode);
+      }
+    });
+  });
+  const stockCodes = [...stockSet];
+  const stockMap = stockCodes.length > 0 ? await batchFetchTempPE(stockCodes) : {};
+
+  // 3. 计算信号
+  for (const [code, holdings] of Object.entries(fundHoldings)) {
+    const result = calcTempSignal(code, holdings, stockMap);
+    if (result) {
+      map[code] = {
+        fundCode: code,
+        date: today,
+        signal: result.signal,
+        label: result.label,
+        normPE: result.normPE,
+        weightedPE: result.weightedPE,
+        coverage: result.coverage,
+        stocksWith52w: result.stocksWith52w,
+        totalStocks: result.totalStocks,
+        detailPEs: result.detailPEs,
+        createTime: new Date(),
+      };
+    }
+  }
+
+  // 4. 写入 DB 缓存
+  if (Object.keys(map).length > 0) {
+    const db = cloud.database();
+    for (const [code, data] of Object.entries(map)) {
+      await db.collection("fund_temperatures")
+        .where({ fundCode: code, date: today })
+        .remove()
+        .catch(() => {});
+      await db.collection("fund_temperatures").add({ data }).catch(() => {});
+    }
+  }
+
+  return map;
+}
+
+function fetchTempHoldings(fundCode) {
+  const https = require("https");
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const pubMonths = [12, 3, 6, 9];
+  let curM = 3, curY = year;
+  for (let i = 3; i >= 0; i--) {
+    if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
+    if (i === 0) { curY = year - 1; curM = 12; }
+  }
+
+  return new Promise((resolve) => {
+    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${curY}&month=${curM}&rt=${Math.random()}`;
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const match = body.match(/content:"([^"]+)"/);
+          if (!match) { resolve([]); return; }
+          const html = match[1].replace(/\\"/g, '"');
+          const rows = [];
+          const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
+          let trMatch;
+          while ((trMatch = trRegex.exec(html)) !== null) {
+            const tds = [];
+            const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
+            let tdMatch;
+            while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+              tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
+            }
+            if (tds.length >= 7 && !tds[0].includes("*")) {
+              const n = tds.length;
+              rows.push({
+                rank: tds[0],
+                stockCode: tds[1],
+                stockName: tds[2],
+                navRatio: parseFloat(tds[n - 3]) || 0,
+                shares: tds[n - 2],
+                marketValue: tds[n - 1],
+              });
+            }
+          }
+          resolve(rows);
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+  });
+}
+
+async function batchFetchTempPE(codes) {
+  const https = require("https");
+  const map = {};
+  const BATCH = 40;
+  const buildSecid = (code) => {
+    if (code.length === 5) return `116.${code}`;
+    if (code.startsWith("6")) return `1.${code}`;
+    return `0.${code}`;
+  };
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    const secids = batch.map(buildSecid).join(",");
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f350,f351&secids=${secids}`;
+    await new Promise((resolve) => {
+      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(body).data;
+            if (data && data.diff) {
+              data.diff.forEach(item => {
+                const pe = item.f9;
+                if (pe && pe > 0) {
+                  const actualPE = pe > 500 ? pe / 100 : pe;
+                  let high52w = null, low52w = null;
+                  if (item.f350 > 0 && item.f351 > 0 && item.f350 < 1e6) {
+                    high52w = +item.f350;
+                    low52w = +item.f351;
+                  }
+                  map[item.f12] = {
+                    pe: actualPE, price: item.f2 || null,
+                    industry: item.f100 || "其他",
+                    high52w, low52w,
+                  };
+                }
+              });
+            }
+          } catch (e) { /* ignore */ }
+          resolve();
+        });
+      });
+      req.setTimeout(10000, () => { req.destroy(); resolve(); });
+      req.on("error", () => resolve());
+    });
+  }
+  return map;
+}
+
+function calcTempSignal(fundCode, holdings, stockMap) {
+  const MIN_COVERAGE = 20;
+  let totalRatio = 0, totalLogNormPE = 0, stocksWith52w = 0, totalStocks = 0;
+  const detailPEs = [];
+
+  holdings.forEach(h => {
+    const stock = stockMap[h.stockCode];
+    if (!stock || !stock.pe || stock.pe <= 0) return;
+    totalStocks++;
+    let rawNormPE;
+    if (stock.high52w && stock.low52w && stock.price && stock.high52w > stock.low52w) {
+      rawNormPE = +(((stock.price - stock.low52w) / (stock.high52w - stock.low52w)) * 2).toFixed(3);
+      stocksWith52w++;
+    } else {
+      rawNormPE = 1.0;
+    }
+    const normPE = +Math.max(0.25, Math.min(4.0, rawNormPE)).toFixed(3);
+    totalLogNormPE += Math.log(normPE) * h.navRatio;
+    totalRatio += h.navRatio;
+    detailPEs.push({
+      code: h.stockCode, name: h.stockName,
+      pe: +stock.pe.toFixed(2), industry: stock.industry,
+      normPE, ratio: h.navRatio,
+    });
+  });
+
+  if (totalRatio < MIN_COVERAGE) return null;
+  if (stocksWith52w === 0 && totalStocks > 0) {
+    let totalPE = 0;
+    holdings.forEach(h => {
+      const stock = stockMap[h.stockCode];
+      if (stock && stock.pe > 0) totalPE += stock.pe * h.navRatio;
+    });
+    const wp = totalRatio > 0 ? +(totalPE / totalRatio).toFixed(2) : 0;
+    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWith52w: 0, totalStocks, detailPEs };
+  }
+
+  const normPE = +(Math.exp(totalLogNormPE / totalRatio)).toFixed(3);
+  let totalWeightedPE = 0;
+  holdings.forEach(h => {
+    const stock = stockMap[h.stockCode];
+    if (stock && stock.pe > 0) totalWeightedPE += stock.pe * h.navRatio;
+  });
+  const weightedPE = totalRatio > 0 ? +(totalWeightedPE / totalRatio).toFixed(2) : 0;
+  let signal, label;
+  if (normPE < 0.7) { signal = "low"; label = "低估"; }
+  else if (normPE > 1.3) { signal = "high"; label = "高估"; }
+  else { signal = "mid"; label = "正常"; }
+  return { fundCode, signal, label, normPE, weightedPE, coverage: +totalRatio.toFixed(1), stocksWith52w, totalStocks, detailPEs };
+}
+
+async function recoverTempHoldings(fundCodes) {
+  const holdings = {};
+  const db = cloud.database();
+  for (let d = 1; d <= 3; d++) {
+    const targetDate = `${new Date(Date.now() - d * 86400000).getFullYear()}-${String(new Date(Date.now() - d * 86400000).getMonth() + 1).padStart(2, '0')}-${String(new Date(Date.now() - d * 86400000).getDate()).padStart(2, '0')}`;
+    const BATCH = 100;
+    for (let i = 0; i < fundCodes.length; i += BATCH) {
+      const batch = fundCodes.slice(i, i + BATCH);
+      const res = await db.collection("fund_temperatures")
+        .where({ fundCode: _.in(batch), date: targetDate })
+        .get();
+      (res.data || []).forEach(t => {
+        if (t.detailPEs && t.detailPEs.length > 0 && !holdings[t.fundCode]) {
+          holdings[t.fundCode] = t.detailPEs.map(p => ({
+            stockCode: p.code, stockName: p.name, navRatio: p.ratio,
+          }));
+        }
+      });
+    }
+    if (Object.keys(holdings).length > 0) break;
+  }
+  return holdings;
 }

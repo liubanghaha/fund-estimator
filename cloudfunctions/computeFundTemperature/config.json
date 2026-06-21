@@ -1,6 +1,6 @@
 {
-  "runtime": "Nodejs18.15",
-  "timeout": 60,
+  "runtime": "Nodejs20.19",
+  "timeout": 120,
   "triggers": [
     {
       "name": "dailyTrigger",

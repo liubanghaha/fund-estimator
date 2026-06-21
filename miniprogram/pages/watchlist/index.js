@@ -122,6 +122,7 @@ Page({
   onLoad() {
     const theme = wx.getStorageSync("theme") || "blue";
     this.setData({ theme });
+    if (typeof wx.showChangelog === 'function') wx.showChangelog();
     this.applyCache();
     this.setData({ pinnedCodes: this._getPinnedCodes() });
   },

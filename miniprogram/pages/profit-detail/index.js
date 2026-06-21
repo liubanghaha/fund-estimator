@@ -40,6 +40,7 @@ Page({
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
+    if (typeof wx.showChangelog === 'function') wx.showChangelog();
     this._fromCache();
   },
 

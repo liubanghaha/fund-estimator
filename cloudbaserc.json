@@ -29,12 +29,14 @@
     },
     {
       "name": "computeFundTemperature",
-      "timeout": 60,
+      "timeout": 120,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "triggers": [
         { "name": "dailyTempTrigger", "type": "timer", "config": "0 0 3 * * * *" }
       ]
-    }
+    },
+    { "name": "dcaBacktest", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "fetchFundRank", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

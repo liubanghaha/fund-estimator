@@ -77,6 +77,7 @@
 .t-head .t-cell{font-size:22rpx;color:#BBB;justify-content:center;align-items:flex-end;flex-direction:row;gap:4rpx;white-space:nowrap}
 .t-name{width:260rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1;box-shadow:2rpx 0 4rpx rgba(0,0,0,.06)}
 .t-head .t-name{flex-direction:row;justify-content:flex-start;align-items:center}
+.t-hint{margin-left:6rpx;font-size:16rpx;color:#CCC;font-weight:400}
 .t-cell:not(.t-name){width:220rpx;align-items:flex-end}
 .t-name .name-text{font-size:26rpx;font-weight:500;color:#333;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .t-name .code-text{font-size:22rpx;color:#999;margin-top:4rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -136,12 +137,8 @@
 
 /* 指数行情 */
 .index-bar{position:fixed;left:0;right:0;bottom:0;background:#FFF;border-top:1rpx solid #F0F0F0;z-index:100;padding:8rpx 0 0;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.04)}
-.index-collapsed{display:flex;align-items:center;padding:0 24rpx;height:72rpx;gap:12rpx}
-.idx-name{font-size:24rpx;color:#999;flex-shrink:0}
-.idx-price{font-size:28rpx;font-weight:600;color:#333}
-.idx-change{font-size:26rpx;margin-left:auto}
-.idx-change-rate{font-size:26rpx;margin-left:4rpx}
-.idx-expand-hint{font-size:20rpx;color:#CCC;margin-left:8rpx}
+.index-collapsed{display:flex;align-items:center;justify-content:center;padding:4rpx 16rpx}
+.idx-expand-hint{font-size:20rpx;color:#CCC}
 .index-expanded-panel{background:#FFF}
 .idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:8rpx 24rpx 4rpx}
 .idx-gear{font-size:30rpx;padding:4rpx 8rpx}
@@ -177,3 +174,12 @@
 .col-edit-btn{width:52rpx;height:52rpx;display:flex;align-items:center;justify-content:center;background:#F5F5F5;border-radius:8rpx;font-size:26rpx;color:#666}
 .col-edit-btn.disabled{opacity:.3}
 .col-edit-close{margin-top:24rpx;text-align:center;background:var(--primary);color:#FFF;border-radius:8rpx;padding:16rpx 0;font-size:28rpx}
+
+/* 版本更新日志 */
+.changelog-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1002;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+.changelog-card{width:560rpx;max-height:70vh;background:#FFF;border-radius:20rpx;padding:40rpx 32rpx 32rpx;display:flex;flex-direction:column;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
+.changelog-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;margin-bottom:4rpx}
+.changelog-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:24rpx}
+.changelog-list{flex:1;overflow-y:auto;margin-bottom:24rpx}
+.changelog-item{font-size:28rpx;color:#444;line-height:2;padding-left:8rpx}
+.changelog-close{margin-top:8rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx}

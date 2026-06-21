@@ -49,13 +49,17 @@ exports.main = async (event) => {
     }
     console.log(`[computeFundTemperature] 有持仓数据的基金: ${Object.keys(fundHoldings).length}, 拉取失败: ${fetchFailCount}`);
 
-    // 持仓数据太少时从昨日温度数据恢复
-    if (Object.keys(fundHoldings).length < fundCodes.length * 0.1) {
-      console.log("[computeFundTemperature] 持仓数据严重不足，尝试从昨日温度数据恢复");
-      const recovered = await recoverHoldingsFromHistory(fundCodes);
-      if (Object.keys(recovered).length > Object.keys(fundHoldings).length) {
-        Object.assign(fundHoldings, recovered);
-        console.log(`[computeFundTemperature] 从历史恢复 ${Object.keys(recovered).length} 只基金持仓`);
+    // 持仓数据不足半数时从昨日温度数据恢复
+    if (Object.keys(fundHoldings).length < fundCodes.length * 0.5) {
+      console.log(`[computeFundTemperature] 持仓数据不足 (${Object.keys(fundHoldings).length}/${fundCodes.length})，尝试从昨日温度数据恢复`);
+      try {
+        const recovered = await recoverHoldingsFromHistory(fundCodes);
+        if (Object.keys(recovered).length > Object.keys(fundHoldings).length) {
+          Object.assign(fundHoldings, recovered);
+          console.log(`[computeFundTemperature] 从历史恢复 ${Object.keys(recovered).length} 只基金持仓`);
+        }
+      } catch (e) {
+        console.error("[computeFundTemperature] 从历史恢复失败:", e.message);
       }
     }
 
@@ -159,22 +163,26 @@ async function getUniqueFundCodes() {
 
 async function recoverHoldingsFromHistory(fundCodes) {
   const holdings = {};
-  const yesterday = formatDate(new Date(Date.now() - 86400000));
-  const BATCH = 100;
-  for (let i = 0; i < fundCodes.length; i += BATCH) {
-    const batch = fundCodes.slice(i, i + BATCH);
-    const res = await db.collection("fund_temperatures")
-      .where({ fundCode: _.in(batch), date: yesterday })
-      .get();
-    (res.data || []).forEach(t => {
-      if (t.detailPEs && t.detailPEs.length > 0) {
-        holdings[t.fundCode] = t.detailPEs.map(p => ({
-          stockCode: p.code,
-          stockName: p.name,
-          navRatio: p.ratio,
-        }));
-      }
-    });
+  // 往前尝试最近 3 天
+  for (let d = 1; d <= 3; d++) {
+    const targetDate = formatDate(new Date(Date.now() - d * 86400000));
+    const BATCH = 100;
+    for (let i = 0; i < fundCodes.length; i += BATCH) {
+      const batch = fundCodes.slice(i, i + BATCH);
+      const res = await db.collection("fund_temperatures")
+        .where({ fundCode: _.in(batch), date: targetDate })
+        .get();
+      (res.data || []).forEach(t => {
+        if (t.detailPEs && t.detailPEs.length > 0 && !holdings[t.fundCode]) {
+          holdings[t.fundCode] = t.detailPEs.map(p => ({
+            stockCode: p.code,
+            stockName: p.name,
+            navRatio: p.ratio,
+          }));
+        }
+      });
+    }
+    if (Object.keys(holdings).length > 0) break; // 找到数据就停
   }
   return holdings;
 }
@@ -299,13 +307,13 @@ async function batchFetchPE(codes) {
  *
  * 判定：
  *   < 0.7 → 低估    0.7 ~ 1.3 → 正常    > 1.3 → 高估
- *   持仓占比 < 30% → 跳过
+ *   持仓占比 < 20% → 跳过
  *   全部持仓无52周数据 → 无数据
  */
 function calcSignal(fundCode, holdings, stockMap) {
   const MIN_NORM = 0.25;
   const MAX_NORM = 4.0;
-  const MIN_COVERAGE = 30;
+  const MIN_COVERAGE = 20;
 
   let totalRatio = 0;
   let totalLogNormPE = 0;

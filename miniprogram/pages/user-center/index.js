@@ -28,9 +28,11 @@ Page({
     const next = this.data.theme === "red" ? "blue" : "red";
     this.setData({ theme: next });
     wx.setStorageSync("theme", next);
+    // 更新所有栈内页面
     const pages = getCurrentPages();
-    const idx = pages.findIndex(p => p.route === "pages/index/index");
-    if (idx >= 0) pages[idx].setData({ theme: next });
+    pages.forEach(p => {
+      if (p.setData) p.setData({ theme: next });
+    });
     wx.showToast({ title: "重启小程序后全部生效", icon: "none", duration: 2000 });
   },
 

@@ -57,8 +57,15 @@ exports.main = async (event) => {
       return { code: 404, msg: "所选时间段内无有效净值数据" };
     }
 
-    // 当前市值
-    const latestNAV = navHistory[navHistory.length - 1].nav || navHistory[navHistory.length - 1].unitNAV;
+    // 当前市值（取最近一个有效净值）
+    let latestNAV = 0;
+    for (let i = navHistory.length - 1; i >= 0; i--) {
+      const n = navHistory[i].nav;
+      if (n && n > 0) { latestNAV = n; break; }
+    }
+    if (latestNAV <= 0) {
+      return { code: 404, msg: "未获取到有效净值" };
+    }
     const currentValue = totalShares * latestNAV;
     const totalReturn = currentValue - totalInvested;
     const returnRate = ((currentValue / totalInvested) - 1) * 100;

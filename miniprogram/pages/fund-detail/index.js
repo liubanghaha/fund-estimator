@@ -33,6 +33,7 @@ Page({
     this.setData({ fundCode: options.fundCode, fundName });
     const theme = wx.getStorageSync("theme") || "blue";
     this.setData({ theme });
+    if (typeof wx.showChangelog === 'function') wx.showChangelog();
     wx.setNavigationBarTitle({ title: fundName });
     this._firstLoad = true;
     const { windowWidth } = wx.getSystemInfoSync();
@@ -719,9 +720,10 @@ Page({
     const { fundCode } = this.data;
     if (!fundCode) return;
     try {
+      const fundType = (this.data.profile && this.data.profile.fundType) || "混合型";
       const res = await wx.cloud.callFunction({
         name: "fetchFundRank",
-        data: { fundCode, fundType: "混合型" },
+        data: { fundCode, fundType },
       });
       if (res.result && res.result.code === 0 && res.result.data) {
         this.setData({ rankInfo: res.result.data });
