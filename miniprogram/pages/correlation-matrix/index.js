@@ -38,29 +38,42 @@ Page({
       const fundNames = d.holdings.map(h => h.fundName);
       this.setData({ fundCodes, fundNames });
 
-      // 2. 持仓重合度分析
+      // 2. 持仓重合度分析（24小时内同持仓组合命中缓存）
       if (fundCodes.length >= 2) {
-        const corrRes = await wx.cloud.callFunction({
-          name: "computeCorrelation",
-          data: { fundCodes },
-        });
-        if (corrRes.result && corrRes.result.code === 0) {
-          const { pairs, sharedStocks } = corrRes.result.data;
-          const enrichStock = (s) => ({
-            ...s,
-            _open: false,
-            funds: (s.funds || []).map(f => ({
-              ...f,
-              fundName: fundNames[fundCodes.indexOf(f.fundCode)] || f.fundCode,
-            })),
+        const codeKey = [...fundCodes].sort().join(',');
+        const cache = wx.getStorageSync('asset_analysis_cache') || {};
+        if (cache.codeKey === codeKey && cache.ts && (Date.now() - cache.ts < 86400000)) {
+          // 缓存命中：直接恢复
+          this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [] });
+        } else {
+          const corrRes = await wx.cloud.callFunction({
+            name: "computeCorrelation",
+            data: { fundCodes },
           });
-          const enrichedPairs = (pairs || []).map(p => ({
-            ...p,
-            key: `${p.fundA}_${p.fundB}`,
-            nameA: fundNames[fundCodes.indexOf(p.fundA)],
-            nameB: fundNames[fundCodes.indexOf(p.fundB)],
-          }));
-          this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
+          if (corrRes.result && corrRes.result.code === 0) {
+            const { pairs, sharedStocks } = corrRes.result.data;
+            const enrichStock = (s) => ({
+              ...s,
+              _open: false,
+              funds: (s.funds || []).map(f => ({
+                ...f,
+                fundName: fundNames[fundCodes.indexOf(f.fundCode)] || f.fundCode,
+              })),
+            });
+            const enrichedPairs = (pairs || []).map(p => ({
+              ...p,
+              key: `${p.fundA}_${p.fundB}`,
+              nameA: fundNames[fundCodes.indexOf(p.fundA)],
+              nameB: fundNames[fundCodes.indexOf(p.fundB)],
+            }));
+            this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
+            // 写缓存
+            wx.setStorageSync('asset_analysis_cache', {
+              codeKey, ts: Date.now(),
+              sharedStocks: (sharedStocks || []).map(enrichStock),
+              pairs: enrichedPairs,
+            });
+          }
         }
       }
 
