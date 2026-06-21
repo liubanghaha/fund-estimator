@@ -39,8 +39,16 @@
 .card-subtitle{font-size:24rpx;color:#999;margin-bottom:12rpx}
 .shared-item{display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
 .shared-item:last-child{border-bottom:none}
-.shared-name{font-size:26rpx;color:#333}
-.shared-count{font-size:22rpx;color:#E4393C;background:#FFF0F0;padding:4rpx 12rpx;border-radius:8rpx}
+.shared-left{display:flex;align-items:center;flex:1;min-width:0}
+.shared-name{font-size:26rpx;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shared-arrow{font-size:18rpx;color:#CCC;margin-left:8rpx;flex-shrink:0;transition:transform .2s}
+.shared-arrow.open{transform:rotate(180deg)}
+.shared-count{font-size:22rpx;color:#E4393C;background:#FFF0F0;padding:4rpx 12rpx;border-radius:8rpx;flex-shrink:0;margin-left:12rpx}
+.shared-funds{margin:0 0 12rpx 8rpx;padding:8rpx 16rpx;background:#FAFAFA;border-radius:8rpx}
+.shared-fund-item{display:flex;justify-content:space-between;padding:8rpx 0;border-bottom:1rpx solid #F0F0F0}
+.shared-fund-item:last-child{border-bottom:none}
+.sfi-name{font-size:24rpx;color:#666}
+.sfi-ratio{font-size:24rpx;color:var(--primary);font-weight:500}
 
 /* 基金对重合 */
 .corr-item{display:flex;align-items:center;padding:18rpx 0;border-bottom:1rpx solid #F5F5F5}

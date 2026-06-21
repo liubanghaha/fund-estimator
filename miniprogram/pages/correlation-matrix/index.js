@@ -46,13 +46,21 @@ Page({
         });
         if (corrRes.result && corrRes.result.code === 0) {
           const { pairs, sharedStocks } = corrRes.result.data;
+          const enrichStock = (s) => ({
+            ...s,
+            _open: false,
+            funds: (s.funds || []).map(f => ({
+              ...f,
+              fundName: fundNames[fundCodes.indexOf(f.fundCode)] || f.fundCode,
+            })),
+          });
           const enrichedPairs = (pairs || []).map(p => ({
             ...p,
             key: `${p.fundA}_${p.fundB}`,
             nameA: fundNames[fundCodes.indexOf(p.fundA)],
             nameB: fundNames[fundCodes.indexOf(p.fundB)],
           }));
-          this.setData({ pairs: enrichedPairs, sharedStocks: sharedStocks || [] });
+          this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
         }
       }
 
@@ -61,5 +69,12 @@ Page({
       console.error("资产分析失败:", e);
       this.setData({ loading: false, loadError: true });
     }
+  },
+
+  onToggleSharedStock(e) {
+    const idx = e.currentTarget.dataset.index;
+    const stocks = this.data.sharedStocks;
+    stocks[idx]._open = !stocks[idx]._open;
+    this.setData({ sharedStocks: stocks });
   },
 });

@@ -46,9 +46,18 @@
       <!-- 重合股票 -->
       <view wx:if="{{sharedStocks.length > 0}}" class="shared-section">
         <view class="card-subtitle">重合持仓股</view>
-        <view wx:for="{{sharedStocks}}" wx:key="stockCode" class="shared-item">
-          <text class="shared-name">{{item.stockName}}（{{item.stockCode}}）</text>
+        <view wx:for="{{sharedStocks}}" wx:key="stockCode" class="shared-item" bind:tap="onToggleSharedStock" data-index="{{index}}">
+          <view class="shared-left">
+            <text class="shared-name">{{item.stockName}}（{{item.stockCode}}）</text>
+            <text class="shared-arrow {{item._open ? 'open' : ''}}">{{item._open ? '▼' : '▶'}}</text>
+          </view>
           <text class="shared-count">{{item.fundCount}}只基金持有</text>
+        </view>
+        <view wx:if="{{item._open}}" wx:for="{{sharedStocks}}" wx:key="stockCode" wx:for-item="stock" wx:for-index="idx" hidden="{{!stock._open}}" class="shared-funds">
+          <view wx:for="{{stock.funds}}" wx:key="fundCode" wx:for-item="f" class="shared-fund-item">
+            <text class="sfi-name">{{f.fundName || f.fundCode}}</text>
+            <text class="sfi-ratio">{{f.ratio}}%</text>
+          </view>
         </view>
       </view>
 
