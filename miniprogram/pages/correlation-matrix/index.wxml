@@ -1,41 +1,73 @@
 <view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
-  <view class="header">
-    <view class="header-title">持仓基金相关性矩阵</view>
-    <view class="header-desc" wx:if="{{commonDates}}">基于 {{commonDates}} 个公共交易日计算</view>
-  </view>
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="loading-text">分析中...</view>
 
-  <view wx:if="{{loading}}" class="loading-text">计算中...</view>
-
-  <view wx:if="{{!loading && matrix.length > 0}}" class="matrix-wrap">
-    <scroll-view scroll-x class="matrix-scroll">
-      <view class="matrix">
-        <!-- 表头行 -->
-        <view class="m-row m-head">
-          <view class="m-cell m-label"></view>
-          <view wx:for="{{fundNames}}" wx:key="*this" class="m-cell m-head-name">{{item}}</view>
+  <!-- 内容 -->
+  <view wx:else>
+    <!-- 1. 持仓健康分 -->
+    <view wx:if="{{healthScore}}" class="card">
+      <view class="card-title">📊 持仓健康分</view>
+      <view class="health-main">
+        <view class="health-ring">
+          <view class="health-ring-inner">
+            <text class="health-score">{{healthScore.score}}</text>
+            <text class="health-label">健康分</text>
+          </view>
+          <view class="health-ring-arc" style="background:conic-gradient(#4CAF50 0deg {{healthScore.score * 3.6}}deg, #EEE {{healthScore.score * 3.6}}deg 360deg)"></view>
         </view>
-        <!-- 数据行 -->
-        <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="row" class="m-row">
-          <view class="m-cell m-label">{{fundNames[row]}}</view>
-          <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="col" class="m-cell">
-            <view wx:if="{{row === col}}" class="m-val self">1.00</view>
-            <view wx:else class="m-val {{getCorrClass(row, col)}}">{{getCorr(row, col)}}</view>
+        <view class="health-right">
+          <view class="health-grade {{healthScore.grade === '优秀' ? 'up' : healthScore.grade === '较差' ? 'down' : ''}}">{{healthScore.grade}}</view>
+          <view class="health-detail">估值{{healthScore.avgNormPE != null ? (healthScore.avgNormPE < 0.7 ? '低估' : healthScore.avgNormPE < 1.3 ? '正常' : '高估') : '--'}} · 最大行业 {{healthScore.maxIndustry}}%</view>
+          <view class="health-bars">
+            <view class="health-bar-item"><text class="hb-label">估值温度</text><view class="hb-track"><view class="hb-fill" style="width:{{healthScore.tempScore}}%"></view></view><text class="hb-val">{{healthScore.tempScore}}</text></view>
+            <view class="health-bar-item"><text class="hb-label">行业分散</text><view class="hb-track"><view class="hb-fill" style="width:{{healthScore.concScore}}%"></view></view><text class="hb-val">{{healthScore.concScore}}</text></view>
           </view>
         </view>
       </view>
-    </scroll-view>
-
-    <view wx:if="{{warnings.length > 0}}" class="warnings">
-      <view wx:for="{{warnings}}" wx:key="*this" class="warn-item">⚠️ {{item}}</view>
     </view>
-  </view>
 
-  <view wx:if="{{!loading && matrix.length === 0 && !loadError}}" class="empty">暂无数据，请添加至少2只持仓基金</view>
-  <view wx:if="{{loadError}}" class="empty">计算失败，请稍后重试</view>
+    <!-- 2. 持仓穿透 -->
+    <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="card">
+      <view class="card-title">🏭 行业穿透</view>
+      <view wx:for="{{assetAllocation.items}}" wx:key="industry" class="asset-row">
+        <text class="asset-name">{{item.industry}}</text>
+        <text class="asset-pct">{{item.percent}}%</text>
+        <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
+      </view>
+      <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
+    </view>
 
-  <view class="legend">
-    <view class="legend-item"><view class="legend-dot high"></view><text>高度相关 (≥0.7)</text></view>
-    <view class="legend-item"><view class="legend-dot mid"></view><text>中度相关 (0.4~0.7)</text></view>
-    <view class="legend-item"><view class="legend-dot low"></view><text>低度相关 (&lt;0.4)</text></view>
+    <!-- 3. 基金相关性 -->
+    <view wx:if="{{matrix.length > 0}}" class="card">
+      <view class="card-title">🔗 基金相关性
+        <text class="card-desc" wx:if="{{commonDates}}">（{{commonDates}}个公共交易日）</text>
+      </view>
+      <scroll-view scroll-x class="matrix-scroll">
+        <view class="matrix">
+          <view class="m-row m-head">
+            <view class="m-cell m-label"></view>
+            <view wx:for="{{fundNames}}" wx:key="*this" class="m-cell m-head-name">{{item}}</view>
+          </view>
+          <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="row" class="m-row">
+            <view class="m-cell m-label">{{fundNames[row]}}</view>
+            <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="col" class="m-cell">
+              <view wx:if="{{row === col}}" class="m-val self">1.00</view>
+              <view wx:else class="m-val {{getCorrClass(row, col)}}">{{getCorr(row, col)}}</view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="legend">
+        <view class="legend-item"><view class="legend-dot high"></view><text>高度相关 (≥0.7)</text></view>
+        <view class="legend-item"><view class="legend-dot mid"></view><text>中度相关 (0.4~0.7)</text></view>
+        <view class="legend-item"><view class="legend-dot low"></view><text>低度相关 (&lt;0.4)</text></view>
+      </view>
+      <view wx:if="{{warnings.length > 0}}" class="warnings">
+        <view wx:for="{{warnings}}" wx:key="*this" class="warn-item">⚠️ {{item}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && matrix.length === 0}}" class="empty">暂无数据，请添加至少2只持仓基金</view>
+    <view wx:if="{{loadError}}" class="empty">加载失败，请稍后重试</view>
   </view>
 </view>

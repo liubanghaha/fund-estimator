@@ -1,6 +1,8 @@
 Page({
   data: {
     theme: "blue",
+    healthScore: null,
+    assetAllocation: null,
     fundCodes: [],
     fundNames: [],
     matrix: [],
@@ -14,44 +16,52 @@ Page({
     const theme = wx.getStorageSync("theme") || "blue";
     this.setData({ theme });
     if (typeof wx.showChangelog === 'function') wx.showChangelog();
-    this.fetchData();
+    this.fetchAll();
   },
 
-  async fetchData() {
+  async fetchAll() {
     this.setData({ loading: true, loadError: false });
     try {
-      const res = await wx.cloud.callFunction({
-        name: "getPortfolio",
-        data: { historyDays: 0 },
-      });
+      // 1. 获取持仓 + 健康分 + 资产配置
+      const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0 } });
       const d = res.result && res.result.data;
-      if (!d || !d.holdings || d.holdings.length < 2) {
+      if (!d || !d.holdings || d.holdings.length === 0) {
         this.setData({ loading: false });
         return;
       }
+
+      this.setData({
+        healthScore: d.healthScore || null,
+        assetAllocation: d.assetAllocation || null,
+      });
+
       const fundCodes = d.holdings.map(h => h.fundCode);
       const fundNames = d.holdings.map(h => h.fundName);
       this.setData({ fundCodes, fundNames });
 
-      const corrRes = await wx.cloud.callFunction({
-        name: "computeCorrelation",
-        data: { fundCodes },
-      });
-      if (corrRes.result && corrRes.result.code === 0) {
-        const { matrix, commonDates } = corrRes.result.data;
-        const warnings = [];
-        matrix.forEach(m => {
-          if (m.correlation >= 0.7) {
-            const nameA = this.data.fundNames[this.data.fundCodes.indexOf(m.fundA)];
-            const nameB = this.data.fundNames[this.data.fundCodes.indexOf(m.fundB)];
-            warnings.push(`${nameA} 和 ${nameB} 高度相关 (${m.correlation})，建议仅保留一只`);
-          }
+      // 2. 计算相关性（至少2只基金）
+      if (fundCodes.length >= 2) {
+        const corrRes = await wx.cloud.callFunction({
+          name: "computeCorrelation",
+          data: { fundCodes },
         });
-        this.setData({ matrix, commonDates, warnings, loading: false });
-      } else {
-        this.setData({ loading: false, loadError: true });
+        if (corrRes.result && corrRes.result.code === 0) {
+          const { matrix, commonDates } = corrRes.result.data;
+          const warnings = [];
+          matrix.forEach(m => {
+            if (m.correlation >= 0.7) {
+              const nameA = fundNames[fundCodes.indexOf(m.fundA)];
+              const nameB = fundNames[fundCodes.indexOf(m.fundB)];
+              warnings.push(`${nameA} 和 ${nameB} 高度相关 (${m.correlation})，建议仅保留一只`);
+            }
+          });
+          this.setData({ matrix, commonDates, warnings });
+        }
       }
+
+      this.setData({ loading: false });
     } catch (e) {
+      console.error("资产分析失败:", e);
       this.setData({ loading: false, loadError: true });
     }
   },

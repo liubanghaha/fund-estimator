@@ -1,27 +1,57 @@
-.page-wrap{min-height:100vh;background:#F5F5F5;padding-bottom:40rpx}
-.header{padding:32rpx 24rpx 16rpx}
-.header-title{font-size:32rpx;font-weight:700;color:#333}
-.header-desc{margin-top:8rpx;font-size:22rpx;color:#BBB}
+.page-wrap{min-height:100vh;background:#F5F5F5;padding:16rpx 24rpx 40rpx}
 .loading-text{text-align:center;padding:80rpx 0;font-size:28rpx;color:#BBB}
 .empty{text-align:center;padding:80rpx 0;font-size:26rpx;color:#CCC}
-.matrix-wrap{padding:0 24rpx}
+
+.card{background:#FFF;border-radius:12rpx;padding:24rpx;margin-bottom:16rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.card-title{font-size:28rpx;font-weight:600;color:#333;margin-bottom:20rpx}
+.card-desc{font-weight:400;font-size:22rpx;color:#BBB}
+
+/* 健康分 */
+.health-main{display:flex;align-items:center}
+.health-ring{width:140rpx;height:140rpx;position:relative;flex-shrink:0}
+.health-ring-arc{position:absolute;top:0;left:0;width:140rpx;height:140rpx;border-radius:50%}
+.health-ring-inner{position:absolute;top:14rpx;left:14rpx;width:112rpx;height:112rpx;border-radius:50%;background:#FFF;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1}
+.health-score{font-size:40rpx;font-weight:700;color:var(--primary);line-height:1}
+.health-label{font-size:18rpx;color:#BBB}
+.health-right{flex:1;padding-left:24rpx}
+.health-grade{font-size:28rpx;font-weight:600;color:#333;margin-bottom:6rpx}
+.health-grade.up{color:#2E8B57}
+.health-grade.down{color:#E4393C}
+.health-detail{font-size:24rpx;color:#666;margin-bottom:12rpx}
+.health-bars{}
+.health-bar-item{display:flex;align-items:center;margin-top:8rpx}
+.hb-label{width:110rpx;font-size:22rpx;color:#999}
+.hb-track{flex:1;height:12rpx;background:#EEE;border-radius:6rpx;overflow:hidden;margin:0 12rpx}
+.hb-fill{height:100%;background:var(--primary);border-radius:6rpx;transition:width .5s}
+.hb-val{font-size:22rpx;color:#666;width:48rpx;text-align:right}
+
+/* 行业穿透 */
+.asset-row{display:flex;align-items:center;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
+.asset-row:last-child{border-bottom:none}
+.asset-name{font-size:26rpx;color:#333;width:140rpx;flex-shrink:0}
+.asset-pct{font-size:24rpx;color:var(--primary);width:80rpx;text-align:right;flex-shrink:0}
+.asset-bar{flex:1;height:12rpx;background:#F0F0F0;border-radius:6rpx;overflow:hidden;margin-left:16rpx}
+.asset-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--primary));border-radius:6rpx;min-width:4rpx}
+.asset-warning{margin-top:12rpx;padding:12rpx 16rpx;background:#FFF8E1;border-radius:8rpx;font-size:22rpx;color:#B8860B;line-height:1.5}
+
+/* 相关性矩阵 */
 .matrix-scroll{width:100%}
 .matrix{display:inline-block;min-width:100%}
 .m-row{display:flex}
 .m-head{border-bottom:2rpx solid #EEE}
-.m-cell{width:120rpx;height:80rpx;display:flex;align-items:center;justify-content:center;border-bottom:1rpx solid #F5F5F5;border-right:1rpx solid #F5F5F5;flex-shrink:0}
-.m-label{width:120rpx;font-size:24rpx;color:#666;font-weight:500;background:#FAFAFA;position:sticky;left:0;z-index:1;border-right:2rpx solid #EEE}
+.m-cell{width:100rpx;height:70rpx;display:flex;align-items:center;justify-content:center;border-bottom:1rpx solid #F5F5F5;border-right:1rpx solid #F5F5F5;flex-shrink:0}
+.m-label{width:110rpx;font-size:24rpx;color:#666;font-weight:500;background:#FAFAFA;position:sticky;left:0;z-index:1;border-right:2rpx solid #EEE}
 .m-head-name{font-size:22rpx;color:#999;transform:scale(.85);white-space:nowrap}
 .m-val{font-size:28rpx;font-weight:600}
 .m-val.self{color:#333}
 .m-val.high{color:#E4393C}
 .m-val.mid{color:#FF9800}
 .m-val.low{color:#4CAF50}
-.warnings{margin-top:24rpx}
-.warn-item{padding:16rpx 20rpx;background:#FFF8E1;border-radius:8rpx;font-size:24rpx;color:#B8860B;margin-bottom:12rpx;line-height:1.5}
-.legend{display:flex;justify-content:center;gap:24rpx;margin-top:32rpx;padding:16rpx 24rpx}
+.legend{display:flex;justify-content:center;gap:20rpx;margin-top:16rpx}
 .legend-item{display:flex;align-items:center;gap:6rpx;font-size:20rpx;color:#999}
-.legend-dot{width:16rpx;height:16rpx;border-radius:4rpx}
+.legend-dot{width:14rpx;height:14rpx;border-radius:3rpx}
 .legend-dot.high{background:#E4393C}
 .legend-dot.mid{background:#FF9800}
 .legend-dot.low{background:#4CAF50}
+.warnings{margin-top:16rpx}
+.warn-item{padding:14rpx 16rpx;background:#FFF8E1;border-radius:8rpx;font-size:24rpx;color:#B8860B;margin-bottom:10rpx;line-height:1.5}

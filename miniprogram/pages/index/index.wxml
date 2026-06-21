@@ -86,44 +86,12 @@
             <view class="action-text">加减仓</view>
           </view>
           <view class="action-item" bind:tap="onCorrelation">
-            <view class="action-icon">🔗</view>
-            <view class="action-text">相关性</view>
+            <view class="action-icon">📊</view>
+            <view class="action-text">资产分析</view>
           </view>
           <view class="action-item" bind:tap="onToggleBatch">
             <view class="action-icon">📋</view>
             <view class="action-text">批量</view>
-          </view>
-        </view>
-
-        <!-- 持仓穿透 -->
-        <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="asset-section">
-          <view class="asset-header" bind:tap="onToggleAssetAlloc">
-            <text class="asset-title">📊 持仓穿透</text>
-            <text class="asset-arrow {{showAssetAlloc ? 'open' : ''}}">{{showAssetAlloc ? '▼' : '▶'}}</text>
-          </view>
-          <view wx:if="{{showAssetAlloc}}" class="asset-body">
-            <view wx:for="{{assetAllocation.items}}" wx:key="industry" class="asset-row">
-              <text class="asset-name">{{item.industry}}</text>
-              <text class="asset-pct">{{item.percent}}%</text>
-              <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
-            </view>
-            <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
-          </view>
-        </view>
-
-        <view wx:if="{{healthScore}}" class="health-card">
-          <view class="health-main">
-            <view class="health-ring">
-              <view class="health-ring-inner">
-                <text class="health-score">{{healthScore.score}}</text>
-                <text class="health-label">健康分</text>
-              </view>
-              <view class="health-ring-arc" style="background:conic-gradient(#4CAF50 0deg {{healthScore.score * 3.6}}deg, #EEE {{healthScore.score * 3.6}}deg 360deg)"></view>
-            </view>
-            <view class="health-grade {{healthScore.grade === '优秀' ? 'up' : healthScore.grade === '较差' ? 'down' : ''}}">{{healthScore.grade}}</view>
-          </view>
-          <view class="health-detail">
-            <text class="health-detail-text">估值{{healthScore.avgNormPE != null ? (healthScore.avgNormPE < 0.7 ? '低估' : healthScore.avgNormPE < 1.3 ? '正常' : '高估') : '--'}} · 最大行业 {{healthScore.maxIndustry}}%</text>
           </view>
         </view>
 
