@@ -204,13 +204,10 @@ Page({
   },
 
   onShowVersion() {
-    const accountInfo = wx.getAccountInfoSync ? wx.getAccountInfoSync() : {};
-    const version = (accountInfo.miniProgram && accountInfo.miniProgram.version) || "1.0.0";
-    const env = (accountInfo.miniProgram && accountInfo.miniProgram.envVersion) || "develop";
-    const envMap = { develop: "开发版", trial: "体验版", release: "正式版" };
+    const appVersion = getApp().getVersion() || "1.0.0";
     wx.showModal({
-      title: "涨跌有数",
-      content: `版本：${version}\n环境：${envMap[env] || env}`,
+      title: "韭菜养基宝",
+      content: `版本号：${appVersion}`,
       showCancel: false,
       confirmText: "知道了",
     });
