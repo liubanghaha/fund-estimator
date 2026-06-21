@@ -5,9 +5,8 @@ Page({
     assetAllocation: null,
     fundCodes: [],
     fundNames: [],
-    matrix: [],
     pairs: [],
-    commonDates: 0,
+    sharedStocks: [],
     loading: true,
     loadError: false,
   },
@@ -39,21 +38,21 @@ Page({
       const fundNames = d.holdings.map(h => h.fundName);
       this.setData({ fundCodes, fundNames });
 
-      // 2. 计算相关性（至少2只基金）
+      // 2. 持仓重合度分析
       if (fundCodes.length >= 2) {
         const corrRes = await wx.cloud.callFunction({
           name: "computeCorrelation",
           data: { fundCodes },
         });
         if (corrRes.result && corrRes.result.code === 0) {
-          const { matrix, commonDates } = corrRes.result.data;
-          const pairs = matrix.map(m => ({
-            key: `${m.fundA}_${m.fundB}`,
-            nameA: fundNames[fundCodes.indexOf(m.fundA)],
-            nameB: fundNames[fundCodes.indexOf(m.fundB)],
-            corr: m.correlation,
-          })).sort((a, b) => b.corr - a.corr);
-          this.setData({ matrix, pairs, commonDates });
+          const { pairs, sharedStocks } = corrRes.result.data;
+          const enrichedPairs = (pairs || []).map(p => ({
+            ...p,
+            key: `${p.fundA}_${p.fundB}`,
+            nameA: fundNames[fundCodes.indexOf(p.fundA)],
+            nameB: fundNames[fundCodes.indexOf(p.fundB)],
+          }));
+          this.setData({ pairs: enrichedPairs, sharedStocks: sharedStocks || [] });
         }
       }
 

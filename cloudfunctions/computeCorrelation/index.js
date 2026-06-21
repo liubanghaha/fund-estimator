@@ -1,6 +1,56 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const https = require("https");
+const db = cloud.database();
+
+// 拉取基金前十大持仓股（本季度）
+async function fetchHoldings(fundCode) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const pubMonths = [12, 3, 6, 9];
+  let curM = 3, curY = year;
+  for (let i = 3; i >= 0; i--) {
+    if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
+    if (i === 0) { curY = year - 1; curM = 12; }
+  }
+  return new Promise((resolve) => {
+    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${curY}&month=${curM}&rt=${Math.random()}`;
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const match = body.match(/content:"([^"]+)"/);
+          if (!match) { resolve([]); return; }
+          const html = match[1].replace(/\\"/g, '"');
+          const rows = [];
+          const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
+          let trMatch;
+          while ((trMatch = trRegex.exec(html)) !== null) {
+            const tds = [];
+            const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
+            let tdMatch;
+            while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+              tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
+            }
+            if (tds.length >= 7 && !tds[0].includes("*")) {
+              const n = tds.length;
+              rows.push({
+                stockCode: tds[1],
+                stockName: tds[2],
+                navRatio: parseFloat(tds[n - 3]) || 0,
+              });
+            }
+          }
+          resolve(rows);
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+  });
+}
 
 exports.main = async (event) => {
   const { fundCodes } = event;
@@ -9,87 +59,72 @@ exports.main = async (event) => {
   }
 
   try {
-    // 1. 并行获取每只基金的 1 年净值历史
-    const allHistories = await Promise.all(fundCodes.map(code => fetchHistory(code, 250)));
+    // 1. 并行拉取每只基金的持仓股
+    const allHoldings = await Promise.all(fundCodes.map(async (code) => {
+      try {
+        const list = await fetchHoldings(code);
+        return { code, list };
+      } catch (e) { return { code, list: [] }; }
+    }));
 
-    // 2. 对齐日期（找公共交易日）
-    const dateSets = allHistories.map(h => new Set(h.map(d => d.date)));
-    const commonDates = [...dateSets[0]].filter(d => dateSets.every(s => s.has(d))).sort();
-    if (commonDates.length < 20) return { code: 0, data: { matrix: [], commonDates: commonDates.length, msg: "公共交易日不足" } };
+    const fundStockMap = {};   // fundCode → [{stockCode, stockName, navRatio}]
+    const stockFundMap = {};   // stockCode → [{fundCode, fundName, navRatio}]
+    const fundNames = {};      // for display (we get names from event)
 
-    // 3. 计算每只基金的日收益率序列
-    const returnSeries = allHistories.map(h => {
-      const map = {};
-      h.forEach(d => { map[d.date] = d.nav; });
-      const returns = [];
-      for (let i = 1; i < commonDates.length; i++) {
-        const today = map[commonDates[i]], yesterday = map[commonDates[i - 1]];
-        if (today > 0 && yesterday > 0) returns.push((today - yesterday) / yesterday);
-        else returns.push(0);
-      }
-      return returns;
+    allHoldings.forEach(({ code, list }) => {
+      fundStockMap[code] = list;
+      list.forEach(h => {
+        if (!stockFundMap[h.stockCode]) stockFundMap[h.stockCode] = [];
+        stockFundMap[h.stockCode].push({ fundCode: code, stockName: h.stockName, navRatio: h.navRatio });
+      });
     });
 
-    // 4. 两两计算 Pearson 相关系数
-    const matrix = [];
-    for (let i = 0; i < fundCodes.length; i++) {
-      for (let j = i + 1; j < fundCodes.length; j++) {
-        const r = pearson(returnSeries[i], returnSeries[j]);
-        matrix.push({
-          fundA: fundCodes[i],
-          fundB: fundCodes[j],
-          correlation: parseFloat(r.toFixed(3)),
-        });
+    // 2. 找出被多只基金持有的股票（重合持仓），按持有基金数降序
+    const sharedStocks = Object.entries(stockFundMap)
+      .filter(([_, funds]) => funds.length >= 2)
+      .map(([stockCode, funds]) => ({
+        stockCode,
+        stockName: funds[0].stockName,
+        fundCount: funds.length,
+        funds: funds.map(f => ({ fundCode: f.fundCode, ratio: f.navRatio })),
+      }))
+      .sort((a, b) => b.fundCount - a.fundCount);
+
+    // 3. 计算每对基金的重合度（两两对比持仓交集）
+    const codeList = fundCodes;
+    const pairs = [];
+    for (let i = 0; i < codeList.length; i++) {
+      for (let j = i + 1; j < codeList.length; j++) {
+        const stocksA = new Set((fundStockMap[codeList[i]] || []).map(h => h.stockCode));
+        const stocksB = new Set((fundStockMap[codeList[j]] || []).map(h => h.stockCode));
+        const intersection = [...stocksA].filter(s => stocksB.has(s));
+        const union = new Set([...stocksA, ...stocksB]);
+        const overlapCount = intersection.length;
+        const overlapRate = union.size > 0 ? +(overlapCount / union.size).toFixed(2) : 0;
+        if (overlapCount > 0) {
+          pairs.push({
+            fundA: codeList[i],
+            fundB: codeList[j],
+            overlapCount,
+            overlapRate,
+            sharedStocks: intersection,
+          });
+        }
       }
     }
+    pairs.sort((a, b) => b.overlapCount - a.overlapCount);
 
-    return { code: 0, data: { matrix, commonDates: commonDates.length } };
+    return {
+      code: 0,
+      data: {
+        sharedStocks,
+        pairs,
+        totalFunds: fundCodes.length,
+        hasHoldingsCount: Object.values(fundStockMap).filter(l => l.length > 0).length,
+      },
+    };
   } catch (e) {
-    console.error("相关性计算失败:", e.message);
-    return { code: 500, msg: "计算失败" };
+    console.error("持仓重合分析失败:", e.message);
+    return { code: 500, msg: "分析失败" };
   }
 };
-
-function pearson(x, y) {
-  const n = Math.min(x.length, y.length);
-  if (n < 10) return 0;
-  let sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
-  for (let i = 0; i < n; i++) {
-    sx += x[i]; sy += y[i];
-    sxy += x[i] * y[i];
-    sx2 += x[i] ** 2; sy2 += y[i] ** 2;
-  }
-  const num = n * sxy - sx * sy;
-  const den = Math.sqrt((n * sx2 - sx ** 2) * (n * sy2 - sy ** 2));
-  return den === 0 ? 0 : num / den;
-}
-
-async function fetchHistory(fundCode, totalNeeded) {
-  const PER_PAGE = 20;
-  const pages = Math.ceil(totalNeeded / PER_PAGE);
-  const pageTasks = Array.from({ length: pages }, (_, i) =>
-    new Promise((resolve) => {
-      const req = https.get({
-        hostname: "api.fund.eastmoney.com",
-        path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${i + 1}&pageSize=${PER_PAGE}`,
-        headers: { Referer: "https://fundf10.eastmoney.com/" },
-      }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
-            resolve((json.Data.LSJZList || []).map(item => ({
-              date: item.FSRQ,
-              nav: parseFloat(item.DWJZ) || 0,
-            })));
-          } catch (e) { resolve([]); }
-        });
-      });
-      req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-      req.on("error", () => resolve([]));
-    })
-  );
-  const results = await Promise.all(pageTasks);
-  return results.flat();
-}

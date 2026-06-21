@@ -34,7 +34,15 @@
 .asset-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--primary));border-radius:6rpx;min-width:4rpx}
 .asset-warning{margin-top:12rpx;padding:12rpx 16rpx;background:#FFF8E1;border-radius:8rpx;font-size:22rpx;color:#B8860B;line-height:1.5}
 
-/* 相关性成对列表 */
+/* 重合持仓股 */
+.shared-section{}
+.card-subtitle{font-size:24rpx;color:#999;margin-bottom:12rpx}
+.shared-item{display:flex;justify-content:space-between;align-items:center;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
+.shared-item:last-child{border-bottom:none}
+.shared-name{font-size:26rpx;color:#333}
+.shared-count{font-size:22rpx;color:#E4393C;background:#FFF0F0;padding:4rpx 12rpx;border-radius:8rpx}
+
+/* 基金对重合 */
 .corr-item{display:flex;align-items:center;padding:18rpx 0;border-bottom:1rpx solid #F5F5F5}
 .corr-item:last-child{border-bottom:none}
 .corr-names{width:280rpx;flex-shrink:0;display:flex;align-items:center}

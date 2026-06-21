@@ -37,11 +37,23 @@
       <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
     </view>
 
-    <!-- 3. 基金相关性 -->
+    <!-- 3. 持仓重合度 -->
     <view wx:if="{{pairs.length > 0}}" class="card">
-      <view class="card-title">🔗 基金相关性
-        <text class="card-desc" wx:if="{{commonDates}}">（{{commonDates}}个公共交易日）</text>
+      <view class="card-title">🔗 持仓重合度
+        <text class="card-desc">（本季度前十大持仓对比）</text>
       </view>
+
+      <!-- 重合股票 -->
+      <view wx:if="{{sharedStocks.length > 0}}" class="shared-section">
+        <view class="card-subtitle">重合持仓股</view>
+        <view wx:for="{{sharedStocks}}" wx:key="stockCode" class="shared-item">
+          <text class="shared-name">{{item.stockName}}（{{item.stockCode}}）</text>
+          <text class="shared-count">{{item.fundCount}}只基金持有</text>
+        </view>
+      </view>
+
+      <!-- 基金对重合 -->
+      <view class="card-subtitle" style="margin-top:{{sharedStocks.length > 0 ? '20rpx' : '0'}}">基金重合度</view>
       <view wx:for="{{pairs}}" wx:key="key" class="corr-item">
         <view class="corr-names">
           <text class="corr-name">{{item.nameA}}</text>
@@ -50,16 +62,10 @@
         </view>
         <view class="corr-right">
           <view class="corr-bar-track">
-            <view class="corr-bar-fill {{item.corr >= 0.7 ? 'high' : item.corr >= 0.4 ? 'mid' : 'low'}}" style="width:{{item.corr * 100}}%"></view>
+            <view class="corr-bar-fill {{item.overlapCount >= 3 ? 'high' : item.overlapCount >= 1 ? 'mid' : 'low'}}" style="width:{{item.overlapCount * 10}}%"></view>
           </view>
-          <text class="corr-val {{item.corr >= 0.7 ? 'high' : item.corr >= 0.4 ? 'mid' : 'low'}}">{{item.corr.toFixed(2)}}</text>
+          <text class="corr-val {{item.overlapCount >= 3 ? 'high' : item.overlapCount >= 1 ? 'mid' : 'low'}}">{{item.overlapCount}}只</text>
         </view>
-        <text wx:if="{{item.corr >= 0.7}}" class="corr-tag">高相关</text>
-      </view>
-      <view class="legend">
-        <view class="legend-item"><view class="legend-dot high"></view><text>高相关 ≥0.7</text></view>
-        <view class="legend-item"><view class="legend-dot mid"></view><text>中相关</text></view>
-        <view class="legend-item"><view class="legend-dot low"></view><text>低相关 &lt;0.4</text></view>
       </view>
     </view>
 
