@@ -73,10 +73,4 @@
 /* 置顶标识 */
 .pin-mark{font-size:24rpx;margin-right:4rpx}
 
-/* 热门基金 */
-.hot-wrap{margin-top:48rpx;width:100%}
-.hot-title{text-align:center;font-size:24rpx;color:#CCC;margin-bottom:24rpx}
-.hot-list{display:flex;flex-wrap:wrap;justify-content:center;gap:16rpx;padding:0 24rpx}
-.hot-item{display:flex;flex-direction:column;align-items:center;padding:16rpx 24rpx;background:#FFF;border-radius:12rpx;min-width:180rpx}
-.hot-name{font-size:26rpx;color:#333;margin-bottom:4rpx}
-.hot-code{font-size:22rpx;color:#BBB}
+

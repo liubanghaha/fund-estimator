@@ -49,17 +49,8 @@
     <view class="empty-icon">⭐</view>
     <view class="empty-text">暂无自选基金</view>
     <view class="empty-hint">在基金详情页点击「加自选」添加自选</view>
-    <button class="search-btn" bind:tap="onSearch">去搜索基金</button>
-    <view class="hot-wrap">
-      <view class="hot-title">— 热门基金 —</view>
-      <view class="hot-list">
-        <view wx:for="{{hotFunds}}" wx:key="code" class="hot-item" bind:tap="onTapHotFund" data-code="{{item.code}}" data-name="{{item.name}}">
-          <text class="hot-name">{{item.name}}</text>
-          <text class="hot-code">{{item.code}}</text>
-        </view>
-      </view>
-    </view>
-  </view>
+	    <button class="search-btn" bind:tap="onSearch">去搜索基金</button>
+	  </view>
   <view wx:elif="{{displayList.length === 0 && searchKeyword}}" class="empty-wrap">
     <view class="empty-icon">🔍</view>
     <view class="empty-text">自选中未找到「{{searchKeyword}}」</view>

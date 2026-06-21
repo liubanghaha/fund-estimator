@@ -41,15 +41,8 @@ Page({
     searchKeyword: "",
     updateTime: "",
     summary: { avg: 0, up: 0, down: 0, total: 0 },
-    pinnedCodes: [],
-    hotFunds: [
-      { code: "005827", name: "易方达蓝筹精选混合" },
-      { code: "161725", name: "招商中证白酒指数(LOF)A" },
-      { code: "003095", name: "中欧医疗健康混合A" },
-      { code: "320007", name: "诺安成长混合" },
-      { code: "110011", name: "易方达中小盘混合" },
-    ],
-    // 左滑删除
+	    pinnedCodes: [],
+	    // 左滑删除
     _swiping: false,
     _swipeIdx: -1,
     _swipeX: 0,
@@ -173,11 +166,6 @@ Page({
     } else {
       wx.navigateTo({ url: "/pages/search/index" });
     }
-  },
-
-  onTapHotFund(e) {
-    const { code, name } = e.currentTarget.dataset;
-    wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}` });
   },
 
   onLongPressItem(e) {
