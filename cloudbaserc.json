@@ -36,7 +36,9 @@
         { "name": "dailyTempTrigger", "type": "timer", "config": "0 0 3 * * * *" }
       ]
     },
+    { "name": "fetchFundOverview", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "dcaBacktest", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundRank", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
+    { "name": "fetchFundRank", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "computeCorrelation", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

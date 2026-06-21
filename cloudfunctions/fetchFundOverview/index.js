@@ -126,6 +126,9 @@ async function fetchProfileData(fundCode) {
               fundSize: parseFloat(d.ENDNAV) || null,
               riskLevel: d.RISKLEVEL || "",
               company: d.JJGS || "",
+              mgmtFee: d.MGREXP || null,
+              trustFee: d.TRUSTEXP || null,
+              salesFee: d.SALESEXP || null,
             });
           } catch (e) { resolve(null); }
         });

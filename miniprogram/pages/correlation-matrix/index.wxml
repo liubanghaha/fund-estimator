@@ -1,0 +1,41 @@
+<view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <view class="header">
+    <view class="header-title">持仓基金相关性矩阵</view>
+    <view class="header-desc" wx:if="{{commonDates}}">基于 {{commonDates}} 个公共交易日计算</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-text">计算中...</view>
+
+  <view wx:if="{{!loading && matrix.length > 0}}" class="matrix-wrap">
+    <scroll-view scroll-x class="matrix-scroll">
+      <view class="matrix">
+        <!-- 表头行 -->
+        <view class="m-row m-head">
+          <view class="m-cell m-label"></view>
+          <view wx:for="{{fundNames}}" wx:key="*this" class="m-cell m-head-name">{{item}}</view>
+        </view>
+        <!-- 数据行 -->
+        <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="row" class="m-row">
+          <view class="m-cell m-label">{{fundNames[row]}}</view>
+          <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="col" class="m-cell">
+            <view wx:if="{{row === col}}" class="m-val self">1.00</view>
+            <view wx:else class="m-val {{getCorrClass(row, col)}}">{{getCorr(row, col)}}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{warnings.length > 0}}" class="warnings">
+      <view wx:for="{{warnings}}" wx:key="*this" class="warn-item">⚠️ {{item}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!loading && matrix.length === 0 && !loadError}}" class="empty">暂无数据，请添加至少2只持仓基金</view>
+  <view wx:if="{{loadError}}" class="empty">计算失败，请稍后重试</view>
+
+  <view class="legend">
+    <view class="legend-item"><view class="legend-dot high"></view><text>高度相关 (≥0.7)</text></view>
+    <view class="legend-item"><view class="legend-dot mid"></view><text>中度相关 (0.4~0.7)</text></view>
+    <view class="legend-item"><view class="legend-dot low"></view><text>低度相关 (&lt;0.4)</text></view>
+  </view>
+</view>

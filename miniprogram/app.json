@@ -10,7 +10,8 @@
     "pages/login/index",
     "pages/profit-detail/index",
     "pages/fund-compare/index",
-    "pages/sync-trade/index"
+    "pages/sync-trade/index",
+    "pages/correlation-matrix/index"
   ],
   "window": {
     "backgroundColor": "#F5F5F5",

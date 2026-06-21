@@ -8,6 +8,12 @@
     bindrefresherrefresh="onScrollRefresh"
   >
     <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
+
+      <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
+        <text class="alert-icon">🔔</text>
+        <text class="alert-text">{{alertTriggered.length}}只基金触发提醒</text>
+        <text class="alert-close" bind:tap="onDismissAlert">✕</text>
+      </view>
       <view wx:if="{{!isLoggedIn}}" class="empty-state">
         <view class="empty-icon">📈</view>
         <view class="empty-title">我的持仓</view>
@@ -79,6 +85,10 @@
             <view class="action-icon">✏️</view>
             <view class="action-text">加减仓</view>
           </view>
+          <view class="action-item" bind:tap="onCorrelation">
+            <view class="action-icon">🔗</view>
+            <view class="action-text">相关性</view>
+          </view>
           <view class="action-item" bind:tap="onToggleBatch">
             <view class="action-icon">📋</view>
             <view class="action-text">批量</view>
@@ -98,6 +108,22 @@
               <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
             </view>
             <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
+          </view>
+        </view>
+
+        <view wx:if="{{healthScore}}" class="health-card">
+          <view class="health-main">
+            <view class="health-ring">
+              <view class="health-ring-inner">
+                <text class="health-score">{{healthScore.score}}</text>
+                <text class="health-label">健康分</text>
+              </view>
+              <view class="health-ring-arc" style="background:conic-gradient(#4CAF50 0deg {{healthScore.score * 3.6}}deg, #EEE {{healthScore.score * 3.6}}deg 360deg)"></view>
+            </view>
+            <view class="health-grade {{healthScore.grade === '优秀' ? 'up' : healthScore.grade === '较差' ? 'down' : ''}}">{{healthScore.grade}}</view>
+          </view>
+          <view class="health-detail">
+            <text class="health-detail-text">估值{{healthScore.avgNormPE != null ? (healthScore.avgNormPE < 0.7 ? '低估' : healthScore.avgNormPE < 1.3 ? '正常' : '高估') : '--'}} · 最大行业 {{healthScore.maxIndustry}}%</text>
           </view>
         </view>
 
@@ -212,6 +238,16 @@
         </view>
       </view>
       <view class="col-edit-close" bind:tap="onCloseColEdit">完成</view>
+    </view>
+  </view>
+
+  <!-- 止盈止损设置 -->
+  <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
+    <view class="col-edit-card" catch:tap="">
+      <view class="col-edit-title">止盈止损提醒 — {{alertEditFundName}}</view>
+      <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
+      <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
+      <view class="col-edit-close" bind:tap="onSaveAlert">保存</view>
     </view>
   </view>
 

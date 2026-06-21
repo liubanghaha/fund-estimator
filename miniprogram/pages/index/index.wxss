@@ -63,6 +63,27 @@
 .asset-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--primary));border-radius:5rpx;min-width:4rpx}
 .asset-warning{margin-top:12rpx;padding:12rpx 16rpx;background:#FFF8E1;border-radius:8rpx;font-size:22rpx;color:#B8860B;line-height:1.5}
 
+.health-card{margin:0 0 12rpx;background:#FFF;border-radius:12rpx;padding:24rpx;display:flex;align-items:center;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.health-main{display:flex;flex-direction:column;align-items:center;width:160rpx}
+.health-ring{width:120rpx;height:120rpx;position:relative}
+.health-ring-arc{position:absolute;top:0;left:0;width:120rpx;height:120rpx;border-radius:50%}
+.health-ring-inner{position:absolute;top:12rpx;left:12rpx;width:96rpx;height:96rpx;border-radius:50%;background:#FFF;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1}
+.health-score{font-size:36rpx;font-weight:700;color:var(--primary);line-height:1}
+.health-label{font-size:18rpx;color:#BBB}
+.health-grade{font-size:26rpx;font-weight:600;color:#333;margin-top:8rpx}
+.health-grade.up{color:#2E8B57}
+.health-grade.down{color:#E4393C}
+.health-detail{flex:1;padding-left:24rpx}
+.health-detail-text{font-size:24rpx;color:#666;line-height:1.6}
+
+.alert-bar{display:flex;align-items:center;padding:14rpx 24rpx;background:#FFF8E1;margin:0 0 8rpx}
+.alert-icon{font-size:28rpx;margin-right:8rpx}
+.alert-text{flex:1;font-size:26rpx;color:#B8860B}
+.alert-close{font-size:28rpx;color:#CCC;padding:0 8rpx}
+.alert-field{display:flex;align-items:center;margin-top:20rpx}
+.alert-label{width:160rpx;font-size:26rpx;color:#666}
+.alert-input{flex:1;height:64rpx;border:1rpx solid #E5E5E5;border-radius:8rpx;padding:0 16rpx;font-size:28rpx;text-align:right}
+
 .holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF}
 .updated-tag{font-size:14rpx;color:#FFF;background:var(--primary);border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle}
 

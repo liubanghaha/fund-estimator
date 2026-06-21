@@ -1,0 +1,5 @@
+{
+  "runtime": "Nodejs20.19",
+  "timeout": 30,
+  "triggers": []
+}

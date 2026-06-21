@@ -129,6 +129,7 @@ Page({
           totalReturnRate: cached.totalReturnRate,
           updateTime: cached.updateTime || "",
           assetAllocation: cached.assetAllocation || null,
+          healthScore: cached.healthScore || null,
           fromCache: true,
           allUpdated,
         });
@@ -195,6 +196,45 @@ Page({
     getApp().markChangelogRead();
   },
 
+  // ---- 止盈止损提醒 ----
+  onSetAlert(e) {
+    const { fundCode, fundName } = e.currentTarget.dataset;
+    const settings = wx.getStorageSync('alertSettings') || {};
+    const s = settings[fundCode] || { upper: 15, lower: -10 };
+    this.setData({
+      showAlertEdit: true,
+      alertEditFundCode: fundCode,
+      alertEditFundName: fundName,
+      alertEditUpper: String(s.upper || ''),
+      alertEditLower: String(s.lower || ''),
+    });
+  },
+  onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
+  onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
+  onSaveAlert() {
+    const { alertEditFundCode, alertEditUpper, alertEditLower } = this.data;
+    const settings = wx.getStorageSync('alertSettings') || {};
+    settings[alertEditFundCode] = { upper: parseFloat(alertEditUpper) || 0, lower: parseFloat(alertEditLower) || 0 };
+    wx.setStorageSync('alertSettings', settings);
+    this.setData({ showAlertEdit: false });
+    wx.showToast({ title: '已设置提醒', icon: 'success' });
+  },
+  onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
+  onDismissAlert() { this.setData({ alertTriggered: [] }); },
+  _checkAlerts() {
+    const settings = wx.getStorageSync('alertSettings') || {};
+    const triggered = [];
+    this.data.holdings.forEach(h => {
+      const s = settings[h.fundCode];
+      if (!s) return;
+      const rate = parseFloat(h.todayChangeRate);
+      if ((s.upper > 0 && rate >= s.upper) || (s.lower < 0 && rate <= s.lower)) {
+        triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate, type: rate >= (s.upper || 999) ? 'up' : 'down' });
+      }
+    });
+    if (triggered.length > 0) this.setData({ alertTriggered: triggered });
+  },
+
   onScrollRefresh() {
     this._lastFetch = Date.now();
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
@@ -222,10 +262,12 @@ Page({
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
           assetAllocation: d.assetAllocation || null,
+          healthScore: d.healthScore || null,
           showAssetAlloc: this.data.showAssetAlloc, // 保持展开状态
           fromCache: false,
         });
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, ts: Date.now() } });
+        this._checkAlerts();
+        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, ts: Date.now() } });
       }
     } catch (e) {
       this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
@@ -471,6 +513,15 @@ Page({
     wx.navigateTo({ url: "/pages/adjust-holding/index" });
   },
 
+  onCorrelation() {
+    const holdings = this.data.holdings;
+    if (holdings.length < 2) {
+      wx.showToast({ title: "至少需要2只基金", icon: "none" });
+      return;
+    }
+    wx.navigateTo({ url: "/pages/correlation-matrix/index" });
+  },
+
   onTapHolding(e) {
     if (this.data.batchMode) return;
     const { code, name } = e.currentTarget.dataset;
@@ -478,16 +529,21 @@ Page({
   },
 
   onLongPressHolding(e) {
-    const { id } = e.currentTarget.dataset;
+    const { id, code, name } = e.currentTarget.dataset;
     const self = this;
     wx.showActionSheet({
-      itemList: ['编辑', '删除'],
+      itemList: ['编辑', '设置提醒', '删除'],
       success(res) {
         const h = self.data.holdings.find((x) => x._id === id);
         if (!h) return;
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
+          self.setData({ showAlertEdit: true, alertEditFundCode: h.fundCode, alertEditFundName: h.fundName });
+          const settings = wx.getStorageSync('alertSettings') || {};
+          const s = settings[h.fundCode] || { upper: 15, lower: -10 };
+          self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || '') });
+        } else if (res.tapIndex === 2) {
           wx.showModal({
             title: "确认删除",
             content: "确定要删除此条持仓吗？",

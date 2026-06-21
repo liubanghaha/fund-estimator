@@ -115,6 +115,35 @@
 .profile-value{font-size:28rpx;color:#1A1A1A;font-weight:500}
 .empty-text{font-size:26rpx;color:#CCC;text-align:center;padding:40rpx 0}
 
+.risk-grid{display:flex;flex-wrap:wrap}
+.risk-item{width:50%;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
+.risk-item:nth-last-child(-n+2){border-bottom:none}
+.risk-item:last-child{border-bottom:none}
+.risk-label{font-size:24rpx;color:#999;margin-bottom:8rpx}
+.risk-value{font-size:36rpx;font-weight:700;color:#333}
+.risk-value.up{color:#E4393C}
+.risk-value.down{color:#2E8B57}
+.risk-sub{font-size:20rpx;color:#BBB;margin-top:4rpx}
+
+.fee-card{margin:16rpx 24rpx;background:#FFF;border-radius:12rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.fee-header{display:flex;justify-content:space-between;align-items:center;padding:20rpx 24rpx;border-bottom:1rpx solid #F5F5F5}
+.fee-title{font-size:26rpx;font-weight:500;color:#333}
+.fee-subtitle{display:block;font-size:20rpx;color:#BBB;margin-top:4rpx}
+.fee-arrow{font-size:22rpx;color:#CCC;transition:transform .3s}
+.fee-arrow.open{transform:rotate(180deg)}
+.fee-body{padding:20rpx 24rpx}
+.fee-note{font-size:22rpx;color:#999;margin-bottom:16rpx}
+.fee-table{border-radius:8rpx;overflow:hidden;border:1rpx solid #EEE}
+.fee-row{display:flex;border-bottom:1rpx solid #F5F5F5}
+.fee-row:last-child{border-bottom:none}
+.fee-row-head{background:#FAFAFA}
+.fee-row-lost{background:#FFF5F5}
+.fee-col-label{width:120rpx;font-size:24rpx;color:#666;padding:16rpx 12rpx;text-align:left}
+.fee-row-head .fee-col-label{font-size:22rpx;color:#999}
+.fee-col{flex:1;font-size:24rpx;color:#333;padding:16rpx 8rpx;text-align:center}
+.fee-row-head .fee-col{font-size:22rpx;color:#999}
+.fee-row-lost .fee-col{color:#E4393C;font-weight:500}
+
 .history-row{display:flex;align-items:center;justify-content:space-between;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
 .history-row:last-child{border-bottom:none}
 .h-date{font-size:24rpx;color:#999;width:170rpx}

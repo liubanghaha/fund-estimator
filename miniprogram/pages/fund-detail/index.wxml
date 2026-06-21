@@ -121,6 +121,14 @@
           <view class="metric-item"><view class="metric-label">近3年</view><view class="metric-value {{threeYearReturn > 0 ? 'up' : threeYearReturn < 0 ? 'down' : ''}}">{{threeYearReturn != null ? (threeYearReturn > 0 ? '+' : '') + threeYearReturn + '%' : '--'}}</view></view>
         </view>
       </view>
+      <view wx:if="{{riskMetrics}}" class="info-card risk-card">
+        <view class="section-title">风险指标</view>
+        <view class="risk-grid">
+          <view class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view><view class="risk-sub">{{riskMetrics.ddPeakDate}} → {{riskMetrics.ddTroughDate}}</view></view>
+          <view class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
+          <view class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
+        </view>
+      </view>
       <view wx:if="{{navHistory.length > 0}}" class="info-card">
         <view class="section-title">历史净值</view>
         <view wx:for="{{navHistory}}" wx:key="date" wx:if="{{index < 10 || showAllHistory}}" class="history-row">
@@ -243,6 +251,45 @@
           <view class="dca-stat-row">
             <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.annualizedReturn}}%</text><text class="dca-stat-label">年化收益率</text></view>
             <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.months}}</text><text class="dca-stat-label">定投月数</text></view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">
+      <view class="fee-header" bind:tap="onToggleFee">
+        <view>
+          <text class="fee-title">💰 费用黑洞</text>
+          <text class="fee-subtitle">年费率 {{totalFeeRate}}%</text>
+        </view>
+        <text class="fee-arrow {{showFee ? 'open' : ''}}">{{showFee ? '▼' : '▶'}}</text>
+      </view>
+      <view wx:if="{{showFee}}" class="fee-body">
+        <view class="fee-note">假设投资¥100,000，年化收益8%，费率差复利侵蚀：</view>
+        <view class="fee-table">
+          <view class="fee-row fee-row-head">
+            <text class="fee-col-label"></text>
+            <text class="fee-col">5年后</text>
+            <text class="fee-col">10年后</text>
+            <text class="fee-col">20年后</text>
+          </view>
+          <view class="fee-row">
+            <text class="fee-col-label">本基金</text>
+            <text class="fee-col">¥{{feeData.yr5.withFee}}</text>
+            <text class="fee-col">¥{{feeData.yr10.withFee}}</text>
+            <text class="fee-col">¥{{feeData.yr20.withFee}}</text>
+          </view>
+          <view class="fee-row">
+            <text class="fee-col-label">零费率</text>
+            <text class="fee-col">¥{{feeData.yr5.noFee}}</text>
+            <text class="fee-col">¥{{feeData.yr10.noFee}}</text>
+            <text class="fee-col">¥{{feeData.yr20.noFee}}</text>
+          </view>
+          <view class="fee-row fee-row-lost">
+            <text class="fee-col-label">被吞</text>
+            <text class="fee-col">¥{{feeData.yr5.lost}} ({{feeData.yr5.pct}}%)</text>
+            <text class="fee-col">¥{{feeData.yr10.lost}} ({{feeData.yr10.pct}}%)</text>
+            <text class="fee-col">¥{{feeData.yr20.lost}} ({{feeData.yr20.pct}}%)</text>
           </view>
         </view>
       </view>

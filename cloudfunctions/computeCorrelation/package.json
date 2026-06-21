@@ -1,0 +1,9 @@
+{
+  "name": "computeCorrelation",
+  "version": "1.0.0",
+  "description": "计算基金相关性矩阵",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

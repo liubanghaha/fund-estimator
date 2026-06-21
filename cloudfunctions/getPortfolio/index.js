@@ -233,6 +233,25 @@ exports.main = async (event) => {
       }
     } catch (e) { console.error("[getPortfolio] 资产配置失败:", e.message, e.stack); assetAllocation = null; }
 
+    // 持仓健康分
+    let healthScore = null;
+    try {
+      const tempScores = [];
+      enriched.forEach(h => {
+        if (h.peTemp && h.peTemp.normPE > 0) tempScores.push(h.peTemp.normPE);
+      });
+      const avgNormPE = tempScores.length > 0 ? tempScores.reduce((a, b) => a + b, 0) / tempScores.length : null;
+      const tempScore = avgNormPE != null
+        ? (avgNormPE < 0.7 ? 90 : avgNormPE < 1.0 ? 70 : avgNormPE < 1.3 ? 50 : 30)
+        : 50;
+      const maxIndustry = assetAllocation && assetAllocation.items && assetAllocation.items.length > 0
+        ? assetAllocation.items[0].percent : 0;
+      const concScore = maxIndustry < 30 ? 90 : maxIndustry < 50 ? 70 : maxIndustry < 70 ? 50 : 30;
+      const score = Math.round(tempScore * 0.5 + concScore * 0.5);
+      const grade = score >= 80 ? '优秀' : score >= 60 ? '良好' : score >= 40 ? '一般' : '较差';
+      healthScore = { score, grade, avgNormPE: avgNormPE != null ? +avgNormPE.toFixed(2) : null, maxIndustry, tempScore, concScore };
+    } catch (e) { console.error("[getPortfolio] 健康分计算失败:", e.message); }
+
     return {
       code: 0,
       data: {
@@ -247,6 +266,7 @@ exports.main = async (event) => {
         intradaySnapshots,
         snapDebug,
         assetAllocation,
+        healthScore,
       },
     };
   } catch (e) {

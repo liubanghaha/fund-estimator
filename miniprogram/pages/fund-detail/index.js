@@ -277,10 +277,20 @@ Page({
   calcReturns(history) {
     const r = calc.calcPeriodReturns(history);
     const { displayChangeRate } = this.data;
+    const dd = calc.calcMaxDrawdown(history);
+    const vol = calc.calcVolatility(history);
+    const sharpe = calc.calcSharpe(history);
+    const riskMetrics = dd.drawdown != null ? {
+      maxDrawdown: dd.drawdown,
+      ddPeakDate: dd.peakDate, ddTroughDate: dd.troughDate,
+      volatility: vol != null ? vol : '--',
+      sharpe: sharpe != null ? sharpe : '--',
+    } : null;
     this.setData({
       todayReturn: displayChangeRate != null ? displayChangeRate : (r.day || 0),
       weekReturn: r.week, monthReturn: r.month, threeMonthReturn: r.threeMonth,
       sixMonthReturn: r.sixMonth, yearReturn: r.year, threeYearReturn: r.threeYear,
+      riskMetrics,
     });
   },
 
@@ -713,6 +723,37 @@ Page({
       wx.showToast({ title: "回测失败", icon: "none" });
     }
     this.setData({ dcaLoading: false });
+  },
+
+  // ---- 费用黑洞 ----
+  onToggleFee() {
+    const show = !this.data.showFee;
+    this.setData({ showFee: show });
+    if (show && !this.data.feeData && this.data.profile) this.calcFeeData();
+  },
+  calcFeeData() {
+    const p = this.data.profile;
+    const mgmt = parseFloat(p.mgmtFee) || 0;
+    const trust = parseFloat(p.trustFee) || 0;
+    const sales = parseFloat(p.salesFee) || 0;
+    const totalRate = mgmt + trust + sales;
+    if (totalRate <= 0) return;
+    const principal = 100000, annualReturn = 0.08;
+    const calc = (years) => {
+      const withFee = principal * Math.pow(1 + annualReturn - totalRate / 100, years);
+      const noFee = principal * Math.pow(1 + annualReturn, years);
+      const lost = noFee - withFee;
+      return {
+        withFee: Math.round(withFee).toLocaleString(),
+        noFee: Math.round(noFee).toLocaleString(),
+        lost: Math.round(lost).toLocaleString(),
+        pct: (lost / noFee * 100).toFixed(1),
+      };
+    };
+    this.setData({
+      totalFeeRate: totalRate.toFixed(2) + ' (管理' + mgmt.toFixed(2) + '% + 托管' + trust.toFixed(2) + '%' + (sales > 0 ? ' + 销售' + sales.toFixed(2) + '%' : '') + ')',
+      feeData: { yr5: calc(5), yr10: calc(10), yr20: calc(20) },
+    });
   },
 
   // ---- 同类排名 ----
