@@ -6,7 +6,7 @@ Page({
     fundCodes: [],
     fundNames: [],
     matrix: [],
-    warnings: [],
+    pairs: [],
     commonDates: 0,
     loading: true,
     loadError: false,
@@ -47,15 +47,13 @@ Page({
         });
         if (corrRes.result && corrRes.result.code === 0) {
           const { matrix, commonDates } = corrRes.result.data;
-          const warnings = [];
-          matrix.forEach(m => {
-            if (m.correlation >= 0.7) {
-              const nameA = fundNames[fundCodes.indexOf(m.fundA)];
-              const nameB = fundNames[fundCodes.indexOf(m.fundB)];
-              warnings.push(`${nameA} 和 ${nameB} 高度相关 (${m.correlation})，建议仅保留一只`);
-            }
-          });
-          this.setData({ matrix, commonDates, warnings });
+          const pairs = matrix.map(m => ({
+            key: `${m.fundA}_${m.fundB}`,
+            nameA: fundNames[fundCodes.indexOf(m.fundA)],
+            nameB: fundNames[fundCodes.indexOf(m.fundB)],
+            corr: m.correlation,
+          })).sort((a, b) => b.corr - a.corr);
+          this.setData({ matrix, pairs, commonDates });
         }
       }
 
@@ -64,26 +62,5 @@ Page({
       console.error("资产分析失败:", e);
       this.setData({ loading: false, loadError: true });
     }
-  },
-
-  getCorr(row, col) {
-    if (row === col) return "1.00";
-    const { fundCodes, matrix } = this.data;
-    const a = fundCodes[row], b = fundCodes[col];
-    if (row > col) {
-      const m = matrix.find(x => x.fundA === b && x.fundB === a);
-      return m ? m.correlation.toFixed(2) : "--";
-    }
-    const m = matrix.find(x => x.fundA === a && x.fundB === b);
-    return m ? m.correlation.toFixed(2) : "--";
-  },
-
-  getCorrClass(row, col) {
-    const val = this.getCorr(row, col);
-    if (val === "--") return "";
-    const v = parseFloat(val);
-    if (v >= 0.7) return "high";
-    if (v >= 0.4) return "mid";
-    return "low";
   },
 });

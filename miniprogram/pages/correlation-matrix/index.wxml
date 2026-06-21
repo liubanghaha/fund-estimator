@@ -38,36 +38,32 @@
     </view>
 
     <!-- 3. 基金相关性 -->
-    <view wx:if="{{matrix.length > 0}}" class="card">
+    <view wx:if="{{pairs.length > 0}}" class="card">
       <view class="card-title">🔗 基金相关性
         <text class="card-desc" wx:if="{{commonDates}}">（{{commonDates}}个公共交易日）</text>
       </view>
-      <scroll-view scroll-x class="matrix-scroll">
-        <view class="matrix">
-          <view class="m-row m-head">
-            <view class="m-cell m-label"></view>
-            <view wx:for="{{fundNames}}" wx:key="*this" class="m-cell m-head-name">{{item}}</view>
-          </view>
-          <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="row" class="m-row">
-            <view class="m-cell m-label">{{fundNames[row]}}</view>
-            <view wx:for="{{fundCodes}}" wx:key="*this" wx:for-index="col" class="m-cell">
-              <view wx:if="{{row === col}}" class="m-val self">1.00</view>
-              <view wx:else class="m-val {{getCorrClass(row, col)}}">{{getCorr(row, col)}}</view>
-            </view>
-          </view>
+      <view wx:for="{{pairs}}" wx:key="key" class="corr-item">
+        <view class="corr-names">
+          <text class="corr-name">{{item.nameA}}</text>
+          <text class="corr-vs">↔</text>
+          <text class="corr-name">{{item.nameB}}</text>
         </view>
-      </scroll-view>
-      <view class="legend">
-        <view class="legend-item"><view class="legend-dot high"></view><text>高度相关 (≥0.7)</text></view>
-        <view class="legend-item"><view class="legend-dot mid"></view><text>中度相关 (0.4~0.7)</text></view>
-        <view class="legend-item"><view class="legend-dot low"></view><text>低度相关 (&lt;0.4)</text></view>
+        <view class="corr-right">
+          <view class="corr-bar-track">
+            <view class="corr-bar-fill {{item.corr >= 0.7 ? 'high' : item.corr >= 0.4 ? 'mid' : 'low'}}" style="width:{{item.corr * 100}}%"></view>
+          </view>
+          <text class="corr-val {{item.corr >= 0.7 ? 'high' : item.corr >= 0.4 ? 'mid' : 'low'}}">{{item.corr.toFixed(2)}}</text>
+        </view>
+        <text wx:if="{{item.corr >= 0.7}}" class="corr-tag">高相关</text>
       </view>
-      <view wx:if="{{warnings.length > 0}}" class="warnings">
-        <view wx:for="{{warnings}}" wx:key="*this" class="warn-item">⚠️ {{item}}</view>
+      <view class="legend">
+        <view class="legend-item"><view class="legend-dot high"></view><text>高相关 ≥0.7</text></view>
+        <view class="legend-item"><view class="legend-dot mid"></view><text>中相关</text></view>
+        <view class="legend-item"><view class="legend-dot low"></view><text>低相关 &lt;0.4</text></view>
       </view>
     </view>
 
-    <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && matrix.length === 0}}" class="empty">暂无数据，请添加至少2只持仓基金</view>
+    <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">暂无数据</view>
     <view wx:if="{{loadError}}" class="empty">加载失败，请稍后重试</view>
   </view>
 </view>
