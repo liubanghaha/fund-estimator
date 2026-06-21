@@ -32,6 +32,8 @@ Page({
       this.setData({
         healthScore: d.healthScore || null,
         assetAllocation: d.assetAllocation || null,
+      }, () => {
+        if (d.healthScore) this._drawHealthRing(d.healthScore.score);
       });
 
       const fundCodes = d.holdings.map(h => h.fundCode);
@@ -82,6 +84,48 @@ Page({
       console.error("资产分析失败:", e);
       this.setData({ loading: false, loadError: true });
     }
+  },
+
+  _drawHealthRing(score) {
+    const query = wx.createSelectorQuery();
+    query.select('#healthCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return;
+      const canvas = res[0].node;
+      const w = 140 * (wx.getSystemInfoSync().pixelRatio || 2);
+      canvas.width = w;
+      canvas.height = w;
+      const ctx = canvas.getContext('2d');
+      const cx = w / 2, cy = w / 2, r = w / 2 - 8;
+      const dpr = w / 140;
+
+      // 底色环
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.lineWidth = 10 * dpr;
+      ctx.strokeStyle = '#EEE';
+      ctx.stroke();
+
+      // 进度弧
+      const pct = score / 100;
+      const startAngle = -Math.PI / 2;
+      const endAngle = startAngle + pct * 2 * Math.PI;
+      const color = score >= 80 ? '#4CAF50' : score >= 60 ? '#1976D2' : score >= 40 ? '#FF9800' : '#E4393C';
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, startAngle, endAngle);
+      ctx.lineWidth = 10 * dpr;
+      ctx.strokeStyle = color;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // 末端圆点
+      const ex = cx + r * Math.cos(endAngle);
+      const ey = cy + r * Math.sin(endAngle);
+      ctx.beginPath();
+      ctx.arc(ex, ey, 5 * dpr, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
   },
 
   onToggleSharedStock(e) {
