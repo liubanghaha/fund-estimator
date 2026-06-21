@@ -59,5 +59,8 @@ App({
 
   getVersion: function () {
     return APP_VERSION;
+  },
+  getChangelog: function () {
+    return CHANGELOG;
   }
 });
