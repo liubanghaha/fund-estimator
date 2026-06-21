@@ -25,6 +25,8 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 同类排名
     rankInfo: null,
+    // 风险指标 + 费用
+    riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '',
   },
 
   onLoad(options) {
@@ -225,7 +227,7 @@ Page({
 
         const holdings = res.result.data.holdings || [];
         // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
-        this.setData({ profile: p, manager: res.result.data.manager, holdings });
+        this.setData({ profile: p, manager: res.result.data.manager, holdings, feeData: null, showFee: false });
 
         // 后台拉取股票行情，不阻塞渲染
         this._fetchStockQuotes(holdings).then(quotes => {

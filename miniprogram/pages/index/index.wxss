@@ -167,7 +167,7 @@
 .index-scroll-anim{overflow:hidden;animation:idxSlideIn .3s ease}
 @keyframes idxSlideIn{
   from{max-height:0;opacity:0}
-  to{max-height:200rpx;opacity:1}
+  to{max-height:240rpx;opacity:1}
 }
 .index-scroll{width:100%;white-space:nowrap;padding:4rpx 0 12rpx}
 .index-card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:180rpx;padding:16rpx 0;margin:0 6rpx;border-radius:12rpx;border:1rpx solid #F0F0F0;white-space:normal}

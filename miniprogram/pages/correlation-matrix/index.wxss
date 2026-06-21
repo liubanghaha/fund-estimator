@@ -8,9 +8,12 @@
 
 /* 健康分 */
 .health-main{display:flex;align-items:center}
-.health-ring{width:140rpx;height:140rpx;position:relative;flex-shrink:0}
-.health-ring-arc{position:absolute;top:0;left:0;width:140rpx;height:140rpx;border-radius:50%}
-.health-ring-inner{position:absolute;top:14rpx;left:14rpx;width:112rpx;height:112rpx;border-radius:50%;background:#FFF;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1}
+.health-ring{width:140rpx;height:140rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:8rpx solid #EEE}
+.health-ring.excellent{border-color:#4CAF50;background:rgba(76,175,80,.08)}
+.health-ring.good{border-color:var(--primary);background:var(--primary-bg)}
+.health-ring.fair{border-color:#FF9800;background:rgba(255,152,0,.08)}
+.health-ring.poor{border-color:#E4393C;background:rgba(228,57,60,.08)}
+.health-ring-inner{display:flex;flex-direction:column;align-items:center;justify-content:center}
 .health-score{font-size:40rpx;font-weight:700;color:var(--primary);line-height:1}
 .health-label{font-size:18rpx;color:#BBB}
 .health-right{flex:1;padding-left:24rpx}

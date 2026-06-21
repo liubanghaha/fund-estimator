@@ -60,6 +60,9 @@ Page({
       totalReturn: { label: "累计收益", sortable: true },
       valuation: { label: "估值", sortable: false, isValuation: true },
     },
+    showChangelog: false, changelog: null,
+    alertTriggered: [], showAlertEdit: false,
+    alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
   },
 
   onLoad() {
@@ -197,18 +200,6 @@ Page({
   },
 
   // ---- 止盈止损提醒 ----
-  onSetAlert(e) {
-    const { fundCode, fundName } = e.currentTarget.dataset;
-    const settings = wx.getStorageSync('alertSettings') || {};
-    const s = settings[fundCode] || { upper: 15, lower: -10 };
-    this.setData({
-      showAlertEdit: true,
-      alertEditFundCode: fundCode,
-      alertEditFundName: fundName,
-      alertEditUpper: String(s.upper || ''),
-      alertEditLower: String(s.lower || ''),
-    });
-  },
   onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
   onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
   onSaveAlert() {
@@ -220,13 +211,22 @@ Page({
     wx.showToast({ title: '已设置提醒', icon: 'success' });
   },
   onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
-  onDismissAlert() { this.setData({ alertTriggered: [] }); },
+  onDismissAlert() {
+    const codes = this.data.alertTriggered.map(t => t.fundCode);
+    const dismissed = wx.getStorageSync('alertDismissed') || {};
+    codes.forEach(c => { dismissed[c] = Date.now(); });
+    wx.setStorageSync('alertDismissed', dismissed);
+    this.setData({ alertTriggered: [] });
+  },
   _checkAlerts() {
     const settings = wx.getStorageSync('alertSettings') || {};
+    const dismissed = wx.getStorageSync('alertDismissed') || {};
     const triggered = [];
     this.data.holdings.forEach(h => {
       const s = settings[h.fundCode];
       if (!s) return;
+      // 今天已解除过的不再触发
+      if (dismissed[h.fundCode] && (Date.now() - dismissed[h.fundCode] < 86400000)) return;
       const rate = parseFloat(h.todayChangeRate);
       if ((s.upper > 0 && rate >= s.upper) || (s.lower < 0 && rate <= s.lower)) {
         triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate, type: rate >= (s.upper || 999) ? 'up' : 'down' });

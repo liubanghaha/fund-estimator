@@ -8,12 +8,11 @@
     <view wx:if="{{healthScore}}" class="card">
       <view class="card-title">📊 持仓健康分</view>
       <view class="health-main">
-        <view class="health-ring">
+        <view class="health-ring {{healthScore.score >= 80 ? 'excellent' : healthScore.score >= 60 ? 'good' : healthScore.score >= 40 ? 'fair' : 'poor'}}">
           <view class="health-ring-inner">
             <text class="health-score">{{healthScore.score}}</text>
             <text class="health-label">健康分</text>
           </view>
-          <view class="health-ring-arc" style="background:conic-gradient(#4CAF50 0deg {{healthScore.score * 3.6}}deg, #EEE {{healthScore.score * 3.6}}deg 360deg)"></view>
         </view>
         <view class="health-right">
           <view class="health-grade {{healthScore.grade === '优秀' ? 'up' : healthScore.grade === '较差' ? 'down' : ''}}">{{healthScore.grade}}</view>
