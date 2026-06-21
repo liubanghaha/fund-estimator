@@ -158,17 +158,32 @@
 
 /* 指数行情 */
 .index-bar{position:fixed;left:0;right:0;bottom:0;background:#FFF;border-top:1rpx solid #F0F0F0;z-index:100;padding:8rpx 0 0;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.04)}
-.index-collapsed{display:flex;align-items:center;justify-content:center;padding:4rpx 16rpx}
-.idx-expand-hint{font-size:20rpx;color:#CCC}
-.idx-gear{font-size:28rpx;padding:4rpx 8rpx;flex-shrink:0}
-.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:0 24rpx 4rpx}
-.idx-collapse-btn{font-size:22rpx;color:#999}
-.index-scroll-wrap{animation:fadeIn .2s ease}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.index-scroll{width:100%;white-space:nowrap;padding:4rpx 0 12rpx}
-.index-card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:180rpx;padding:16rpx 0;margin:0 6rpx;border-radius:12rpx;border:1rpx solid #F0F0F0;white-space:normal}
-.index-card.card-up{background:linear-gradient(180deg,rgba(229,57,53,.06),rgba(229,57,53,.01));border-color:rgba(229,57,53,.15)}
-.index-card.card-down{background:linear-gradient(180deg,rgba(46,139,87,.06),rgba(46,139,87,.01));border-color:rgba(46,139,87,.15)}
+.index-collapsed{display:flex;align-items:baseline;padding:6rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
+.idx-name{font-size:26rpx;color:#333;flex-shrink:0}
+.idx-price{font-size:26rpx;margin-left:24rpx;white-space:nowrap}
+.idx-change{font-size:26rpx;white-space:nowrap;margin-left:auto}
+.idx-change-rate{font-size:26rpx;margin-left:20rpx;white-space:nowrap}
+.idx-expand-hint{font-size:24rpx;color:#CCC;padding:4rpx 8rpx;margin-left:12rpx}
+.idx-gear{font-size:26rpx;padding:12rpx 16rpx;color:#BBB}
+.index-expanded-panel{padding:0;animation:fadeSlideIn .3s ease}
+.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:6rpx 24rpx 8rpx}
+.idx-collapse-arrow{font-size:24rpx;color:#CCC;padding:4rpx 8rpx}
+.index-scroll{white-space:nowrap;width:100%;padding:0 24rpx}
+.index-card{display:inline-flex;flex-direction:column;align-items:center;min-width:180rpx;border-radius:12rpx;padding:18rpx 16rpx;margin-right:12rpx;animation:cardPopIn .35s ease both}
+.index-card:nth-child(1){animation-delay:.05s}
+.index-card:nth-child(2){animation-delay:.1s}
+.index-card:nth-child(3){animation-delay:.15s}
+.index-card:nth-child(4){animation-delay:.2s}
+.index-card:nth-child(5){animation-delay:.25s}
+.index-card:nth-child(6){animation-delay:.3s}
+.index-card:last-child{margin-right:0}
+.card-up{background:rgba(227,57,60,.06)}
+.card-down{background:rgba(46,139,87,.06)}
+.ic-name{font-size:24rpx;color:#666;margin-bottom:8rpx}
+.ic-price{font-size:28rpx;font-weight:700;margin-bottom:6rpx}
+.ic-change-row{font-size:22rpx}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(16rpx)}to{opacity:1;transform:translateY(0)}}
+@keyframes cardPopIn{from{opacity:0;transform:scale(.9) translateY(12rpx)}to{opacity:1;transform:scale(1) translateY(0)}}
 .ic-name{font-size:22rpx;color:#666;margin-bottom:8rpx}
 .ic-price{font-size:28rpx;font-weight:600;margin-bottom:4rpx}
 .ic-change-row{font-size:22rpx}
