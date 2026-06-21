@@ -159,12 +159,16 @@
 /* 指数行情 */
 .index-bar{position:fixed;left:0;right:0;bottom:0;background:#FFF;border-top:1rpx solid #F0F0F0;z-index:100;padding:8rpx 0 0;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.04)}
 .index-collapsed{display:flex;align-items:center;justify-content:center;padding:4rpx 16rpx}
+.idx-collapse-tap{padding:4rpx 16rpx 0}
 .idx-expand-hint{font-size:20rpx;color:#CCC}
+.idx-gear{font-size:28rpx;padding:4rpx 8rpx;flex-shrink:0}
 .index-expanded-panel{background:#FFF}
-.idx-expanded-top{display:flex;justify-content:space-between;align-items:center;padding:8rpx 24rpx 4rpx}
-.idx-gear{font-size:30rpx;padding:4rpx 8rpx}
-.idx-collapse-arrow{font-size:22rpx;color:#CCC}
-.index-scroll{width:100%;white-space:nowrap;padding:8rpx 0 12rpx}
+.index-scroll-anim{overflow:hidden;animation:idxSlideIn .3s ease}
+@keyframes idxSlideIn{
+  from{max-height:0;opacity:0}
+  to{max-height:200rpx;opacity:1}
+}
+.index-scroll{width:100%;white-space:nowrap;padding:4rpx 0 12rpx}
 .index-card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:180rpx;padding:16rpx 0;margin:0 6rpx;border-radius:12rpx;border:1rpx solid #F0F0F0;white-space:normal}
 .index-card.card-up{background:linear-gradient(180deg,rgba(229,57,53,.06),rgba(229,57,53,.01));border-color:rgba(229,57,53,.15)}
 .index-card.card-down{background:linear-gradient(180deg,rgba(46,139,87,.06),rgba(46,139,87,.01));border-color:rgba(46,139,87,.15)}
