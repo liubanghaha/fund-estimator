@@ -25,7 +25,7 @@ Page({
   },
 
   onLoad(options) {
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     if (options.editScreenshot) {
       const app = getApp();

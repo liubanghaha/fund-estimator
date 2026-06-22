@@ -1,20 +1,16 @@
 <view wx:if="{{redirecting}}"></view>
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
-  <!-- 两个入口按钮（始终显示） -->
-  <view class="main-actions">
-    <view class="action-card" bind:tap="onImportScreenshot">
-      <view class="ac-icon">📷</view>
-      <view class="ac-title">截图导入</view>
-      <view class="ac-desc">识别交易记录自动填写</view>
+
+  <!-- 截图样例 -->
+  <view wx:if="{{!ocrLoading && ocrResults.length === 0}}" style="text-align:center;margin-bottom:24rpx">
+    <image class="adjust-demo-img" src="/pic/add.png" mode="widthFix" />
+    <text class="adjust-demo-tip">参考样例：支付宝 APP 交易记录截图</text>
+    <text class="adjust-demo-sub">识别结果可能有偏差，请核对后保存</text>
+    <view class="adjust-import-btn" bind:tap="onImportScreenshot">
+      <text class="import-icon">📷</text>
+      <text class="import-text">截图导入</text>
+      <text class="import-hint">自动识别交易记录</text>
     </view>
-    <!-- TODO: 微信审核金融功能，手动加减仓暂时注释，后续实现 -->
-    <!--
-    <view class="action-card" bind:tap="onManual">
-      <view class="ac-icon">✏️</view>
-      <view class="ac-title">手动加减仓</view>
-      <view class="ac-desc">选择基金手动输入份额</view>
-    </view>
-    -->
   </view>
 
   <!-- 识别中 -->

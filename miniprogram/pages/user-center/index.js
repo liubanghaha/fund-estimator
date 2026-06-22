@@ -20,7 +20,7 @@ Page({
         nickName: userInfo.nickName || "",
       });
     }
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
   },
 

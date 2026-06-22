@@ -1,23 +1,16 @@
-const APP_VERSION = '2.0.0';
+const APP_VERSION = (() => {
+  try { return wx.getAccountInfoSync().miniProgram.version || '0.0.0'; }
+  catch (e) { return '0.0.0'; }
+})();
 
 const CHANGELOG = [
   {
-    version: '2.0.0',
-    date: '2026-06-21',
+    version: '2.0.1',
+    date: '2026-06-22',
     items: [
-      '🎨 新增红蓝主题切换，用户中心一键换肤',
-      '🌡️ 基金估值温度：52周价格区间加权计算，低估/正常/高估一列看清',
-      '📊 资产分析：持仓穿透、健康分、重合度一页打尽',
-      '📉 风险指标：最大回撤、年化波动率、夏普比率',
-      '💸 费用黑洞：管理费托管费长期侵蚀对比',
-      '💯 持仓健康分：估值温度+行业集中度加权评分',
-      '🔔 止盈止损提醒：自定义阈值，触发顶部通知条',
-      '🔗 持仓重合度：多基金重仓同一股票穿透分析',
-      '💰 定投模拟：历史数据回测定投收益',
-      '📋 列表头支持长按拖拽排序',
-      '📈 自选分组管理、盘中实时轮询',
-      '🔔 收益走势页支持日/月/年日历视图',
-      '📱 指数栏收缩/展开样式统一为卡片',
+      '🌡️ 估值温度更精准：PE历史分位+行业感知，低估高估一目了然',
+      '📋 基金详情页新增估值温度，穿透持仓股逐股PE分位一览',
+      '🔧 修复若干已知问题，数据加载更稳定',
     ]
   }
 ];
@@ -54,7 +47,7 @@ App({
     // 版本更新检测
     const lastVersion = wx.getStorageSync('appVersion') || '';
     if (lastVersion !== APP_VERSION && CHANGELOG.length > 0) {
-      this.globalData._pendingChangelog = CHANGELOG.find(c => c.version === APP_VERSION) || CHANGELOG[0];
+      this.globalData._pendingChangelog = CHANGELOG.find(c => c.version === APP_VERSION) || CHANGELOG[CHANGELOG.length - 1];
     }
   },
 

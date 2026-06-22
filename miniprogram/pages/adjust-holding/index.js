@@ -19,7 +19,7 @@ Page({
   },
 
   onLoad(options) {
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     // 如果指定了基金，直接跳转 sync-trade 页面（基金名通过 globalData 传递，避免 URL 编码问题）
     if (options.fundCode) {

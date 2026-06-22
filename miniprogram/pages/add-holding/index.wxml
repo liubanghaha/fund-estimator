@@ -7,11 +7,7 @@
 
       <!-- 未选图 -->
       <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
-        <view class="demo-phone">
-          <image class="demo-img" src="/images/index_demo.png" mode="widthFix" />
-          <view class="demo-notch"></view>
-          <view class="demo-bar"></view>
-        </view>
+        <image class="demo-img" src="/images/index_demo.png" mode="widthFix" />
         <text class="demo-tip">参考样例：支付宝 APP 持仓截图</text>
         <text class="demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
         <view class="import-btn" bind:tap="onImportScreenshot">

@@ -525,7 +525,7 @@ function fetchTempHoldings(fundCode) {
   }
 
   return new Promise((resolve) => {
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${curY}&month=${curM}&rt=${Math.random()}`;
+    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=20&year=${curY}&month=${curM}&rt=${Math.random()}`;
     const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
@@ -566,6 +566,37 @@ function fetchTempHoldings(fundCode) {
 }
 
 async function batchFetchTempLive(codes) {
+  let map = await _fetchLiveEastMoney(codes);
+  let withPE = Object.values(map).filter(s => s.pe != null).length;
+  console.log(`[batchFetchTempLive] 东方财富 PE 覆盖率: ${withPE}/${codes.length}`);
+
+  if (withPE < codes.length * 0.5) {
+    console.log(`[batchFetchTempLive] PE 覆盖率偏低，1秒后重试缺失的`);
+    await new Promise(r => setTimeout(r, 1000));
+    const missed = codes.filter(c => !map[c] || map[c].pe == null);
+    const retryMap = await _fetchLiveEastMoney(missed);
+    for (const [code, data] of Object.entries(retryMap)) {
+      if (!map[code] || map[code].pe == null) map[code] = data;
+    }
+    withPE = Object.values(map).filter(s => s.pe != null).length;
+    console.log(`[batchFetchTempLive] 重试后 PE 覆盖率: ${withPE}/${codes.length}`);
+  }
+
+  const missedCodes = codes.filter(c => !map[c] || map[c].pe == null);
+  if (missedCodes.length > 0) {
+    console.log(`[batchFetchTempLive] ${missedCodes.length} 只从腾讯财经兜底`);
+    const tencentMap = await _fetchLiveTencent(missedCodes);
+    for (const [code, data] of Object.entries(tencentMap)) {
+      if (!map[code] || map[code].pe == null) map[code] = data;
+    }
+    withPE = Object.values(map).filter(s => s.pe != null).length;
+    console.log(`[batchFetchTempLive] 兜底后 PE 覆盖率: ${withPE}/${codes.length}`);
+  }
+
+  return map;
+}
+
+async function _fetchLiveEastMoney(codes) {
   const https = require("https");
   const map = {};
   const BATCH = 40;
@@ -599,6 +630,55 @@ async function batchFetchTempLive(codes) {
                   };
                 }
               });
+            }
+          } catch (e) { /* ignore */ }
+          resolve();
+        });
+      });
+      req.setTimeout(12000, () => { req.destroy(); resolve(); });
+      req.on("error", () => resolve());
+    });
+  }
+  return map;
+}
+
+async function _fetchLiveTencent(codes) {
+  const http = require("http");
+  const map = {};
+  const BATCH = 20;
+  const toQtCode = (code) => {
+    if (code.length === 5) return `hk${code}`;
+    if (code.startsWith("6")) return `sh${code}`;
+    return `sz${code}`;
+  };
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    const qtCodes = batch.map(toQtCode).join(",");
+    const url = `http://qt.gtimg.cn/q=${qtCodes}`;
+    await new Promise((resolve) => {
+      const req = http.get(url, (res) => {
+        const chunks = [];
+        res.on("data", (c) => { chunks.push(c); });
+        res.on("end", () => {
+          try {
+            const body = Buffer.concat(chunks).toString("utf-8");
+            for (const code of batch) {
+              const qtCode = toQtCode(code);
+              const re = new RegExp(`v_${qtCode}="([^"]*)"`);
+              const match = body.match(re);
+              if (!match) continue;
+              const fields = match[1].split("~");
+              const pe = parseFloat(fields[39]) || null;
+              const pb = parseFloat(fields[46]) || null;
+              const price = parseFloat(fields[3]) || null;
+              if (pe || pb || price) {
+                map[code] = {
+                  pe: pe && pe > 0 ? pe : null,
+                  pb: pb && pb > 0 ? pb : null,
+                  price: price,
+                  industry: "其他",
+                };
+              }
             }
           } catch (e) { /* ignore */ }
           resolve();
@@ -737,7 +817,7 @@ function calcTempSignal(fundCode, holdings, stockMap) {
 async function recoverTempHoldings(fundCodes) {
   const holdings = {};
   const db = cloud.database();
-  for (let d = 1; d <= 3; d++) {
+  for (let d = 1; d <= 10; d++) {
     const targetDate = `${new Date(Date.now() - d * 86400000).getFullYear()}-${String(new Date(Date.now() - d * 86400000).getMonth() + 1).padStart(2, '0')}-${String(new Date(Date.now() - d * 86400000).getDate()).padStart(2, '0')}`;
     const BATCH = 100;
     for (let i = 0; i < fundCodes.length; i += BATCH) {

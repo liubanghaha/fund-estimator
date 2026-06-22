@@ -25,15 +25,15 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 同类排名
     rankInfo: null,
-    // 风险指标 + 费用
-    riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '',
+	    // 风险指标 + 费用 + 估值温度
+	    riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
   },
 
   onLoad(options) {
     if (!options.fundCode) return;
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     if (typeof wx.showChangelog === 'function') wx.showChangelog();
     wx.setNavigationBarTitle({ title: fundName });
@@ -86,7 +86,7 @@ Page({
     this.setData({ loading: true, errorMsg: "" });
     this._lastRefresh = Date.now();
     try {
-      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
+	      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
       this.setData({ loading: false }, () => this.drawChart());
@@ -192,12 +192,13 @@ Page({
           actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
           actualChangeRate: actualCR,
           displayChangeRate: displayCR,
+          peTemp: d.peTemp || this.data.peTemp,
         });
       }
     } catch (e) { console.error("获取估值失败:", e); }
   },
 
-  async fetchHistory(days = 80) {
+  async fetchHistory(days = 250) {
     try {
       const res = await api.fetchFundNAVHistory(this.data.fundCode, days);
       if (res.result && res.result.code === 0) {

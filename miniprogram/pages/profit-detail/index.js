@@ -1,6 +1,6 @@
 
 const _getChartColors = () => {
-  const t = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'blue') : 'blue';
+  const t = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'blue';
   return t === 'red' ? { primary: '#E4393C', secondary: '#1976D2', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' }
     : { primary: '#1976D2', secondary: '#E4393C', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' };
 };
@@ -11,7 +11,7 @@ const CACHE = "profit_detail_cache_v2";
 
 Page({
   data: {
-    activeTab: "today",
+    activeTab: "week",  // "today" 走势暂未完善，默认切到本周
     profitMode: "amount",
     loading: true,
     loadError: false,
@@ -125,10 +125,12 @@ Page({
       }
       const d = pfRes.result.data;
 
-      // 当天收益分时：优先用服务端 snapshotProfit 定时写入的快照（每分钟一个点，覆盖全天）
+      // 当天走势暂未完善，注释掉分时快照读取
+      /*
       this._profitSnapshots = (d.intradaySnapshots && d.intradaySnapshots.length)
         ? d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time))
         : [];
+      */
 
       const hs = d.holdings || [];
       if (!hs.length) { this.setData({ empty: true, loading: false }); return; }
@@ -209,7 +211,7 @@ Page({
         weekProfitRate: rtMV(parseFloat(w), mvBefore(ws)), monthProfitRate: rtMV(parseFloat(m), mvBefore(cm + "-01")), yearProfitRate: rtMV(parseFloat(y), mvBefore(cy + "-01-01")),
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => { this._draw(); this._cal(); });
-      if (this.data.activeTab === 'today') this.fetchIntraday();
+      // if (this.data.activeTab === 'today') this.fetchIntraday();  // 当天走势暂未完善
 
       const cal = this._calCached();
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
@@ -325,7 +327,8 @@ Page({
       }
 
       if (isToday) {
-        this._drawIntraday(ctx, cw, ch);
+        // this._drawIntraday(ctx, cw, ch);  // 当天走势暂未完善
+        this._drawHistory(ctx, cw, ch, r);
       } else {
         this._drawHistory(ctx, cw, ch, r);
       }
@@ -610,6 +613,8 @@ Page({
     ctx.fill();
   },
 
+  // 当天走势暂未完善，注释掉 fetchIntraday
+  /*
   async fetchIntraday() {
     if (this._fetchingToday) return;
     this._fetchingToday = true;
@@ -619,9 +624,10 @@ Page({
         this._intradayRaw = res.data;
         this.setData({ _t: Date.now() }, () => this._draw());
       }
-    } catch (e) { /* 静默降级，Canvas 已有空状态提示 */ }
+    } catch (e) { }
     this._fetchingToday = false;
   },
+  */
 
   // ============ 日历 ============
 
@@ -641,13 +647,13 @@ Page({
 
   // ============ 事件 ============
 
-  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { if (tab === 'today') this.fetchIntraday(); else this._draw(); }); },
+  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { /* if (tab === 'today') this.fetchIntraday(); else */ this._draw(); }); },  // 当天走势暂未完善
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
-  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
+  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); /* if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(); return; } */ const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },  // 当天走势暂未完善
 
   onCanvasTouch(e) {
     const isToday = this.data.activeTab === 'today';
@@ -846,18 +852,19 @@ Page({
       const rate = parseFloat(res.result.data.todayProfitRate || 0);
       const tp = res.result.data.todayProfit || "0";
       this.setData({ todayProfitRate: rate, todayProfit: tp });
-      // 同步刷新服务端快照（增量追加）
+      // 当天走势暂未完善，注释掉分时快照同步
+      /*
       const snaps = res.result.data.intradaySnapshots;
       if (snaps && snaps.length > (this._profitSnapshots || []).length) {
         this._profitSnapshots = snaps.slice().sort((a, b) => a.time.localeCompare(b.time));
       }
-      // today 模式下同步刷新指数分时线
       if (this.data.activeTab === 'today') {
         api.fetchIndexIntraday(this.data.compareIndex).then(ires => {
           if (ires.code === 0 && ires.data) this._intradayRaw = ires.data;
           this._draw();
         });
       }
+      */
     } catch (e) {}
     this._pollingNow = false;
   },

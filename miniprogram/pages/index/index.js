@@ -70,7 +70,7 @@ Page({
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
     // 读取主题色
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
   },
 

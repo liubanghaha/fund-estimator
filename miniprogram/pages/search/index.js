@@ -3,7 +3,7 @@ Page({
   data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
   onLoad(options) {
     this._loaded = true;
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     if (options.keyword) {
       this.setData({ keyword: decodeURIComponent(options.keyword) });

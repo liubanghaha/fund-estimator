@@ -12,7 +12,7 @@ Page({
   },
 
   onLoad() {
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     if (typeof wx.showChangelog === 'function') wx.showChangelog();
     this.fetchAll();
@@ -21,9 +21,19 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, loadError: false });
     try {
-      // 1. 获取持仓 + 健康分 + 资产配置
-      const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0 } });
-      const d = res.result && res.result.data;
+      // 1. 获取持仓 + 健康分 + 资产配置（优先读首页缓存，5分钟内不重复拉）
+      let d;
+      const portfolioCache = wx.getStorageSync("portfolio_cache");
+      if (portfolioCache && portfolioCache.holdings && portfolioCache.updateTime) {
+        const cacheAge = Date.now() - (portfolioCache.ts || 0);
+        if (cacheAge < 300000) {
+          d = portfolioCache;
+        }
+      }
+      if (!d) {
+        const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0 } });
+        d = res.result && res.result.data;
+      }
       if (!d || !d.holdings || d.holdings.length === 0) {
         this.setData({ loading: false });
         return;
@@ -40,11 +50,11 @@ Page({
       const fundNames = d.holdings.map(h => h.fundName);
       this.setData({ fundCodes, fundNames });
 
-      // 2. 持仓重合度分析（24小时内同持仓组合命中缓存）
+      // 2. 持仓重合度分析（持仓季度更新，缓存 30 天；加减仓自动失效）
       if (fundCodes.length >= 2) {
         const codeKey = [...fundCodes].sort().join(',');
         const cache = wx.getStorageSync('asset_analysis_cache') || {};
-        if (cache.codeKey === codeKey && cache.ts && (Date.now() - cache.ts < 86400000)) {
+        if (cache.codeKey === codeKey && cache.ts && (Date.now() - cache.ts < 2592000000)) {
           // 缓存命中：直接恢复
           this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [] });
         } else {

@@ -11,7 +11,7 @@ Page({
   },
 
   onLoad(options) {
-    const theme = wx.getStorageSync("theme") || "blue";
+    const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     const { fundCode, fundName, type } = options;
     const tradeType = type || "buy";

@@ -1,5 +1,13 @@
 .container{padding:24rpx;min-height:100vh}
 
+.adjust-demo-img{width:320rpx;border-radius:20rpx;box-shadow:0 6rpx 24rpx rgba(0,0,0,.1);margin:0 auto 12rpx;display:block}
+.adjust-demo-tip{display:block;font-size:24rpx;color:#999;margin-bottom:6rpx}
+.adjust-demo-sub{display:block;font-size:22rpx;color:#CCC;margin-bottom:20rpx}
+.adjust-import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:10rpx;padding:18rpx 16rpx;text-align:center;margin:0 160rpx}
+.adjust-import-btn .import-icon{font-size:28rpx;display:block;margin-bottom:2rpx}
+.adjust-import-btn .import-text{font-size:22rpx;color:#2E7D32;font-weight:500;display:block;margin-bottom:2rpx}
+.adjust-import-btn .import-hint{font-size:18rpx;color:#81C784;display:block}
+
 /* 加载 */
 .loading-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60rpx 0}
 .lo-canvas{width:120rpx;height:120rpx}

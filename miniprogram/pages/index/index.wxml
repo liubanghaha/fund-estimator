@@ -33,11 +33,7 @@
 
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
         <view class="empty-desc">添加你的第一笔基金持仓，开始追踪收益</view>
-        <view class="empty-demo-phone">
-          <image class="empty-demo-img" src="/images/index_demo.png" mode="widthFix" />
-          <view class="empty-demo-notch"></view>
-          <view class="empty-demo-bar"></view>
-        </view>
+        <image class="empty-demo-img" src="/images/index_demo.png" mode="widthFix" />
         <text class="empty-demo-tip">参考样例：支付宝 APP 持仓截图</text>
         <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存，或手动添加</text>
         <view class="empty-btns">
@@ -185,10 +181,12 @@
   <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
     <view class="temp-tooltip-card" catch:tap="">
       <view class="temp-tooltip-arrow"></view>
-      <view class="temp-tooltip-formula">基金估值 = 持仓股PE处于历史PE区间的位置，按持仓占比加权；金融股参考PB、周期股加注风险</view>
-      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 | 0.75~1.25 正常 | {{gt}} 1.25 高估</view>
-      <view class="temp-tooltip-source">数据来源：东方财富历史PE+PB · 每日更新</view>
-      <view class="temp-tooltip-disclaimer">仅供参考，不构成投资建议</view>
+      <view class="temp-tooltip-formula">
+        <view class="temp-tooltip-item">📊 穿透基金前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
+        <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
+      </view>
+      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
+      <view class="temp-tooltip-disclaimer">数据基于公开历史估值与实时行情计算，仅供参考</view>
     </view>
   </view>
 

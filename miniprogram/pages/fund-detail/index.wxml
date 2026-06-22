@@ -58,6 +58,19 @@
       </view>
     </view>
 
+    <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
+      <view class="section-title">风险指标</view>
+      <view class="risk-grid">
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
+        <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
+          <view class="risk-label">估值温度<text class="risk-label-note">{{peTemp.normPE}}</text></view>
+          <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
+        </view>
+      </view>
+    </view>
+
     <!-- 我的持仓 -->
     <view wx:if="{{hasHolding && holdingData}}" class="my-holding-card">
       <view class="mh-title">我的持仓</view>
@@ -119,14 +132,6 @@
           <view class="metric-item"><view class="metric-label">近6月</view><view class="metric-value {{sixMonthReturn > 0 ? 'up' : sixMonthReturn < 0 ? 'down' : ''}}">{{sixMonthReturn != null ? (sixMonthReturn > 0 ? '+' : '') + sixMonthReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近1年</view><view class="metric-value {{yearReturn > 0 ? 'up' : yearReturn < 0 ? 'down' : ''}}">{{yearReturn != null ? (yearReturn > 0 ? '+' : '') + yearReturn + '%' : '--'}}</view></view>
           <view class="metric-item"><view class="metric-label">近3年</view><view class="metric-value {{threeYearReturn > 0 ? 'up' : threeYearReturn < 0 ? 'down' : ''}}">{{threeYearReturn != null ? (threeYearReturn > 0 ? '+' : '') + threeYearReturn + '%' : '--'}}</view></view>
-        </view>
-      </view>
-      <view wx:if="{{riskMetrics}}" class="info-card risk-card">
-        <view class="section-title">风险指标</view>
-        <view class="risk-grid">
-          <view class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view><view class="risk-sub">{{riskMetrics.ddPeakDate}} → {{riskMetrics.ddTroughDate}}</view></view>
-          <view class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
-          <view class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
         </view>
       </view>
       <view wx:if="{{navHistory.length > 0}}" class="info-card">

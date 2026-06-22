@@ -14,13 +14,16 @@ const _ = db.command;
  *
  *  流程：
  *    1. 获取持仓基金代码（去重）
- *    2. 并发拉取基金前十大持仓股
+ *    2. 获取持仓股列表：
+ *       - 季报窗口期（1/4/7/10月 15日起）→ 从东方财富拉取最新季报
+ *       - 非窗口期 → 从 fund_temperatures 读取缓存，无缓存才拉取
  *    3. 批量查询所有持仓股的 PE+PB+行业（行情接口） + 历史PE区间（估值接口）
  *    4. 每只股票打分 → 基金加权汇总 → 写入 fund_temperatures
  */
 exports.main = async (event) => {
   const today = formatDate(new Date());
-  console.log(`[computeFundTemperature] 开始计算 ${today}`);
+  const inWindow = isInReportWindow();
+  console.log(`[computeFundTemperature] 开始计算 ${today}, 季报窗口期: ${inWindow}`);
 
   try {
     // 1. 获取所有持仓的基金代码（去重）
@@ -28,31 +31,37 @@ exports.main = async (event) => {
     console.log(`[computeFundTemperature] 持仓基金数: ${fundCodes.length}`);
     if (fundCodes.length === 0) return { code: 0, msg: "无持仓基金" };
 
-    // 2. 并发拉取持仓股（限制并发数 10，防止限流）
-    const fundHoldings = {};
+    // 2. 获取持仓股列表
+    let fundHoldings = {};
     let fetchFailCount = 0;
-    const CONCURRENT = 10;
-    for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
-      const batch = fundCodes.slice(i, i + CONCURRENT);
-      const results = await Promise.all(batch.map(async (fundCode) => {
-        try {
-          const holdings = await fetchHoldings(fundCode);
-          return { fundCode, holdings, ok: holdings.length > 0 };
-        } catch (e) { return { fundCode, holdings: [], ok: false }; }
-      }));
-      for (const r of results) {
-        if (r.ok) fundHoldings[r.fundCode] = r.holdings;
-        else fetchFailCount++;
-      }
-      if (i + CONCURRENT < fundCodes.length) {
-        await new Promise(r => setTimeout(r, 300));
+    let etfMap = {};
+
+    if (inWindow) {
+      console.log(`[computeFundTemperature] 季报窗口期，从东方财富拉取持仓股`);
+      const result = await fetchHoldingsBatch(fundCodes);
+      fundHoldings = result.holdings;
+      fetchFailCount = result.failCount;
+      etfMap = result.etfMap || {};
+      console.log(`[computeFundTemperature] 拉取结果: 成功 ${Object.keys(fundHoldings).length}, 失败 ${fetchFailCount}`);
+    } else {
+      console.log(`[computeFundTemperature] 非窗口期，从 fund_temperatures 读取缓存持仓`);
+      fundHoldings = await getCachedHoldings(fundCodes);
+      const cachedCount = Object.keys(fundHoldings).length;
+      console.log(`[computeFundTemperature] 缓存命中: ${cachedCount}/${fundCodes.length}`);
+
+      const missedCodes = fundCodes.filter(c => !fundHoldings[c]);
+      if (missedCodes.length > 0) {
+        console.log(`[computeFundTemperature] 缓存未命中 ${missedCodes.length} 只，从东方财富拉取`);
+        const result = await fetchHoldingsBatch(missedCodes);
+        Object.assign(fundHoldings, result.holdings);
+        fetchFailCount = result.failCount;
+        Object.assign(etfMap, result.etfMap || {});
       }
     }
-    console.log(`[computeFundTemperature] 有持仓数据的基金: ${Object.keys(fundHoldings).length}, 拉取失败: ${fetchFailCount}`);
 
-    // 持仓数据不足半数时从昨日温度数据恢复
+    // 持仓数据不足半数时从历史温度数据恢复
     if (Object.keys(fundHoldings).length < fundCodes.length * 0.5) {
-      console.log(`[computeFundTemperature] 持仓数据不足 (${Object.keys(fundHoldings).length}/${fundCodes.length})，尝试从昨日温度数据恢复`);
+      console.log(`[computeFundTemperature] 持仓数据不足 (${Object.keys(fundHoldings).length}/${fundCodes.length})，尝试从历史温度数据恢复`);
       try {
         const recovered = await recoverHoldingsFromHistory(fundCodes);
         if (Object.keys(recovered).length > Object.keys(fundHoldings).length) {
@@ -105,7 +114,10 @@ exports.main = async (event) => {
     const candidates = [];
     for (const [fundCode, holdings] of Object.entries(fundHoldings)) {
       const result = calcSignal(fundCode, holdings, stockMap);
-      if (result) candidates.push(result);
+      if (result) {
+        result.isETF = etfMap[fundCode] || false;
+        candidates.push(result);
+      }
     }
 
     // 5. 批量写入 DB
@@ -123,6 +135,7 @@ exports.main = async (event) => {
         totalStocks: c.totalStocks,
         detailPEs: c.detailPEs,
         warnings: c.warnings || [],
+        isETF: c.isETF || false,
         createTime: new Date(),
       });
     }
@@ -162,6 +175,49 @@ function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * 判断当前是否在季报发布窗口期
+ * 季报窗口: 1/4/7/10月 15日起至月底（各基金公司集中在截止日前几天披露）
+ *   - 1月: 四季报（上年12月）
+ *   - 4月: 一季报（3月）
+ *   - 7月: 二季报（6月）
+ *   - 10月: 三季报（9月）
+ */
+function isInReportWindow() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  return [1, 4, 7, 10].includes(month) && day >= 15;
+}
+
+/**
+ * 批量拉取持仓股（封装并发控制）
+ */
+async function fetchHoldingsBatch(fundCodes) {
+  const holdings = {};
+  const etfMap = {};
+  let failCount = 0;
+  const CONCURRENT = 10;
+  for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
+    const batch = fundCodes.slice(i, i + CONCURRENT);
+    const results = await Promise.all(batch.map(async (fundCode) => {
+      try {
+        const { rows, fundName } = await fetchHoldings(fundCode);
+        return { fundCode, holdings: rows, fundName, ok: rows.length > 0 };
+      } catch (e) { return { fundCode, holdings: [], fundName: "", ok: false }; }
+    }));
+    for (const r of results) {
+      if (r.ok) holdings[r.fundCode] = r.holdings;
+      else failCount++;
+      etfMap[r.fundCode] = isETFByName(r.fundName);
+    }
+    if (i + CONCURRENT < fundCodes.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  return { holdings, failCount, etfMap };
+}
+
 async function getUniqueFundCodes() {
   const MAX_LIMIT = 100;
   const all = [];
@@ -181,8 +237,8 @@ async function getUniqueFundCodes() {
 
 async function recoverHoldingsFromHistory(fundCodes) {
   const holdings = {};
-  // 往前尝试最近 3 天
-  for (let d = 1; d <= 3; d++) {
+  // 往前尝试最近 10 天（跨假期、季度末空窗）
+  for (let d = 1; d <= 10; d++) {
     const targetDate = formatDate(new Date(Date.now() - d * 86400000));
     const BATCH = 100;
     for (let i = 0; i < fundCodes.length; i += BATCH) {
@@ -205,6 +261,37 @@ async function recoverHoldingsFromHistory(fundCodes) {
   return holdings;
 }
 
+/**
+ * 从 fund_temperatures 读取最近的持仓股缓存（非季报窗口期使用）
+ * 查找每只基金最近一条有 detailPEs 的记录，提取为 holdings 格式
+ */
+async function getCachedHoldings(fundCodes) {
+  const holdings = {};
+  const BATCH = 100;
+  // 往前查找，每个基金取最近一条有 detailPEs 的记录
+  for (let i = 0; i < fundCodes.length; i += BATCH) {
+    const batch = fundCodes.slice(i, i + BATCH);
+    const res = await db.collection("fund_temperatures")
+      .where({ fundCode: _.in(batch) })
+      .orderBy("createTime", "desc")
+      .limit(batch.length * 3) // 每个基金可能有多条记录，多取一些
+      .get();
+    // 按 fundCode 去重，只取每个基金的第一条（最近）
+    const seen = new Set();
+    (res.data || []).forEach(t => {
+      if (!seen.has(t.fundCode) && t.detailPEs && t.detailPEs.length > 0) {
+        seen.add(t.fundCode);
+        holdings[t.fundCode] = t.detailPEs.map(p => ({
+          stockCode: p.code,
+          stockName: p.name,
+          navRatio: p.ratio,
+        }));
+      }
+    });
+  }
+  return holdings;
+}
+
 function fetchHoldings(fundCode) {
   const https = require("https");
   const now = new Date();
@@ -218,15 +305,18 @@ function fetchHoldings(fundCode) {
   }
 
   return new Promise((resolve) => {
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${curY}&month=${curM}&rt=${Math.random()}`;
+    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=20&year=${curY}&month=${curM}&rt=${Math.random()}`;
     const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
           const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve([]); return; }
+          if (!match) { resolve({ rows: [] }); return; }
           const html = match[1].replace(/\\"/g, '"');
+          // 提取基金名称（从页面标题）
+          const nameMatch = html.match(/<a title='([^']*)'/);
+          const fundName = nameMatch ? nameMatch[1] : "";
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
@@ -249,16 +339,57 @@ function fetchHoldings(fundCode) {
               });
             }
           }
-          resolve(rows);
-        } catch (e) { resolve([]); }
+          resolve({ rows, fundName });
+        } catch (e) { resolve({ rows: [] }); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    req.setTimeout(8000, () => { req.destroy(); resolve({ rows: [] }); });
+    req.on("error", () => resolve({ rows: [] }));
   });
 }
 
+/** 从基金名称判断是否为 ETF / 指数基金 */
+function isETFByName(fundName) {
+  return /ETF|交易型开放式|指数/.test(fundName || "");
+}
+
 async function batchFetchLiveData(codes) {
+  // 第一轮：东方财富
+  let map = await fetchLiveFromEastMoney(codes);
+  let withPE = Object.values(map).filter(s => s.pe != null).length;
+  console.log(`[batchFetchLiveData] 东方财富 PE 覆盖率: ${withPE}/${codes.length}`);
+
+  // PE 覆盖率不足 50% 时重试一轮
+  if (withPE < codes.length * 0.5) {
+    console.log(`[batchFetchLiveData] PE 覆盖率偏低 (${withPE}/${codes.length})，1秒后重试缺失的`);
+    await new Promise(r => setTimeout(r, 1000));
+    const missed = codes.filter(c => !map[c] || map[c].pe == null);
+    const retryMap = await fetchLiveFromEastMoney(missed);
+    // 合并：只补充第一轮缺失的
+    for (const [code, data] of Object.entries(retryMap)) {
+      if (!map[code] || map[code].pe == null) map[code] = data;
+    }
+    withPE = Object.values(map).filter(s => s.pe != null).length;
+    console.log(`[batchFetchLiveData] 重试后 PE 覆盖率: ${withPE}/${codes.length}`);
+  }
+
+  // 剩余缺失的用腾讯财经兜底
+  const missedCodes = codes.filter(c => !map[c] || map[c].pe == null);
+  if (missedCodes.length > 0) {
+    console.log(`[batchFetchLiveData] ${missedCodes.length} 只从腾讯财经兜底获取`);
+    const tencentMap = await fetchLiveFromTencent(missedCodes);
+    for (const [code, data] of Object.entries(tencentMap)) {
+      if (!map[code] || map[code].pe == null) map[code] = data;
+    }
+    withPE = Object.values(map).filter(s => s.pe != null).length;
+    console.log(`[batchFetchLiveData] 兜底后 PE 覆盖率: ${withPE}/${codes.length}`);
+  }
+
+  return map;
+}
+
+/** 东方财富 push2 API 拉取实时 PE/PB/行业 */
+async function fetchLiveFromEastMoney(codes) {
   const https = require("https");
   const map = {};
   const BATCH = 40;
@@ -295,6 +426,60 @@ async function batchFetchLiveData(codes) {
                   };
                 }
               });
+            }
+          } catch (e) { /* ignore */ }
+          resolve();
+        });
+      });
+      req.setTimeout(12000, () => { req.destroy(); resolve(); });
+      req.on("error", () => resolve());
+    });
+  }
+  return map;
+}
+
+/** 腾讯财经 qt.gtimg.cn 兜底拉取 PE/PB（无 industry 字段） */
+async function fetchLiveFromTencent(codes) {
+  const http = require("http");
+  const map = {};
+  const BATCH = 20;
+
+  const toQtCode = (code) => {
+    if (code.length === 5) return `hk${code}`;
+    if (code.startsWith("6")) return `sh${code}`;
+    return `sz${code}`;
+  };
+
+  for (let i = 0; i < codes.length; i += BATCH) {
+    const batch = codes.slice(i, i + BATCH);
+    const qtCodes = batch.map(toQtCode).join(",");
+    const url = `http://qt.gtimg.cn/q=${qtCodes}`;
+
+    await new Promise((resolve) => {
+      const req = http.get(url, (res) => {
+        const chunks = [];
+        res.on("data", (c) => { chunks.push(c); });
+        res.on("end", () => {
+          try {
+            const body = Buffer.concat(chunks).toString("utf-8");
+            // 腾讯行情格式: v_sh600519="1~茅台~..." PE@39 PB@46 价格@3
+            for (const code of batch) {
+              const qtCode = toQtCode(code);
+              const re = new RegExp(`v_${qtCode}="([^"]*)"`);
+              const match = body.match(re);
+              if (!match) continue;
+              const fields = match[1].split("~");
+              const pe = parseFloat(fields[39]) || null;
+              const pb = parseFloat(fields[46]) || null;
+              const price = parseFloat(fields[3]) || null;
+              if (pe || pb || price) {
+                map[code] = {
+                  pe: pe && pe > 0 ? pe : null,
+                  pb: pb && pb > 0 ? pb : null,
+                  price: price,
+                  industry: map[code]?.industry || "其他",
+                };
+              }
             }
           } catch (e) { /* ignore */ }
           resolve();
