@@ -14,14 +14,7 @@
         <text class="alert-text">{{alertTriggered.length}}只基金触发提醒</text>
         <text class="alert-close" bind:tap="onDismissAlert">✕</text>
       </view>
-      <view wx:if="{{!isLoggedIn}}" class="empty-state">
-        <view class="empty-icon">📈</view>
-        <view class="empty-title">我的持仓</view>
-        <view class="empty-desc">追踪你的基金持仓，查看实时估值</view>
-        <button class="login-btn" bind:tap="onLogin">微信授权登录</button>
-      </view>
-
-      <view wx:elif="{{!dataReady}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+      <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 
       <view wx:elif="{{loadError}}" class="empty-state">
         <view class="empty-icon">🔌</view>
@@ -138,7 +131,7 @@
     </view>
   </scroll-view>
 
-  <view wx:if="{{isLoggedIn && indexCards.length > 0}}" class="index-bar">
+  <view wx:if="{{indexCards.length > 0}}" class="index-bar">
     <view wx:if="{{showIndexEdit}}" class="index-edit-panel">
       <view class="idx-edit-header">
         <text class="idx-edit-title">选择显示的指数</text>

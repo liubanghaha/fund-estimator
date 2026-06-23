@@ -5,7 +5,6 @@ Page({
     isLoggedIn: false, avatarUrl: "", nickName: "",
     showFeedback: false,
     feedbackType: "suggestion",
-    feedbackContact: "",
     feedbackText: "",
     feedbackImages: [],
     feedbackSubmitting: false,
@@ -113,10 +112,6 @@ Page({
     this.setData({ feedbackType: e.currentTarget.dataset.type });
   },
 
-  onContactInput(e) {
-    this.setData({ feedbackContact: e.detail.value });
-  },
-
   onFeedbackInput(e) {
     this.setData({ feedbackText: e.detail.value });
   },
@@ -177,7 +172,6 @@ Page({
       const res = await api.submitFeedback({
         content,
         type: this.data.feedbackType,
-        contact: this.data.feedbackContact,
         images: imageFileIDs,
       });
 

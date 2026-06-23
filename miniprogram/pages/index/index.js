@@ -109,7 +109,9 @@ Page({
         this.fetchIndices();
       }
     } else {
-      this.setData({ isLoggedIn: false, holdings: [] });
+      this.setData({ isLoggedIn: false, holdings: [], dataReady: true });
+      this.applyIndexCache();
+      this.fetchIndices();
       wx.removeStorageSync("portfolio_cache");
       wx.removeStorageSync("profit_detail_cache");
     }
@@ -440,6 +442,11 @@ Page({
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onScreenshotAdd() {
+    // 未登录先引导授权
+    if (!this.data.isLoggedIn) {
+      wx.navigateTo({ url: "/pages/login/index" });
+      return;
+    }
     wx.showActionSheet({
       itemList: ["从相册选择"],
       success: () => {

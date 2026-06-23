@@ -41,19 +41,7 @@
       </view>
     </view>
 
-    <!-- 联系方式 -->
-    <view class="fb-section">
-      <view class="fb-label">联系方式（选填）</view>
-      <input
-        class="fb-input"
-        value="{{feedbackContact}}"
-        placeholder="微信号 / 手机号，方便我们联系你"
-        maxlength="50"
-        bind:input="onContactInput"
-      />
-    </view>
-
-    <!-- 详细描述 -->
+	    <!-- 详细描述 -->
     <view class="fb-section">
       <view class="fb-label">详细描述</view>
       <textarea
