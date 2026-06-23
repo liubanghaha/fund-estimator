@@ -238,6 +238,10 @@ Page({
   },
 
   onScrollRefresh() {
+    if (!this.data.isLoggedIn) {
+      this.setData({ refresherTriggered: false });
+      return;
+    }
     this._lastFetch = Date.now();
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });

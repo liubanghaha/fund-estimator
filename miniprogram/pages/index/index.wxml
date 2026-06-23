@@ -26,11 +26,10 @@
 
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
         <view class="empty-desc">添加你的第一笔基金持仓，开始追踪收益</view>
-        <image class="empty-demo-img" src="/images/index_demo.png" mode="widthFix" />
-        <text class="empty-demo-tip">参考样例：支付宝 APP 持仓截图</text>
-        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存，或手动添加</text>
+        <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
+        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
         <view class="empty-btns">
-          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加基金</button>
+          <button class="login-btn light" bind:tap="onScreenshotAdd">📷 截图添加基金</button>
           <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加基金</button>
         </view>
       </view>

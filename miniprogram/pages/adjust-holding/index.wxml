@@ -1,11 +1,9 @@
 <view wx:if="{{redirecting}}"></view>
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
 
-  <!-- 截图样例 -->
-  <view wx:if="{{!ocrLoading && ocrResults.length === 0}}" style="text-align:center;margin-bottom:24rpx">
-    <image class="adjust-demo-img" src="/pic/add.png" mode="widthFix" />
-    <text class="adjust-demo-tip">参考样例：支付宝 APP 交易记录截图</text>
-    <text class="adjust-demo-sub">识别结果可能有偏差，请核对后保存</text>
+  <view wx:if="{{!ocrLoading && ocrResults.length === 0}}" class="import-bar">
+    <text class="adjust-desc">支持支付宝、天天基金等平台交易记录截图</text>
+    <text class="adjust-sub-tip">识别结果可能有偏差，请核对后保存</text>
     <view class="adjust-import-btn" bind:tap="onImportScreenshot">
       <text class="import-icon">📷</text>
       <text class="import-text">截图导入</text>
@@ -21,6 +19,7 @@
 
   <!-- OCR 识别结果列表 -->
   <view wx:if="{{ocrResults.length > 0 || showManualHint}}" class="results-section">
+    <image wx:if="{{screenshotUrl}}" class="result-screenshot" src="{{screenshotUrl}}" mode="widthFix" />
     <view class="results-title">
       <text>{{ocrResults.length > 0 ? '识别到 ' + ocrResults.length + ' 笔交易' : '未识别到交易'}}</text>
       <text wx:if="{{showManualHint}}" class="results-hint">请手动添加或重新截图</text>

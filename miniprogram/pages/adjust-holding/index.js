@@ -6,6 +6,7 @@ Page({
     holdings: [],
     ocrLoading: false,
     ocrResults: [],
+    screenshotUrl: "",
     redirecting: false,
     matchedCount: 0,
     loadPercent: 0,
@@ -153,7 +154,7 @@ Page({
   },
 
   async doOCR(tempPath) {
-    this.setData({ ocrLoading: true, loadPercent: 0 });
+    this.setData({ ocrLoading: true, loadPercent: 0, screenshotUrl: tempPath });
     let pct = 0;
     this._loadTimer = setInterval(() => {
       if (pct < 85) {

@@ -1,12 +1,14 @@
 .container{padding:24rpx;min-height:100vh}
 
-.adjust-demo-img{width:320rpx;border-radius:20rpx;box-shadow:0 6rpx 24rpx rgba(0,0,0,.1);margin:0 auto 12rpx;display:block}
-.adjust-demo-tip{display:block;font-size:24rpx;color:#999;margin-bottom:6rpx}
-.adjust-demo-sub{display:block;font-size:22rpx;color:#CCC;margin-bottom:20rpx}
-.adjust-import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:10rpx;padding:18rpx 16rpx;text-align:center;margin:0 160rpx}
-.adjust-import-btn .import-icon{font-size:28rpx;display:block;margin-bottom:2rpx}
-.adjust-import-btn .import-text{font-size:22rpx;color:#2E7D32;font-weight:500;display:block;margin-bottom:2rpx}
-.adjust-import-btn .import-hint{font-size:18rpx;color:#81C784;display:block}
+.import-bar{display:flex;flex-direction:column;align-items:center;padding-top:80rpx}
+.adjust-desc{font-size:26rpx;color:#666;text-align:center;display:block;margin-bottom:12rpx}
+.adjust-sub-tip{font-size:22rpx;color:#BBB;text-align:center;display:block;margin-bottom:24rpx}
+.adjust-import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:16rpx;padding:28rpx 20rpx;text-align:center;width:calc(100% - 80rpx)}
+.adjust-import-btn .import-icon{font-size:44rpx;display:block;margin-bottom:8rpx}
+.adjust-import-btn .import-text{font-size:30rpx;color:#2E7D32;font-weight:600;display:block;margin-bottom:6rpx}
+.adjust-import-btn .import-hint{font-size:22rpx;color:#81C784;display:block}
+
+.result-screenshot{width:100%;border-radius:12rpx;margin-bottom:24rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.06)}
 
 /* 加载 */
 .loading-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60rpx 0}
@@ -38,4 +40,3 @@
 .rc-amount-input{font-size:24rpx;color:#333;background:#F5F5F5;border-radius:8rpx;padding:6rpx 12rpx;width:160rpx;text-align:right;flex-shrink:0}
 .results-hint{font-size:22rpx;color:#999;display:block;margin-top:4rpx}
 .submit-all-btn{width:100%;height:84rpx;line-height:84rpx;font-size:30rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:42rpx;text-align:center;padding:0;margin-top:24rpx}
-

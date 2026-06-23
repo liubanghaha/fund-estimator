@@ -7,8 +7,7 @@
 
       <!-- 未选图 -->
       <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
-        <image class="demo-img" src="/images/index_demo.png" mode="widthFix" />
-        <text class="demo-tip">参考样例：支付宝 APP 持仓截图</text>
+        <text class="import-desc">支持支付宝、天天基金等平台持仓截图</text>
         <text class="demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
         <view class="import-btn" bind:tap="onImportScreenshot">
           <text class="import-icon">📷</text>
