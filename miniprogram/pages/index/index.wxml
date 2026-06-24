@@ -11,7 +11,7 @@
 
       <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
         <text class="alert-icon">🔔</text>
-        <text class="alert-text">{{alertTriggered.length}}只基金触发提醒</text>
+        <text class="alert-text">{{alertTriggered.length}}项持仓触发提醒</text>
         <text class="alert-close" bind:tap="onDismissAlert">✕</text>
       </view>
       <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
@@ -25,12 +25,12 @@
       </view>
 
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
-        <view class="empty-desc">添加你的第一笔基金持仓，开始追踪收益</view>
+        <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
         <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
         <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
         <view class="empty-btns">
-          <button class="login-btn light" bind:tap="onScreenshotAdd">📷 截图添加基金</button>
-          <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加基金</button>
+          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加</button>
+          <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加</button>
         </view>
       </view>
 
@@ -87,7 +87,7 @@
           <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
               <view class="t-row t-head" bind:longpress="onLongPressHeader">
-                <view class="t-cell t-name">基金名称<text class="t-hint">长按排序</text></view>
+                <view class="t-cell t-name">名称<text class="t-hint">长按排序</text></view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
@@ -174,11 +174,12 @@
     <view class="temp-tooltip-card" catch:tap="">
       <view class="temp-tooltip-arrow"></view>
       <view class="temp-tooltip-formula">
-        <view class="temp-tooltip-item">📊 穿透基金前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
+        <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
         <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
       </view>
       <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
       <view class="temp-tooltip-disclaimer">数据基于公开历史估值与实时行情计算，仅供参考</view>
+      <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
     </view>
   </view>
 

@@ -1,7 +1,7 @@
 <view wx:if="{{!ready}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="search-bar">
-    <input class="search-input" placeholder="输入基金代码或名称搜索" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
+    <input class="search-input" placeholder="输入代码或名称搜索" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>
   </view>
   <view wx:if="{{errorMsg}}" class="error">
@@ -18,5 +18,5 @@
       <view class="item-arrow">></view>
     </view>
   </view>
-  <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关基金</view>
+  <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关内容</view>
 </view>

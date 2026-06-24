@@ -527,7 +527,7 @@ Page({
   onCorrelation() {
     const holdings = this.data.holdings;
     if (holdings.length < 2) {
-      wx.showToast({ title: "至少需要2只基金", icon: "none" });
+      wx.showToast({ title: "至少需要2条记录", icon: "none" });
       return;
     }
     wx.navigateTo({ url: "/pages/correlation-matrix/index" });

@@ -26,10 +26,13 @@
     <!-- 2. 持仓穿透 -->
     <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="card">
       <view class="card-title">🏭 行业穿透</view>
-      <view wx:for="{{assetAllocation.items}}" wx:key="industry" class="asset-row">
+      <view wx:for="{{assetAllocation.items}}" wx:key="industry" wx:if="{{index < 10 || showAllIndustries}}" class="asset-row">
         <text class="asset-name">{{item.industry}}</text>
         <text class="asset-pct">{{item.percent}}%</text>
         <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
+      </view>
+      <view wx:if="{{assetAllocation.items.length > 10}}" class="expand-toggle" bind:tap="toggleIndustries">
+        {{showAllIndustries ? '收起' : '展开更多 (' + (assetAllocation.items.length - 10) + '项)'}}
       </view>
       <view wx:if="{{assetAllocation.warning}}" class="asset-warning">⚠️ {{assetAllocation.warning}}</view>
     </view>

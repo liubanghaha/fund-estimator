@@ -197,7 +197,7 @@ Page({
           { label: "基金规模", a: this.fmtSize(profileA.fundSize), b: this.fmtSize(profileB.fundSize) },
           { label: "风险等级", a: riskMap[profileA.riskLevel] || "--", b: riskMap[profileB.riskLevel] || "--" },
           { label: "成立日期", a: profileA.establishDate || "--", b: profileB.establishDate || "--" },
-          { label: "基金经理", a: mgrA.name || "--", b: mgrB.name || "--" },
+          { label: "经理", a: mgrA.name || "--", b: mgrB.name || "--" },
         ],
       },
       chartData,

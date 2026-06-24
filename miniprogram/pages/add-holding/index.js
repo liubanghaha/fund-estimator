@@ -106,7 +106,7 @@ Page({
         const d = ocrRes.result.data;
         const holdings = d.holdings || [];
         if (holdings.length === 0) {
-          wx.showToast({ title: "未识别到基金信息", icon: "none" });
+          wx.showToast({ title: "未识别到有效信息", icon: "none" });
           return;
         }
         const funds = holdings.map((h) => ({

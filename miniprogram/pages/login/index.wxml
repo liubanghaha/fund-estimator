@@ -2,7 +2,7 @@
   <view class="login-logo">
     <view class="logo-icon">📈</view>
     <view class="logo-title">涨跌有数</view>
-    <view class="logo-desc">基金涨跌，心中有数</view>
+    <view class="logo-desc">收益追踪，心中有数</view>
   </view>
   <button class="login-btn" bindtap="onLogin">微信一键登录</button>
   <view class="login-tip">登录后可管理持仓记录</view>

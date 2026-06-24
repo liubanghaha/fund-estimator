@@ -2,7 +2,7 @@
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
 
   <view wx:if="{{!ocrLoading && ocrResults.length === 0}}" class="import-bar">
-    <text class="adjust-desc">支持支付宝、天天基金等平台交易记录截图</text>
+    <text class="adjust-desc">上传交易记录截图，自动识别金额</text>
     <text class="adjust-sub-tip">识别结果可能有偏差，请核对后保存</text>
     <view class="adjust-import-btn" bind:tap="onImportScreenshot">
       <text class="import-icon">📷</text>

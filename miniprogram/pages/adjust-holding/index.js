@@ -288,7 +288,7 @@ Page({
   async onConfirmAll() {
     const matched = this.data.ocrResults.filter((item) => item.matched);
     if (matched.length === 0) {
-      wx.showToast({ title: "请先将基金加入持仓", icon: "none" });
+      wx.showToast({ title: "请先将代码加入持仓", icon: "none" });
       return;
     }
     const lines = matched.map((item) => `${item.fundName} ${item.type === 'buy' ? '加仓' : '减仓'} ${item.amount}元`);

@@ -14,7 +14,7 @@ Page({
   onInput(e) { this.setData({ keyword: e.detail.value }); },
   async onSearch() {
     const { keyword } = this.data;
-    if (!keyword.trim()) { wx.showToast({ title: "请输入基金代码或名称", icon: "none" }); return; }
+    if (!keyword.trim()) { wx.showToast({ title: "请输入代码或名称", icon: "none" }); return; }
     this.setData({ isLoading: true, errorMsg: "", hasSearched: true });
     try {
       const res = await api.searchFund(keyword.trim());

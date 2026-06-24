@@ -211,22 +211,34 @@ exports.main = async (event) => {
         withDetailCount++;
         for (const pe of t.detailPEs) {
           const w = fundValue * (pe.ratio / 100);
-          industryMap[pe.industry] = (industryMap[pe.industry] || 0) + w;
+          const cat = _classifyIndustry(pe.industry, pe.name);
+          industryMap[cat] = (industryMap[cat] || 0) + w;
           totalWeight += w;
         }
       }
       if (totalWeight > 0) {
-        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
+	        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
         const list = Object.entries(industryMap)
-          .map(([industry, w]) => ({ industry, percent: +((w / totalWeight) * 100).toFixed(1) }))
-          .sort((a, b) => b.percent - a.percent);
-        const top10 = list.slice(0, 10);
-        const others = list.slice(10).reduce((s, i) => s + i.percent, 0);
-        if (others > 0) top10.push({ industry: "其他", percent: +others.toFixed(1) });
-        const maxPercent = top10[0]?.percent || 0;
+          .map(([industry, w]) => ({ industry, raw: (w / totalWeight) * 100 }))
+          .sort((a, b) => b.raw - a.raw);
+        // 分离「其他」与真实行业；top10 只排真实行业，其余全合并到一个「其他」
+        const realList = list.filter(i => i.industry !== "其他");
+        const otherRaw = list.filter(i => i.industry === "其他").reduce((s, i) => s + i.raw, 0);
+        const top10 = realList.slice(0, 20).map(i => ({ industry: i.industry, percent: +i.raw.toFixed(1) }));
+        const overflow = realList.slice(20).reduce((s, i) => s + i.raw, 0);
+        const totalOthers = otherRaw + overflow;
+        if (totalOthers > 0.05) top10.push({ industry: "其他", percent: +totalOthers.toFixed(1) });
+        // 归一化
+        const sum = top10.reduce((s, i) => s + i.percent, 0);
+        if (top10.length > 0 && Math.abs(sum - 100) > 0.01) {
+          top10[0].percent = +(top10[0].percent + (100 - sum)).toFixed(1);
+        }
+        const maxReal = top10.find(i => i.industry !== "其他");
+        const maxPercent = maxReal?.percent || 0;
+        const maxName = maxReal?.industry || "";
         assetAllocation = {
           items: top10,
-          warning: maxPercent > 30 ? `单一行业「${top10[0].industry}」占比 ${maxPercent}%，建议分散配置` : null,
+          warning: maxPercent > 30 ? `单一行业「${maxName}」占比 ${maxPercent}%，建议分散配置` : null,
         };
       } else {
         console.log(`[getPortfolio] 资产配置: 无有效数据 enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount}`);
@@ -245,7 +257,7 @@ exports.main = async (event) => {
         ? (avgNormPE < 0.7 ? 90 : avgNormPE < 1.0 ? 70 : avgNormPE < 1.3 ? 50 : 30)
         : 50;
       const maxIndustry = assetAllocation && assetAllocation.items && assetAllocation.items.length > 0
-        ? assetAllocation.items[0].percent : 0;
+        ? (assetAllocation.items.find(i => i.industry !== "其他") || assetAllocation.items[0]).percent : 0;
       const concScore = maxIndustry < 30 ? 90 : maxIndustry < 50 ? 70 : maxIndustry < 70 ? 50 : 30;
       const score = Math.round(tempScore * 0.5 + concScore * 0.5);
       const grade = score >= 80 ? '优秀' : score >= 60 ? '良好' : score >= 40 ? '一般' : '较差';
@@ -835,5 +847,30 @@ async function recoverTempHoldings(fundCodes) {
     }
     if (Object.keys(holdings).length > 0) break;
   }
-  return holdings;
+	  return holdings;
+}
+
+// ---- 行业分类（与 computeFundTemperature 保持一致） ----
+function _classifyIndustry(ind, stockName) {
+  // 东方财富 f100 直接可用，仅对「其他」兜底
+  if (ind && ind !== "其他" && ind !== "其它") return ind;
+  // f100 为「其他」时用股票名匹配
+  const labels = { tech: "科技", biomed: "医药", consume: "消费", finance: "金融", cycle: "周期", utility: "公用事业", mfg: "制造" };
+  const map = {
+    tech: ["半导体","芯片","软件","计算机","通信","电子","光模块","互联网","游戏","传媒","元件","IT","信息","数据","智能","科技"],
+    biomed: ["医药","生物","医疗","中药","化学制药","器械","医"],
+    consume: ["白酒","食品","饮料","家电","汽车","服装","旅游","零售","免税","调味品","乳业","养殖","消费","农业","牧原","酒店","餐饮","美妆","纺织"],
+    finance: ["银行","保险","证券","地产","房地产","金融","信托","期货","基金"],
+    cycle: ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃","金属","纸","化纤","塑料","橡胶","化学"],
+    utility: ["电力","水务","高速","公路","港口","铁路","燃气","环保","新能源发电","电网","核电","水"],
+    mfg: ["机械","电气","新能源","电池","军工","航天","船舶","仪器仪表","电力设备","航空","光伏","风电","通用设备","专用设备","电源","装备","重工","锅炉","电机","自动化","机器人","电器"],
+  };
+  if (stockName) {
+    for (const [cat, keywords] of Object.entries(map)) {
+      for (const kw of keywords) {
+        if (stockName.includes(kw)) return labels[cat];
+      }
+    }
+  }
+  return "其他";
 }

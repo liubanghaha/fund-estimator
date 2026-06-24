@@ -9,6 +9,7 @@ Page({
     sharedStocks: [],
     loading: true,
     loadError: false,
+    showAllIndustries: false,
   },
 
   onLoad() {
@@ -16,6 +17,10 @@ Page({
     this.setData({ theme });
     if (typeof wx.showChangelog === 'function') wx.showChangelog();
     this.fetchAll();
+  },
+
+  toggleIndustries() {
+    this.setData({ showAllIndustries: !this.data.showAllIndustries });
   },
 
   async fetchAll() {

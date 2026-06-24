@@ -7,7 +7,7 @@
 
       <!-- 未选图 -->
       <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
-        <text class="import-desc">支持支付宝、天天基金等平台持仓截图</text>
+        <text class="import-desc">上传持仓截图，自动识别代码和金额</text>
         <text class="demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
         <view class="import-btn" bind:tap="onImportScreenshot">
           <text class="import-icon">📷</text>
@@ -30,7 +30,7 @@
     <!-- 基金卡片列表 -->
     <view wx:if="{{ocrFunds.length > 0}}" class="fund-cards">
       <view class="cards-header">
-        <text class="cards-title">识别到 {{ocrFunds.length}} 个基金</text>
+        <text class="cards-title">识别到 {{ocrFunds.length}} 条记录</text>
       </view>
 
       <view wx:for="{{ocrFunds}}" wx:key="index" class="fund-card {{item._saved ? 'saved' : ''}}">
@@ -62,12 +62,12 @@
   <block wx:if="{{mode === 'manual'}}">
     <view class="form">
       <view wx:if="{{_editIdx < 0}}" class="form-item">
-        <text class="label">基金代码</text>
+        <text class="label">代码</text>
         <input class="input" value="{{fundCode}}" bind:input="onFundCodeInput"
-               placeholder="输入基金代码" disabled="{{isEdit}}"/>
+               placeholder="输入代码" disabled="{{isEdit}}"/>
       </view>
       <view wx:if="{{_editIdx < 0}}" class="form-item">
-        <text class="label">基金名称</text>
+        <text class="label">名称</text>
         <input class="input" value="{{fundName}}" bind:input="onFundNameInput"
                placeholder="输入或自动获取" disabled="{{isEdit}}"/>
       </view>

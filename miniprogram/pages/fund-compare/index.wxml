@@ -20,7 +20,7 @@
       </view>
       <view wx:else class="fund-col fund-col-placeholder" catch:tap="onTapPlaceholder">
         <view class="add-icon">+</view>
-        <view class="add-text">添加对比基金</view>
+        <view class="add-text">添加对比</view>
         <view class="add-hint">点击或下方搜索</view>
       </view>
     </view>
@@ -37,10 +37,10 @@
       <!-- Search -->
       <view class="search-section {{searchHighlight ? 'search-highlight' : ''}}">
         <view class="search-box">
-          <input class="search-input" bind:input="onSearchInput" placeholder="输入6位基金代码搜索" focus="{{searchFocus}}"/>
+          <input class="search-input" bind:input="onSearchInput" placeholder="输入6位代码搜索" focus="{{searchFocus}}"/>
         </view>
         <view wx:if="{{searching}}" class="search-status">搜索中...</view>
-        <view wx:elif="{{hasSearched && searchResults.length === 0}}" class="search-status">未找到相关基金</view>
+        <view wx:elif="{{hasSearched && searchResults.length === 0}}" class="search-status">未找到相关内容</view>
         <view wx:elif="{{searchResults.length > 0}}" class="search-results">
           <view wx:for="{{searchResults}}" wx:key="fundCode" class="search-item" bind:tap="onSelectFundB" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
             <view class="sr-name">{{item.fundName}}</view>
@@ -61,7 +61,7 @@
         </view>
       </view>
       <view wx:elif="{{watchlistLoaded && watchlist.length === 0}}" class="watchlist-empty">
-        <view class="empty-hint">暂无自选基金，可搜索添加</view>
+        <view class="empty-hint">暂无可对比项，可搜索添加</view>
       </view>
     </view>
 
@@ -110,7 +110,7 @@
       </view>
 
       <view class="btn-row">
-        <button class="btn-switch" bind:tap="onRemoveFundB">更换对比基金</button>
+        <button class="btn-switch" bind:tap="onRemoveFundB">更换对比</button>
       </view>
     </view>
     </block>

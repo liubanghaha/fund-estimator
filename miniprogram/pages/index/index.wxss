@@ -15,9 +15,8 @@
 .empty-hint{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:24rpx}
 .empty-demo-sub-tip{font-size:22rpx;color:#BBB;text-align:center;margin-bottom:32rpx}
 .empty-btns{display:flex;flex-direction:column;gap:16rpx;width:100%}
-.login-btn{width:100%;height:80rpx;background:var(--primary-gradient);color:#FFF;border-radius:12rpx;font-size:28rpx;display:flex;align-items:center;justify-content:center;padding:0}
-.login-btn.light{background:var(--primary-bg);color:var(--primary);border:2rpx solid var(--primary)}
-.login-btn.secondary{background:#F0F4FF;color:var(--primary);border:2rpx solid var(--primary)}
+.login-btn{width:100%;height:88rpx;line-height:88rpx;font-size:32rpx;color:#FFF;background:var(--primary-gradient);border-radius:44rpx;text-align:center;padding:0}
+.login-btn.secondary{background:#FFF;color:var(--primary);border:2rpx solid var(--primary)}
 .loading-inline{text-align:center;padding:60rpx 0}
 .loading-text{font-size:26rpx;color:#BBB}
 
@@ -139,6 +138,7 @@
 .temp-tooltip-item{margin-bottom:2rpx}
 .temp-tooltip-rule{font-size:22rpx;color:#8CC265;line-height:1.5;display:block;margin-bottom:8rpx}
 .temp-tooltip-disclaimer{font-size:18rpx;color:#6B6F80;line-height:1.4;display:block;margin-top:4rpx}
+.temp-tooltip-update{font-size:18rpx;color:#6B6F80;line-height:1.4;display:block;margin-top:2rpx}
 .batch-check{width:36rpx;height:36rpx;border:2rpx solid #CCC;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20rpx;flex-shrink:0}
 .batch-check.checked{background:var(--primary);border-color:var(--primary);color:#FFF}
 
