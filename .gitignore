@@ -3,3 +3,4 @@ node_modules/
 private.*.key
 .claude/
 env.json
+pic/

@@ -725,7 +725,6 @@ Page({
   },
 
   moveHoldingToGroup(codes, hintName) {
-    console.log("[moveHoldingToGroup] codes:", codes, "groups:", this.data.groups);
     this.setData({ showGroupPicker: true, groupPickerCodes: codes });
   },
 
@@ -735,17 +734,14 @@ Page({
 
   onPickGroup(e) {
     const group = e.currentTarget.dataset.group;
-    console.log("[onPickGroup] group:", group);
     const codes = this.data.groupPickerCodes;
     this.setData({ showGroupPicker: false });
     this.doMoveToGroup(codes, group);
   },
 
   onPickNewGroup() {
-    console.log("[onPickNewGroup] triggered, codes:", this.data.groupPickerCodes);
     const codes = this.data.groupPickerCodes;
     this.showGroupInput(groupName => {
-      console.log("[onPickNewGroup] callback, groupName:", groupName, "codes:", codes);
       this._saveGroupToCache(groupName);
       this.setData({ showGroupPicker: false });
       this.doMoveToGroup(codes, groupName);
@@ -753,10 +749,8 @@ Page({
   },
 
   async doMoveToGroup(codes, group) {
-    console.log("[doMoveToGroup] codes:", codes, "group:", group);
     try {
       const res = await api.holdingSetGroup(codes, group);
-      console.log("[doMoveToGroup] res:", JSON.stringify(res));
       if (res.result && res.result.code === 0) {
         wx.showToast({ title: "已移动", icon: "success" });
         wx.removeStorageSync("portfolio_cache");
@@ -766,7 +760,6 @@ Page({
         wx.showToast({ title: res.result?.msg || "操作失败", icon: "none" });
       }
     } catch (e) {
-      console.error("[doMoveToGroup] error:", e);
       wx.showToast({ title: "网络错误", icon: "none" });
     }
   },

@@ -101,21 +101,17 @@ Page({
     this.setData({ ocrLoading: true, screenshotUrl: tempPath });
     wx.showLoading({ title: "识别中..." });
     try {
-      console.log("[doOCR] uploading image, path:", tempPath);
       const uploadRes = await wx.cloud.uploadFile({
         cloudPath: `screenshots/${Date.now()}.jpg`,
         filePath: tempPath,
       });
-      console.log("[doOCR] upload done, fileID:", uploadRes.fileID);
       const ocrRes = await api.ocrScreenshot(uploadRes.fileID);
-      console.log("[doOCR] ocr result code:", ocrRes.result?.code, "data:", JSON.stringify(ocrRes.result?.data?.holdings?.length), "holdings");
       wx.hideLoading();
       this.setData({ ocrLoading: false });
 
       if (ocrRes.result && ocrRes.result.code === 0 && ocrRes.result.data) {
         const d = ocrRes.result.data;
         const holdings = d.holdings || [];
-        console.log("[doOCR] parsed", holdings.length, "holdings, raw text length:", d.raw?.length);
         if (holdings.length === 0) {
           wx.showToast({ title: "未识别到有效信息", icon: "none" });
           return;
@@ -137,11 +133,11 @@ Page({
         // 自动按名称匹配基金代码
         this.autoMatchCodes(funds);
       } else {
-        console.error("[doOCR] ocr failed, full result:", JSON.stringify(ocrRes));
+        console.error("[doOCR] ocr failed:", JSON.stringify(ocrRes));
         wx.showToast({ title: "识别失败", icon: "none" });
       }
     } catch (e) {
-      console.error("[doOCR] exception:", e.message, e.stack);
+      console.error("[doOCR] exception:", e.message);
       wx.hideLoading();
       this.setData({ ocrLoading: false });
       wx.showToast({ title: "识别失败，请重试", icon: "none" });
