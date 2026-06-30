@@ -5,7 +5,7 @@ const APP_VERSION = (() => {
 
 const CHANGELOG = [
   {
-    version: '2.1.0',
+    version: '2.1.1',
     date: '2026-06-30',
     items: [
       '📂 持仓支持多分组管理，不同分组独立展示收益汇总',
@@ -57,6 +57,10 @@ App({
   },
 
   getVersion: function () {
+    // 开发环境 fallback 到 changelog 最新版本
+    if (APP_VERSION === '0.0.0' || APP_VERSION === 'dev' || !APP_VERSION) {
+      return CHANGELOG.length > 0 ? CHANGELOG[0].version : '1.0.0';
+    }
     return APP_VERSION;
   },
   getChangelog: function () {
