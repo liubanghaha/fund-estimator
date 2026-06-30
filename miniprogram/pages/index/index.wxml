@@ -37,16 +37,17 @@
       <view wx:else class="dashboard">
         <view class="asset-overview" bind:tap="onTapProfit">
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
+          <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
           <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
-          <view class="asset-value {{amountVisible ? (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '') : ''}}">
-            {{amountVisible ? (todayProfit > 0 ? '+' : '') + todayProfit : '****'}}
+          <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
+            {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? '+' : '') + groupSummary.todayProfit : (todayProfit > 0 ? '+' : '') + todayProfit) : '****'}}
           </view>
           <view class="asset-sub">
-            <text>涨幅 {{todayProfitRate > 0 ? '+' : ''}}{{todayProfitRate}}%</text>
+            <text>涨幅 {{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text>
             <text class="asset-divider">|</text>
-            <text>市值 {{amountVisible ? totalAmount : '****'}}</text>
+            <text>市值 {{amountVisible ? (groupSummary ? groupSummary.totalAmount : totalAmount) : '****'}}</text>
             <text class="asset-divider">|</text>
-            <text class="{{amountVisible ? (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '') : ''}}">累计 {{amountVisible ? (totalReturn > 0 ? '+' : '') + totalReturn : '****'}}</text>
+            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? '+' : '') + groupSummary.totalReturn : (totalReturn > 0 ? '+' : '') + totalReturn) : '****'}}</text>
           </view>
         </view>
 
@@ -56,6 +57,7 @@
           <view class="batch-top-right">
             <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
             <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
+            <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
             <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
           </view>
         </view>
@@ -83,7 +85,28 @@
           </view>
         </view>
 
-        <view wx:if="{{holdings.length > 0}}" class="holdings-section">
+        <!-- 分组标签栏 -->
+        <view wx:if="{{holdings.length > 0}}" class="group-tabs-wrap">
+          <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+            <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部 {{groupCounts.all || 0}}</view>
+            <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组 {{groupCounts.ungrouped || 0}}</view>
+            <block wx:for="{{groups}}" wx:key="*this">
+              <view
+                class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
+                style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
+                bind:tap="onGroupTap"
+                bind:touchstart="onGroupTouchStart"
+                bind:touchmove="onGroupTouchMove"
+                bind:touchend="onGroupTouchEnd"
+                data-group="{{item}}"
+                data-index="{{index}}"
+              >{{item}} {{groupCounts[item] || 0}}</view>
+            </block>
+            <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
+          </scroll-view>
+        </view>
+
+        <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
           <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
               <view class="t-row t-head" bind:longpress="onLongPressHeader">
@@ -95,12 +118,15 @@
                   <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable && sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
                 </view>
               </view>
-              <view wx:for="{{holdings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
+              <view wx:for="{{displayHoldings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
                 bind:tap="onTapHolding" bind:longpress="onLongPressHolding"
                 data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-id="{{item._id}}">
                 <view class="t-cell t-name">
                   <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
-                  <view class="name-text">{{item.fundName}}</view>
+                  <view class="name-text">
+                    <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
+                    {{item.fundName}}
+                  </view>
                   <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view>
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
@@ -123,6 +149,12 @@
               </view>
             </view>
           </scroll-view>
+        </view>
+
+        <view wx:elif="{{activeGroup !== 'all'}}" class="empty-group">
+          <view class="empty-icon">📂</view>
+          <view class="empty-desc">该分组暂无持仓</view>
+          <view class="empty-hint">长按持仓可移动到本分组</view>
         </view>
 
         <view wx:if="{{updateTime}}" class="update-time">估值时间：{{updateTime}}</view>
@@ -217,6 +249,20 @@
         <view wx:for="{{changelog.items}}" wx:key="*this" class="changelog-item">{{item}}</view>
       </view>
       <view class="changelog-close" bind:tap="onCloseChangelog">知道了</view>
+    </view>
+  </view>
+
+  <!-- 移动分组选择器 -->
+  <view wx:if="{{showGroupPicker}}" class="col-edit-mask" bind:tap="onCloseGroupPicker">
+    <view class="col-edit-card" catch:tap="">
+      <view class="col-edit-title">移动到分组</view>
+      <scroll-view scroll-y style="max-height:480rpx;margin:16rpx 0">
+        <view wx:if="{{groups.length === 0}}" class="group-picker-empty">暂无分组，请先新建</view>
+        <view wx:for="{{groups}}" wx:key="*this" class="group-picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
+        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">📂 未分组</view>
+      </scroll-view>
+      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
+      <view class="col-edit-close" bind:tap="onCloseGroupPicker" style="margin-top:16rpx;background:#F5F5F5;color:#666">取消</view>
     </view>
   </view>
 </view>

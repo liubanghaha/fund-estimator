@@ -13,6 +13,7 @@ const ALL_INDICES = [
 
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
+const GROUPS_CACHE_KEY = "holding_groups_cache";
 
 Page({
   data: {
@@ -20,6 +21,7 @@ Page({
     loading: false,
     dataReady: false,
     holdings: [],
+    displayHoldings: [],
     amountVisible: true,
     totalAmount: "0.00",
     todayProfit: "0.00",
@@ -63,6 +65,27 @@ Page({
     showChangelog: false, changelog: null,
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
+    // 分组
+    groups: [],
+    activeGroup: "all",
+    groupCounts: {},
+    groupSummary: null,
+    allGroupsData: [],
+    // 分组拖拽
+    dragging: false,
+    dragIndex: -1,
+    dragX: 0,
+    _dragStartX: 0,
+    _dragStartIdx: -1,
+    _dragTimer: null,
+    _didLongPress: false,
+    _dragMoved: false,
+    _tabWidth: 0,
+    showGroupEdit: false,
+    groupEditFundCode: '',
+    groupEditFundName: '',
+    showGroupPicker: false,
+    groupPickerCodes: [],
   },
 
   onLoad() {
@@ -78,6 +101,12 @@ Page({
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
+
+    // 恢复缓存的分组列表
+    const cachedGroups = this._getCachedGroups();
+    if (cachedGroups.length && !this.data.groups.length) {
+      this.setData({ groups: cachedGroups });
+    }
 
     // 版本更新日志
     const app = getApp();
@@ -109,7 +138,7 @@ Page({
         this.fetchIndices();
       }
     } else {
-      this.setData({ isLoggedIn: false, holdings: [], dataReady: true });
+      this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
       this.applyIndexCache();
       this.fetchIndices();
       wx.removeStorageSync("portfolio_cache");
@@ -137,7 +166,10 @@ Page({
           healthScore: cached.healthScore || null,
           fromCache: true,
           allUpdated,
+          allGroupsData: cached.groups || [],
         });
+        this.applyGroupFilter();
+        this.updateGroupCounts();
       }
     } catch (e) { /* ignore cache read error */ }
   },
@@ -271,9 +303,12 @@ Page({
           healthScore: d.healthScore || null,
           showAssetAlloc: this.data.showAssetAlloc, // 保持展开状态
           fromCache: false,
+          allGroupsData: d.groups || [],
         });
+        this.applyGroupFilter();
+        this.updateGroupCounts();
         this._checkAlerts();
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, ts: Date.now() } });
+        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
       }
     } catch (e) {
       this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
@@ -289,8 +324,8 @@ Page({
     if (sortField === field) {
       nextOrder = sortOrder === 'desc' ? 'asc' : 'desc';
     }
-    const sorted = this.sortHoldings([...this.data.holdings], nextField, nextOrder);
-    this.setData({ sortField: nextField, sortOrder: nextOrder, holdings: sorted });
+    const sorted = this.sortHoldings([...this.data.displayHoldings], nextField, nextOrder);
+    this.setData({ sortField: nextField, sortOrder: nextOrder, displayHoldings: sorted });
   },
 
   formatHoldings(list) {
@@ -470,26 +505,26 @@ Page({
 
   onToggleBatch() {
     const enter = !this.data.batchMode;
-    const holdings = this.data.holdings.map(h => ({ ...h, _checked: false }));
-    this.setData({ batchMode: enter, holdings, selectedCount: 0, allSelected: false });
+    const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));
+    this.setData({ batchMode: enter, displayHoldings: list, selectedCount: 0, allSelected: false });
   },
 
   onToggleBatchSelect(e) {
     const idx = e.currentTarget.dataset.index;
-    const holdings = [...this.data.holdings];
-    holdings[idx]._checked = !holdings[idx]._checked;
-    const count = holdings.filter(h => h._checked).length;
-    this.setData({ holdings, selectedCount: count, allSelected: count === holdings.length });
+    const list = [...this.data.displayHoldings];
+    list[idx]._checked = !list[idx]._checked;
+    const count = list.filter(h => h._checked).length;
+    this.setData({ displayHoldings: list, selectedCount: count, allSelected: count === list.length });
   },
 
   onSelectAll() {
     const allSel = !this.data.allSelected;
-    const holdings = this.data.holdings.map(h => ({ ...h, _checked: allSel }));
-    this.setData({ holdings, selectedCount: allSel ? holdings.length : 0, allSelected: allSel });
+    const list = this.data.displayHoldings.map(h => ({ ...h, _checked: allSel }));
+    this.setData({ displayHoldings: list, selectedCount: allSel ? list.length : 0, allSelected: allSel });
   },
 
   async onBatchDelete() {
-    const selected = this.data.holdings.filter(h => h._checked);
+    const selected = this.data.displayHoldings.filter(h => h._checked);
     if (selected.length === 0) { wx.showToast({ title: "请先选择", icon: "none" }); return; }
     wx.showModal({
       title: "批量删除",
@@ -543,7 +578,7 @@ Page({
     const { id, code, name } = e.currentTarget.dataset;
     const self = this;
     wx.showActionSheet({
-      itemList: ['编辑', '设置提醒', '删除'],
+      itemList: ['编辑', '设置提醒', '移动到分组', '删除'],
       success(res) {
         const h = self.data.holdings.find((x) => x._id === id);
         if (!h) return;
@@ -555,6 +590,8 @@ Page({
           const s = settings[h.fundCode] || { upper: 15, lower: -10 };
           self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || '') });
         } else if (res.tapIndex === 2) {
+          self.moveHoldingToGroup([h.fundCode], h.fundName);
+        } else if (res.tapIndex === 3) {
           wx.showModal({
             title: "确认删除",
             content: "确定要删除此条持仓吗？",
@@ -576,6 +613,320 @@ Page({
         }
       },
     });
+  },
+
+  // ========== 分组管理 ==========
+
+  applyGroupFilter() {
+    const { holdings, activeGroup, sortField, sortOrder } = this.data;
+    let list;
+    if (activeGroup === "all") {
+      list = [...holdings];
+    } else if (activeGroup === "ungrouped") {
+      list = holdings.filter(h => !h.group);
+    } else {
+      list = holdings.filter(h => h.group === activeGroup);
+    }
+    list = this.sortHoldings(list, sortField, sortOrder);
+    this.setData({ displayHoldings: list }, () => {
+      this.updateGroupSummary();
+    });
+  },
+
+  updateGroupCounts() {
+    const { holdings, groups } = this.data;
+    const counts = { all: holdings.length, ungrouped: 0 };
+    for (const h of holdings) {
+      if (!h.group) counts.ungrouped++;
+      else counts[h.group] = (counts[h.group] || 0) + 1;
+    }
+    // 合并服务端分组
+    const allGroups = this._mergeGroups(groups);
+    this.setData({ groupCounts: counts, groups: allGroups });
+  },
+
+  updateGroupSummary() {
+    const { activeGroup, allGroupsData } = this.data;
+    if (activeGroup === "all" || !allGroupsData || allGroupsData.length === 0) {
+      this.setData({ groupSummary: null });
+      return;
+    }
+    const g = allGroupsData.find(g => g.name === activeGroup);
+    this.setData({ groupSummary: g || null });
+  },
+
+  onGroupTap(e) {
+    if (this._didLongPress || this._dragMoved) return;
+    const group = e.currentTarget.dataset.group;
+    if (group === this.data.activeGroup) return;
+    this.setData({ activeGroup: group }, () => {
+      this.applyGroupFilter();
+    });
+  },
+
+  onAddGroup() {
+    this.showGroupInput((groupName) => {
+      wx.showToast({ title: `分组「${groupName}」已创建`, icon: "success", duration: 2000 });
+      this._saveGroupToCache(groupName);
+      this.updateGroupCounts();
+      wx.removeStorageSync("portfolio_cache");
+      setTimeout(() => {
+        wx.showToast({ title: "长按持仓可移入分组", icon: "none", duration: 2000 });
+      }, 2200);
+    });
+  },
+
+  showGroupInput(callback) {
+    wx.showModal({
+      title: "新建分组",
+      editable: true,
+      placeholderText: "输入分组名称，如：科技类",
+      content: "",
+      success: (res) => {
+        if (!res.confirm || !res.content) return;
+        const name = res.content.trim().slice(0, 20);
+        if (!name) return;
+        // 防止与内置标识冲突
+        if (name === "all" || name === "ungrouped") {
+          wx.showToast({ title: "分组名与系统保留字冲突", icon: "none" });
+          return;
+        }
+        callback(name);
+      },
+    });
+  },
+
+  _getCachedGroups() {
+    try {
+      return wx.getStorageSync(GROUPS_CACHE_KEY) || [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  _saveGroupToCache(groupName) {
+    const cached = this._getCachedGroups();
+    if (!cached.includes(groupName)) {
+      cached.push(groupName);
+      wx.setStorageSync(GROUPS_CACHE_KEY, cached);
+    }
+    const merged = this._mergeGroups(this.data.groups);
+    if (!merged.includes(groupName)) merged.push(groupName);
+    this.setData({ groups: merged });
+  },
+
+  _mergeGroups(serverGroups) {
+    const cached = this._getCachedGroups();
+    const merged = [...cached];
+    for (const g of serverGroups) {
+      if (!merged.includes(g)) merged.push(g);
+    }
+    return merged;
+  },
+
+  moveHoldingToGroup(codes, hintName) {
+    console.log("[moveHoldingToGroup] codes:", codes, "groups:", this.data.groups);
+    this.setData({ showGroupPicker: true, groupPickerCodes: codes });
+  },
+
+  onCloseGroupPicker() {
+    this.setData({ showGroupPicker: false, groupPickerCodes: [] });
+  },
+
+  onPickGroup(e) {
+    const group = e.currentTarget.dataset.group;
+    console.log("[onPickGroup] group:", group);
+    const codes = this.data.groupPickerCodes;
+    this.setData({ showGroupPicker: false });
+    this.doMoveToGroup(codes, group);
+  },
+
+  onPickNewGroup() {
+    console.log("[onPickNewGroup] triggered, codes:", this.data.groupPickerCodes);
+    const codes = this.data.groupPickerCodes;
+    this.showGroupInput(groupName => {
+      console.log("[onPickNewGroup] callback, groupName:", groupName, "codes:", codes);
+      this._saveGroupToCache(groupName);
+      this.setData({ showGroupPicker: false });
+      this.doMoveToGroup(codes, groupName);
+    });
+  },
+
+  async doMoveToGroup(codes, group) {
+    console.log("[doMoveToGroup] codes:", codes, "group:", group);
+    try {
+      const res = await api.holdingSetGroup(codes, group);
+      console.log("[doMoveToGroup] res:", JSON.stringify(res));
+      if (res.result && res.result.code === 0) {
+        wx.showToast({ title: "已移动", icon: "success" });
+        wx.removeStorageSync("portfolio_cache");
+        wx.setStorageSync("portfolio_force_refresh", true);
+        this.fetchPortfolio();
+      } else {
+        wx.showToast({ title: res.result?.msg || "操作失败", icon: "none" });
+      }
+    } catch (e) {
+      console.error("[doMoveToGroup] error:", e);
+      wx.showToast({ title: "网络错误", icon: "none" });
+    }
+  },
+
+  // ========== 分组拖拽排序 ==========
+
+  onGroupTouchStart(e) {
+    const touch = e.touches[0];
+    const idx = parseInt(e.currentTarget.dataset.index);
+    if (isNaN(idx)) return;
+    this._dragStartX = touch.clientX;
+    this._dragStartIdx = idx;
+    this._didLongPress = false;
+    this._dragMoved = false;
+    this._tabWidth = 0;
+    wx.createSelectorQuery().selectAll('.group-tab').boundingClientRect(rects => {
+      if (rects && rects.length > 0) {
+        const sum = rects.reduce((s, r) => s + r.width, 0);
+        this._tabWidth = Math.round(sum / rects.length);
+      }
+    }).exec();
+    clearTimeout(this._dragTimer);
+    this._dragTimer = setTimeout(() => {
+      this._didLongPress = true;
+      wx.vibrateShort({ type: "medium" });
+    }, 500);
+  },
+
+  onGroupTouchMove(e) {
+    if (!this._didLongPress) {
+      if (Math.abs(e.touches[0].clientX - this._dragStartX) > 10) {
+        clearTimeout(this._dragTimer);
+      }
+      return;
+    }
+    const deltaX = e.touches[0].clientX - this._dragStartX;
+    if (!this._dragMoved && Math.abs(deltaX) < 6) return;
+
+    if (!this._dragMoved) {
+      this._dragMoved = true;
+      this.setData({ dragging: true, dragIndex: this._dragStartIdx, dragX: 0 });
+    }
+    const tw = this._tabWidth || 100;
+    const maxLeft = -this._dragStartIdx * tw - 30;
+    const maxRight = (this.data.groups.length - 1 - this._dragStartIdx) * tw + 30;
+    const clampedX = Math.max(maxLeft, Math.min(maxRight, deltaX));
+
+    const swapOffset = Math.round(clampedX / tw);
+    const newIdx = this._dragStartIdx + swapOffset;
+    const clamped = Math.max(0, Math.min(newIdx, this.data.groups.length - 1));
+    if (clamped !== this.data.dragIndex && this.data.dragIndex >= 0) {
+      const groups = [...this.data.groups];
+      const [moved] = groups.splice(this.data.dragIndex, 1);
+      groups.splice(clamped, 0, moved);
+      this.setData({ groups, dragIndex: clamped, dragX: clampedX - swapOffset * tw });
+      this._dragStartIdx = clamped;
+      this._dragStartX = e.touches[0].clientX;
+    } else {
+      this.setData({ dragX: clampedX });
+    }
+  },
+
+  onGroupTouchEnd(e) {
+    clearTimeout(this._dragTimer);
+    if (this._dragMoved) {
+      wx.setStorageSync(GROUPS_CACHE_KEY, [...this.data.groups]);
+      this.setData({ dragging: false, dragIndex: -1, dragX: 0 });
+      this.updateGroupCounts();
+      return;
+    }
+    // 长按未拖拽 → 弹出菜单
+    if (this._didLongPress) {
+      const group = e.currentTarget.dataset.group;
+      if (group && group !== "all" && group !== "ungrouped") {
+        wx.showActionSheet({
+          itemList: ["重命名", "删除分组"],
+          success: (res) => {
+            if (res.tapIndex === 0) this.renameGroup(group);
+            else if (res.tapIndex === 1) this.deleteGroup(group);
+          },
+        });
+      }
+    }
+  },
+
+  renameGroup(oldName) {
+    wx.showModal({
+      title: "重命名分组",
+      editable: true,
+      placeholderText: "输入新名称",
+      content: oldName,
+      success: async (res) => {
+        if (!res.confirm || !res.content) return;
+        const newNameStr = res.content.trim().slice(0, 20);
+        if (!newNameStr || newNameStr === oldName) return;
+        try {
+          await api.holdingRenameGroup(oldName, newNameStr);
+          // 同步本地缓存
+          const cached = this._getCachedGroups();
+          const idx = cached.indexOf(oldName);
+          if (idx >= 0) cached[idx] = newNameStr;
+          else if (!cached.includes(newNameStr)) cached.push(newNameStr);
+          wx.setStorageSync(GROUPS_CACHE_KEY, cached);
+          // 立即更新本地 groups
+          const idx2 = this.data.groups.indexOf(oldName);
+          if (idx2 >= 0) {
+            const gs = [...this.data.groups];
+            gs[idx2] = newNameStr;
+            this.setData({ groups: gs });
+          }
+          if (this.data.activeGroup === oldName) {
+            this.setData({ activeGroup: newNameStr }, () => this.applyGroupFilter());
+          }
+          wx.showToast({ title: "已重命名", icon: "success" });
+          wx.removeStorageSync("portfolio_cache");
+          wx.setStorageSync("portfolio_force_refresh", true);
+          this.fetchPortfolio();
+        } catch (e) {
+          wx.showToast({ title: "重命名失败", icon: "none" });
+        }
+      },
+    });
+  },
+
+  deleteGroup(group) {
+    wx.showModal({
+      title: "删除分组",
+      content: `确定删除「${group}」分组吗？组内持仓将变为「未分组」`,
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await api.holdingDeleteGroup(group);
+          // 同步本地缓存
+          const cached = this._getCachedGroups().filter(g => g !== group);
+          wx.setStorageSync(GROUPS_CACHE_KEY, cached);
+          // 从当前 groups 中移除（防止 _mergeGroups 加回来）
+          const groups = this.data.groups.filter(g => g !== group);
+          this.setData({ groups });
+          if (this.data.activeGroup === group) {
+            this.setData({ activeGroup: "all" }, () => this.applyGroupFilter());
+          }
+          wx.showToast({ title: "已删除", icon: "success" });
+          wx.removeStorageSync("portfolio_cache");
+          wx.setStorageSync("portfolio_force_refresh", true);
+          this.fetchPortfolio();
+        } catch (e) {
+          wx.showToast({ title: "删除失败", icon: "none" });
+        }
+      },
+    });
+  },
+
+  onBatchMoveToGroup() {
+    const selected = this.data.displayHoldings.filter(h => h._checked);
+    if (selected.length === 0) {
+      wx.showToast({ title: "请先选择持仓", icon: "none" });
+      return;
+    }
+    const codes = selected.map(h => h.fundCode);
+    this.moveHoldingToGroup(codes);
   },
 
 });

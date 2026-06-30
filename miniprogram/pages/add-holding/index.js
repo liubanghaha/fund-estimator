@@ -12,6 +12,11 @@ Page({
     holdingReturn: "", holdingReturnAbs: "", holdingSign: 1,
     marketValue: "",
     isEdit: false, id: "",
+    // 分组
+    groups: [],
+    groupPickerRange: ["未分组"],
+    groupPickerIndex: 0,
+    selectedGroup: "",
   },
 
   onShow() {
@@ -22,6 +27,8 @@ Page({
       const unsaved = funds.filter((f) => !f._saved).length;
       this.setData({ ocrFunds: funds, unsavedCount: unsaved });
     }
+    // 加载已有分组列表（不影响主流程）
+    this.loadGroups().catch(() => {});
   },
 
   onLoad(options) {
@@ -94,17 +101,21 @@ Page({
     this.setData({ ocrLoading: true, screenshotUrl: tempPath });
     wx.showLoading({ title: "识别中..." });
     try {
+      console.log("[doOCR] uploading image, path:", tempPath);
       const uploadRes = await wx.cloud.uploadFile({
         cloudPath: `screenshots/${Date.now()}.jpg`,
         filePath: tempPath,
       });
+      console.log("[doOCR] upload done, fileID:", uploadRes.fileID);
       const ocrRes = await api.ocrScreenshot(uploadRes.fileID);
+      console.log("[doOCR] ocr result code:", ocrRes.result?.code, "data:", JSON.stringify(ocrRes.result?.data?.holdings?.length), "holdings");
       wx.hideLoading();
       this.setData({ ocrLoading: false });
 
       if (ocrRes.result && ocrRes.result.code === 0 && ocrRes.result.data) {
         const d = ocrRes.result.data;
         const holdings = d.holdings || [];
+        console.log("[doOCR] parsed", holdings.length, "holdings, raw text length:", d.raw?.length);
         if (holdings.length === 0) {
           wx.showToast({ title: "未识别到有效信息", icon: "none" });
           return;
@@ -126,9 +137,11 @@ Page({
         // 自动按名称匹配基金代码
         this.autoMatchCodes(funds);
       } else {
+        console.error("[doOCR] ocr failed, full result:", JSON.stringify(ocrRes));
         wx.showToast({ title: "识别失败", icon: "none" });
       }
     } catch (e) {
+      console.error("[doOCR] exception:", e.message, e.stack);
       wx.hideLoading();
       this.setData({ ocrLoading: false });
       wx.showToast({ title: "识别失败，请重试", icon: "none" });
@@ -320,6 +333,7 @@ Page({
       if (!h._id) { wx.showToast({ title: "加载失败", icon: "none" }); return; }
 
       const hr = parseFloat(h.holdingReturn) || 0;
+      const group = h.group || "";
       this.setData({
         fundCode: h.fundCode, fundName: h.fundName,
         marketValue: String(h.marketValue || ""),
@@ -327,7 +341,12 @@ Page({
         holdingReturnAbs: String(Math.abs(hr)),
         holdingSign: hr < 0 ? -1 : 1,
         buyDate: h.buyDate || "",
+        selectedGroup: group,
       });
+      // 更新 picker 选中位置
+      const range = this.data.groupPickerRange;
+      const idx = range.indexOf(group);
+      if (idx >= 0) this.setData({ groupPickerIndex: idx });
     } catch (e) {
       wx.showToast({ title: "加载失败", icon: "none" });
     }
@@ -391,6 +410,7 @@ Page({
         buyPrice, shares,
         holdingReturn: hr, marketValue: mv,
         buyAmount, buyDate,
+        group: this.data.selectedGroup || "",
       };
       if (isEdit) {
         await db.collection("holdings").doc(id).update({ data });
@@ -454,5 +474,66 @@ Page({
         }
       },
     });
+  },
+
+  // ========== 分组选择 ==========
+
+  async loadGroups() {
+    try {
+      // 优先从缓存读取
+      const cached = wx.getStorageSync("holding_groups_cache") || [];
+      if (cached.length) {
+        this.setData({ groups: cached });
+        this.updatePickerRange(cached);
+      }
+      const res = await api.holdingGetGroups();
+      if (res.result && res.result.code === 0) {
+        const serverGroups = res.result.data || [];
+        const merged = [...new Set([...cached, ...serverGroups])].sort();
+        this.setData({ groups: merged });
+        this.updatePickerRange(merged);
+        if (merged.length !== cached.length) {
+          wx.setStorageSync("holding_groups_cache", merged);
+        }
+      }
+    } catch (e) {
+      // 静默失败
+    }
+  },
+
+  updatePickerRange(groups) {
+    const safeGroups = Array.isArray(groups) ? groups : [];
+    const range = ["未分组", ...safeGroups, "+ 新建分组"];
+    const idx = range.indexOf(this.data.selectedGroup);
+    this.setData({ groupPickerRange: range, groupPickerIndex: idx >= 0 ? idx : 0 });
+  },
+
+  onGroupChange(e) {
+    const idx = e.detail.value;
+    const { groups } = this.data;
+    if (idx === 0) {
+      // 未分组
+      this.setData({ selectedGroup: "", groupPickerIndex: 0 });
+    } else if (idx === groups.length + 1) {
+      // 新建分组
+      wx.showModal({
+        title: "新建分组",
+        editable: true,
+        placeholderText: "输入分组名称",
+        content: "",
+        success: (res) => {
+          if (!res.confirm || !res.content) return;
+          const name = res.content.trim().slice(0, 20);
+          if (name) {
+            const newGroups = [...groups, name];
+            this.setData({ groups: newGroups, selectedGroup: name });
+            this.updatePickerRange(newGroups);
+            wx.setStorageSync("holding_groups_cache", newGroups);
+          }
+        },
+      });
+    } else {
+      this.setData({ selectedGroup: groups[idx - 1] || "", groupPickerIndex: idx });
+    }
   },
 });

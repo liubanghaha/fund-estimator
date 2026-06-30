@@ -4,10 +4,12 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 // 从 env.json 读取密钥（不提交 Git），fallback 到环境变量
 let BAIDU_API_KEY = process.env.BAIDU_API_KEY || "";
 let BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || "";
+let OCRSPACE_API_KEY = process.env.OCRSPACE_API_KEY || "";
 try {
   const env = require("./env.json");
   BAIDU_API_KEY = env.BAIDU_API_KEY || BAIDU_API_KEY;
   BAIDU_SECRET_KEY = env.BAIDU_SECRET_KEY || BAIDU_SECRET_KEY;
+  OCRSPACE_API_KEY = env.OCRSPACE_API_KEY || OCRSPACE_API_KEY;
 } catch (e) { /* env.json 不存在则使用环境变量 */ }
 
 // ========== 解析器 ==========
@@ -285,9 +287,79 @@ function parseLegacy(lines) {
 
 async function doWechatOCR(fileID) {
   try {
-    const r = await cloud.openapi.ocr.printedText({ imgUrl: fileID, type: "photo" });
+    // 先获取临时 URL，再传给微信 OCR（部分环境下 cloud fileID 不被识别）
+    const urlRes = await cloud.getTempFileURL({ fileList: [fileID] });
+    const imgUrl = (urlRes.fileList && urlRes.fileList[0]) ? urlRes.fileList[0].tempFileURL : fileID;
+    console.log("[ocrScreenshot] wechat ocr imgUrl:", imgUrl ? imgUrl.substring(0, 80) : "none");
+    const r = await cloud.openapi.ocr.printedText({ imgUrl, type: "photo" });
+    console.log("[ocrScreenshot] wechat ocr items:", r.items ? r.items.length : 0);
     if (r.items && r.items.length) return r.items.map(i => i.text).join("\n");
-  } catch (e) {}
+  } catch (e) {
+    console.error("[ocrScreenshot] wechat ocr error:", e.message || e);
+  }
+  return null;
+}
+
+async function doOcrspaceOCR(fileID) {
+  if (!OCRSPACE_API_KEY) {
+    console.log("[ocrScreenshot] ocrspace skipped: no API key");
+    return null;
+  }
+  try {
+    const urlRes = await cloud.getTempFileURL({ fileList: [fileID] });
+    const imgUrl = (urlRes.fileList && urlRes.fileList[0]) ? urlRes.fileList[0].tempFileURL : null;
+    if (!imgUrl) return null;
+    console.log("[ocrScreenshot] ocrspace downloading image...");
+    // 先下载图片转 base64（OCR.space 可能无法直接访问云存储 URL）
+    const https = require("https"), http = require("http");
+    const imgBase64 = await new Promise((resolve) => {
+      const mod = imgUrl.startsWith("https") ? https : http;
+      const chunks = [];
+      mod.get(imgUrl, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
+    });
+    if (!imgBase64) {
+      console.log("[ocrScreenshot] ocrspace download failed");
+      return null;
+    }
+    console.log("[ocrScreenshot] ocrspace image size:", imgBase64.length, "bytes");
+    // 调用 OCR.space API（base64 方式）
+    const body = await new Promise((resolve, reject) => {
+      const postData = JSON.stringify({
+        base64Image: `data:image/jpeg;base64,${imgBase64}`,
+        language: "chs",
+        isOverlayRequired: false,
+        apikey: OCRSPACE_API_KEY,
+        OCREngine: 2,
+      });
+      const req = https.request({
+        hostname: "api.ocr.space",
+        path: "/parse/image",
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(postData) },
+      }, (res) => {
+        let d = "";
+        res.on("data", c => d += c);
+        res.on("end", () => resolve(d));
+      });
+      req.setTimeout(20000, () => { req.destroy(); reject(new Error("timeout")); });
+      req.on("error", e => reject(e));
+      req.write(postData);
+      req.end();
+    });
+    const json = JSON.parse(body);
+    if (json.ErrorMessage && json.ErrorMessage.length > 0) {
+      console.log("[ocrScreenshot] ocrspace error:", json.ErrorMessage);
+    }
+    const results = (json.ParsedResults || []);
+    if (results.length > 0 && results[0].ParsedText) {
+      const text = results[0].ParsedText;
+      console.log("[ocrScreenshot] ocrspace text length:", text.length);
+      return text;
+    }
+    console.log("[ocrScreenshot] ocrspace no results");
+  } catch (e) {
+    console.error("[ocrScreenshot] ocrspace error:", e.message || e);
+  }
   return null;
 }
 
@@ -344,6 +416,13 @@ exports.main = async (event) => {
     const wxText = await doWechatOCR(fileID);
     debug.wx = { ok: !!wxText, len: wxText ? wxText.length : 0 };
     if (wxText && wxText.length > 10) { text = wxText; method = "wechat"; }
+  }
+
+  // 3. OCR.space 兜底
+  if (!text) {
+    const ocrspaceText = await doOcrspaceOCR(fileID);
+    debug.ocrspace = { ok: !!ocrspaceText, len: ocrspaceText ? ocrspaceText.length : 0 };
+    if (ocrspaceText && ocrspaceText.length > 10) { text = ocrspaceText; method = "ocrspace"; }
   }
 
   if (!text) return { code: 500, msg: "OCR识别失败", debug };

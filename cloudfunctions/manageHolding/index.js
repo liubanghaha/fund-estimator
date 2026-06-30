@@ -4,7 +4,7 @@ const db = cloud.database();
 const _ = db.command;
 
 exports.main = async (event) => {
-  const { action, data, id } = event;
+  const { action, data, id, fundCodes, group, newGroup } = event;
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
 
@@ -56,6 +56,37 @@ exports.main = async (event) => {
         const res = await db.collection("holdings")
           .where({ _openid: OPENID, fundCode: data.fundCode }).get();
         return { code: 0, data: res.data[0] || null };
+      }
+      // ---- 分组管理 ----
+      case "setGroup": {
+        if (!fundCodes || !Array.isArray(fundCodes) || fundCodes.length === 0) return { code: 400, msg: "缺少基金代码" };
+        if (typeof group !== "string") return { code: 400, msg: "缺少分组名称" };
+        const name = group.trim().slice(0, 20);
+        await db.collection("holdings")
+          .where({ _openid: OPENID, fundCode: _.in(fundCodes) }).update({ data: { group: name } });
+        return { code: 0, msg: "已更新分组" };
+      }
+      case "getGroups": {
+        const res = await db.collection("holdings")
+          .where({ _openid: OPENID }).field({ group: true }).get();
+        const groups = [...new Set((res.data || []).map(d => d.group || "").filter(g => g !== ""))].sort();
+        return { code: 0, data: groups };
+      }
+      case "renameGroup": {
+        if (!group || typeof group !== "string") return { code: 400, msg: "缺少原分组名" };
+        const newName = (newGroup || "").trim().slice(0, 20);
+        if (!newName) return { code: 400, msg: "新分组名不能为空" };
+        const oldName = group.trim();
+        await db.collection("holdings")
+          .where({ _openid: OPENID, group: oldName }).update({ data: { group: newName } });
+        return { code: 0, msg: "已重命名" };
+      }
+      case "deleteGroup": {
+        if (!group || typeof group !== "string") return { code: 400, msg: "缺少分组名" };
+        const name = group.trim();
+        await db.collection("holdings")
+          .where({ _openid: OPENID, group: name }).update({ data: { group: "" } });
+        return { code: 0, msg: "已删除分组" };
       }
       default:
         return { code: 400, msg: "未知操作" };

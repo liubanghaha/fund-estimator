@@ -1,6 +1,6 @@
 {
-  "timeout": 30,
-  "permissions": { "openapi": [] },
+  "timeout": 60,
+  "permissions": { "openapi": ["ocr.printedText"] },
   "envVariables": {
     "TC_SECRET_ID": "your-tencent-secret-id",
     "TC_SECRET_KEY": "your-tencent-secret-key"

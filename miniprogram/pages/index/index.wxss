@@ -145,6 +145,26 @@
 /* 更新时间 */
 .update-time{text-align:center;font-size:22rpx;color:#BBB;padding:16rpx 0}
 
+/* 分组标签 */
+.group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0}
+.group-tabs{white-space:nowrap;width:100%;padding:0 20rpx}
+.group-tab{display:inline-flex;align-items:center;padding:12rpx 20rpx;margin-right:8rpx;font-size:24rpx;color:#888;background:#F5F5F5;border-radius:24rpx;white-space:nowrap;transition:all .2s}
+.group-tab.active{color:#FFF;background:var(--primary);font-weight:500}
+.group-tab.dragging{opacity:.85;box-shadow:0 4rpx 16rpx rgba(0,0,0,.15)}
+.group-tab-add{width:52rpx;height:52rpx;padding:0;justify-content:center;font-size:28rpx;font-weight:600;color:#BBB;border:1rpx dashed #DDD;background:transparent}
+
+.group-badge{display:inline-block;background:rgba(255,255,255,.25);color:#FFF;font-size:20rpx;padding:4rpx 14rpx;border-radius:16rpx;margin-bottom:8rpx}
+
+.group-tag{font-size:18rpx;color:var(--primary);background:rgba(227,57,60,.08);padding:2rpx 8rpx;border-radius:6rpx;margin-right:6rpx;vertical-align:middle}
+
+.empty-group{display:flex;flex-direction:column;align-items:center;padding:48rpx;margin:0 4rpx;background:#FFF;border-radius:0 0 12rpx 12rpx}
+
+/* 分组选择器弹窗 */
+.group-picker-item{padding:24rpx 16rpx;font-size:28rpx;color:#333;border-bottom:1rpx solid #F5F5F5;text-align:center}
+.group-picker-item:active{background:#F5F5F5}
+.group-picker-empty{padding:32rpx;text-align:center;font-size:26rpx;color:#BBB}
+.group-picker-new-btn{text-align:center;padding:20rpx;font-size:28rpx;color:var(--primary);border-top:1rpx solid #F5F5F5}
+
 /* 骨架屏 */
 .skeleton-wrap{display:flex;flex-direction:column;gap:16rpx;padding:0 24rpx}
 .skeleton-bar{height:28rpx;background:#E8E8E8;border-radius:6rpx;animation:shimmer 1.8s infinite}

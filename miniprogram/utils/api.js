@@ -71,6 +71,18 @@ const api = {
   holdingCheck(fundCode) {
     return this.callFunction("manageHolding", { action: "check", data: { fundCode } });
   },
+  holdingSetGroup(fundCodes, group) {
+    return this.callFunction("manageHolding", { action: "setGroup", fundCodes, group });
+  },
+  holdingGetGroups() {
+    return this.callFunction("manageHolding", { action: "getGroups" });
+  },
+  holdingRenameGroup(group, newGroup) {
+    return this.callFunction("manageHolding", { action: "renameGroup", group, newGroup });
+  },
+  holdingDeleteGroup(group) {
+    return this.callFunction("manageHolding", { action: "deleteGroup", group });
+  },
   transactionAdd(data) {
     return this.callFunction("manageTransaction", { action: "add", data });
   },

@@ -90,6 +90,12 @@
           <view class="picker-value">{{buyDate || '请选择日期'}}</view>
         </picker>
       </view>
+      <view wx:if="{{_editIdx < 0}}" class="form-item">
+        <text class="label">所属分组</text>
+        <picker mode="selector" range="{{groupPickerRange}}" value="{{groupPickerIndex}}" bind:change="onGroupChange">
+          <view class="picker-value">{{selectedGroup || '未分组（点击选择）'}}</view>
+        </picker>
+      </view>
     </view>
 
     <view wx:if="{{isEdit}}" class="edit-actions">

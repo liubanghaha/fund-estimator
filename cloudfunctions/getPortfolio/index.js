@@ -264,6 +264,42 @@ exports.main = async (event) => {
       healthScore = { score, grade, avgNormPE: avgNormPE != null ? +avgNormPE.toFixed(2) : null, maxIndustry, tempScore, concScore };
     } catch (e) { console.error("[getPortfolio] 健康分计算失败:", e.message); }
 
+    // 分组维度汇总
+    const groupMap = {};
+    enriched.forEach(h => {
+      const g = h.group || "未分组";
+      if (!groupMap[g]) {
+        groupMap[g] = { name: g, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, todayProfitRate: 0, totalReturnRate: 0, yesterdayMarket: 0, totalCost: 0 };
+      }
+      groupMap[g].count++;
+      groupMap[g].totalAmount += parseFloat(h.marketValue) || 0;
+      groupMap[g].todayProfit += parseFloat(h.todayProfit) || 0;
+      groupMap[g].totalReturn += parseFloat(h.totalReturn) || 0;
+      // 累计昨日市值和总成本用于计算分组收益率
+      const shares = parseFloat(h.shares) || 0;
+      const buyPrice = parseFloat(h.buyPrice) || 0;
+      const currentNav = parseFloat(h.currentNav) || 0;
+      const todayChangeRate = parseFloat(h.todayChangeRate) || 0;
+      if (shares > 0 && currentNav > 0) {
+        const yesterdayNav = todayChangeRate !== 0 ? currentNav / (1 + todayChangeRate / 100) : currentNav;
+        groupMap[g].yesterdayMarket += yesterdayNav * shares;
+        groupMap[g].totalCost += buyPrice * shares;
+      }
+    });
+    const groups = Object.values(groupMap).map(g => {
+      const tpr = g.yesterdayMarket > 0 ? ((g.todayProfit / g.yesterdayMarket) * 100) : 0;
+      const trr = g.totalCost > 0 ? ((g.totalReturn / g.totalCost) * 100) : 0;
+      return {
+        name: g.name,
+        count: g.count,
+        totalAmount: g.totalAmount.toFixed(2),
+        todayProfit: g.todayProfit.toFixed(2),
+        todayProfitRate: tpr.toFixed(2),
+        totalReturn: g.totalReturn.toFixed(2),
+        totalReturnRate: trr.toFixed(2),
+      };
+    });
+
     return {
       code: 0,
       data: {
@@ -279,6 +315,7 @@ exports.main = async (event) => {
         snapDebug,
         assetAllocation,
         healthScore,
+        groups,
       },
     };
   } catch (e) {
