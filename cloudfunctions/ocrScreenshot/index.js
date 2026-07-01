@@ -310,32 +310,39 @@ async function doOcrspaceOCR(fileID) {
     const imgUrl = (urlRes.fileList && urlRes.fileList[0]) ? urlRes.fileList[0].tempFileURL : null;
     if (!imgUrl) return null;
     console.log("[ocrScreenshot] ocrspace downloading image...");
-    // 先下载图片转 base64（OCR.space 可能无法直接访问云存储 URL）
     const https = require("https"), http = require("http");
-    const imgBase64 = await new Promise((resolve) => {
+    const imgBuffer = await new Promise((resolve) => {
       const mod = imgUrl.startsWith("https") ? https : http;
       const chunks = [];
-      mod.get(imgUrl, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
+      mod.get(imgUrl, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks))); }).on("error", () => resolve(null));
     });
-    if (!imgBase64) {
+    if (!imgBuffer) {
       console.log("[ocrScreenshot] ocrspace download failed");
       return null;
     }
-    console.log("[ocrScreenshot] ocrspace image size:", imgBase64.length, "bytes");
-    // 调用 OCR.space API（base64 方式）
-    const body = await new Promise((resolve, reject) => {
-      const postData = JSON.stringify({
-        base64Image: `data:image/jpeg;base64,${imgBase64}`,
-        language: "chs",
-        isOverlayRequired: false,
-        apikey: OCRSPACE_API_KEY,
-        OCREngine: 2,
-      });
+    console.log("[ocrScreenshot] ocrspace image size:", imgBuffer.length, "bytes");
+    // 用 multipart/form-data 上传（JSON base64 已被 OCR.space 拒绝）
+    const boundary = "----OCRSPACE" + Date.now();
+    const CRLF = "\r\n";
+    const parts = [
+      CRLF + "--" + boundary + CRLF + 'Content-Disposition: form-data; name="apikey"' + CRLF + CRLF + OCRSPACE_API_KEY,
+      CRLF + "--" + boundary + CRLF + 'Content-Disposition: form-data; name="language"' + CRLF + CRLF + "chs",
+      CRLF + "--" + boundary + CRLF + 'Content-Disposition: form-data; name="isOverlayRequired"' + CRLF + CRLF + "false",
+      CRLF + "--" + boundary + CRLF + 'Content-Disposition: form-data; name="OCREngine"' + CRLF + CRLF + "2",
+      CRLF + "--" + boundary + CRLF + 'Content-Disposition: form-data; name="file"; filename="screenshot.jpg"' + CRLF + "Content-Type: image/jpeg" + CRLF + CRLF,
+    ];
+    const body = Buffer.concat([
+      Buffer.from(parts.join("")),
+      imgBuffer,
+      Buffer.from(CRLF + "--" + boundary + "--" + CRLF),
+    ]);
+    console.log("[ocrScreenshot] ocrspace post size:", body.length, "bytes");
+    const respBody = await new Promise((resolve, reject) => {
       const req = https.request({
         hostname: "api.ocr.space",
         path: "/parse/image",
         method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(postData) },
+        headers: { "Content-Type": "multipart/form-data; boundary=" + boundary, "Content-Length": body.length },
       }, (res) => {
         let d = "";
         res.on("data", c => d += c);
@@ -343,17 +350,19 @@ async function doOcrspaceOCR(fileID) {
       });
       req.setTimeout(20000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", e => reject(e));
-      req.write(postData);
+      req.write(body);
       req.end();
     });
-    const json = JSON.parse(body);
+    console.log("[ocrScreenshot] ocrspace response:", respBody.substring(0, 400));
+    const json = JSON.parse(respBody);
     if (json.ErrorMessage && json.ErrorMessage.length > 0) {
       console.log("[ocrScreenshot] ocrspace error:", json.ErrorMessage);
     }
+    console.log("[ocrScreenshot] ocrspace ParsedResults:", json.ParsedResults ? json.ParsedResults.length : 0, "OCRExitCode:", json.OCRExitCode);
     const results = (json.ParsedResults || []);
     if (results.length > 0 && results[0].ParsedText) {
       const text = results[0].ParsedText;
-      console.log("[ocrScreenshot] ocrspace text length:", text.length);
+      console.log("[ocrScreenshot] ocrspace text length:", text.length, "preview:", text.substring(0, 120));
       return text;
     }
     console.log("[ocrScreenshot] ocrspace no results");
@@ -406,23 +415,14 @@ exports.main = async (event) => {
   const debug = {};
   let text = null, method = "none";
 
-  // 1. 百度 OCR
-  const baidu = await doBaiduOCR(fileID);
-  debug.baidu = { ok: !!baidu.text, err: baidu.err, len: baidu.text ? baidu.text.length : 0 };
-  if (baidu.text && baidu.text.length > 10) { text = baidu.text; method = "baidu"; }
-
-  // 2. 微信兜底
-  if (!text) {
-    const wxText = await doWechatOCR(fileID);
-    debug.wx = { ok: !!wxText, len: wxText ? wxText.length : 0 };
-    if (wxText && wxText.length > 10) { text = wxText; method = "wechat"; }
-  }
-
-  // 3. OCR.space 兜底
-  if (!text) {
-    const ocrspaceText = await doOcrspaceOCR(fileID);
-    debug.ocrspace = { ok: !!ocrspaceText, len: ocrspaceText ? ocrspaceText.length : 0 };
-    if (ocrspaceText && ocrspaceText.length > 10) { text = ocrspaceText; method = "ocrspace"; }
+  // 三个引擎并发调用，谁先返回用谁
+  const results = await Promise.all([
+    doBaiduOCR(fileID).then(r => { debug.baidu = { ok: !!r.text, err: r.err, len: r.text ? r.text.length : 0 }; return { t: r.text, m: "baidu" }; }),
+    doWechatOCR(fileID).then(r => { debug.wx = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "wechat" }; }),
+    doOcrspaceOCR(fileID).then(r => { debug.ocrspace = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "ocrspace" }; }),
+  ]);
+  for (const r of results) {
+    if (r.t && r.t.length > 10) { text = r.t; method = r.m; break; }
   }
 
   if (!text) return { code: 500, msg: "OCR识别失败", debug };

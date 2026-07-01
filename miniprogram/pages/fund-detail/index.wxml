@@ -148,7 +148,7 @@
 
     <view wx:if="{{activeTab === 'holdings'}}">
       <view wx:if="{{holdings.length > 0}}" class="info-card">
-        <view class="section-title">前十大持仓</view>
+        <view class="section-title">前十大持仓<text wx:if="{{quarterLabel}}" class="quarter-label">  {{quarterLabel}}</text></view>
         <view class="hold-header">
           <text class="hold-h-name">名称</text>
           <text class="hold-h-change">今日涨跌</text>

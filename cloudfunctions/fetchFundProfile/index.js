@@ -20,12 +20,28 @@ exports.main = async (event) => {
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 
     // 4 个请求全部并行，减少一轮网络往返
-    const [profile, manager, holdings, prevHoldings] = await Promise.all([
+    const [profile, manager, holdingsData, prevHoldingsData] = await Promise.all([
       fetchProfile(fundCode),
       fetchManager(fundCode),
       fetchHoldings(fundCode, curY, curM),
-      fetchHoldings(fundCode, prevY, prevM).catch(() => []),
+      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportMonth: null })),
     ]);
+    let holdings = holdingsData.holdings || [];
+    let prevHoldings = prevHoldingsData.holdings || [];
+
+    // 根据实际季报日期判断当期数据归属哪个季度
+    // 若请求 Q2 但 API 返回 Q1 数据，自动调整对比季度
+    let actualMonth = holdingsData.reportMonth;
+    if (actualMonth && actualMonth !== curM) {
+      // API 返回的不是请求的季度，重新获取正确的上期数据
+      let prevTargetM = actualMonth - 3;
+      let prevTargetY = curY;
+      if (prevTargetM <= 0) { prevTargetY = curY - 1; prevTargetM = 12; }
+      if (prevTargetM !== prevM) {
+        const fallback = await fetchHoldings(fundCode, prevTargetY, prevTargetM).catch(() => ({ holdings: [] }));
+        prevHoldings = fallback.holdings || [];
+      }
+    }
 
     // 计算持仓变动
     const prevMap = {};
@@ -66,7 +82,9 @@ exports.main = async (event) => {
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited } };
+    const quarterLabel = actualMonth ? `${curY}年Q${Math.ceil(actualMonth / 3)}` : '';
+
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel } };
   } catch (e) {
     return { code: 500, msg: "获取基金信息失败" };
   }
@@ -142,8 +160,11 @@ function fetchHoldings(fundCode, year, month) {
       res.on("end", () => {
         try {
           const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve([]); return; }
+          if (!match) { resolve({ holdings: [], reportMonth: null }); return; }
           const html = match[1].replace(/\\"/g, '"');
+          // 解析实际报告截止日期（e.g. "2025-12-31" → 12）
+          const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
+          const reportMonth = dateMatch ? parseInt(dateMatch[2]) : null;
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
@@ -166,11 +187,12 @@ function fetchHoldings(fundCode, year, month) {
               });
             }
           }
-          resolve(rows.length > 0 ? rows : []);
-        } catch (e) { resolve([]); }
+          resolve({ holdings: rows, reportMonth });
+        } catch (e) { resolve({ holdings: [], reportMonth: null }); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.setTimeout(8000, () => { req.destroy(); resolve({ holdings: [], reportMonth: null }); });
+    req.on("error", () => resolve({ holdings: [], reportMonth: null }));
     req.on("error", () => resolve([]));
   });
 }
