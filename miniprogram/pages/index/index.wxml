@@ -140,7 +140,7 @@
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
                     <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>
-                    <view wx:elif="{{item.position != null}}" class="t-val {{item.position <= 30 ? 't-low' : item.position >= 70 ? 't-high' : 't-mid'}}">{{item.position <= 30 ? '🟢低位' : item.position >= 70 ? '🔴高位' : '🟡中等'}}</view>
+                    <view wx:elif="{{item.position != null}}" class="t-val {{item.currentNav < 0.75 ? 't-low' : item.position <= 30 ? 't-low' : item.position >= 70 ? 't-high' : 't-mid'}}">{{item.currentNav < 0.75 ? '🟢低估' : item.position <= 30 ? '🟢低位' : item.position >= 70 ? '🔴高位' : '🟡中等'}}</view>
                     <view wx:else class="t-val">--</view>
                     <view wx:if="{{item.peTemp && item.peTemp.signal !== 'nodata'}}" class="t-sub">{{item.peTemp.normPE}}</view>
                     <view wx:elif="{{item.navLow != null}}" class="t-sub">{{item.navLow}} ~ {{item.navHigh}}</view>

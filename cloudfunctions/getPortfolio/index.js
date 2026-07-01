@@ -167,9 +167,12 @@ exports.main = async (event) => {
       }
 
       enriched.forEach(h => {
-        // 债基/货基不适用PE估值
+        // 债基/货基不适用估值，清空所有估值相关字段
         if (/债|债券|纯债|转债|货币|货基/.test(h.fundName || "")) {
           h.peTemp = { signal: "nodata" };
+          h.position = null;
+          h.navHigh = null;
+          h.navLow = null;
           return;
         }
         const t = tempMap[h.fundCode];
@@ -623,13 +626,13 @@ function fetchTempHoldings(fundCode) {
 async function fetchTempHoldingsDeep(fundCode) {
   let holdings = await fetchTempHoldings(fundCode);
   if (!holdings || holdings.length === 0) return [];
-  // 检查是否为 ETF 联接（持仓为 ETF 代码，非股票）
-  const etfCodes = holdings
-    .filter(h => h.stockCode && /^\d{5,6}$/.test(h.stockCode))
-    .map(h => h.stockCode);
-  // 如果主要持仓是 ETF 份额（5-6位数字代码），穿透取 ETF 持仓
-  if (etfCodes.length > 0 && etfCodes.length >= holdings.length * 0.5) {
-    console.log(`[getPortfolio] ETF联接穿透: ${etfCodes.join(',')}`);
+  // 检查是否为 ETF 联接（持仓为 ETF 代码，非普通股票）
+  // ETF 代码规则：5位(1xxxx/5xxxx/159xxx) 或 6位(51xxxx/56xxxx/58xxxx)
+  const isEtfCode = (code) => /^(1\d{4}|5\d{4}|159\d{3}|51\d{4}|56\d{4}|58\d{4})$/.test(code);
+  const etfCodes = holdings.filter(h => h.stockCode && isEtfCode(h.stockCode)).map(h => h.stockCode);
+  // 仅当主要持仓是ETF份额时才穿透
+  if (etfCodes.length > 0 && etfCodes.length >= holdings.length * 0.3) {
+    console.log(`[getPortfolio] ETF联接穿透: fund=${fundCode} etf=${etfCodes[0]}`);
     const etfHoldings = await fetchTempHoldings(etfCodes[0]);
     if (etfHoldings && etfHoldings.length > 0) return etfHoldings;
   }
