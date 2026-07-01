@@ -24,20 +24,21 @@ exports.main = async (event) => {
       fetchProfile(fundCode),
       fetchManager(fundCode),
       fetchHoldings(fundCode, curY, curM),
-      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportMonth: null })),
+      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null })),
     ]);
     let holdings = holdingsData.holdings || [];
     let prevHoldings = prevHoldingsData.holdings || [];
 
     // 根据实际季报日期判断当期数据归属哪个季度
     // 若请求 Q2 但 API 返回 Q1 数据，自动调整对比季度
+    let actualYear = holdingsData.reportYear;
     let actualMonth = holdingsData.reportMonth;
-    if (actualMonth && actualMonth !== curM) {
+    if (actualMonth && actualYear && (actualYear !== curY || actualMonth !== curM)) {
       // API 返回的不是请求的季度，重新获取正确的上期数据
       let prevTargetM = actualMonth - 3;
-      let prevTargetY = curY;
-      if (prevTargetM <= 0) { prevTargetY = curY - 1; prevTargetM = 12; }
-      if (prevTargetM !== prevM) {
+      let prevTargetY = actualYear;
+      if (prevTargetM <= 0) { prevTargetY = actualYear - 1; prevTargetM = 12; }
+      if (prevTargetM !== prevM || prevTargetY !== prevY) {
         const fallback = await fetchHoldings(fundCode, prevTargetY, prevTargetM).catch(() => ({ holdings: [] }));
         prevHoldings = fallback.holdings || [];
       }
@@ -82,7 +83,7 @@ exports.main = async (event) => {
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 
-    const quarterLabel = actualMonth ? `${curY}年Q${Math.ceil(actualMonth / 3)}` : '';
+    const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
     return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel } };
   } catch (e) {
@@ -162,8 +163,9 @@ function fetchHoldings(fundCode, year, month) {
           const match = body.match(/content:"([^"]+)"/);
           if (!match) { resolve({ holdings: [], reportMonth: null }); return; }
           const html = match[1].replace(/\\"/g, '"');
-          // 解析实际报告截止日期（e.g. "2025-12-31" → 12）
+          // 解析实际报告截止日期（e.g. "2025-12-31" → year=2025, month=12）
           const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
+          const reportYear = dateMatch ? parseInt(dateMatch[1]) : null;
           const reportMonth = dateMatch ? parseInt(dateMatch[2]) : null;
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
@@ -187,7 +189,7 @@ function fetchHoldings(fundCode, year, month) {
               });
             }
           }
-          resolve({ holdings: rows, reportMonth });
+          resolve({ holdings: rows, reportYear, reportMonth });
         } catch (e) { resolve({ holdings: [], reportMonth: null }); }
       });
     });

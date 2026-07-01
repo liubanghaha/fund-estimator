@@ -167,6 +167,11 @@ exports.main = async (event) => {
       }
 
       enriched.forEach(h => {
+        // 债基/货基不适用PE估值
+        if (/债|债券|纯债|转债|货币|货基/.test(h.fundName || "")) {
+          h.peTemp = { signal: "nodata" };
+          return;
+        }
         const t = tempMap[h.fundCode];
         if (t) {
             h.peTemp = {
@@ -488,7 +493,7 @@ async function computeTemperaturesForCodes(fundCodes, today) {
     const batch = fundCodes.slice(i, i + CONCURRENT);
     const results = await Promise.all(batch.map(async (code) => {
       try {
-        const h = await fetchTempHoldings(code);
+        const h = await fetchTempHoldingsDeep(code);
         return { code, holdings: h, ok: h.length > 0 };
       } catch (e) { return { code, holdings: [], ok: false }; }
     }));
@@ -612,6 +617,23 @@ function fetchTempHoldings(fundCode) {
     req.setTimeout(8000, () => { req.destroy(); resolve([]); });
     req.on("error", () => resolve([]));
   });
+}
+
+// ETF 联接穿透：拿到的是 ETF 份额，需要穿透到 ETF 的持仓股
+async function fetchTempHoldingsDeep(fundCode) {
+  let holdings = await fetchTempHoldings(fundCode);
+  if (!holdings || holdings.length === 0) return [];
+  // 检查是否为 ETF 联接（持仓为 ETF 代码，非股票）
+  const etfCodes = holdings
+    .filter(h => h.stockCode && /^\d{5,6}$/.test(h.stockCode))
+    .map(h => h.stockCode);
+  // 如果主要持仓是 ETF 份额（5-6位数字代码），穿透取 ETF 持仓
+  if (etfCodes.length > 0 && etfCodes.length >= holdings.length * 0.5) {
+    console.log(`[getPortfolio] ETF联接穿透: ${etfCodes.join(',')}`);
+    const etfHoldings = await fetchTempHoldings(etfCodes[0]);
+    if (etfHoldings && etfHoldings.length > 0) return etfHoldings;
+  }
+  return holdings;
 }
 
 async function batchFetchTempLive(codes) {
