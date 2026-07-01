@@ -80,7 +80,6 @@ Page({
           if (app && app.globalData) {
             app.globalData._ocrFunds = null;
             app.globalData._screenshotPath = null;
-            app.globalData._syncTradeFund = null;
           }
           this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "" });
         }

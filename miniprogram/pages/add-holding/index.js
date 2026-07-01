@@ -439,19 +439,6 @@ Page({
 
   // ========== 编辑已有持仓 ==========
 
-  // TODO: 微信审核金融功能，同步加减仓暂时注释，后续实现
-  // onSyncBuy() {
-  //   const { fundCode, fundName } = this.data;
-  //   const app = getApp();
-  //   app.globalData._syncTradeFund = { fundCode, fundName };
-  //   wx.navigateTo({ url: `/pages/sync-trade/index?type=buy&fundCode=${fundCode}` });
-  // },
-  // onSyncSell() {
-  //   const { fundCode, fundName } = this.data;
-  //   const app = getApp();
-  //   app.globalData._syncTradeFund = { fundCode, fundName };
-  //   wx.navigateTo({ url: `/pages/sync-trade/index?type=sell&fundCode=${fundCode}` });
-  // },
   async onDelete() {
     const { id, isEdit, fundCode } = this.data;
     if (!isEdit) return;

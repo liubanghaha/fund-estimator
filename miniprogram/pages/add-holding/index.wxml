@@ -100,13 +100,6 @@
 
     <view wx:if="{{isEdit}}" class="edit-actions">
       <view class="action-row">
-        <!-- TODO: 微信审核金融功能，同步加减仓暂时注释，后续实现 -->
-        <!--
-        <button class="action-btn sync-buy" bind:tap="onSyncBuy">同步加仓</button>
-        <button class="action-btn sync-sell" bind:tap="onSyncSell">同步减仓</button>
-        -->
-      </view>
-      <view class="action-row">
         <button class="action-btn update-btn" bind:tap="onSubmit">更新持仓</button>
         <button class="action-btn delete-btn" bind:tap="onDelete">删除持仓</button>
       </view>

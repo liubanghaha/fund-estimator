@@ -42,7 +42,7 @@ App({
         console.error("云开发初始化失败:", e);
       }
     }
-    this.globalData = { _ocrFunds: null, _screenshotPath: null, _syncTradeFund: null };
+    this.globalData = { _ocrFunds: null, _screenshotPath: null };
 
     // 版本更新检测
     const lastVersion = wx.getStorageSync('appVersion') || '';

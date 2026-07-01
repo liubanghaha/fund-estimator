@@ -22,11 +22,6 @@ Page({
   onLoad(options) {
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
-    // 如果指定了基金，直接跳转 sync-trade 页面（基金名通过 globalData 传递，避免 URL 编码问题）
-    if (options.fundCode) {
-      this.setData({ redirecting: true });
-      wx.redirectTo({ url: `/pages/sync-trade/index?fundCode=${options.fundCode}` });
-    }
   },
 
   onShow() {
@@ -387,15 +382,6 @@ Page({
   //   this.setData({ showPicker: true });
   // },
   // onClosePicker() { this.setData({ showPicker: false }); },
-  // onSelectFund(e) {
-  //   const idx = e.currentTarget.dataset.index;
-  //   const h = this.data.holdings[idx];
-  //   this.setData({ showPicker: false });
-  //   const app = getApp();
-  //   app.globalData._syncTradeFund = { fundCode: h.fundCode, fundName: h.fundName };
-  //   wx.navigateTo({ url: `/pages/sync-trade/index?fundCode=${h.fundCode}` });
-  // },
-
   // ==== 通用表单 ====
   openForm(idx, h, prefill) {
     this.setData({
