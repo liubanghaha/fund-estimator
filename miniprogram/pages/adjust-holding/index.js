@@ -100,19 +100,27 @@ Page({
   },
 
   // ==== 截图导入 ====
-  onImportScreenshot() {
-    wx.showActionSheet({
-      itemList: ["从相册选择"],
-      success: () => {
-        wx.chooseMedia({
-          count: 1, mediaType: ["image"],
-          sourceType: ["album"],
-          sizeType: ["compressed"],
-          success: (mr) => this.doOCR(mr.tempFiles[0].tempFilePath),
-        });
-      },
-    });
-  },
+	  onImportScreenshot() {
+	    wx.showActionSheet({
+	      itemList: ["从相册选择"],
+	      success: () => {
+	        wx.chooseMedia({
+	          count: 1, mediaType: ["image"],
+	          sourceType: ["album"],
+	          sizeType: ["compressed"],
+	          success: (mr) => {
+	            const tempPath = mr.tempFiles[0].tempFilePath;
+	            wx.compressImage({
+	              src: tempPath,
+	              quality: 50,
+	              success: (cr) => this.doOCR(cr.tempFilePath),
+	              fail: () => this.doOCR(tempPath),
+	            });
+	          },
+	        });
+	      },
+	    });
+	  },
 
   drawLoadRing(pct) {
     const ctx = wx.createCanvasContext('loadCanvas', this);

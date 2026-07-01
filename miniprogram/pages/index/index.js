@@ -493,9 +493,23 @@ Page({
           count: 1, mediaType: ["image"],
           sourceType: ["album"], sizeType: ["compressed"],
           success: (mediaRes) => {
-            const app = getApp();
-            app.globalData._screenshotPath = mediaRes.tempFiles[0].tempFilePath;
-            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+            const tempPath = mediaRes.tempFiles[0].tempFilePath;
+            // 二次压缩，确保不超过 1MB（OCR 服务限制）
+            wx.compressImage({
+              src: tempPath,
+              quality: 50,
+              success: (compressRes) => {
+                const app = getApp();
+                app.globalData._screenshotPath = compressRes.tempFilePath;
+                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+              },
+              fail: () => {
+                // 压缩失败则使用原图
+                const app = getApp();
+                app.globalData._screenshotPath = tempPath;
+                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+              },
+            });
           },
         });
       },
