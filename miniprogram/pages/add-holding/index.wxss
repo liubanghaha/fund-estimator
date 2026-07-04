@@ -63,3 +63,4 @@
 .sync-buy,.sync-sell{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
 .update-btn{background:var(--primary);color:#FFF}
 .delete-btn{background:#E4393C;color:#FFF}
+.adjust-btn{background:#2E8B57;color:#FFF}

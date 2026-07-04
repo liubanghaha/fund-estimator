@@ -84,6 +84,20 @@
                  bind:input="onHoldingReturnInput" placeholder="0.00"/>
         </view>
       </view>
+      <view wx:if="{{isEdit}}" class="form-item">
+        <text class="label">加减持仓</text>
+        <view class="signed-input">
+          <view class="sign-toggle {{adjustSign < 0 ? 'minus' : ''}}" bind:tap="onToggleAdjustSign">{{adjustSign < 0 ? '−' : '+'}}</view>
+          <input class="input signed-val" type="digit" value="{{adjustAmountAbs}}"
+                 bind:input="onAdjustInput" bind:focus="onAdjustFocus" placeholder="0.00"/>
+        </view>
+      </view>
+      <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
+        <text class="label">交易日期</text>
+        <picker mode="date" value="{{adjustDate}}" bind:change="onAdjustDateChange">
+          <view class="picker-value">{{adjustDate || '点击选择日期'}}</view>
+        </picker>
+      </view>
       <view class="form-item">
         <text class="label">买入日期</text>
         <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">

@@ -17,6 +17,9 @@ Page({
     groupPickerRange: ["未分组"],
     groupPickerIndex: 0,
     selectedGroup: "",
+    adjustAmount: '', adjustAmountAbs: '', adjustSign: 1,
+    adjustDate: '',
+    showAdjustPicker: false,
   },
 
   onShow() {
@@ -364,8 +367,9 @@ Page({
 	        }
 	      } catch (e) { /* 获取净值失败，沿用 DB 快照值 */ }
 
-	      const group = h.group || "";
-	      this.setData({
+      const group = h.group || "";
+      this._rawHolding = h;
+      this.setData({
 	        fundCode: h.fundCode, fundName: h.fundName,
 	        marketValue: String(mv || ""),
 	        holdingReturn: String(hr),
@@ -398,12 +402,30 @@ Page({
   },
   onDateChange(e) { this.setData({ buyDate: e.detail.value }); },
 
+  onAdjustInput(e) {
+    this.setData({ adjustAmountAbs: e.detail.value });
+    const val = parseFloat(e.detail.value) || 0;
+    this.setData({ adjustAmount: String(val * this.data.adjustSign) });
+  },
+  onToggleAdjustSign() {
+    const newSign = this.data.adjustSign > 0 ? -1 : 1;
+    const absVal = parseFloat(this.data.adjustAmountAbs) || 0;
+    this.setData({ adjustSign: newSign, adjustAmount: String(absVal * newSign) });
+  },
+  onAdjustFocus() {
+    this.setData({ showAdjustPicker: true });
+  },
+  onAdjustDateChange(e) {
+    this.setData({ adjustDate: e.detail.value });
+  },
+
   async onSubmit() {
     const { id, isEdit, fundCode, fundName, holdingReturn, marketValue, buyDate } = this.data;
     if (!fundCode.trim()) { wx.showToast({ title: "请输入基金代码", icon: "none" }); return; }
     if (!fundName.trim()) { wx.showToast({ title: "请输入基金名称", icon: "none" }); return; }
-    const mv = parseFloat(marketValue);
-    if (!mv || mv <= 0) { wx.showToast({ title: "请输入有效持有金额", icon: "none" }); return; }
+      const mv = parseFloat(marketValue);
+      const adjAmount = isEdit ? (parseFloat(this.data.adjustAmount) || 0) : 0;
+      if (!adjAmount && (!mv || mv <= 0)) { wx.showToast({ title: "请输入有效持有金额", icon: "none" }); return; }
 
     wx.showLoading({ title: "保存中..." });
     try {
@@ -421,13 +443,59 @@ Page({
       }
 
       const hr = parseFloat(holdingReturn) || 0;
-      let shares = parseFloat((mv / nav).toFixed(2));
-      if (shares <= 0) shares = parseFloat((mv / nav).toFixed(4));
-      if (shares <= 0) shares = 0.01;
-      const buyPrice = parseFloat((nav - hr / shares).toFixed(4));
-      const buyAmount = parseFloat((shares * buyPrice).toFixed(2));
-
+      let shares, buyPrice, finalMV, finalHR;
       const db = wx.cloud.database();
+      const today = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
+
+      // 处理加减持仓
+      if (adjAmount !== 0 && this._rawHolding) {
+        const adjDate = this.data.adjustDate || today;
+        const h = this._rawHolding;
+        const type = adjAmount > 0 ? 'buy' : 'sell';
+        const absAmount = Math.abs(adjAmount);
+        const adjShares = parseFloat((absAmount / nav).toFixed(2));
+        const oldS = parseFloat(h.shares || h.amount || 0);
+        const oldP = parseFloat(h.buyPrice || h.nav || 0);
+        const oldMV = parseFloat(h.marketValue) || 0;
+
+        if (type === 'sell' && adjShares > oldS) {
+          wx.hideLoading();
+          wx.showToast({ title: '超出当前份额', icon: 'none' });
+          return;
+        }
+
+        let ns, np, newMV;
+        if (type === 'buy') {
+          ns = oldS + adjShares;
+          np = (oldP * oldS + nav * adjShares) / ns;
+          newMV = +(oldMV + absAmount).toFixed(2);
+        } else {
+          ns = oldS - adjShares;
+          np = oldP;
+          newMV = +(oldMV - absAmount).toFixed(2);
+        }
+
+        await db.collection('transactions').add({
+          data: {
+            fundCode: fundCode.trim(), fundName: fundName.trim(),
+            type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
+            createTime: new Date(),
+          },
+        });
+
+        shares = ns;
+        buyPrice = np;
+        finalMV = newMV;
+        finalHR = +(newMV - ns * np).toFixed(2);
+      } else {
+        shares = parseFloat((mv / nav).toFixed(2));
+        if (shares <= 0) shares = parseFloat((mv / nav).toFixed(4));
+        if (shares <= 0) shares = 0.01;
+        buyPrice = parseFloat((nav - hr / shares).toFixed(4));
+        finalMV = mv;
+        finalHR = hr;
+      }
+      const buyAmount = parseFloat((shares * buyPrice).toFixed(2));
       if (!isEdit) {
         const cr = await db.collection("holdings").where({ fundCode: fundCode.trim() }).get();
         if (cr.data && cr.data.length > 0) {
@@ -439,7 +507,7 @@ Page({
       const data = {
         fundCode: fundCode.trim(), fundName: fundName.trim(),
         buyPrice, shares,
-        holdingReturn: hr, marketValue: mv,
+        holdingReturn: finalHR, marketValue: finalMV,
         buyAmount, buyDate,
         group: this.data.selectedGroup || "",
       };
@@ -452,6 +520,10 @@ Page({
       if (!isEdit) {
         api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});
       }
+
+      wx.removeStorageSync('portfolio_cache');
+      wx.setStorageSync('portfolio_force_refresh', true);
+      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', showAdjustPicker: false });
 
       if (this.data._editIdx >= 0 && !isEdit) {
         const funds = [...this.data.ocrFunds];
@@ -492,6 +564,86 @@ Page({
         }
       },
     });
+  },
+
+  // ========== 调整持仓 ==========
+
+  onAdjust() {
+    const h = this._rawHolding;
+    if (!h || !h._id) {
+      wx.showToast({ title: '数据异常', icon: 'none' });
+      return;
+    }
+    const val = parseFloat(this.data.adjustAmount);
+    if (!val || val === 0) {
+      wx.showToast({ title: '请输入调整数额', icon: 'none' });
+      return;
+    }
+    this.processAdjust(h, val);
+  },
+
+  async processAdjust(h, amount) {
+    const type = amount > 0 ? 'buy' : 'sell';
+    const absAmount = Math.abs(amount);
+    wx.showLoading({ title: '处理中...' });
+    try {
+      const estRes = await api.fetchFundEstimate(h.fundCode);
+      const liveNav = estRes.result?.data?.estimatedNav || estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+      const price = parseFloat(liveNav) || 0;
+      if (price <= 0) throw new Error('获取净值失败');
+
+      const shares = parseFloat((absAmount / price).toFixed(2));
+      const oldS = parseFloat(h.shares || h.amount || 0);
+      const oldP = parseFloat(h.buyPrice || h.nav || 0);
+      const oldMV = parseFloat(h.marketValue) || 0;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+      if (type === 'sell' && shares > oldS) {
+        wx.hideLoading();
+        wx.showToast({ title: '超出当前份额', icon: 'none' });
+        return;
+      }
+
+      const db = wx.cloud.database();
+      await db.collection('transactions').add({
+        data: {
+          fundCode: h.fundCode, fundName: h.fundName,
+          type, shares, price, amount: absAmount, date: today,
+          createTime: new Date(),
+        },
+      });
+
+      let ns, np, newMV;
+      if (type === 'buy') {
+        ns = oldS + shares;
+        np = (oldP * oldS + price * shares) / ns;
+        newMV = +(oldMV + absAmount).toFixed(2);
+      } else {
+        ns = oldS - shares;
+        np = oldP;
+        newMV = +(oldMV - absAmount).toFixed(2);
+      }
+
+      await db.collection('holdings').doc(h._id).update({
+        data: {
+          shares: parseFloat(ns.toFixed(4)),
+          buyPrice: parseFloat(np.toFixed(4)),
+          buyAmount: parseFloat((ns * np).toFixed(2)),
+          marketValue: newMV,
+          holdingReturn: +(newMV - ns * np).toFixed(2),
+        },
+      });
+
+      wx.hideLoading();
+      wx.showToast({ title: '已更新', icon: 'success' });
+      wx.removeStorageSync('portfolio_cache');
+      wx.setStorageSync('portfolio_force_refresh', true);
+      setTimeout(() => wx.navigateBack(), 600);
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '处理失败', icon: 'none' });
+    }
   },
 
   // ========== 分组选择 ==========
