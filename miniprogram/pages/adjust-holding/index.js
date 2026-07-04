@@ -17,6 +17,7 @@ Page({
     editTxType: "buy", editTxShares: "", editTxPrice: "", editTxAmount: "",
     editPreview: false, editNewShares: "", editNewBuyPrice: "",
     editValid: false, editError: "",
+    showManualHint: false,
   },
 
   onLoad(options) {
@@ -175,11 +176,12 @@ Page({
         const txs = d.transactions || (d.fundName ? [d] : []);
         if (txs.length === 0) {
           clearInterval(this._loadTimer);
-          this.setData({ ocrLoading: false, showManualHint: true });
+          this.setData({ ocrLoading: false });
           wx.showModal({
-            title: '识别失败 - 调试信息',
-            content: `引擎: ${d.method || '?'}\nDebug: ${JSON.stringify(d.debug)}\n\n原始文本:\n${(d.raw||'').slice(0, 500)}`,
+            title: '未识别到交易记录',
+            content: '请核对截图后重试，或前往详情页手动修改持仓',
             showCancel: false,
+            confirmText: '好',
           });
           return;
         }
@@ -246,12 +248,12 @@ Page({
       } else {
         clearInterval(this._loadTimer);
         this.setData({ ocrLoading: false });
-        wx.showModal({ title: '接口返回异常', content: JSON.stringify(res.result).slice(0, 500), showCancel: false });
+        wx.showToast({ title: '识别失败', icon: 'none' });
       }
     } catch (e) {
       clearInterval(this._loadTimer);
       this.setData({ ocrLoading: false });
-      wx.showModal({ title: '异常', content: (e.message || JSON.stringify(e)).slice(0, 500), showCancel: false });
+      wx.showToast({ title: '识别失败', icon: 'none' });
     }
   },
 
@@ -269,6 +271,99 @@ Page({
       ocrResults: results,
       matchedCount: results.filter((r) => r.matched).length,
     });
+  },
+
+  showManualSheet() {
+    const holdings = this.data.holdings;
+    if (holdings.length === 0) {
+      wx.showToast({ title: '暂无持仓，请先添加', icon: 'none' });
+      return;
+    }
+    const names = holdings.map(h => h.fundName);
+    wx.showActionSheet({
+      itemList: [...names, '重新截图'],
+      success: (res) => {
+        if (res.tapIndex === names.length) {
+          this.onImportScreenshot();
+          return;
+        }
+        const h = holdings[res.tapIndex];
+        wx.showModal({
+          title: h.fundName,
+          editable: true,
+          placeholderText: '输入金额（正加负减）',
+          content: '',
+          success: (modalRes) => {
+            if (modalRes.confirm && modalRes.content) {
+              const val = parseFloat(modalRes.content);
+              if (!val || val === 0) {
+                wx.showToast({ title: '请输入有效金额', icon: 'none' });
+                return;
+              }
+              this.processManualAmount(h, val);
+            }
+          },
+        });
+      },
+    });
+  },
+
+  async processManualAmount(h, amount) {
+    const type = amount > 0 ? 'buy' : 'sell';
+    const absAmount = Math.abs(amount);
+    wx.showLoading({ title: '保存中...' });
+    try {
+      const estRes = await api.fetchFundEstimate(h.fundCode);
+      const liveNav = estRes.result?.data?.estimatedNav || estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+      const price = parseFloat(liveNav) || 0;
+      if (price <= 0) throw new Error('获取净值失败');
+
+      const shares = parseFloat((absAmount / price).toFixed(2));
+      const oldS = parseFloat(h._currentShares) || 0;
+      const oldP = parseFloat(h._currentBuyPrice) || 0;
+      const oldMV = parseFloat(h.marketValue) || 0;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+      if (type === 'sell' && shares > oldS) {
+        wx.hideLoading();
+        wx.showToast({ title: '超出当前份额', icon: 'none' });
+        return;
+      }
+
+      await api.transactionAdd({
+        fundCode: h.fundCode, fundName: h.fundName,
+        type, shares, price, amount: absAmount, date: today,
+      });
+
+      let ns, np, newMV;
+      if (type === 'buy') {
+        ns = oldS + shares;
+        np = (oldP * oldS + price * shares) / ns;
+        newMV = +(oldMV + absAmount).toFixed(2);
+      } else {
+        ns = oldS - shares;
+        np = oldP;
+        newMV = +(oldMV - absAmount).toFixed(2);
+      }
+
+      await api.holdingUpdate(h._id, {
+        shares: parseFloat(ns.toFixed(4)),
+        buyPrice: parseFloat(np.toFixed(4)),
+        buyAmount: parseFloat((ns * np).toFixed(2)),
+        marketValue: newMV,
+        holdingReturn: +(newMV - ns * np).toFixed(2),
+      });
+
+      wx.hideLoading();
+      wx.showToast({ title: '已记录', icon: 'success' });
+      wx.removeStorageSync('portfolio_cache');
+      wx.setStorageSync('portfolio_force_refresh', true);
+      this.loadHoldings();
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '保存失败', icon: 'none' });
+    }
   },
 
   async onConfirmItem(e) {

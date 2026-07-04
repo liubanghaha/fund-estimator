@@ -19,13 +19,14 @@ exports.main = async (event) => {
     let prevY = curY, prevM = curM - 3;
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 
-    // 4 个请求全部并行，减少一轮网络往返
-    const [profile, manager, holdingsData, prevHoldingsData] = await Promise.all([
-      fetchProfile(fundCode),
-      fetchManager(fundCode),
-      fetchHoldings(fundCode, curY, curM),
-      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null })),
-    ]);
+	    // 4 个请求全部并行，减少一轮网络往返
+	    const [profile, manager, holdingsData, prevHoldingsData, turnoverRates] = await Promise.all([
+	      fetchProfile(fundCode),
+	      fetchManager(fundCode),
+	      fetchHoldings(fundCode, curY, curM),
+	      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null })),
+	      fetchTurnoverRate(fundCode).catch(() => []),
+	    ]);
     let holdings = holdingsData.holdings || [];
     let prevHoldings = prevHoldingsData.holdings || [];
 
@@ -85,7 +86,7 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel } };
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates } };
   } catch (e) {
     return { code: 500, msg: "获取基金信息失败" };
   }
@@ -242,4 +243,37 @@ async function fetchStockQuotes(holdings) {
 
   await Promise.all(tasks);
   return map;
+}
+
+/**
+ * 拉取基金换手率（从天天基金 HTML 页面解析）
+ */
+function fetchTurnoverRate(fundCode) {
+  const https = require("https");
+  return new Promise((resolve) => {
+    const url = `https://fund.eastmoney.com/${fundCode}.html`;
+    const req = https.get(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const rates = [];
+          // 解析表格：<tr><td>报告期</td><td>换手率</td></tr>
+          const tableRegex = /<tr[^>]*>\s*<td[^>]*>(\d{4}-\d{2}-\d{2})<\/td>\s*<td[^>]*>([\d.]+)%<\/td>\s*<\/tr>/g;
+          let match;
+          while ((match = tableRegex.exec(body)) !== null) {
+            rates.push({
+              date: match[1],
+              rate: parseFloat(match[2]),
+            });
+          }
+          resolve(rates);
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+  });
 }

@@ -109,8 +109,14 @@
 .hk-tag{display:inline-block;font-size:18rpx;color:var(--primary);background:var(--primary-bg);border:1rpx solid var(--primary);border-radius:4rpx;padding:0 6rpx;margin-left:8rpx;vertical-align:middle;font-weight:600;line-height:1.4}
 .hold-code{font-size:22rpx;color:#999}
 .hold-change{font-size:24rpx;font-weight:500;width:120rpx;text-align:right;flex-shrink:0}
+.hold-change.up{color:#E4393C}
+.hold-change.down{color:#2E8B57}
 .hold-ratio-change{font-size:22rpx;font-weight:400;width:120rpx;text-align:right;flex-shrink:0}
 .hold-ratio{font-size:24rpx;font-weight:600;width:100rpx;text-align:right;flex-shrink:0}
+
+.exited-toggle{display:flex;justify-content:space-between;align-items:center;font-size:24rpx;color:#999;padding:10rpx 0}
+.exited-arrow{font-size:22rpx;color:#BBB;transition:transform .3s}
+.exited-arrow.open{transform:rotate(180deg)}
 
 .profile-grid{display:flex;flex-wrap:wrap}
 .profile-item{width:50%;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
@@ -127,6 +133,7 @@
 .risk-item:last-child{border-bottom:none}
 .risk-label{font-size:24rpx;color:#999;margin-bottom:8rpx}
 .risk-label-note{font-size:20rpx;color:#BBB;margin-left:6rpx}
+.risk-period-tip{float:right;font-size:22rpx;color:#BBB;font-weight:400}
 .risk-value{font-size:36rpx;font-weight:700;color:#333}
 .risk-value.up{color:#E4393C}
 .risk-value.down{color:#2E8B57}
@@ -213,3 +220,17 @@
 .rank-pos{font-size:22rpx;color:#999}
 .rank-bar{height:8rpx;background:#F0F0F0;border-radius:4rpx;overflow:hidden}
 .rank-fill{height:100%;background:var(--primary);border-radius:4rpx;min-width:4rpx}
+
+/* 基金换手率 */
+.turnover-table{padding:0}
+.turnover-row{display:flex;justify-content:space-between;padding:14rpx 0;border-bottom:1rpx solid #F5F5F5}
+.turnover-row:last-child{border-bottom:none}
+.turnover-head{border-bottom:2rpx solid #E5E5E5;padding-bottom:12rpx}
+.turnover-head .turnover-cell{font-size:22rpx;color:#999}
+.turnover-cell{font-size:26rpx;color:#333}
+.turnover-value{font-weight:600}
+.turnover-value.high{color:#E4393C}
+.turnover-value.low{color:#2E8B57}
+.turnover-note{padding:12rpx 0 0;font-size:20rpx;color:#BBB;line-height:1.6}
+.turnover-desc{color:#666;margin-bottom:8rpx}
+.turnover-formula{font-size:20rpx}

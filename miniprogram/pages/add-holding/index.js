@@ -113,7 +113,15 @@ Page({
         const d = ocrRes.result.data;
         const holdings = d.holdings || [];
         if (holdings.length === 0) {
-          wx.showToast({ title: "未识别到有效信息", icon: "none" });
+          wx.showModal({
+            title: '未识别到基金信息',
+            content: '请确认截图包含持仓明细，或搜索基金代码添加',
+            confirmText: '去搜索',
+            cancelText: '好',
+            success: (res) => {
+              if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+            },
+          });
           return;
         }
         const funds = holdings.map((h) => ({
@@ -133,14 +141,28 @@ Page({
         // 自动按名称匹配基金代码
         this.autoMatchCodes(funds);
       } else {
-        console.error("[doOCR] ocr failed:", JSON.stringify(ocrRes));
-        wx.showToast({ title: "识别失败", icon: "none" });
+        wx.showModal({
+          title: '识别失败',
+          content: '服务暂不可用，可搜索基金代码手动添加',
+          confirmText: '去搜索',
+          cancelText: '知道了',
+          success: (res) => {
+            if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+          },
+        });
       }
     } catch (e) {
-      console.error("[doOCR] exception:", e.message);
       wx.hideLoading();
       this.setData({ ocrLoading: false });
-      wx.showToast({ title: "识别失败，请重试", icon: "none" });
+      wx.showModal({
+        title: '识别失败',
+        content: '网络异常，可搜索基金代码手动添加',
+        confirmText: '去搜索',
+        cancelText: '知道了',
+        success: (res) => {
+          if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+        },
+      });
     }
   },
 
@@ -328,17 +350,30 @@ Page({
       }
       if (!h._id) { wx.showToast({ title: "加载失败", icon: "none" }); return; }
 
-      const hr = parseFloat(h.holdingReturn) || 0;
-      const group = h.group || "";
-      this.setData({
-        fundCode: h.fundCode, fundName: h.fundName,
-        marketValue: String(h.marketValue || ""),
-        holdingReturn: String(hr),
-        holdingReturnAbs: String(Math.abs(hr)),
-        holdingSign: hr < 0 ? -1 : 1,
-        buyDate: h.buyDate || "",
-        selectedGroup: group,
-      });
+	      // 用当前净值重算市值和收益，与详情页保持一致
+	      let mv = parseFloat(h.marketValue) || 0;
+	      let hr = parseFloat(h.holdingReturn) || 0;
+	      const shares = parseFloat(h.shares) || 0;
+	      const buyPrice = parseFloat(h.buyPrice) || 0;
+	      try {
+	        const estRes = await api.fetchFundEstimate(h.fundCode);
+	        const currentNav = estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+	        if (currentNav && shares > 0 && buyPrice > 0) {
+	          mv = parseFloat((currentNav * shares).toFixed(2));
+	          hr = parseFloat(((currentNav - buyPrice) * shares).toFixed(2));
+	        }
+	      } catch (e) { /* 获取净值失败，沿用 DB 快照值 */ }
+
+	      const group = h.group || "";
+	      this.setData({
+	        fundCode: h.fundCode, fundName: h.fundName,
+	        marketValue: String(mv || ""),
+	        holdingReturn: String(hr),
+	        holdingReturnAbs: String(Math.abs(hr)),
+	        holdingSign: hr < 0 ? -1 : 1,
+	        buyDate: h.buyDate || "",
+	        selectedGroup: group,
+	      });
       // 更新 picker 选中位置
       const range = this.data.groupPickerRange;
       const idx = range.indexOf(group);

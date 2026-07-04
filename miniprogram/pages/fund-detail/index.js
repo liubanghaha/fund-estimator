@@ -25,8 +25,12 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 同类排名
     rankInfo: null,
-	    // 风险指标 + 费用 + 估值温度
-	    riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
+    // 风险指标 + 费用 + 估值温度
+    riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
+    turnoverRates: [],
+    showTurnover: false,
+    scrollRefreshing: false,
+    showExited: false,
   },
 
   onLoad(options) {
@@ -57,11 +61,12 @@ Page({
       this._lastRefresh = 0;
     }
     const now = Date.now();
-    // 30s 内不重复拉取非估值数据，仅刷新估值
+    // 30s 内不重复拉取非估值数据，仅刷新估值（但仍查 DB 确保持仓最新）
     if (this._lastRefresh && now - this._lastRefresh < 30000) {
-      this.fetchEstimate().then(() => {
+      this.fetchEstimate().then(async () => {
+        await this.checkHolding();
         this.updateDisplay();
-        this.recalcHoldingData();
+        this.enrichHoldingData();
       });
       return;
     }
@@ -229,7 +234,7 @@ Page({
         const holdings = res.result.data.holdings || [];
         // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
         const exited = res.result.data.exited || [];
-        this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', feeData: null, showFee: false });
+        this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
 
         // 后台拉取股票行情，不阻塞渲染
         this._fetchStockQuotes(holdings).then(quotes => {
@@ -589,8 +594,14 @@ Page({
   onPullDownRefresh() {
     this.fetchAll().finally(() => wx.stopPullDownRefresh());
   },
+  onScrollRefresh() {
+    this.fetchAll().finally(() => {
+      this.setData({ scrollRefreshing: false });
+    });
+  },
   onShowMore() { this.setData({ showAllHistory: true }); },
   onShowLess() { this.setData({ showAllHistory: false }); },
+  onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ activeTab: tab }, () => {
@@ -624,7 +635,16 @@ Page({
         const d = res.result.data;
         const holdings = d.holdings || [];
         if (holdings.length === 0) {
-          wx.showToast({ title: "未识别到基金信息", icon: "none" });
+          wx.hideLoading();
+          wx.showModal({
+            title: '未识别到基金信息',
+            content: '请确认截图清晰度，或搜索基金代码手动添加',
+            confirmText: '去搜索',
+            cancelText: '好',
+            success: (res) => {
+              if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+            },
+          });
           return;
         }
         // 取第一只基金，检查是否匹配当前详情页
@@ -668,11 +688,28 @@ Page({
           });
         }
       } else {
-        wx.showToast({ title: "识别失败", icon: "none" });
+        wx.hideLoading();
+        wx.showModal({
+          title: '识别失败',
+          content: '服务暂不可用，可搜索基金代码手动添加',
+          confirmText: '去搜索',
+          cancelText: '知道了',
+          success: (res) => {
+            if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+          },
+        });
       }
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ title: "识别失败", icon: "none" });
+      wx.showModal({
+        title: '识别失败',
+        content: '网络异常，可搜索基金代码手动添加',
+        confirmText: '去搜索',
+        cancelText: '知道了',
+        success: (res) => {
+          if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
+        },
+      });
     }
   },
 
@@ -734,6 +771,9 @@ Page({
     const show = !this.data.showFee;
     this.setData({ showFee: show });
     if (show && !this.data.feeData && this.data.profile) this.calcFeeData();
+  },
+  onToggleTurnover() {
+    this.setData({ showTurnover: !this.data.showTurnover });
   },
   calcFeeData() {
     const p = this.data.profile;
