@@ -11,7 +11,8 @@
 
       <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
         <text class="alert-icon">🔔</text>
-        <text class="alert-text">{{alertTriggered.length}}项持仓触发提醒</text>
+        <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
+        <text class="alert-text" wx:else>{{alertTriggered[0].fundName}} {{alertTriggered[0].type === 'up' ? '涨超' : '跌超'}}提醒<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
         <text class="alert-close" bind:tap="onDismissAlert">✕</text>
       </view>
       <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
@@ -36,6 +37,7 @@
 
       <view wx:else class="dashboard">
         <view class="asset-overview" bind:tap="onTapProfit">
+          <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
           <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
           <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
@@ -79,7 +81,7 @@
             <view class="action-icon">📊</view>
             <view class="action-text">资产分析</view>
           </view>
-          <view class="action-item" bind:tap="onToggleBatch">
+	          <view class="action-item" bind:tap="onToggleBatch">
             <view class="action-icon">📋</view>
             <view class="action-text">批量</view>
           </view>
@@ -231,10 +233,16 @@
 
   <!-- 止盈止损设置 -->
   <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
-    <view class="col-edit-card" catch:tap="">
+    <view class="col-edit-card" catch:tap="noop">
       <view class="col-edit-title">止盈止损提醒 — {{alertEditFundName}}</view>
       <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
       <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
+      <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
+        <text class="alert-label">PE估值变化提醒</text>
+        <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">
+          <view class="pe-switch-dot"></view>
+        </view>
+      </view>
       <view class="col-edit-close" bind:tap="onSaveAlert">保存</view>
     </view>
   </view>
@@ -262,6 +270,21 @@
       </scroll-view>
       <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
       <view class="col-edit-close" bind:tap="onCloseGroupPicker" style="margin-top:16rpx;background:#F5F5F5;color:#666">取消</view>
+    </view>
+  </view>
+
+  <!-- 分享卡片预览 -->
+  <view wx:if="{{showShareCard}}" class="share-card-mask" bind:tap="onCloseShareCard">
+    <view class="share-card-panel" catch:tap="">
+      <view class="share-card-header">
+        <text class="share-card-title">持仓分享卡片</text>
+        <text class="share-card-close" bind:tap="onCloseShareCard">✕</text>
+      </view>
+      <canvas type="2d" id="shareCanvas" class="share-canvas" style="width:600rpx;height:840rpx"></canvas>
+      <view class="share-card-actions">
+        <button class="share-save-btn" bind:tap="onSaveShareCard">保存到相册</button>
+        <button class="share-send-btn" bind:tap="onShareToFriend">分享给好友</button>
+      </view>
     </view>
   </view>
 </view>

@@ -292,12 +292,15 @@
         <text class="tx-amount">金额</text>
         <text class="tx-date">日期</text>
       </view>
-      <view wx:for="{{transactionList}}" wx:key="_id" class="tx-row">
-        <text class="tx-type {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
-        <text class="tx-shares">{{item.shares > 0 ? item.shares + '份' : '--'}}</text>
-        <text class="tx-price">{{item.price > 0 ? item.price + '元' : '--'}}</text>
-        <text class="tx-amount">{{item.amount || '--'}}元</text>
-        <text class="tx-date">{{item.date}}</text>
+      <view wx:for="{{transactionList}}" wx:key="_id" class="tx-item">
+        <view class="tx-row">
+          <text class="tx-type {{item.type === 'buy' ? 'up' : 'down'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</text>
+          <text class="tx-shares">{{item.shares > 0 ? item.shares + '份' : '--'}}</text>
+          <text class="tx-price">{{item.price > 0 ? item.price + '元' : '--'}}</text>
+          <text class="tx-amount">{{item.amount || '--'}}元</text>
+          <text class="tx-date">{{item.date}}</text>
+        </view>
+        <view wx:if="{{item.note}}" class="tx-note-row">💬 {{item.note}}</view>
       </view>
     </view>
     </block>

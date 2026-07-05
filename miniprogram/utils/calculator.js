@@ -87,5 +87,20 @@ const calculator = {
     const riskFree = 2.5;
     return parseFloat(((annualizedReturn - riskFree) / volatility).toFixed(2));
   },
+  // 滚动回撤序列：每日距历史峰值的回撤百分比
+  // values: [{ value: number }] 按日期升序排列（旧→新）
+  // 返回等长数组，负值表示回撤（如 -5.2 表示从峰值回落 5.2%），0 表示在峰值
+  calcRunningDrawdown(values) {
+    if (!values || values.length < 2) return [];
+    let peak = values[0].value;
+    const result = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i].value;
+      if (v > peak) peak = v;
+      result.push(parseFloat(((v - peak) / peak * 100).toFixed(2)));
+    }
+    return result;
+  },
+
 };
 module.exports = calculator;

@@ -190,6 +190,10 @@
 .tx-price{flex:1;text-align:center;color:#666}
 .tx-amount{flex:1;text-align:right;font-weight:500;color:#333}
 .tx-date{width:160rpx;text-align:right;color:#BBB;font-size:22rpx;flex-shrink:0}
+.tx-item{border-bottom:1rpx solid #F5F5F5}
+.tx-item:last-child{border-bottom:none}
+.tx-item .tx-row{border-bottom:none}
+.tx-note-row{font-size:22rpx;color:#999;padding:0 0 14rpx 80rpx;line-height:1.5}
 
 /* 定投回测 */
 .dca-section{margin:16rpx 24rpx;background:#FFF;border-radius:12rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}

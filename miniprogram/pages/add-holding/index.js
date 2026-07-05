@@ -18,7 +18,7 @@ Page({
     groupPickerIndex: 0,
     selectedGroup: "",
     adjustAmount: '', adjustAmountAbs: '', adjustSign: 1,
-    adjustDate: '',
+    adjustDate: '', adjustNote: '',
     showAdjustPicker: false,
   },
 
@@ -418,6 +418,9 @@ Page({
   onAdjustDateChange(e) {
     this.setData({ adjustDate: e.detail.value });
   },
+  onAdjustNoteInput(e) {
+    this.setData({ adjustNote: e.detail.value });
+  },
 
   async onSubmit() {
     const { id, isEdit, fundCode, fundName, holdingReturn, marketValue, buyDate } = this.data;
@@ -479,6 +482,7 @@ Page({
           data: {
             fundCode: fundCode.trim(), fundName: fundName.trim(),
             type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
+            note: this.data.adjustNote.trim() || '',
             createTime: new Date(),
           },
         });
@@ -523,7 +527,7 @@ Page({
 
       wx.removeStorageSync('portfolio_cache');
       wx.setStorageSync('portfolio_force_refresh', true);
-      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', showAdjustPicker: false });
+      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', showAdjustPicker: false });
 
       if (this.data._editIdx >= 0 && !isEdit) {
         const funds = [...this.data.ocrFunds];

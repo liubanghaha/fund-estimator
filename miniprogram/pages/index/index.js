@@ -65,6 +65,7 @@ Page({
     showChangelog: false, changelog: null,
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
+    alertEditPeAlert: false,
     // 分组
     groups: [],
     activeGroup: "all",
@@ -86,6 +87,27 @@ Page({
     groupEditFundName: '',
     showGroupPicker: false,
     groupPickerCodes: [],
+    // 分享卡片
+    showShareCard: false,
+    shareCardRendered: false,
+  },
+
+  onPageScroll() {},
+
+  // 启用分享到好友和朋友圈
+  onShareAppMessage() {
+    return {
+      title: '韭菜养基宝 · 涨跌有数',
+      path: '/pages/index/index',
+      imageUrl: '',
+    };
+  },
+
+  onShareTimeline() {
+    return {
+      title: '韭菜养基宝 · 持仓估值一目了然',
+      imageUrl: '',
+    };
   },
 
   onLoad() {
@@ -236,11 +258,21 @@ Page({
   // ---- 止盈止损提醒 ----
   onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
   onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
+  onAlertPeToggle(e) { this.setData({ alertEditPeAlert: !this.data.alertEditPeAlert }); },
   onSaveAlert() {
-    const { alertEditFundCode, alertEditUpper, alertEditLower } = this.data;
+    const { alertEditFundCode, alertEditUpper, alertEditLower, alertEditPeAlert } = this.data;
     const settings = wx.getStorageSync('alertSettings') || {};
-    settings[alertEditFundCode] = { upper: parseFloat(alertEditUpper) || 0, lower: parseFloat(alertEditLower) || 0 };
+    settings[alertEditFundCode] = { upper: parseFloat(alertEditUpper) || 0, lower: parseFloat(alertEditLower) || 0, peAlert: !!alertEditPeAlert };
     wx.setStorageSync('alertSettings', settings);
+    // 开启PE提醒时记录当前signal作为基线
+    if (alertEditPeAlert) {
+      const h = this.data.holdings.find(h => h.fundCode === alertEditFundCode);
+      if (h && h.peTemp && h.peTemp.signal) {
+        const cache = wx.getStorageSync('peSignalCache') || {};
+        cache[alertEditFundCode] = h.peTemp.signal;
+        wx.setStorageSync('peSignalCache', cache);
+      }
+    }
     this.setData({ showAlertEdit: false });
     wx.showToast({ title: '已设置提醒', icon: 'success' });
   },
@@ -255,17 +287,31 @@ Page({
   _checkAlerts() {
     const settings = wx.getStorageSync('alertSettings') || {};
     const dismissed = wx.getStorageSync('alertDismissed') || {};
+    const peCache = wx.getStorageSync('peSignalCache') || {};
     const triggered = [];
+    const newPeCache = { ...peCache };
     this.data.holdings.forEach(h => {
       const s = settings[h.fundCode];
       if (!s) return;
       // 今天已解除过的不再触发
       if (dismissed[h.fundCode] && (Date.now() - dismissed[h.fundCode] < 86400000)) return;
+      // 涨跌幅提醒
       const rate = parseFloat(h.todayChangeRate);
       if ((s.upper > 0 && rate >= s.upper) || (s.lower < 0 && rate <= s.lower)) {
         triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate, type: rate >= (s.upper || 999) ? 'up' : 'down' });
       }
+      // PE 温度变化提醒
+      if (s.peAlert && h.peTemp && h.peTemp.signal && h.peTemp.signal !== 'nodata') {
+        const prev = peCache[h.fundCode];
+        if (prev && prev !== h.peTemp.signal) {
+          const up = (prev === 'low' && h.peTemp.signal !== 'low') || (prev === 'mid' && h.peTemp.signal === 'high');
+          const signalMap = { low: '低估', mid: '正常', high: '高估' };
+          triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate: 0, type: up ? 'up' : 'down', peChange: `${signalMap[prev]||prev}→${signalMap[h.peTemp.signal]||h.peTemp.signal}` });
+        }
+        newPeCache[h.fundCode] = h.peTemp.signal;
+      }
     });
+    wx.setStorageSync('peSignalCache', newPeCache);
     if (triggered.length > 0) this.setData({ alertTriggered: triggered });
   },
 
@@ -582,6 +628,118 @@ Page({
     wx.navigateTo({ url: "/pages/correlation-matrix/index" });
   },
 
+  // ==== 分享卡片 ====
+  onShareCard() {
+    const holdings = this.data.holdings;
+    if (holdings.length === 0) {
+      wx.showToast({ title: "暂无持仓可分享", icon: "none" });
+      return;
+    }
+    this.setData({ showShareCard: true, shareCardRendered: false }, () => {
+      wx.nextTick(() => this._renderShareCard());
+    });
+  },
+
+  _renderShareCard() {
+    const query = wx.createSelectorQuery();
+    query.select('#shareCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) {
+        wx.showToast({ title: '渲染失败', icon: 'none' });
+        return;
+      }
+      const canvas = res[0].node;
+      this._shareCanvas = canvas;
+      const shareCard = require('../../utils/shareCard');
+      const { todayProfit, todayProfitRate, totalAmount, totalReturn, totalReturnRate, holdings, amountVisible } = this.data;
+      shareCard.drawShareCard(canvas, {
+        todayProfit, todayProfitRate, totalAmount, totalReturn, totalReturnRate,
+        fundCount: holdings.length,
+        amountVisible,
+      }).then(() => {
+        this.setData({ shareCardRendered: true });
+      }).catch(() => {
+        wx.showToast({ title: '渲染失败', icon: 'none' });
+      });
+    });
+  },
+
+  onCloseShareCard() {
+    this.setData({ showShareCard: false, shareCardRendered: false });
+    this._shareCanvas = null;
+  },
+
+  async onSaveShareCard() {
+    try {
+      const tempPath = await this._getShareCardTempPath();
+      if (!tempPath) return;
+      // 请求相册授权并保存
+      const setting = await new Promise((r) => {
+        wx.getSetting({ success: (s) => r(s) });
+      });
+      if (!setting.authSetting['scope.writePhotosAlbum']) {
+        await new Promise((resolve, reject) => {
+          wx.authorize({ scope: 'scope.writePhotosAlbum', success: resolve, fail: reject });
+        });
+      }
+      await new Promise((resolve, reject) => {
+        wx.saveImageToPhotosAlbum({
+          filePath: tempPath,
+          success: resolve,
+          fail: reject,
+        });
+      });
+      wx.showToast({ title: '已保存到相册', icon: 'success' });
+      this.setData({ showShareCard: false, shareCardRendered: false });
+    } catch (e) {
+      console.error('保存分享卡片失败:', e);
+      if (e.errMsg && e.errMsg.includes('auth deny')) {
+        wx.showModal({
+          title: '需要相册权限',
+          content: '请在设置中允许小程序保存到相册',
+          confirmText: '去设置',
+          success: (mr) => { if (mr.confirm) wx.openSetting(); },
+        });
+      } else {
+        wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+      }
+    }
+  },
+
+  async onShareToFriend() {
+    try {
+      const tempPath = await this._getShareCardTempPath();
+      if (!tempPath) return;
+      wx.showShareImageMenu({ path: tempPath });
+    } catch (e) {
+      console.error('分享卡片失败:', e);
+      wx.showToast({ title: '分享失败，请重试', icon: 'none' });
+    }
+  },
+
+  _getShareCardTempPath() {
+    return new Promise((resolve) => {
+      if (!this.data.shareCardRendered) {
+        wx.showToast({ title: '卡片生成中...', icon: 'none' });
+        resolve(null);
+        return;
+      }
+      const canvas = this._shareCanvas;
+      if (!canvas) {
+        wx.showToast({ title: '卡片未就绪', icon: 'none' });
+        resolve(null);
+        return;
+      }
+      wx.canvasToTempFilePath({
+        canvas,
+        success: (res) => resolve(res.tempFilePath),
+        fail: () => {
+          wx.showToast({ title: '生成图片失败', icon: 'none' });
+          resolve(null);
+        },
+      });
+    });
+  },
+
   onTapHolding(e) {
     if (this.data.batchMode) return;
     const { code, name } = e.currentTarget.dataset;
@@ -602,7 +760,7 @@ Page({
           self.setData({ showAlertEdit: true, alertEditFundCode: h.fundCode, alertEditFundName: h.fundName });
           const settings = wx.getStorageSync('alertSettings') || {};
           const s = settings[h.fundCode] || { upper: 15, lower: -10 };
-          self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || '') });
+          self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || ''), alertEditPeAlert: !!s.peAlert });
         } else if (res.tapIndex === 2) {
           self.moveHoldingToGroup([h.fundCode], h.fundName);
         } else if (res.tapIndex === 3) {

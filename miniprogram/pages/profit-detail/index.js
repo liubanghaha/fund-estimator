@@ -290,6 +290,22 @@ Page({
       };
     });
 
+    // 计算滚动回撤
+    const validValues = data.map(d => d.baseRate !== null ? { value: pb * (1 + d.baseRate / 100) } : null);
+    let drawdowns = [];
+    if (validValues.filter(v => v).length >= 2) {
+      // 用市值序列计算回撤
+      const mvData = all.filter(a => a.date >= st && a.date <= ed).map(a => ({ value: a.value }));
+      if (mvData.length >= 2) {
+        drawdowns = calc.calcRunningDrawdown(mvData);
+      }
+    }
+    // 按日期映射回撤
+    const ddMap = {};
+    const mvDateData = all.filter(a => a.date >= st && a.date <= ed);
+    drawdowns.forEach((dd, i) => { if (i < mvDateData.length) ddMap[mvDateData[i].date] = dd; });
+    data.forEach(d => { d.drawdown = ddMap[d.date] != null ? ddMap[d.date] : null; });
+
     const hasIdx = ib !== null;
     const validProfit = data.filter(d => d.baseRate !== null);
     const validIdx = data.filter(d => d.indexRate !== null);
@@ -576,6 +592,37 @@ Page({
     if (noIdx) { const vs = data.filter(d => d.baseRate !== null).map(d => d.baseRate); if (vs.length >= 2) drawAxis(vs, 'baseRate', ''); }
     else if (hasP) { const av = [...data.map(d => d.baseRate).filter(v => v !== null), ...data.map(d => d.indexRate)]; if (av.length >= 2) drawAxis(av, 'dual'); }
     else { drawAxis(data.map(d => d.indexRate), 'index'); }
+
+    // 叠加回撤曲线
+    const ddPts = data.filter(d => d.drawdown !== null);
+    if (ddPts.length >= 2 && this._chartDraw) {
+      const { xi, yi } = this._chartDraw;
+      // 回撤面积填充
+      ctx.beginPath();
+      const firstDd = ddPts[0], lastDd = ddPts[ddPts.length - 1];
+      const firstIdx = data.indexOf(firstDd), lastIdx = data.indexOf(lastDd);
+      ctx.moveTo(xi(firstIdx), yi(0));
+      ddPts.forEach((d, i) => { ctx.lineTo(xi(data.indexOf(d)), yi(d.drawdown)); });
+      ctx.lineTo(xi(lastIdx), yi(0));
+      ctx.closePath();
+      const ddGrad = ctx.createLinearGradient(0, yi(0), 0, yi(Math.min(...ddPts.map(d => d.drawdown))));
+      ddGrad.addColorStop(0, 'rgba(255,152,0,0.06)');
+      ddGrad.addColorStop(1, 'rgba(255,152,0,0.12)');
+      ctx.fillStyle = ddGrad;
+      ctx.fill();
+      // 回撤线
+      ctx.beginPath();
+      ddPts.forEach((d, i) => { const x = xi(data.indexOf(d)), y = yi(d.drawdown); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+      ctx.strokeStyle = 'rgba(255,152,0,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 图例
+      ctx.font = '9px sans-serif'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,152,0,0.6)'; ctx.fillRect(p.l + 4, hasP && !noIdx ? 34 : 22, 12, 4);
+      ctx.fillStyle = '#999'; ctx.textAlign = 'left'; ctx.fillText('回撤', p.l + 20, hasP && !noIdx ? 36 : 24);
+    }
   },
 
   _drawGrid(ctx, p, cw, ch, y0, y1, yi) {

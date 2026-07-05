@@ -98,6 +98,11 @@
           <view class="picker-value">{{adjustDate || '点击选择日期'}}</view>
         </picker>
       </view>
+      <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
+        <text class="label">备注</text>
+        <input class="input" value="{{adjustNote}}" bind:input="onAdjustNoteInput"
+               placeholder="选填：操作理由" maxlength="100"/>
+      </view>
       <view class="form-item">
         <text class="label">买入日期</text>
         <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">

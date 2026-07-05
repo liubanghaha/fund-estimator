@@ -24,6 +24,8 @@
 .dashboard{padding:0 24rpx}
 .asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 32rpx 32rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
 .amount-toggle{position:absolute;right:24rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:20rpx;z-index:1}
+.share-toggle{position:absolute;left:20rpx;top:18rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 18rpx;border-radius:20rpx;z-index:1;color:#FFF}
+.share-toggle-icon{font-size:20rpx;margin-right:4rpx}
 .asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
 .asset-value{font-size:48rpx;font-weight:700;margin-bottom:12rpx}
@@ -79,6 +81,12 @@
 .alert-field{display:flex;align-items:center;margin-top:20rpx}
 .alert-label{width:160rpx;font-size:26rpx;color:#666}
 .alert-input{flex:1;height:64rpx;border:1rpx solid #E5E5E5;border-radius:8rpx;padding:0 16rpx;font-size:28rpx;text-align:right}
+.alert-switch-row{justify-content:space-between}
+.alert-switch-row .alert-label{width:auto;flex:1}
+.pe-switch{width:80rpx;height:44rpx;border-radius:22rpx;background:#E5E5E5;position:relative;transition:background .2s;flex-shrink:0}
+.pe-switch.on{background:var(--primary)}
+.pe-switch-dot{width:36rpx;height:36rpx;border-radius:50%;background:#FFF;position:absolute;top:4rpx;left:4rpx;transition:left .2s;box-shadow:0 1rpx 4rpx rgba(0,0,0,.15)}
+.pe-switch.on .pe-switch-dot{left:40rpx}
 
 .holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF}
 .updated-tag{font-size:14rpx;color:#FFF;background:var(--primary);border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle}
@@ -237,3 +245,14 @@
 .changelog-list{flex:1;overflow-y:auto;margin-bottom:24rpx}
 .changelog-item{font-size:28rpx;color:#444;line-height:2;padding-left:8rpx}
 .changelog-close{margin-top:8rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx}
+
+/* 分享卡片 */
+.share-card-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1003;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.share-card-panel{width:640rpx;background:#FFF;border-radius:20rpx;padding:28rpx 20rpx 24rpx;display:flex;flex-direction:column;align-items:center;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
+.share-card-header{width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
+.share-card-title{font-size:30rpx;font-weight:600;color:#333}
+.share-card-close{font-size:32rpx;color:#CCC;padding:4rpx 8rpx}
+.share-canvas{width:600rpx;height:840rpx;border-radius:12rpx;box-shadow:0 2rpx 16rpx rgba(0,0,0,.08)}
+.share-card-actions{width:100%;margin-top:20rpx;display:flex;gap:16rpx}
+.share-save-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:42rpx;text-align:center;padding:0}
+.share-send-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:var(--primary);background:var(--primary-bg);border-radius:42rpx;text-align:center;padding:0}
