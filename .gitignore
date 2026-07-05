@@ -4,3 +4,4 @@ private.*.key
 .claude/
 env.json
 pic/
+articles/screenshots/

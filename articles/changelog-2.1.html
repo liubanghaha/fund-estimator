@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>韭菜养基宝 2.1 版本更新</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 20px 16px;
+    color: #333;
+    font-size: 16px;
+    line-height: 1.8;
+  }
+  h1 {
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 8px;
+    color: #1a1a1a;
+  }
+  .subtitle {
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .greeting {
+    margin-bottom: 24px;
+    color: #666;
+  }
+  h2 {
+    font-size: 20px;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    padding-left: 12px;
+    border-left: 4px solid #E4393C;
+    color: #1a1a1a;
+  }
+  .tip {
+    background: #fdf6ec;
+    border-left: 3px solid #e6a23c;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: #8a6d3b;
+    border-radius: 4px;
+  }
+  .img-placeholder {
+    background: #f5f5f5;
+    border: 1px dashed #ddd;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: #bbb;
+    font-size: 14px;
+    margin: 16px 0;
+  }
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 14px;
+  }
+  .summary-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .summary-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+    color: #555;
+  }
+  .summary-table td:last-child {
+    color: #888;
+  }
+  .footer {
+    text-align: center;
+    color: #bbb;
+    font-size: 13px;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .footer a {
+    color: #576b95;
+    text-decoration: none;
+  }
+  .highlight {
+    color: #E4393C;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<h1>韭菜养基宝 2.1 更新：更聪明的持仓管理</h1>
+<p class="subtitle">2026年7月5日</p>
+
+<p class="greeting">
+各位基友，最近一个月我们悄悄更新了不少功能。这篇文章带你逐一了解，看完再去小程序体验 🚀
+</p>
+
+<!-- ========== 1 ========== -->
+<h2>一、💼 持仓多分组管理</h2>
+
+<p>以前所有持仓混在一起，分不清哪些是「长线底仓」、哪些是「短线博弈」。现在支持<strong>自定义分组</strong>：</p>
+<ul>
+  <li>创建、重命名、删除分组，拖拽排序</li>
+  <li>每个分组独立展示<strong>总市值、今日收益、累计收益率</strong></li>
+  <li>持仓可<strong>批量移动</strong>到不同分组</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>把持仓分成「养老底仓」「行业轮动」「打新配置」等，一眼看出每个策略赚了多少，资金分配一目了然。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/分组tab.png</div>
+
+<!-- ========== 2 ========== -->
+<h2>二、🌡️ PE 估值温度 2.0</h2>
+
+<p>这是本次最重磅的算法升级：</p>
+<ul>
+  <li><strong>PE 历史分位：</strong>对比基金过去 5 年的 PE 水平，不再横跨行业比较</li>
+  <li><strong>行业感知：</strong>金融股加 PB 维度、周期股标记警告、亏损股回退 PB</li>
+  <li><strong>高 PE 天花板：</strong>成长股 PE 天然高，不做误判</li>
+  <li><strong>特殊规则：</strong>净值 &lt; 0.75 强制判定低估（深度价值保护）</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>给每只基金一个公平的估值判断——银行 PE 5 倍不会无脑喊便宜，半导体 PE 80 倍也不会无脑喊贵。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/估值温度.png</div>
+
+<!-- ========== 3 ========== -->
+<h2>三、🔄 调仓追踪</h2>
+
+<p>打开基金详情页 → 持仓 Tab，能看到基金经理最近一个季度的操作动向：</p>
+<ul>
+  <li>🆕 <strong>新增：</strong>本季度新买入的股票</li>
+  <li>📈 <strong>加仓：</strong>增持比例一目了然</li>
+  <li>📉 <strong>减仓：</strong>减持了多少</li>
+  <li>🚫 <strong>退出：</strong>上季度清仓的股票列表</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>看清经理的真实操作，看他是「知行合一」还是「嘴上价值投资、实际追涨杀跌」。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/持仓调仓.png</div>
+
+<!-- ========== 4 ========== -->
+<h2>四、💰 费用黑洞 + 换手率</h2>
+
+<p>两项新指标帮你量化「看不见的成本」：</p>
+
+<h3>费用黑洞（升级）</h3>
+<p>展示管理费 + 托管费 + 销售费在 5 / 10 / 20 年维度下对收益的侵蚀：</p>
+<ul>
+  <li>10 万本金、年化 8%，费率 1.5% vs 0%</li>
+  <li>20 年后差距可达 <span class="highlight">十几万</span></li>
+</ul>
+
+<h3>基金换手率（新增）</h3>
+<ul>
+  <li>换手率 &gt; 200%：交易活跃型，佣金和冲击成本高 ⚠️</li>
+  <li>换手率 &lt; 100%：买入持有型，成本友好 ✅</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>高换手率基金看似「积极管理」，但频繁交易产生的费用从净值扣除，最终侵蚀的都是你的钱。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/费用黑洞和换手.png</div>
+
+<!-- ========== 5 ========== -->
+<h2>五、✏️ 编辑页快速加减仓</h2>
+
+<p>不用再跑到专门的加减仓页，编辑持仓时就能直接操作：</p>
+<ul>
+  <li>正数输入 → <strong>加仓</strong>（加权平均计算新买入均价）</li>
+  <li>负数输入 → <strong>减仓</strong>（自动校验不超当前份额）</li>
+  <li>自动计算新份额、新均价，交易记录一并写入</li>
+  <li>可选择<strong>实际交易日期</strong>（非强制当天，方便补录历史交易）</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>补录历史交易或盘中快速调仓，一步到位，操作路径最短。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/加减仓.png</div>
+
+<!-- ========== 6 ========== -->
+<h2>六、💊 资产健康分</h2>
+
+<p>首页持仓列表上方，新增<strong>环形仪表盘</strong>展示组合健康分：</p>
+<ul>
+  <li>0 - 100 分综合评分，一目了然</li>
+  <li>优秀（绿）/ 良好（蓝）/ 一般（黄）/ 较差（红）四档变色</li>
+  <li>评分维度：<strong>估值温度</strong> + <strong>行业集中度</strong></li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>一个数字告诉你组合是否健康——估值便宜吗？行业太集中了吗？不用逐只分析，扫一眼就知道。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/持仓健康分.png</div>
+
+<!-- ========== 7 ========== -->
+<h2>七、📊 定投回测 XIRR 升级</h2>
+
+<p>定投模拟的计算方式从简单收益率升级为<strong>XIRR（内部收益率）</strong>：</p>
+<ul>
+  <li>考虑了每笔资金投入的<strong>具体日期和时间价值</strong></li>
+  <li>旧版公式是一次性投入算法，会显著<strong>低估</strong>定投的真实年化回报</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>定投两年，实际年化是 12% 还是 8%？现在算得更准，助你做更理性的判断。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/定投模拟.png</div>
+
+<!-- ========== 8 ========== -->
+<h2>八、📷 截图识别更流畅</h2>
+
+<ul>
+  <li>客户端自动压缩图片，不再因图片太大识别失败</li>
+  <li>识别失败不再弹技术调试信息，改为清晰的引导提示</li>
+  <li>自动匹配你持仓中的基金代码，减少手动补填</li>
+</ul>
+
+<div class="tip">
+💡 <strong>有什么用：</strong>从截图到持仓，体验更顺畅，异常情况也有明确指引。
+</div>
+
+<div class="img-placeholder">🖼 插入图片：articles/screenshots/截图导入.png</div>
+
+<!-- ========== 总结 ========== -->
+<h2>📋 总结</h2>
+
+<table class="summary-table">
+  <tr><td>多分组管理</td><td>不同策略分开看收益，资金分配一目了然</td></tr>
+  <tr><td>PE 温度 2.0</td><td>行业感知 + 历史分位，每只基金都有公平估值</td></tr>
+  <tr><td>调仓追踪</td><td>看清基金经理是知行合一还是追涨杀跌</td></tr>
+  <tr><td>费用黑洞 + 换手率</td><td>量化看不见的成本，高换手 = 高费用</td></tr>
+  <tr><td>编辑页加减仓</td><td>快速调仓位，支持补录历史交易</td></tr>
+  <tr><td>资产健康分</td><td>一个数字判断组合质量</td></tr>
+  <tr><td>定投 XIRR</td><td>定投年化收益算得更准</td></tr>
+  <tr><td>截图识别</td><td>导入更流畅，减少反复操作</td></tr>
+</table>
+
+<hr style="border: none; border-top: 1px solid #f0f0f0; margin: 32px 0;">
+
+<p>目前所有功能已上线，扫描下方小程序码或在微信搜索<strong>「韭菜养基宝」</strong>即可体验。</p>
+
+<p>有想法或遇到问题？小程序内「我的 → 意见反馈」随时告诉我们 🙏</p>
+
+<p class="footer">
+韭菜养基宝 · 涨跌有数<br>
+投资有风险，本文仅供功能介绍参考，不构成投资建议
+</p>
+
+</body>
+</html>
