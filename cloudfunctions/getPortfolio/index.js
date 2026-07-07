@@ -63,7 +63,7 @@ exports.main = async (event) => {
         shares = parseFloat(h.amount) / buyPrice;
       }
 
-      let currentNav = eastmoney.actualNav || tiantian.nav || buyPrice;
+      let currentNav = eastmoney.actualNav || tiantian.nav || null;
       let todayChangeRate = 0;
       let todayProfitAmount = 0;
 
@@ -80,19 +80,22 @@ exports.main = async (event) => {
         }
       }
 
-      const yesterdayNav = tiantian.nav;
+      // 昨日净值兜底链：天天 dwjz → 东方财富 actualNav → 数据库存储值
+      const yesterdayNav = tiantian.nav || eastmoney.actualNav || h.nav || null;
+      // 兜底：如果没有任何数据源，用 currentNav 估算（至少不为 null）
+      const yesterdayNavSafe = yesterdayNav || currentNav || 0;
 
-      if (eastmoney.actualNav != null && yesterdayNav != null && eastmoney.actualNav !== yesterdayNav) {
-        todayProfitAmount = (eastmoney.actualNav - yesterdayNav) * shares;
-        todayChangeRate = eastmoney.actualChangeRate || 0;
+      if (currentNav != null && yesterdayNav != null && currentNav !== yesterdayNav) {
+        todayProfitAmount = (currentNav - yesterdayNav) * shares;
+        todayChangeRate = eastmoney.actualChangeRate || tiantian.estimatedChangeRate || 0;
       } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
         todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * shares;
         todayChangeRate = tiantian.estimatedChangeRate || 0;
       } else {
-        todayChangeRate = eastmoney.actualChangeRate || 0;
+        todayChangeRate = eastmoney.actualChangeRate || tiantian.estimatedChangeRate || 0;
       }
 
-      totalYesterdayMarket += (yesterdayNav || currentNav) * shares;
+      totalYesterdayMarket += yesterdayNavSafe * shares;
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
       const costValue = buyPrice * shares;

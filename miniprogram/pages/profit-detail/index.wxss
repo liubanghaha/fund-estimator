@@ -49,6 +49,7 @@
 .cal-top-row{display:flex;justify-content:space-between;align-items:center;background:#FFF;margin:0 24rpx;padding:20rpx 24rpx 8rpx;border-radius:20rpx 20rpx 0 0}
 .cal-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
 .cal-mode-toggle{font-size:22rpx;color:var(--primary);padding:6rpx 16rpx;background:rgba(25,118,210,0.06);border-radius:16rpx}
+.dd-tip{margin:0 24rpx;padding:2rpx 24rpx 12rpx;font-size:18rpx;color:#CCC;line-height:1.4}
 
 .tab-bar{display:flex;align-items:center;gap:16rpx;background:#FFF;margin:0 24rpx;border-radius:0;padding:16rpx 24rpx;border-bottom:1rpx solid #F0F0F0}
 .tab-item{font-size:26rpx;color:#999;padding:8rpx 0;position:relative}

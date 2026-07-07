@@ -29,7 +29,7 @@ exports.main = async () => {
       for (const h of userHoldings) {
         const t = tiantianMap[h.fundCode] || {};
         const shares = h.shares || h.amount || 0;
-        const yesterdayNav = t.nav || h.buyPrice || h.nav || 0;
+        const yesterdayNav = t.nav || h.nav || 0;
         const rate = t.estimatedChangeRate || 0;
         const weight = shares * yesterdayNav;
         if (weight > 0) {

@@ -15,7 +15,7 @@ exports.main = async (event) => {
   try {
     const https = require("https");
     const raw = await new Promise((resolve, reject) => {
-      const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=1&fqt=1&end=20500101&lmt=250`;
+      const url = `https://push2.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=1&fqt=1&end=20500101&lmt=250`;
       const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
         let body = "";
         res.on("data", (c) => { body += c; });
