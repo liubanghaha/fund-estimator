@@ -216,14 +216,6 @@
 .dca-stat-val.down{color:#2E8B57}
 .dca-stat-label{display:block;font-size:20rpx;color:#BBB;margin-top:4rpx}
 
-/* 同类排名 */
-.rank-section{margin:16rpx 24rpx;background:#FFF;border-radius:12rpx;padding:20rpx 24rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
-.rank-label{font-size:26rpx;font-weight:500;color:#333;display:block;margin-bottom:12rpx}
-.rank-bar-wrap{display:flex;justify-content:space-between;margin-bottom:8rpx}
-.rank-text{font-size:28rpx;font-weight:600;color:var(--primary)}
-.rank-pos{font-size:22rpx;color:#999}
-.rank-bar{height:8rpx;background:#F0F0F0;border-radius:4rpx;overflow:hidden}
-.rank-fill{height:100%;background:var(--primary);border-radius:4rpx;min-width:4rpx}
 
 /* 基金换手率 */
 .turnover-table{padding:0}

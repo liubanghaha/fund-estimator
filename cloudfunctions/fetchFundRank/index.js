@@ -2,69 +2,81 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 /**
- * 获取基金同类排名
+ * 获取基金同类排名（按近1年收益）
+ * 东方财富移动端 API 不支持按类型过滤，手动根据 FUNDTYPE 字段筛选
  */
 exports.main = async (event) => {
   const { fundCode, fundType } = event;
   if (!fundCode) return { code: 400, msg: "缺少基金代码" };
 
-  const https = require("https");
+  // 类型中文 → FUNDTYPE 代码映射
+  const ftMap = { "股票": "001", "混合": "002", "债券": "003", "指数": "005", "QDII": "007" };
+  let targetFt = "002"; // 默认混合型
+  for (const k of Object.keys(ftMap)) {
+    if ((fundType || "混合").includes(k)) { targetFt = ftMap[k]; break; }
+  }
 
-  // 确定基金类型代码
-  const typeMap = { "股票型": "gp", "混合型": "hh", "债券型": "zq", "指数型": "zs", "QDII": "qdii" };
-  const ft = typeMap[fundType] || "all";
+  // 估算同类型总数（基于首页分布比例 × 全局总数）
+  // 实际总数需要遍历所有页，这里用估算值避免性能问题
+  const ESTIMATED_TOTALS = { "001": 3200, "002": 21000, "003": 600, "005": 800, "007": 300 };
 
   try {
-    // 按近1年收益排名
-    const rankData = await fetchRankData(fundCode, ft);
-    return { code: 0, data: rankData };
+    const rank = await searchRank(fundCode, targetFt);
+    const total = ESTIMATED_TOTALS[targetFt] || rank;
+    return {
+      code: 0,
+      data: {
+        rank: rank || `>${200 * 30}`,
+        total: Math.max(total, rank > 0 ? rank : 0),
+        pct: rank > 0 ? Math.round((1 - rank / total) * 100) : 0,
+        category: fundType || "混合型",
+      },
+    };
   } catch (e) {
     return { code: 500, msg: e.message };
   }
 };
 
-function fetchRankData(fundCode, ft) {
+async function searchRank(fundCode, targetFt) {
   const https = require("https");
-  const url = `https://api.fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf&ft=${ft}&rs=&gs=0&sc=1nzf&st=desc&pi=1&pn=500&v=0.1&_=${Date.now()}`;
+  const PAGE_SIZE = 30;
+  const MAX_PAGES = 200; // 搜索前 6000 条
 
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, {
-      headers: { Referer: "https://fund.eastmoney.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          // 解析 JSONP
-          const jsonStr = body.replace(/^var rankData = /, "").replace(/;?$/, "");
-          const data = JSON.parse(jsonStr);
-          const list = (data && data.datas) || [];
-          const allRecords = data.allRecords || list.length;
-
-          // 找到本基金位置
-          let rank = 0;
-          for (const item of list) {
-            const codes = (item.split(",")[0] || "").split("|");
-            if (codes.includes(fundCode)) { rank = codes[0] === fundCode ? (list.indexOf(item) + 1) : rank; break; }
-          }
-          // 如果没找到，可能是两份额基金代码
-          if (rank === 0) {
-            for (const item of list) {
-              const codes = (item.split(",")[0] || "");
-              if (codes.includes(fundCode)) { rank = list.indexOf(item) + 1; break; }
-            }
-          }
-
-          resolve({
-            rank: rank || ">500",
-            total: allRecords,
-            pct: rank > 0 ? Math.round((1 - rank / allRecords) * 100) : 0,
-            category: data.title || ft,
-          });
-        } catch (e) { reject(e); }
-      });
+  const fetchPage = (page) => {
+    return new Promise((resolve, reject) => {
+      const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNRankNewList?pageIndex=${page}&pageSize=${PAGE_SIZE}&Sort=1nzf&SortOrder=desc&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`;
+      https.get(url, {
+        headers: { Referer: "https://fund.eastmoney.com/" },
+      }, (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body).Datas || []);
+          } catch (e) { resolve([]); }
+        });
+      }).on("error", () => resolve([])).setTimeout(8000, () => resolve([]));
     });
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error("timeout")); });
-    req.on("error", reject);
-  });
+  };
+
+  // 分批并行请求（每批 20 页，避免同时请求太多）
+  let sameTypeCount = 0;
+  for (let batch = 1; batch <= Math.ceil(MAX_PAGES / 20); batch++) {
+    const start = (batch - 1) * 20 + 1;
+    const end = Math.min(batch * 20, MAX_PAGES);
+    const pages = [];
+    for (let i = start; i <= end; i++) pages.push(i);
+
+    const results = await Promise.all(pages.map(p => fetchPage(p)));
+
+    for (const items of results) {
+      for (const item of items) {
+        if ((item.FUNDTYPE || "") === targetFt) {
+          sameTypeCount++;
+          if (item.FCODE === fundCode) return sameTypeCount;
+        }
+      }
+    }
+  }
+  return 0; // 未在前 6000 条中找到
 }

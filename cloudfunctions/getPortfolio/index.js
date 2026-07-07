@@ -768,29 +768,28 @@ async function _fetchLiveTencent(codes) {
 async function batchFetchTempHist(codes) {
   const https = require("https");
   const map = {};
-  for (const code of codes) {
-    await new Promise((resolve) => {
-      const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
-      const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const d = JSON.parse(body);
-            const data = (d.result && d.result.data) || [];
-            map[code] = {
-              peYears: data.map(r => ({ avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN })).filter(r => r.avg > 0 && r.avg < 10000),
-              pbYears: data.map(r => ({ avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN })).filter(r => r.avg > 0 && r.avg < 1000),
-              totalYears: data.length,
-            };
-          } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
-          resolve();
-        });
+  const fetchOne = (code) => new Promise((resolve) => {
+    const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
+    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const d = JSON.parse(body);
+          const data = (d.result && d.result.data) || [];
+          map[code] = {
+            peYears: data.map(r => ({ avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN })).filter(r => r.avg > 0 && r.avg < 10000),
+            pbYears: data.map(r => ({ avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN })).filter(r => r.avg > 0 && r.avg < 1000),
+            totalYears: data.length,
+          };
+        } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
+        resolve();
       });
-      req.setTimeout(10000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
     });
-  }
+    req.setTimeout(10000, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+  await Promise.all(codes.map(fetchOne));
   return map;
 }
 

@@ -212,7 +212,10 @@
           <view class="profile-item"><view class="profile-label">成立日期</view><view class="profile-value">{{profile.establishDate || '--'}}</view></view>
           <view class="profile-item"><view class="profile-label">基金规模</view><view class="profile-value">{{profile.fundSizeText}}</view></view>
           <view class="profile-item"><view class="profile-label">风险等级</view><view class="profile-value">{{profile.riskText}}</view></view>
-          <view class="profile-item full" wx:if="{{profile.company}}"><view class="profile-label">基金公司</view><view class="profile-value">{{profile.company}}</view></view>
+          <view wx:if="{{profile.company}}" class="profile-item full">
+            <view class="profile-label">基金公司</view>
+            <view class="profile-value">{{profile.company}}</view>
+          </view>
         </view>
       </view>
       <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">

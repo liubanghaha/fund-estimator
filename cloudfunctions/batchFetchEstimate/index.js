@@ -69,6 +69,7 @@ exports.main = async (event) => {
   if (!codes.length) return { code: 400, msg: "缺少基金代码" };
 
   try {
+    // 并行请求：每只基金同时查天天+东方财富
     const results = await Promise.all(codes.map((code) =>
       Promise.all([fetchTiantian(code), fetchEastMoney(code)]).then(([tt, em]) => {
         if (!tt.fundCode) return null;
@@ -89,3 +90,4 @@ exports.main = async (event) => {
     return { code: 500, msg: "获取失败" };
   }
 };
+

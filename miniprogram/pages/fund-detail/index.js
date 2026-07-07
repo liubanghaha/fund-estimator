@@ -23,8 +23,6 @@ Page({
     profileLoading: false, profileLoaded: false,
     // 定投回测
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
-    // 同类排名
-    rankInfo: null,
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
     turnoverRates: [],
@@ -91,7 +89,32 @@ Page({
     this.setData({ loading: true, errorMsg: "" });
     this._lastRefresh = Date.now();
     try {
-	      await Promise.all([this.fetchEstimate(), this.fetchHistory(), this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
+      const overviewRes = await api.fetchFundOverview(this.data.fundCode);
+      if (overviewRes.result && overviewRes.result.code === 0) {
+        const d = overviewRes.result.data;
+        const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
+        const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
+        const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
+        this.setData({
+          nav: d.nav, estimatedNav: d.estimatedNav,
+          estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
+          fundName: this.data.fundName || d.fundName || "",
+          actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
+          actualChangeRate: actualCR,
+          peTemp: d.peTemp || this.data.peTemp,
+        });
+        if (d.history && d.history.length > 0) {
+          this.setData({
+            navHistory: d.history,
+            actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
+            actualDate: d.history[0].date,
+            actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
+          });
+          this.calcReturns(d.history);
+        }
+        // profile 在切 Tab 时懒加载，但基础数据已就绪
+      }
+      await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
       this.setData({ loading: false }, () => this.drawChart());
@@ -800,19 +823,4 @@ Page({
     });
   },
 
-  // ---- 同类排名 ----
-  async fetchRank() {
-    const { fundCode } = this.data;
-    if (!fundCode) return;
-    try {
-      const fundType = (this.data.profile && this.data.profile.fundType) || "混合型";
-      const res = await wx.cloud.callFunction({
-        name: "fetchFundRank",
-        data: { fundCode, fundType },
-      });
-      if (res.result && res.result.code === 0 && res.result.data) {
-        this.setData({ rankInfo: res.result.data });
-      }
-    } catch (e) { /* ignore */ }
-  },
 });

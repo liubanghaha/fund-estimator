@@ -48,7 +48,10 @@ Page({
     if (this._first) { this._first = false; }
     else {
       const now = Date.now();
-      if (!this._lastFetch || now - this._lastFetch >= 30000) {
+      const cacheAge = this._lastFetch ? (now - this._lastFetch) : Infinity;
+      const isTrading = this._isTradingNow();
+      const ttl = isTrading ? 30000 : 120000;
+      if (cacheAge > ttl) {
         this._lastFetch = now;
         this._fetch();
       }
@@ -898,7 +901,12 @@ Page({
       if (!res.result || res.result.code !== 0) return;
       const rate = parseFloat(res.result.data.todayProfitRate || 0);
       const tp = res.result.data.todayProfit || "0";
-      this.setData({ todayProfitRate: rate, todayProfit: tp });
+      const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
+      if (changed) {
+        this.setData({ todayProfitRate: rate, todayProfit: tp });
+        // 仅当日视图需要重绘走势（周/月/年视图不包含当天数据）
+        if (this.data.activeTab === 'today') this._draw();
+      }
       // 当天走势暂未完善，注释掉分时快照同步
       /*
       const snaps = res.result.data.intradaySnapshots;

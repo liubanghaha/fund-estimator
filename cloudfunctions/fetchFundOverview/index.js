@@ -6,10 +6,11 @@ exports.main = async (event) => {
   if (!fundCode || !/^\d{6}$/.test(fundCode)) return { code: 400, msg: "请提供有效的6位基金代码" };
 
   try {
-    const [estimate, history, profileData] = await Promise.all([
+    const [estimate, history, profileData, peTemp] = await Promise.all([
       fetchEstimate(fundCode),
       fetchHistory(fundCode, 260),
       fetchProfileData(fundCode),
+      fetchPeTemp(fundCode),
     ]);
     return {
       code: 0, msg: "success",
@@ -18,6 +19,7 @@ exports.main = async (event) => {
         history,
         profile: profileData.profile,
         manager: profileData.manager,
+        peTemp,
       },
     };
   } catch (e) {
@@ -159,4 +161,20 @@ async function fetchProfileData(fundCode) {
     }),
   ]);
   return { profile, manager };
+}
+
+async function fetchPeTemp(fundCode) {
+  try {
+    const db = cloud.database();
+    const res = await db.collection("fund_temperatures")
+      .where({ fundCode })
+      .orderBy("createTime", "desc")
+      .limit(1)
+      .get();
+    if (res.data && res.data.length > 0) {
+      const t = res.data[0];
+      return { signal: t.signal, label: t.label, normPE: t.normPE };
+    }
+  } catch (e) { /* ignore */ }
+  return null;
 }

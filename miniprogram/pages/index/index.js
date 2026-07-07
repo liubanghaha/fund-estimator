@@ -14,6 +14,7 @@ const ALL_INDICES = [
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
+const CACHE_TTL = 60000;  // 缓存有效期 60 秒
 
 Page({
   data: {
@@ -147,18 +148,19 @@ Page({
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
       this.applyCache();
-      this.applyIndexCache();
-      // 30秒内不重复拉取数据（截图导入成功后强制刷新）
+      const indexCached = this.applyIndexCache();
+      // 缓存 TTL 检查：60s 内直接复用缓存，超时后台刷新
       const forceRefresh = wx.getStorageSync("portfolio_force_refresh");
       if (forceRefresh) {
         wx.removeStorageSync("portfolio_force_refresh");
         this._lastFetch = 0;
       }
-      if (!this._lastFetch || now - this._lastFetch > 30000) {
+      const cacheAge = this._cacheTs ? (now - this._cacheTs) : Infinity;
+      if (!this._lastFetch || now - this._lastFetch > 30000 || cacheAge > CACHE_TTL) {
         this._lastFetch = now;
         this.fetchPortfolio();
-        this.fetchIndices();
       }
+      if (!indexCached) this.fetchIndices();
     } else {
       this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
       this.applyIndexCache();
@@ -172,6 +174,7 @@ Page({
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.holdings && cached.holdings.length > 0) {
+        this._cacheTs = cached.ts || 0;
         let holdings = cached.holdings;
         holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
@@ -201,8 +204,13 @@ Page({
       const cached = wx.getStorageSync(INDEX_CACHE_KEY);
       const codes = this.data.activeIndices.map((i) => i.code).join(",");
       if (cached && cached.codes === codes && cached.cards && cached.cards.length > 0) {
-        this.setData({ indexCards: cached.cards, indexBarHeight: 110 });
-        return true;
+        const ts = cached.ts || 0;
+        const isTrading = this._isTradingHours();
+        const ttl = isTrading ? 30000 : 300000;
+        if (Date.now() - ts < ttl) {
+          this.setData({ indexCards: cached.cards, indexBarHeight: 110 });
+          return true;
+        }
       }
     } catch (e) { /* ignore */ }
     // 无缓存时展示占位，让指数栏立即可见
@@ -212,6 +220,14 @@ Page({
     }));
     this.setData({ indexCards: placeholders, indexBarHeight: 110 });
     return false;
+  },
+
+  _isTradingHours() {
+    const now = new Date();
+    const day = now.getDay();
+    if (day < 1 || day > 5) return false;
+    const total = now.getHours() * 60 + now.getMinutes();
+    return (total >= 570 && total < 690) || (total >= 780 && total < 900);
   },
 
   onToggleAmount() {
