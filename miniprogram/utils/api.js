@@ -216,8 +216,14 @@ const api = {
             const stockData = (json.data && json.data[code]) || {};
             const points = (stockData.data && stockData.data.data) || [];
             const apiDate = (stockData.data && stockData.data.date) || '';
-            // 日期校验：非今日数据直接返回空（盘前可能返回昨日数据）
-            if (apiDate !== today) { resolve({ code: 500, msg: "非今日数据" }); return; }
+            // 日期校验：交易时段只认今日，非交易时段允许旧数据
+            if (apiDate !== today) {
+              const now = new Date();
+              const day = now.getDay();
+              const totalMin = now.getHours() * 60 + now.getMinutes();
+              const inTrading = day >= 1 && day <= 5 && totalMin >= 570 && totalMin <= 900;
+              if (inTrading) { resolve({ code: 500, msg: "非今日数据" }); return; }
+            }
             if (points.length < 2) { resolve({ code: 500, msg: "分时数据不足" }); return; }
             // 从同一响应中取昨日收盘价（qt.sh000001[4]）
             const qtFields = (stockData.qt && stockData.qt[code]) || [];

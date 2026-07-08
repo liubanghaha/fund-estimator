@@ -98,6 +98,9 @@ Page({
           dayCalendar: c.cal.days || [], monthCalendar: c.cal.mons || [], yearData: c.cal.yrs || [],
         });
         setTimeout(() => this._draw(), 150);
+        // 缓存渲染后立即后台刷新，确保不展示过期数据
+        this._lastFetch = 0;
+        this._fetch();
       }
     } catch (e) { /* ignore */ }
     this._first = true;
