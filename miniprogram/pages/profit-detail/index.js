@@ -679,7 +679,7 @@ Page({
     const slimSnaps = snaps.map(s => ({ t: s.time, r: s.rate }));
     const snapsJson = encodeURIComponent(JSON.stringify(slimSnaps));
     // TODO: 替换为你的 H5 域名
-    const h5Base = wx.getStorageSync('h5_base_url') || 'https://your-domain.tcloudbaseapp.com';
+    const h5Base = wx.getStorageSync('h5_base_url') || 'https://cloudbase-d0gug00io7bfedd97-1434082140.tcloudbaseapp.com';
     const url = `/pages/webview/index?base=${encodeURIComponent(h5Base)}&page=profit-detail.html` +
       `&indexCode=${compareIndex}&indexLabel=${encodeURIComponent(compareLabel || '上证指数')}` +
       `&todayRate=${todayProfitRate || 0}&snapshots=${snapsJson}`;

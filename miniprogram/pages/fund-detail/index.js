@@ -762,7 +762,7 @@ Page({
 	  onOpenH5Detail() {
 	    const { fundCode, fundName } = this.data;
 	    // TODO: 替换为你的 H5 域名（云开发静态托管域名或自有域名）
-	    const h5Base = wx.getStorageSync('h5_base_url') || 'https://your-domain.tcloudbaseapp.com';
+	    const h5Base = wx.getStorageSync('h5_base_url') || 'https://cloudbase-d0gug00io7bfedd97-1434082140.tcloudbaseapp.com';
 	    const url = `/pages/webview/index?base=${encodeURIComponent(h5Base)}&page=fund-detail.html&code=${fundCode}&fundName=${encodeURIComponent(fundName || '')}`;
 	    wx.navigateTo({ url });
 	  },

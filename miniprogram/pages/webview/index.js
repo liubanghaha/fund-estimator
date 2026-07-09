@@ -3,7 +3,7 @@ Page({
 
   onLoad(options) {
     // 从页面参数构建 H5 URL
-    const baseUrl = options.base || 'https://your-domain.tcloudbaseapp.com';
+    const baseUrl = options.base || 'https://cloudbase-d0gug00io7bfedd97-1434082140.tcloudbaseapp.com';
     const page = options.page || 'fund-detail.html';
     const params = [];
     // 透传所有参数（排除 base 和 page）
