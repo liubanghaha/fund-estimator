@@ -671,6 +671,20 @@ Page({
   onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { this._draw(); }); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
+
+  onOpenH5Profit() {
+    const { compareIndex, compareLabel, todayProfitRate } = this.data;
+    const snaps = this._profitSnapshots || [];
+    // 精简快照数据：仅传 time + rate
+    const slimSnaps = snaps.map(s => ({ t: s.time, r: s.rate }));
+    const snapsJson = encodeURIComponent(JSON.stringify(slimSnaps));
+    // TODO: 替换为你的 H5 域名
+    const h5Base = wx.getStorageSync('h5_base_url') || 'https://your-domain.tcloudbaseapp.com';
+    const url = `/pages/webview/index?base=${encodeURIComponent(h5Base)}&page=profit-detail.html` +
+      `&indexCode=${compareIndex}&indexLabel=${encodeURIComponent(compareLabel || '上证指数')}` +
+      `&todayRate=${todayProfitRate || 0}&snapshots=${snapsJson}`;
+    wx.navigateTo({ url });
+  },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },

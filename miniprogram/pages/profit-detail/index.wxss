@@ -19,6 +19,13 @@
 .empty-btn{width:240rpx;height:72rpx;line-height:72rpx;font-size:26rpx;color:#FFF;background:var(--primary-gradient);border-radius:36rpx;text-align:center;padding:0}
 .tip-inline{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 24rpx 4rpx}
 
+/* H5 入口卡片 */
+.h5-entry-card{background:linear-gradient(135deg,#e3f2fd,#bbdefb);margin:16rpx 24rpx;border-radius:20rpx;padding:28rpx 32rpx;display:flex;align-items:center;justify-content:space-between;border:1rpx solid #90caf9}
+.h5-entry-left{flex:1}
+.h5-entry-title{font-size:28rpx;font-weight:600;color:#1565c0;margin-bottom:6rpx}
+.h5-entry-desc{font-size:22rpx;color:#1976D2;opacity:.8}
+.h5-entry-arrow{font-size:36rpx;color:#1976D2;font-weight:300}
+
 .summary-bar{display:flex;background:#FFF;padding:16rpx 16rpx;margin-bottom:16rpx}
 .summary-item{flex:1;text-align:center;padding:12rpx 4rpx;border-radius:12rpx;transition:all .2s;margin-right:6rpx}
 .summary-item:last-child{margin-right:0}

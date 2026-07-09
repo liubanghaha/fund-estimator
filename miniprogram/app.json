@@ -6,17 +6,17 @@
     "pages/search/index",
     "pages/fund-detail/index",
     "pages/add-holding/index",
-    "pages/adjust-holding/index",
     "pages/login/index",
     "pages/profit-detail/index",
     "pages/fund-compare/index",
-    "pages/correlation-matrix/index"
+    "pages/correlation-matrix/index",
+    "pages/webview/index"
   ],
   "window": {
     "backgroundColor": "#F5F5F5",
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTitleText": "我的持仓",
+    "navigationBarTitleText": "养基笔记",
     "navigationBarTextStyle": "black"
   },
   "tabBar": {

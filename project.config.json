@@ -1,5 +1,5 @@
 {
-  "description": "基金估算涨幅小程序",
+  "description": "个人基金持仓记录工具",
   "packOptions": {
     "ignore": [],
     "include": []

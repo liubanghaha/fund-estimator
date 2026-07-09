@@ -64,9 +64,6 @@ Page({
       valuation: { label: "估值", sortable: false, isValuation: true },
     },
     showChangelog: false, changelog: null,
-    alertTriggered: [], showAlertEdit: false,
-    alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
-    alertEditPeAlert: false,
     // 分组
     groups: [],
     activeGroup: "all",
@@ -98,7 +95,7 @@ Page({
   // 启用分享到好友和朋友圈
   onShareAppMessage() {
     return {
-      title: '韭菜养基宝 · 涨跌有数',
+      title: '养基笔记 · 持仓记录',
       path: '/pages/index/index',
       imageUrl: '',
     };
@@ -106,7 +103,7 @@ Page({
 
   onShareTimeline() {
     return {
-      title: '韭菜养基宝 · 持仓估值一目了然',
+      title: '养基笔记 · 持仓记录一目了然',
       imageUrl: '',
     };
   },
@@ -271,65 +268,6 @@ Page({
     getApp().markChangelogRead();
   },
 
-  // ---- 止盈止损提醒 ----
-  onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
-  onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
-  onAlertPeToggle(e) { this.setData({ alertEditPeAlert: !this.data.alertEditPeAlert }); },
-  onSaveAlert() {
-    const { alertEditFundCode, alertEditUpper, alertEditLower, alertEditPeAlert } = this.data;
-    const settings = wx.getStorageSync('alertSettings') || {};
-    settings[alertEditFundCode] = { upper: parseFloat(alertEditUpper) || 0, lower: parseFloat(alertEditLower) || 0, peAlert: !!alertEditPeAlert };
-    wx.setStorageSync('alertSettings', settings);
-    // 开启PE提醒时记录当前signal作为基线
-    if (alertEditPeAlert) {
-      const h = this.data.holdings.find(h => h.fundCode === alertEditFundCode);
-      if (h && h.peTemp && h.peTemp.signal) {
-        const cache = wx.getStorageSync('peSignalCache') || {};
-        cache[alertEditFundCode] = h.peTemp.signal;
-        wx.setStorageSync('peSignalCache', cache);
-      }
-    }
-    this.setData({ showAlertEdit: false });
-    wx.showToast({ title: '已设置提醒', icon: 'success' });
-  },
-  onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
-  onDismissAlert() {
-    const codes = this.data.alertTriggered.map(t => t.fundCode);
-    const dismissed = wx.getStorageSync('alertDismissed') || {};
-    codes.forEach(c => { dismissed[c] = Date.now(); });
-    wx.setStorageSync('alertDismissed', dismissed);
-    this.setData({ alertTriggered: [] });
-  },
-  _checkAlerts() {
-    const settings = wx.getStorageSync('alertSettings') || {};
-    const dismissed = wx.getStorageSync('alertDismissed') || {};
-    const peCache = wx.getStorageSync('peSignalCache') || {};
-    const triggered = [];
-    const newPeCache = { ...peCache };
-    this.data.holdings.forEach(h => {
-      const s = settings[h.fundCode];
-      if (!s) return;
-      // 今天已解除过的不再触发
-      if (dismissed[h.fundCode] && (Date.now() - dismissed[h.fundCode] < 86400000)) return;
-      // 涨跌幅提醒
-      const rate = parseFloat(h.todayChangeRate);
-      if ((s.upper > 0 && rate >= s.upper) || (s.lower < 0 && rate <= s.lower)) {
-        triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate, type: rate >= (s.upper || 999) ? 'up' : 'down' });
-      }
-      // PE 温度变化提醒
-      if (s.peAlert && h.peTemp && h.peTemp.signal && h.peTemp.signal !== 'nodata') {
-        const prev = peCache[h.fundCode];
-        if (prev && prev !== h.peTemp.signal) {
-          const up = (prev === 'low' && h.peTemp.signal !== 'low') || (prev === 'mid' && h.peTemp.signal === 'high');
-          const signalMap = { low: '低估', mid: '正常', high: '高估' };
-          triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate: 0, type: up ? 'up' : 'down', peChange: `${signalMap[prev]||prev}→${signalMap[h.peTemp.signal]||h.peTemp.signal}` });
-        }
-        newPeCache[h.fundCode] = h.peTemp.signal;
-      }
-    });
-    wx.setStorageSync('peSignalCache', newPeCache);
-    if (triggered.length > 0) this.setData({ alertTriggered: triggered });
-  },
 
   onScrollRefresh() {
     if (!this.data.isLoggedIn) {
@@ -369,7 +307,6 @@ Page({
         });
         this.applyGroupFilter();
         this.updateGroupCounts();
-        this._checkAlerts();
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
       }
     } catch (e) {
@@ -542,41 +479,6 @@ Page({
 
   onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
-  onScreenshotAdd() {
-    // 未登录先引导授权
-    if (!this.data.isLoggedIn) {
-      wx.navigateTo({ url: "/pages/login/index" });
-      return;
-    }
-    wx.showActionSheet({
-      itemList: ["从相册选择"],
-      success: () => {
-        wx.chooseMedia({
-          count: 1, mediaType: ["image"],
-          sourceType: ["album"], sizeType: ["compressed"],
-          success: (mediaRes) => {
-            const tempPath = mediaRes.tempFiles[0].tempFilePath;
-            // 二次压缩，确保不超过 1MB（OCR 服务限制）
-            wx.compressImage({
-              src: tempPath,
-              quality: 50,
-              success: (compressRes) => {
-                const app = getApp();
-                app.globalData._screenshotPath = compressRes.tempFilePath;
-                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
-              },
-              fail: () => {
-                // 压缩失败则使用原图
-                const app = getApp();
-                app.globalData._screenshotPath = tempPath;
-                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
-              },
-            });
-          },
-        });
-      },
-    });
-  },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
 
   onToggleBatch() {
@@ -632,7 +534,8 @@ Page({
       wx.showToast({ title: "暂无持仓", icon: "none" });
       return;
     }
-    wx.navigateTo({ url: "/pages/adjust-holding/index" });
+    // 跳转到搜索页添加/编辑持仓
+    wx.navigateTo({ url: "/pages/search/index" });
   },
 
   onCorrelation() {

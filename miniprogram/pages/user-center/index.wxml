@@ -94,7 +94,7 @@
   <!-- 版本更新日志 -->
   <view wx:if="{{showVersionLog}}" class="ver-mask" bind:tap="onCloseVersionLog">
     <view class="ver-card" catch:tap="">
-      <view class="ver-title">韭菜养基宝</view>
+      <view class="ver-title">养基笔记</view>
       <view class="ver-version">版本号：{{appVersion}}</view>
       <view class="ver-body">
         <block wx:for="{{versionLog}}" wx:key="version">

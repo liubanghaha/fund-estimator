@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>基金详情</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;color:#333;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+.page{max-width:480px;margin:0 auto;padding:12px}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.header{display:flex;align-items:flex-start;justify-content:space-between}
+.header-left{flex:1}
+.fund-name{font-size:18px;font-weight:600;word-break:break-all}
+.fund-code{font-size:13px;color:#999;margin-top:4px}
+.btn-sm{font-size:13px;padding:6px 14px;border-radius:16px;border:1px solid #ddd;background:#fff;color:#555;cursor:pointer;white-space:nowrap}
+.btn-sm.followed{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
+.estimate-card{text-align:center}
+.estimate-label{font-size:13px;color:#999;margin-bottom:8px}
+.estimate-nav{font-size:32px;font-weight:700;margin-bottom:4px}
+.estimate-ref{font-size:12px;color:#bbb;margin-bottom:12px}
+.estimate-change{font-size:24px;font-weight:600}
+.estimate-time{font-size:11px;color:#bbb;margin-top:6px}
+.up{color:#E4393C}.down{color:#2E8B57}.neutral{color:#999}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;background:#fff3e0;color:#e65100;margin-left:4px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center}
+.metric-val{font-size:16px;font-weight:600;margin-bottom:2px}
+.metric-label{font-size:11px;color:#999}
+.section-title{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.period-tabs{display:flex;gap:4px;margin-bottom:12px}
+.period-tab{font-size:12px;padding:4px 10px;border-radius:12px;background:#f0f0f0;color:#666;cursor:pointer;border:none}
+.period-tab.active{background:#1976D2;color:#fff}
+canvas{display:block;width:100%;border-radius:8px}
+.return-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.return-item{text-align:center;padding:8px;background:#fafafa;border-radius:8px}
+.return-val{font-size:15px;font-weight:600;margin-bottom:2px}
+.return-label{font-size:11px;color:#999}
+.dca-toggle{padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.dca-body{margin-top:12px;display:none}
+.dca-body.show{display:block}
+.dca-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.dca-row input{padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;flex:1}
+.dca-row .unit{font-size:13px;color:#999;white-space:nowrap}
+.dca-btn{padding:10px;background:#1976D2;color:#fff;border:none;border-radius:8px;font-size:14px;width:100%;cursor:pointer}
+.dca-result{margin-top:12px;background:#f0f7ff;border-radius:8px;padding:12px}
+.result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.result-item{font-size:13px;font-weight:600}
+.result-label{font-size:10px;color:#888;margin-top:2px}
+.temp-signal{padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.temp-low{background:#e8f5e9;color:#2e7d32}
+.temp-mid{background:#fff8e1;color:#f57f17}
+.temp-high{background:#ffebee;color:#c62828}
+.risk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.risk-item{text-align:center;padding:8px}
+.risk-val{font-size:15px;font-weight:600;margin-bottom:2px}
+.risk-lbl{font-size:11px;color:#999}
+.loading{text-align:center;padding:40px 0;color:#999}
+.error{text-align:center;padding:40px 0;color:#c62828}
+.fee-body{margin-top:12px}
+.fee-table{width:100%;border-collapse:collapse;font-size:12px}
+.fee-table th,.fee-table td{padding:8px;text-align:center;border-bottom:1px solid #eee}
+.fee-lost{color:#c62828;font-weight:600}
+.disclaimer{font-size:10px;color:#bbb;text-align:center;padding:20px 0;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="page" id="app">
+  <div class="header card">
+    <div class="header-left">
+      <div class="fund-name" id="fundName">加载中...</div>
+      <div class="fund-code" id="fundCode"></div>
+    </div>
+  </div>
+
+  <div class="card estimate-card" id="estimateCard" style="display:none">
+    <div class="estimate-label">盘中参考<span class="badge">第三方数据</span></div>
+    <div class="estimate-nav" id="estNav">--</div>
+    <div class="estimate-ref" id="estRef"></div>
+    <div class="estimate-change" id="estChange">--</div>
+    <div class="estimate-time" id="estTime"></div>
+  </div>
+
+  <div class="card" id="riskCard" style="display:none">
+    <div class="section-title">风险指标</div>
+    <div class="risk-grid" id="riskGrid"></div>
+  </div>
+
+  <div class="card" id="chartCard" style="display:none">
+    <div class="section-title">净值走势</div>
+    <div class="period-tabs" id="periodTabs">
+      <button class="period-tab active" data-period="1M">近一月</button>
+      <button class="period-tab" data-period="3M">近三月</button>
+      <button class="period-tab" data-period="6M">近半年</button>
+      <button class="period-tab" data-period="1Y">近一年</button>
+      <button class="period-tab" data-period="3Y">近三年</button>
+    </div>
+    <canvas id="navCanvas"></canvas>
+  </div>
+
+  <div class="card" id="returnCard" style="display:none">
+    <div class="section-title">收益表现</div>
+    <div class="return-grid" id="returnGrid"></div>
+  </div>
+
+  <div class="card" id="dcaCard" style="display:none">
+    <div class="dca-toggle" id="dcaToggle">
+      <div><span style="font-weight:600">📈 定投模拟</span><br><span style="font-size:11px;color:#999">基于历史净值，过往收益不代表未来</span></div>
+      <span id="dcaArrow">▶</span>
+    </div>
+    <div class="dca-body" id="dcaBody">
+      <div class="dca-row">
+        <input type="number" id="dcaAmount" placeholder="月投金额" value="1000">
+        <span class="unit">元</span>
+      </div>
+      <div class="dca-row">
+        <input type="month" id="dcaStartDate">
+      </div>
+      <button class="dca-btn" id="dcaRunBtn">开始模拟</button>
+      <div class="dca-result" id="dcaResult" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="card" id="profileCard" style="display:none">
+    <div class="section-title">基金档案</div>
+    <div id="profileContent"></div>
+  </div>
+
+  <div class="card" id="feeCard" style="display:none">
+    <div class="dca-toggle" id="feeToggle">
+      <div><span style="font-weight:600">💰 费用参考</span><br><span style="font-size:11px;color:#999" id="feeRate"></span></div>
+      <span id="feeArrow">▶</span>
+    </div>
+    <div class="dca-body" id="feeBody">
+      <div style="font-size:12px;color:#999;margin-bottom:10px">假设投资¥100,000，年化收益8%，费率差复利影响：</div>
+      <table class="fee-table" id="feeTable"></table>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    数据来源于公开接口，仅供参考，不构成投资建议。<br>
+    投资有风险，入市需谨慎。
+  </div>
+</div>
+
+<script>
+// ===== Utils =====
+function fmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function fmtPct(v){if(v==null)return'--';return(v>=0?'+':'')+v.toFixed(2)+'%'}
+function fmtMoney(v){if(v==null)return'--';return'¥'+Number(v).toLocaleString('zh-CN',{minimumFractionDigits:0,maximumFractionDigits:0})}
+function getParam(name){const u=new URLSearchParams(location.search);return u.get(name)}
+
+// ===== JSONP =====
+function jsonp(url,cbKey){
+  return new Promise((resolve,reject)=>{
+    const cb='_cb'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const t=setTimeout(()=>{cleanup();reject(new Error('timeout'))},10000);
+    const cleanup=()=>{clearTimeout(t);delete window[cb];s&&s.remove()};
+    window[cb]=data=>{cleanup();resolve(data)};
+    const s=document.createElement('script');
+    s.src=url.replace(cbKey,cb);
+    s.onerror=()=>{cleanup();reject(new Error('network error'))};
+    document.head.appendChild(s);
+  })
+}
+
+// ===== API =====
+const API={
+  async fetchEstimate(code){
+    return new Promise((resolve)=>{
+      window.jsonpgz=data=>{resolve(data)};
+      const s=document.createElement('script');
+      s.src='https://fundgz.1234567.com.cn/js/'+code+'.js?rt='+Date.now();
+      s.onerror=()=>resolve(null);
+      document.head.appendChild(s);
+    })
+  },
+  async fetchNAVHistory(code,pageSize=250){
+    try{
+      const data=await jsonp(
+        'https://api.fund.eastmoney.com/f10/lsjz?callback=CALLBACK&fundCode='+code+'&pageIndex=1&pageSize='+pageSize+'&startDate=&endDate=&_='+Date.now(),
+        'CALLBACK'
+      );
+      if(!data||!data.Data||!data.Data.LSJZList)return[];
+      return data.Data.LSJZList.map(d=>({
+        date:d.FSRQ,
+        nav:parseFloat(d.DWJZ)||0,
+        accNav:parseFloat(d.LJJZ)||0,
+        changeRate:d.JZZZL?parseFloat(d.JZZZL):null
+      })).reverse();
+    }catch(e){console.error('fetchNAVHistory error',e);return[]}
+  },
+  async fetchFundInfo(code){
+    try{
+      const data=await jsonp(
+        'https://fundmobapi.eastmoney.com/FundMNewApi/FundDetialInformation?callback=CALLBACK&FCODE='+code+'&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_='+Date.now(),
+        'CALLBACK'
+      );
+      return data||null;
+    }catch(e){return null}
+  }
+};
+
+// ===== Chart =====
+function drawNavChart(canvas,data,period){
+  const c=canvas;
+  const dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth;
+  const h=220;
+  c.width=w*dpr;c.height=h*dpr;
+  c.style.width=w+'px';c.style.height=h+'px';
+  const ctx=c.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const p={top:20,right:16,bottom:36,left:52};
+  const pw=w-p.left-p.right,ph=h-p.top-p.bottom;
+
+  // Filter by period
+  const now=new Date();
+  const cutoffs={M1:30,M3:90,M6:180,Y1:365,Y3:1095};
+  const pc=period.slice(0,2);
+  const days=period.startsWith('1')?(period==='1M'?30:365):(period==='3M'?90:period==='6M'?180:1095);
+  const cutoff=new Date(now.getTime()-days*86400000);
+  const cutoffStr=fmtDate(cutoff);
+  const filtered=data.filter(d=>d.date>=cutoffStr);
+  if(filtered.length<2)return;
+
+  const navs=filtered.map(d=>d.nav);
+  const min=Math.min(...navs),max=Math.max(...navs);
+  const range=max-min||0.01;
+  const yMin=min-range*0.1,yMax=max+range*0.1;
+
+  const xp=i=>p.left+(pw/(filtered.length-1))*i;
+  const yp=v=>p.top+ph-((v-yMin)/(yMax-yMin))*ph;
+
+  // Grid
+  ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.beginPath();ctx.moveTo(p.left,yp(val));ctx.lineTo(w-p.right,yp(val));ctx.stroke();
+  }
+
+  // Area
+  const firstNav=filtered[0].nav;
+  const lastNav=filtered[filtered.length-1].nav;
+  const up=lastNav>=firstNav;
+  const color=up?'#E4393C':'#2E8B57';
+  const grad=ctx.createLinearGradient(0,p.top,0,h-p.bottom);
+  grad.addColorStop(0,up?'rgba(228,57,60,0.12)':'rgba(46,139,87,0.12)');
+  grad.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.beginPath();
+  filtered.forEach((d,i)=>{const x=xp(i),y=yp(d.nav);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+  ctx.lineTo(xp(filtered.length-1),h-p.bottom);
+  ctx.lineTo(xp(0),h-p.bottom);
+  ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+
+  // Line
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=1.5;
+  filtered.forEach((d,i)=>{const x=xp(i),y=yp(d.nav);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+  ctx.stroke();
+
+  // End dot
+  const last=filtered[filtered.length-1];
+  const lx=xp(filtered.length-1),ly=yp(last.nav);
+  ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+
+  // Y labels
+  ctx.fillStyle='#999';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.fillText(val.toFixed(3),p.left-6,yp(val));
+  }
+
+  // X labels
+  ctx.fillStyle='#999';ctx.font='9px sans-serif';ctx.textBaseline='top';ctx.textAlign='center';
+  const n=Math.min(5,filtered.length);
+  for(let i=0;i<n;i++){
+    const idx=Math.round((filtered.length-1)*i/(n-1));
+    ctx.fillText(filtered[idx].date.slice(5),xp(idx),h-p.bottom+6);
+  }
+
+  // Value label on last point
+  ctx.fillStyle=color;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.textBaseline='bottom';
+  ctx.fillText(last.nav.toFixed(4),Math.min(lx+8,w-p.right-4),ly-4);
+}
+
+// ===== Calc =====
+function calcReturns(history,now){
+  const today=fmtDate(now||new Date());
+  const findNav=days=>{
+    const d=new Date(now||new Date());d.setDate(d.getDate()-days);
+    const s=fmtDate(d);
+    const found=history.find(h=>h.date<=s);
+    return found?found.nav:null;
+  };
+  const latest=history[history.length-1]?.nav;
+  if(!latest)return{};
+  return{
+    week:calcRet(latest,findNav(7)),
+    month:calcRet(latest,findNav(30)),
+    threeMonth:calcRet(latest,findNav(90)),
+    sixMonth:calcRet(latest,findNav(180)),
+    year:calcRet(latest,findNav(365)),
+    threeYear:calcRet(latest,findNav(1095)),
+  };
+}
+function calcRet(current,prev){if(!current||!prev)return null;return+(((current-prev)/prev)*100).toFixed(2)}
+
+function calcRisk(history){
+  if(history.length<5)return null;
+  const navs=history.map(d=>d.nav);
+  const returns=[];
+  for(let i=1;i<navs.length;i++)returns.push((navs[i]-navs[i-1])/navs[i-1]);
+  const mean=returns.reduce((a,b)=>a+b,0)/returns.length;
+  const variance=returns.reduce((a,b)=>a+Math.pow(b-mean,2),0)/returns.length;
+  const volatility=Math.sqrt(variance)*Math.sqrt(250)*100;
+  const sharpe=(mean*250)/(volatility/100)||0;
+  let maxDD=0,peak=navs[0];
+  for(const n of navs){if(n>peak)peak=n;const dd=(peak-n)/peak*100;if(dd>maxDD)maxDD=dd}
+  return{maxDrawdown:+maxDD.toFixed(2),volatility:+volatility.toFixed(2),sharpe:+sharpe.toFixed(2)};
+}
+
+function calcDCA(history,monthAmount,startDate){
+  const sorted=history.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const totalMonths=[];
+  const sd=new Date(startDate);
+  let cursor=new Date(sd.getFullYear(),sd.getMonth(),1);
+  const now=new Date();
+  while(cursor<=now){
+    totalMonths.push(fmtDate(cursor).slice(0,7));
+    cursor.setMonth(cursor.getMonth()+1);
+  }
+  let totalShares=0,totalInvested=0;
+  for(const ym of totalMonths){
+    const candidates=sorted.filter(d=>d.date.startsWith(ym));
+    if(!candidates.length)continue;
+    const nav=candidates[candidates.length-1].nav;
+    const shares=monthAmount/nav;
+    totalShares+=shares;totalInvested+=monthAmount;
+  }
+  if(!totalShares)return null;
+  const latest=sorted[sorted.length-1].nav;
+  const currentValue=totalShares*latest;
+  const totalReturn=+(currentValue-totalInvested).toFixed(2);
+  const returnRate=+((totalReturn/totalInvested)*100).toFixed(2);
+  const years=totalMonths.length/12||0.5;
+  const annualized=+(Math.pow(currentValue/totalInvested,1/years)-1)*100;
+  return{
+    totalInvested:fmtMoney(totalInvested),currentValue:fmtMoney(currentValue),
+    totalReturn,totalReturnRate:returnRate,annualizedReturn:+annualized.toFixed(2),months:totalMonths.length
+  };
+}
+
+// ===== Main =====
+(async function(){
+  const fundCode=getParam('code')||getParam('fundCode')||'000001';
+  document.getElementById('fundCode').textContent=fundCode;
+
+  // Fetch all data
+  const [estimate,history,fundInfo]=await Promise.all([
+    API.fetchEstimate(fundCode),
+    API.fetchNAVHistory(fundCode),
+    API.fetchFundInfo(fundCode)
+  ]);
+
+  // Fund name
+  const name=fundInfo?.Datas?.FundDetialInformation?.[0]?.SHORTNAME||estimate?.name||fundCode;
+  document.getElementById('fundName').textContent=name;
+  document.title=name;
+
+  // Estimate card
+  if(estimate){
+    const ec=document.getElementById('estimateCard');ec.style.display='block';
+    document.getElementById('estNav').textContent=estimate.gsz||'--';
+    document.getElementById('estRef').textContent='昨日净值 '+(estimate.dwjz||'--');
+    const cr=estimate.gszzl?parseFloat(estimate.gszzl):null;
+    const el=document.getElementById('estChange');
+    el.textContent=fmtPct(cr);
+    el.className='estimate-change '+(cr>0?'up':cr<0?'down':'neutral');
+    document.getElementById('estTime').textContent='数据时间：'+(estimate.gztime||'--');
+  }
+
+  // History chart
+  if(history.length>1){
+    document.getElementById('chartCard').style.display='block';
+    const canvas=document.getElementById('navCanvas');
+    let curPeriod='1M';
+    drawNavChart(canvas,history,curPeriod);
+
+    document.getElementById('periodTabs').addEventListener('click',e=>{
+      if(e.target.tagName!=='BUTTON')return;
+      document.querySelectorAll('.period-tab').forEach(b=>b.classList.remove('active'));
+      e.target.classList.add('active');
+      curPeriod=e.target.dataset.period;
+      drawNavChart(canvas,history,curPeriod);
+    });
+
+    // Returns
+    const rets=calcReturns(history);
+    document.getElementById('returnCard').style.display='block';
+    const labels={week:'近1周',month:'近1月',threeMonth:'近3月',sixMonth:'近6月',year:'近1年',threeYear:'近3年'};
+    document.getElementById('returnGrid').innerHTML=Object.entries(labels).map(([k,l])=>{
+      const v=rets[k];
+      return '<div class="return-item"><div class="return-val '+(v>0?'up':v<0?'down':'')+'">'+fmtPct(v)+'</div><div class="return-label">'+l+'</div></div>';
+    }).join('');
+
+    // Risk metrics
+    const risk=calcRisk(history);
+    if(risk){
+      document.getElementById('riskCard').style.display='block';
+      document.getElementById('riskGrid').innerHTML=
+        '<div class="risk-item"><div class="risk-val down">'+risk.maxDrawdown+'%</div><div class="risk-lbl">最大回撤</div></div>'+
+        '<div class="risk-item"><div class="risk-val">'+risk.volatility+'%</div><div class="risk-lbl">年化波动率</div></div>'+
+        '<div class="risk-item"><div class="risk-val '+(risk.sharpe>1?'up':'')+'">'+risk.sharpe+'</div><div class="risk-lbl">夏普比率</div></div>';
+    }
+
+    // DCA
+    document.getElementById('dcaCard').style.display='block';
+    const dcaDefaults={amount:1000,startDate:fmtDate(new Date(Date.now()-365*86400000)).slice(0,7)};
+    document.getElementById('dcaAmount').value=dcaDefaults.amount;
+    document.getElementById('dcaStartDate').value=dcaDefaults.startDate;
+
+    document.getElementById('dcaToggle').addEventListener('click',()=>{
+      const body=document.getElementById('dcaBody');
+      const arrow=document.getElementById('dcaArrow');
+      body.classList.toggle('show');arrow.textContent=body.classList.contains('show')?'▼':'▶';
+    });
+
+    document.getElementById('dcaRunBtn').addEventListener('click',()=>{
+      const amt=parseFloat(document.getElementById('dcaAmount').value)||1000;
+      const sd=document.getElementById('dcaStartDate').value;
+      if(!sd){alert('请选择起始日期');return}
+      const res=calcDCA(history,amt,sd);
+      if(!res){alert('数据不足，无法计算');return}
+      const el=document.getElementById('dcaResult');el.style.display='block';
+      el.innerHTML=
+        '<div class="result-grid">'+
+        '<div><div class="result-item">'+res.totalInvested+'</div><div class="result-label">累计投入</div></div>'+
+        '<div><div class="result-item">'+res.currentValue+'</div><div class="result-label">当前市值</div></div>'+
+        '<div><div class="result-item '+(res.totalReturn>=0?'up':'down')+'">'+(res.totalReturn>=0?'+':'')+res.totalReturn+'</div><div class="result-label">总收益</div></div>'+
+        '</div>'+
+        '<div class="result-grid" style="margin-top:8px">'+
+        '<div><div class="result-item '+(res.totalReturn>=0?'up':'down')+'">'+fmtPct(res.totalReturnRate)+'</div><div class="result-label">总收益率</div></div>'+
+        '<div><div class="result-item '+(res.totalReturn>=0?'up':'down')+'">'+fmtPct(res.annualizedReturn)+'</div><div class="result-label">年化收益率</div></div>'+
+        '<div><div class="result-item">'+res.months+'</div><div class="result-label">定投月数</div></div>'+
+        '</div>';
+    });
+  }
+
+  // Fund profile
+  if(fundInfo?.Datas?.FundDetialInformation){
+    const p=fundInfo.Datas.FundDetialInformation[0];
+    document.getElementById('profileCard').style.display='block';
+    document.getElementById('profileContent').innerHTML=
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:13px">'+
+      '<div><span style="color:#999">基金类型：</span>'+(p.FTYPE||'--')+'</div>'+
+      '<div><span style="color:#999">成立日期：</span>'+(p.ESTABDATE||'--')+'</div>'+
+      '<div><span style="color:#999">基金规模：</span>'+(p.FUNDSCALE?Number(p.FUNDSCALE).toLocaleString()+'万元':'--')+'</div>'+
+      '<div><span style="color:#999">基金公司：</span>'+(p.FINVESTADVISOR||'--')+'</div>'+
+      '<div><span style="color:#999">管理费率：</span>'+(p.MANAGERATE||'--')+'</div>'+
+      '<div><span style="color:#999">托管费率：</span>'+(p.ESCROWFEERATE||'--')+'</div>'+
+      '</div>';
+
+    // Fee calculator
+    const mgmtRate=parseFloat(p.MANAGERATE)||1.5,escrowRate=parseFloat(p.ESCROWFEERATE)||0.25;
+    const totalRate=mgmtRate+escrowRate;
+    if(totalRate>0){
+      document.getElementById('feeCard').style.display='block';
+      document.getElementById('feeRate').textContent='年费率约 '+totalRate.toFixed(2)+'%';
+      const rows=[5,10,20].map(yr=>{
+        const withFee=Math.round(100000*Math.pow(1.08-totalRate/100,yr));
+        const noFee=Math.round(100000*Math.pow(1.08,yr));
+        const lost=noFee-withFee,pct=+(lost/noFee*100).toFixed(1);
+        return'<tr><td>'+yr+'年后</td><td>¥'+withFee.toLocaleString()+'</td><td>¥'+noFee.toLocaleString()+'</td><td class="fee-lost">¥'+lost.toLocaleString()+' ('+pct+'%)</td></tr>';
+      }).join('');
+      document.getElementById('feeTable').innerHTML=
+        '<thead><tr><th></th><th>本基金</th><th>零费率</th><th>费用损耗</th></tr></thead><tbody>'+rows+'</tbody>';
+
+      document.getElementById('feeToggle').addEventListener('click',()=>{
+        const body=document.getElementById('feeBody');
+        const arrow=document.getElementById('feeArrow');
+        body.classList.toggle('show');arrow.textContent=body.classList.contains('show')?'▼':'▶';
+      });
+    }
+  }
+
+  // Error state
+  if(!estimate&&!history.length&&!fundInfo){
+    document.getElementById('app').innerHTML='<div class="error">加载失败，请检查基金代码或稍后重试</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -9,12 +9,6 @@
   >
     <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
 
-      <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
-        <text class="alert-icon">🔔</text>
-        <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
-        <text class="alert-text" wx:else>{{alertTriggered[0].fundName}} {{alertTriggered[0].type === 'up' ? '涨超' : '跌超'}}提醒<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
-        <text class="alert-close" bind:tap="onDismissAlert">✕</text>
-      </view>
       <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 
       <view wx:elif="{{loadError}}" class="empty-state">
@@ -27,11 +21,9 @@
 
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
         <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
-        <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
-        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
+        <view class="empty-hint">搜索基金代码或名称手动添加</view>
         <view class="empty-btns">
-          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加</button>
-          <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加</button>
+          <button class="login-btn" bind:tap="onSearch">🔍 搜索添加</button>
         </view>
       </view>
 
@@ -40,7 +32,7 @@
           <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
           <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
-          <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
+          <view class="asset-label">今日收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
           <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
             {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? '+' : '') + groupSummary.todayProfit : (todayProfit > 0 ? '+' : '') + todayProfit) : '****'}}
           </view>
@@ -75,7 +67,7 @@
           </view>
           <view class="action-item" bind:tap="onAdjust">
             <view class="action-icon">✏️</view>
-            <view class="action-text">加减仓</view>
+            <view class="action-text">编辑</view>
           </view>
           <view class="action-item" bind:tap="onCorrelation">
             <view class="action-icon">📊</view>
@@ -228,22 +220,6 @@
         </view>
       </view>
       <view class="col-edit-close" bind:tap="onCloseColEdit">完成</view>
-    </view>
-  </view>
-
-  <!-- 止盈止损设置 -->
-  <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
-    <view class="col-edit-card" catch:tap="noop">
-      <view class="col-edit-title">止盈止损提醒 — {{alertEditFundName}}</view>
-      <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
-      <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
-      <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
-        <text class="alert-label">PE估值变化提醒</text>
-        <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">
-          <view class="pe-switch-dot"></view>
-        </view>
-      </view>
-      <view class="col-edit-close" bind:tap="onSaveAlert">保存</view>
     </view>
   </view>
 

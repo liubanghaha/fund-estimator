@@ -23,6 +23,15 @@
     </view>
 
     <block wx:if="{{!loading}}">
+    <!-- 盘中估值入口 → H5 -->
+    <view class="h5-entry-card" bind:tap="onOpenH5Detail">
+      <view class="h5-entry-left">
+        <view class="h5-entry-title">📊 盘中估值与深度分析</view>
+        <view class="h5-entry-desc">实时估值 · PE温度 · 定投回测 · 费率分析</view>
+      </view>
+      <view class="h5-entry-arrow">→</view>
+    </view>
+
     <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
@@ -35,7 +44,7 @@
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
             {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
           </view>
-          <view class="nav-badge">实时数据</view>
+          <view class="nav-badge">盘中参考</view>
         </view>
       </view>
     </view>
@@ -362,10 +371,6 @@
       <button wx:if="{{hasHolding}}" class="btn-txn" bind:tap="onRefresh">
         <text class="btn-icon">📋</text>
         <text>{{showTransactions ? '隐藏记录' : '交易记录'}}</text>
-      </button>
-      <button wx:else class="btn-txn" bind:tap="onImportScreenshot">
-        <text class="btn-icon">📷</text>
-        <text>截图导入</text>
       </button>
     </view>
     <view class="bottom-safe"></view>

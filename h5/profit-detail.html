@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>收益走势</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;color:#333;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+.page{max-width:480px;margin:0 auto;padding:12px}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.section-title{font-size:15px;font-weight:600;margin-bottom:12px}
+canvas{display:block;width:100%;border-radius:8px}
+.period-tabs{display:flex;gap:4px;margin-bottom:12px}
+.period-tab{font-size:12px;padding:4px 10px;border-radius:12px;background:#f0f0f0;color:#666;cursor:pointer;border:none}
+.period-tab.active{background:#1976D2;color:#fff}
+.summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.summary-item{text-align:center;padding:10px;background:#fafafa;border-radius:8px}
+.summary-val{font-size:20px;font-weight:700;margin-bottom:4px}
+.summary-label{font-size:12px;color:#999}
+.up{color:#E4393C}.down{color:#2E8B57}
+.loading{text-align:center;padding:60px 0;color:#999}
+.error{text-align:center;padding:60px 0;color:#c62828}
+.disclaimer{font-size:10px;color:#bbb;text-align:center;padding:20px 0;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="page" id="app">
+  <div id="loading" class="loading">加载数据中...</div>
+  <div id="content" style="display:none">
+    <div class="card" id="summaryCard">
+      <div class="section-title">收益概览</div>
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="card" id="intradayCard" style="display:none">
+      <div class="section-title">今日走势</div>
+      <canvas id="intradayCanvas"></canvas>
+    </div>
+
+    <div class="card" id="trendCard">
+      <div class="section-title">收益走势</div>
+      <div class="period-tabs" id="periodTabs">
+        <button class="period-tab" data-period="month">近一月</button>
+        <button class="period-tab active" data-period="quarter">近三月</button>
+        <button class="period-tab" data-period="year">近一年</button>
+      </div>
+      <canvas id="trendCanvas"></canvas>
+    </div>
+
+    <div class="disclaimer">数据来源于公开接口与个人持仓记录，仅供参考，不构成投资建议。</div>
+  </div>
+</div>
+
+<script>
+// ===== Utils =====
+function fmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function fmtPct(v){if(v==null)return'--';return(v>=0?'+':'')+v.toFixed(2)+'%'}
+function fmtMoney(v){if(v==null)return'--';return'¥'+Number(v).toLocaleString('zh-CN',{minimumFractionDigits:0,maximumFractionDigits:0})}
+function getParam(name){const u=new URLSearchParams(location.search);return u.get(name)}
+
+// ===== JSONP =====
+function jsonp(url,cbKey){
+  return new Promise((resolve,reject)=>{
+    const cb='_cb'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const t=setTimeout(()=>{cleanup();reject(new Error('timeout'))},10000);
+    const cleanup=()=>{clearTimeout(t);delete window[cb];s&&s.remove()};
+    window[cb]=data=>{cleanup();resolve(data)};
+    const s=document.createElement('script');
+    s.src=url.replace(cbKey,cb);
+    s.onerror=()=>{cleanup();reject(new Error('network error'))};
+    document.head.appendChild(s);
+  })
+}
+
+// ===== API =====
+async function fetchFundNAV(code,days){
+  try{
+    const data=await jsonp(
+      'https://api.fund.eastmoney.com/f10/lsjz?callback=CALLBACK&fundCode='+code+'&pageIndex=1&pageSize='+days+'&_='+Date.now(),
+      'CALLBACK'
+    );
+    if(!data||!data.Data||!data.Data.LSJZList)return[];
+    return data.Data.LSJZList.map(d=>({
+      date:d.FSRQ,nav:parseFloat(d.DWJZ)||0,changeRate:d.JZZZL?parseFloat(d.JZZZL):null
+    })).reverse();
+  }catch(e){return[]}
+}
+
+async function fetchIndexHistory(code,days){
+  const secidMap={'000001':'1.000001','399001':'0.399001','000300':'1.000300','399006':'0.399006'};
+  const secid=secidMap[code]||'1.000001';
+  try{
+    const resp=await fetch(
+      'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid='+secid+'&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt='+days
+    );
+    const json=await resp.json();
+    if(!json.data||!json.data.klines)return[];
+    return json.data.klines.map(l=>{
+      const p=l.split(',');return{date:p[0],close:parseFloat(p[2])||0};
+    });
+  }catch(e){return[]}
+}
+
+async function fetchIntradayIndex(code){
+  const S={'000001':'sh000001','399001':'sz399001','000300':'sh000300','399006':'sz399006'};
+  const scode=S[code]||'sh000001';
+  try{
+    const resp=await fetch('https://web.ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data&code='+scode);
+    const raw=await resp.text();
+    const json=JSON.parse(raw.replace(/^min_data=/,'').trim());
+    const sd=json.data&&json.data[scode];
+    if(!sd)return[];
+    const preClose=parseFloat((sd.qt&&sd.qt[scode]&&sd.qt[scode][4])||0);
+    const points=(sd.data&&sd.data.data)||[];
+    return points.map(l=>{
+      const p=l.split(' ');const t=p[0],price=parseFloat(p[1]);
+      return{time:t.slice(0,2)+':'+t.slice(2,4),close:price,changeRate:preClose?+(((price-preClose)/preClose)*100).toFixed(2):0};
+    });
+  }catch(e){return[]}
+}
+
+// ===== Chart Drawing =====
+function drawDualChart(canvas,data,fieldA,fieldB,labelA,labelB,periodDays){
+  const c=canvas,dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth,h=240;
+  c.width=w*dpr;c.height=h*dpr;c.style.width=w+'px';c.style.height=h+'px';
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+  const p={top:24,right:16,bottom:36,left:48};
+  const pw=w-p.left-p.right,ph=h-p.top-p.bottom;
+
+  const now=new Date();const cutoff=new Date(now.getTime()-periodDays*86400000);
+  const cutoffStr=fmtDate(cutoff);
+  const filtered=data.filter(d=>d.date>=cutoffStr);
+  if(filtered.length<2){
+    ctx.fillStyle='#BBB';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('数据不足',w/2,h/2);return;
+  }
+
+  const valsA=filtered.map(d=>d[fieldA]).filter(v=>v!=null);
+  const valsB=filtered.map(d=>d[fieldB]).filter(v=>v!=null);
+  const all=[...valsA,...valsB];
+  let min=Math.min(...all),max=Math.max(...all);
+  if(min>0)min=0;if(max<0)max=0;
+  const range=max-min||0.01;
+  const yMin=min-range*0.15,yMax=max+range*0.15;
+
+  const xp=i=>p.left+(pw/Math.max(filtered.length-1,1))*i;
+  const yp=v=>p.top+ph-((v-yMin)/(yMax-yMin))*ph;
+
+  // Grid
+  ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.beginPath();ctx.moveTo(p.left,yp(val));ctx.lineTo(w-p.right,yp(val));ctx.stroke();
+  }
+
+  // Zero line
+  const zy=yp(0);
+  if(zy>p.top&&zy<h-p.bottom){
+    ctx.strokeStyle='rgba(0,0,0,0.12)';ctx.lineWidth=0.8;
+    ctx.setLineDash([4,4]);ctx.beginPath();
+    ctx.moveTo(p.left,zy);ctx.lineTo(w-p.right,zy);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Lines
+  [{f:fieldA,l:labelA,c:'#E4393C'},{f:fieldB,l:labelB,c:'#1976D2'}].forEach(cfg=>{
+    ctx.beginPath();ctx.strokeStyle=cfg.c;ctx.lineWidth=1.5;
+    let started=false;
+    filtered.forEach((d,i)=>{
+      if(d[cfg.f]==null)return;
+      const x=xp(i),y=yp(d[cfg.f]);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y);started=true;
+    });
+    if(started)ctx.stroke();
+  });
+
+  // Y labels
+  ctx.fillStyle='#999';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.fillText(val.toFixed(1)+'%',p.left-6,yp(val));
+  }
+
+  // X labels
+  ctx.fillStyle='#999';ctx.font='9px sans-serif';ctx.textBaseline='top';ctx.textAlign='center';
+  const n=Math.min(5,filtered.length);
+  for(let i=0;i<n;i++){
+    const idx=Math.round((filtered.length-1)*i/(n-1));
+    ctx.fillText(filtered[idx].date.slice(5),xp(idx),h-p.bottom+6);
+  }
+
+  // Legend
+  ctx.font='10px sans-serif';ctx.textBaseline='middle';
+  const fmt=v=>fmtPct(v);
+  ctx.fillStyle='#E4393C';ctx.fillRect(p.left,8,14,3);
+  ctx.fillStyle='#333';ctx.textAlign='left';
+  const lastA=filtered[filtered.length-1][fieldA];
+  ctx.fillText(labelA+' '+fmt(lastA),p.left+18,10);
+  if(valsB.length>0){
+    ctx.fillStyle='#1976D2';ctx.fillRect(p.left,22,14,3);
+    ctx.fillStyle='#333';
+    const lastB=filtered[filtered.length-1][fieldB];
+    ctx.fillText(labelB+' '+fmt(lastB),p.left+18,24);
+  }
+}
+
+function drawIntradayChart(canvas,profitData,indexData,profitLabel,indexLabel){
+  const c=canvas,dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth,h=220;
+  c.width=w*dpr;c.height=h*dpr;c.style.width=w+'px';c.style.height=h+'px';
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+  const p={top:20,right:16,bottom:36,left:48};
+  const pw=w-p.left-p.right,ph=h-p.top-p.bottom;
+
+  if(!profitData.length&&!indexData.length){
+    ctx.fillStyle='#BBB';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('今日暂无分时数据',w/2,h/2);return;
+  }
+
+  // Merge & sort by time (skip lunch), support both full and slim formats
+  const map={};
+  profitData.forEach(d=>{const t=d.time||d.t,r=d.rate!=null?d.rate:d.r;if(!t||r==null)return;map[t]=map[t]||{time:t};map[t].profit=r});
+  indexData.forEach(d=>{map[d.time]=map[d.time]||{time:d.time};map[d.time].index=d.changeRate});
+  const data=Object.values(map).sort((a,b)=>a.time.localeCompare(b.time));
+  if(!data.length){ctx.fillText('今日暂无分时数据',w/2,h/2);return}
+
+  const valsA=data.map(d=>d.profit).filter(v=>v!=null);
+  const valsB=data.map(d=>d.index).filter(v=>v!=null);
+  const all=[...valsA,...valsB];
+  if(!all.length)return;
+  let min=Math.min(...all),max=Math.max(...all);
+  if(min>0)min=0;if(max<0)max=0;
+  const range=max-min||0.01;
+  const yMin=min-range*0.15,yMax=max+range*0.15;
+
+  // Time-based x position (skip lunch: 09:30-11:30 + 13:00-15:00)
+  const tradingStart=570,tradingEnd=900;
+  const xp=i=>{
+    const t=data[i].time;if(!t)return p.left+pw/2;
+    const[hh,mm]=t.split(':').map(Number);
+    const total=hh*60+mm;
+    let ratio;
+    if(total<=690)ratio=(total-570)/240;
+    else if(total>=780)ratio=(120+total-780)/240;
+    else ratio=0.5;
+    return p.left+pw*Math.max(0,Math.min(1,ratio));
+  };
+  const yp=v=>p.top+ph-((v-yMin)/(yMax-yMin))*ph;
+
+  // Grid
+  ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.beginPath();ctx.moveTo(p.left,yp(val));ctx.lineTo(w-p.right,yp(val));ctx.stroke();
+  }
+
+  // Zero line
+  const zy=yp(0);
+  ctx.strokeStyle='rgba(0,0,0,0.12)';ctx.lineWidth=0.8;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(p.left,zy);ctx.lineTo(w-p.right,zy);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Lines
+  const lastProfit=valsA.length?valsA[valsA.length-1]:0;
+  const firstProfit=valsA.length?valsA[0]:0;
+  const profitColor=lastProfit>=firstProfit?'#E4393C':'#2E8B57';
+
+  [{f:'profit',c:profitColor},{f:'index',c:'#1976D2'}].forEach(cfg=>{
+    ctx.beginPath();ctx.strokeStyle=cfg.c;ctx.lineWidth=1.2;
+    let started=false;
+    data.forEach((d,i)=>{
+      if(d[cfg.f]==null)return;
+      const x=xp(i),y=yp(d[cfg.f]);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y);started=true;
+    });
+    if(started)ctx.stroke();
+  });
+
+  // Y labels
+  ctx.fillStyle='#999';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';
+  for(let i=0;i<=4;i++){
+    const val=yMax-(yMax-yMin)/4*i;
+    ctx.fillText(val.toFixed(1)+'%',p.left-6,yp(val));
+  }
+
+  // X labels (compact timeline)
+  ctx.fillStyle='#999';ctx.font='9px sans-serif';ctx.textBaseline='top';
+  [{t:'09:30',pos:0,a:'left'},{t:'11:30/13:00',pos:0.5,a:'center'},{t:'15:00',pos:1,a:'right'}].forEach(l=>{
+    ctx.textAlign=l.a;ctx.fillText(l.t,p.left+pw*l.pos,h-p.bottom+6);
+  });
+
+  // Legend
+  const fmt=v=>fmtPct(v);
+  ctx.font='10px sans-serif';ctx.textBaseline='middle';
+  ctx.fillStyle=profitColor;ctx.fillRect(p.left,8,14,3);
+  ctx.fillStyle='#333';ctx.textAlign='left';
+  ctx.fillText((profitLabel||'我的收益').slice(0,8)+' '+fmt(lastProfit),p.left+18,10);
+  if(valsB.length){
+    ctx.fillStyle='#1976D2';ctx.fillRect(p.left,22,14,3);
+    ctx.fillStyle='#333';
+    ctx.fillText((indexLabel||'指数').slice(0,8)+' '+fmt(valsB[valsB.length-1]),p.left+18,24);
+  }
+}
+
+// ===== Compute Profit History =====
+function computeProfitHistory(navHistory,shares,buyPrice,todayRate){
+  const sorted=navHistory.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const result=[];
+  for(const d of sorted){
+    if(!d.nav)continue;
+    const profit=(d.nav-buyPrice)*shares;
+    const rate=buyPrice?+(((d.nav-buyPrice)/buyPrice)*100).toFixed(2):0;
+    result.push({date:d.date,profit,rate});
+  }
+  // Append today's intraday rate if available
+  if(todayRate!=null&&result.length){
+    const last=result[result.length-1];
+    const today=fmtDate(new Date());
+    if(last.date!==today){
+      const todayProfit=(last.nav?last:result[result.length-2])?.profit;
+      // Approximate today's profit using todayRate
+      const prev=result[result.length-1];
+      const todayNav=prev.nav?prev.nav*(1+todayRate/100):null;
+      if(todayNav&&buyPrice){
+        const profit=(todayNav-buyPrice)*shares;
+        result.push({date:today,profit,rate:todayRate});
+      }
+    }
+  }
+  return result;
+}
+
+// ===== Main =====
+(async function(){
+  const fundCode=getParam('code')||getParam('fundCode');
+  const shares=parseFloat(getParam('shares')||'0');
+  const buyPrice=parseFloat(getParam('buyPrice')||'0');
+  const todayRate=getParam('todayRate')?parseFloat(getParam('todayRate')):null;
+  const indexCode=getParam('indexCode')||'000001';
+  const indexLabel=getParam('indexLabel')||'上证指数';
+  const profitSnapsRaw=getParam('snapshots');
+  const hasFund=!!(fundCode&&shares&&buyPrice);
+
+  // Parse profit snapshots (support both full and slim formats)
+  let profitSnaps=[];
+  try{
+    if(profitSnapsRaw){
+      const raw=JSON.parse(decodeURIComponent(profitSnapsRaw));
+      profitSnaps=raw.map(d=>({time:d.time||d.t,rate:d.rate!=null?d.rate:d.r}));
+    }
+  }catch(e){}
+
+  if(!hasFund&&!profitSnaps.length){
+    document.getElementById('loading').innerHTML='<div class="error">缺少数据，请从小程序进入此页面</div>';
+    return;
+  }
+
+  const intraday=await fetchIntradayIndex(indexCode);
+
+  document.getElementById('loading').style.display='none';
+  document.getElementById('content').style.display='block';
+
+  // Intraday chart
+  if(intraday.length||profitSnaps.length){
+    document.getElementById('intradayCard').style.display='block';
+    drawIntradayChart(document.getElementById('intradayCanvas'),profitSnaps,intraday,'我的收益',indexLabel);
+  }
+
+  // Fund-level profit history (only if fund data provided)
+  if(hasFund){
+    const navHistory=await fetchFundNAV(fundCode,250);
+    if(!navHistory.length){
+      document.getElementById('trendCard').style.display='none';
+    } else {
+      const profitHistory=computeProfitHistory(navHistory,shares,buyPrice,todayRate);
+      const last=profitHistory[profitHistory.length-1];
+      const totalProfit=last?last.profit:0;
+      const totalRate=last?last.rate:0;
+      document.getElementById('summaryGrid').innerHTML=
+        '<div class="summary-item"><div class="summary-val '+(totalProfit>=0?'up':'down')+'">'+(totalProfit>=0?'+':'')+totalProfit.toFixed(2)+'</div><div class="summary-label">累计收益(元)</div></div>'+
+        '<div class="summary-item"><div class="summary-val '+(totalRate>=0?'up':'down')+'">'+fmtPct(totalRate)+'</div><div class="summary-label">累计收益率</div></div>';
+
+      let curPeriod=90;
+      drawDualChart(document.getElementById('trendCanvas'),profitHistory,'rate',null,'收益率','',curPeriod);
+      document.getElementById('periodTabs').addEventListener('click',e=>{
+        if(e.target.tagName!=='BUTTON')return;
+        document.querySelectorAll('.period-tab').forEach(b=>b.classList.remove('active'));
+        e.target.classList.add('active');
+        const p=e.target.dataset.period;
+        curPeriod=p==='month'?30:p==='quarter'?90:365;
+        drawDualChart(document.getElementById('trendCanvas'),profitHistory,'rate',null,'收益率','',curPeriod);
+      });
+    }
+  } else {
+    // Snapshot-only mode: hide trend chart, show summary from snapshots
+    document.getElementById('trendCard').style.display='none';
+    if(todayRate!=null){
+      document.getElementById('summaryGrid').innerHTML=
+        '<div class="summary-item"><div class="summary-val '+(todayRate>=0?'up':'down')+'">'+fmtPct(todayRate)+'</div><div class="summary-label">当日收益</div></div>'+
+        '<div class="summary-item"><div class="summary-val">'+(profitSnaps.length||'--')+'</div><div class="summary-label">分时数据点</div></div>';
+    }
+  }
+
+  if(!intraday.length&&!profitSnaps.length){
+    document.getElementById('intradayCard').style.display='none';
+  }
+})();
+</script>
+</body>
+</html>
