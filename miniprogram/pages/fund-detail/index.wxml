@@ -32,34 +32,16 @@
       <view class="h5-entry-arrow">→</view>
     </view>
 
-    <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
+    <!-- 最新净值（T+1） -->
+    <view class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
-          <view class="nav-label">估算净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view class="nav-big">{{estimatedNav}}</view>
-          <view wx:if="{{nav}}" class="nav-ref">昨日净值 {{nav}}</view>
+          <view class="nav-label">最新净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
+          <view class="nav-big">{{actualNav || nav || '--'}}</view>
+          <view wx:if="{{actualDate}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
         <view class="nav-change-col">
-          <view class="nav-change-label">涨幅估算</view>
-          <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
-            {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
-          </view>
-          <view class="nav-badge">盘中参考</view>
-        </view>
-      </view>
-    </view>
-
-    <view wx:if="{{!isTrading || !estimatedNav}}" class="nav-card primary">
-      <view class="nav-top-row">
-        <view class="nav-main">
-          <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view wx:else class="nav-label">单位净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
-          <view wx:else class="nav-big">{{actualNav || nav || '--'}}</view>
-          <view wx:if="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
-        </view>
-        <view class="nav-change-col">
-          <view class="nav-change-label">当日涨幅</view>
+          <view class="nav-change-label">日涨跌</view>
           <view class="nav-change {{displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : ''}}">
             {{displayChangeRate > 0 ? '+' : ''}}{{displayChangeRate != null ? displayChangeRate : '--'}}%
           </view>
@@ -67,16 +49,12 @@
       </view>
     </view>
 
-    <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
+    <view wx:if="{{riskMetrics}}" class="info-card risk-card">
       <view class="section-title">风险指标<text class="risk-period-tip">近一年</text></view>
       <view class="risk-grid">
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
-        <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
-          <view class="risk-label">估值温度<text class="risk-label-note">{{peTemp.normPE}}</text></view>
-          <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
-        </view>
+        <view class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
+        <view class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
+        <view class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
       </view>
     </view>
 
@@ -227,44 +205,6 @@
           </view>
         </view>
       </view>
-      <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">
-        <view class="fee-header" bind:tap="onToggleFee">
-          <view>
-            <text class="fee-title">💰 费用黑洞</text>
-            <text class="fee-subtitle">年费率 {{totalFeeRate}}</text>
-          </view>
-          <text class="fee-arrow {{showFee ? 'open' : ''}}">{{showFee ? '▼' : '▶'}}</text>
-        </view>
-        <view wx:if="{{showFee}}" class="fee-body">
-          <view class="fee-note">假设投资¥100,000，年化收益8%，费率差复利侵蚀：</view>
-          <view class="fee-table">
-            <view class="fee-row fee-row-head">
-              <text class="fee-col-label"></text>
-              <text class="fee-col">5年后</text>
-              <text class="fee-col">10年后</text>
-              <text class="fee-col">20年后</text>
-            </view>
-            <view class="fee-row">
-              <text class="fee-col-label">本基金</text>
-              <text class="fee-col">¥{{feeData.yr5.withFee}}</text>
-              <text class="fee-col">¥{{feeData.yr10.withFee}}</text>
-              <text class="fee-col">¥{{feeData.yr20.withFee}}</text>
-            </view>
-            <view class="fee-row">
-              <text class="fee-col-label">零费率</text>
-              <text class="fee-col">¥{{feeData.yr5.noFee}}</text>
-              <text class="fee-col">¥{{feeData.yr10.noFee}}</text>
-              <text class="fee-col">¥{{feeData.yr20.noFee}}</text>
-            </view>
-            <view class="fee-row fee-row-lost">
-              <text class="fee-col-label">被吞</text>
-              <text class="fee-col">¥{{feeData.yr5.lost}} ({{feeData.yr5.pct}}%)</text>
-              <text class="fee-col">¥{{feeData.yr10.lost}} ({{feeData.yr10.pct}}%)</text>
-              <text class="fee-col">¥{{feeData.yr20.lost}} ({{feeData.yr20.pct}}%)</text>
-            </view>
-          </view>
-        </view>
-      </view>
       </block>
       <!-- 基金换手率 -->
       <view wx:if="{{turnoverRates.length > 0}}" class="fee-card">
@@ -319,45 +259,6 @@
     </scroll-view>
 
     <!-- 定投回测 -->
-    <view class="dca-section">
-      <view class="dca-header" bind:tap="onToggleDCA">
-        <view>
-          <text class="dca-title">📈 定投模拟</text>
-          <text class="dca-subtitle">基于历史净值模拟，过往收益不代表未来</text>
-        </view>
-        <text class="dca-arrow {{showDCA ? 'open' : ''}}">{{showDCA ? '▼' : '▶'}}</text>
-      </view>
-      <view wx:if="{{showDCA}}" class="dca-body">
-        <view class="dca-form">
-          <view class="dca-field">
-            <text class="dca-label">月投金额</text>
-            <input class="dca-input" type="digit" placeholder="1000" value="{{dcaAmount}}" bindinput="onDCAAmount" />
-            <text class="dca-unit">元</text>
-          </view>
-          <view class="dca-field">
-            <text class="dca-label">定投起始</text>
-            <picker mode="date" fields="month" value="{{dcaStartDate}}" bindchange="onDCAStartDate">
-              <text class="dca-input dca-picker">{{dcaStartDate || '选择年月'}}</text>
-            </picker>
-          </view>
-          <button class="dca-btn" bind:tap="onRunDCA" loading="{{dcaLoading}}">开始模拟</button>
-        </view>
-        <view wx:if="{{dcaResult}}" class="dca-result">
-          <view class="dca-stat-row">
-            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.totalInvested}}</text><text class="dca-stat-label">累计投入(元)</text></view>
-            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.currentValue}}</text><text class="dca-stat-label">当前市值(元)</text></view>
-          </view>
-          <view class="dca-stat-row">
-            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.totalReturn}}</text><text class="dca-stat-label">总收益(元)</text></view>
-            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.returnRate}}%</text><text class="dca-stat-label">总收益率</text></view>
-          </view>
-          <view class="dca-stat-row">
-            <view class="dca-stat"><text class="dca-stat-val {{dcaResult.totalReturn >= 0 ? 'up' : 'down'}}">{{dcaResult.totalReturn >= 0 ? '+' : ''}}{{dcaResult.annualizedReturn}}%</text><text class="dca-stat-label">年化收益率</text></view>
-            <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.months}}</text><text class="dca-stat-label">定投月数</text></view>
-          </view>
-        </view>
-      </view>
-    </view>
 
     <view class="bottom-bar">
       <button class="btn-add" bind:tap="onAddHolding">

@@ -133,10 +133,7 @@
                     <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
-                    <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>
-                    <view wx:elif="{{item.position != null}}" class="t-val {{item.currentNav < 0.75 ? 't-low' : item.position <= 37 ? 't-low' : item.position >= 63 ? 't-high' : 't-mid'}}">{{item.currentNav < 0.75 ? '🟢低估' : item.position <= 37 ? '🟢低估' : item.position >= 63 ? '🔴高估' : '🟡正常'}}</view>
-                    <view wx:else class="t-val">--</view>
-                    <view wx:if="{{item.peTemp && item.peTemp.signal !== 'nodata'}}" class="t-sub">{{item.peTemp.normPE}}</view>
+                    <view class="t-val">--</view>
                   </block>
                 </view>
               </view>
@@ -150,7 +147,6 @@
           <view class="empty-hint">长按持仓可移动到本分组</view>
         </view>
 
-        <view wx:if="{{updateTime}}" class="update-time">估值时间：{{updateTime}}</view>
       </view>
     </view>
   </scroll-view>
@@ -195,18 +191,6 @@
   </view>
 
   <!-- 温度说明浮层（放在最外层，避免 scroll-view 内 fixed 失效） -->
-  <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
-    <view class="temp-tooltip-card" catch:tap="">
-      <view class="temp-tooltip-arrow"></view>
-      <view class="temp-tooltip-formula">
-        <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
-        <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
-      </view>
-      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
-      <view class="temp-tooltip-disclaimer">数据基于公开历史估值与实时行情计算，仅供参考</view>
-      <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
-    </view>
-  </view>
 
   <!-- 列表头排序 -->
   <view wx:if="{{showColEdit}}" class="col-edit-mask" bind:tap="onCloseColEdit">

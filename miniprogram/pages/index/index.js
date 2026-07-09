@@ -51,17 +51,18 @@ Page({
     selectedCount: 0,
     allSelected: false,
     loadError: false,
-    showTempInfo: false,
     lt: '<',
     gt: '>',
     assetAllocation: null,
     showAssetAlloc: false,
     showColEdit: false,
-    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "valuation"],
+    colOrder: (() => {
+      const saved = wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn"];
+      return saved.filter(c => c !== 'valuation');
+    })(),
     colDefs: {
       todayProfit: { label: "当日收益", sortable: true },
       totalReturn: { label: "累计收益", sortable: true },
-      valuation: { label: "估值", sortable: false, isValuation: true },
     },
     showChangelog: false, changelog: null,
     // 分组
@@ -233,9 +234,6 @@ Page({
     wx.setStorageSync("amountVisible", v);
   },
 
-  onTempInfoTap() {
-    this.setData({ showTempInfo: !this.data.showTempInfo });
-  },
 
   onToggleAssetAlloc() {
     this.setData({ showAssetAlloc: !this.data.showAssetAlloc });
