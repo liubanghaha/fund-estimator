@@ -34,18 +34,10 @@
 
     <!-- 最新净值（T+1） -->
     <view class="nav-card primary">
-      <view class="nav-top-row">
-        <view class="nav-main">
-          <view class="nav-label">最新净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view class="nav-big">{{actualNav || nav || '--'}}</view>
-          <view wx:if="{{actualDate}}" class="nav-date">净值日期：{{actualDate}}</view>
-        </view>
-        <view class="nav-change-col">
-          <view class="nav-change-label">日涨跌</view>
-          <view class="nav-change {{displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : ''}}">
-            {{displayChangeRate > 0 ? '+' : ''}}{{displayChangeRate != null ? displayChangeRate : '--'}}%
-          </view>
-        </view>
+      <view class="nav-main">
+        <view class="nav-label">最新净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
+        <view class="nav-big">{{actualNav || nav || '--'}}</view>
+        <view wx:if="{{actualDate}}" class="nav-date">净值日期：{{actualDate}}</view>
       </view>
     </view>
 
