@@ -223,7 +223,16 @@ const chart = {
     const range = max - min || 0.01;
     const yMin = min - range * 0.15, yMax = max + range * 0.15;
 
-    const xp = (i) => p.left + (pw / Math.max(data.length - 1, 1)) * i;
+    // 交易时段跳过午休：09:30-11:30 + 13:00-15:00，共 240 分钟，紧凑映射
+    const xp = (i) => {
+      const [hh, mm] = data[i].time.split(':').map(Number);
+      const total = hh * 60 + mm;
+      let ratio;
+      if (total <= 690) ratio = (total - 570) / 240;      // 上午
+      else if (total >= 780) ratio = (120 + total - 780) / 240; // 下午
+      else ratio = 0.5; // 午休期间落在中间
+      return p.left + pw * Math.max(0, Math.min(1, ratio));
+    };
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
     const zeroY = yp(0);
 
