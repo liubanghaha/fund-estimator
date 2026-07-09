@@ -61,7 +61,7 @@ Page({
       return saved.filter(c => c !== 'valuation');
     })(),
     colDefs: {
-      todayProfit: { label: "当日收益", sortable: true },
+      todayProfit: { label: "最新净值", sortable: true },
       totalReturn: { label: "累计收益", sortable: true },
     },
     showChangelog: false, changelog: null,
@@ -467,6 +467,18 @@ Page({
     });
     this.fetchIndices();
     wx.showToast({ title: "已保存", icon: "success", duration: 1200 });
+  },
+
+  onOpenH5Profit() {
+    const { holdings, todayProfitRate, compareIndex, compareLabel = '上证指数' } = this.data;
+    // 精简快照数据
+    const snaps = (this._profitSnapshots || []).map(s => ({ t: s.time, r: s.rate }));
+    const snapsJson = encodeURIComponent(JSON.stringify(snaps));
+    const h5Base = wx.getStorageSync('h5_base_url') || 'https://your-domain.tcloudbaseapp.com';
+    const url = `/pages/webview/index?base=${encodeURIComponent(h5Base)}&page=profit-detail.html` +
+      `&indexCode=${compareIndex || '000001'}&indexLabel=${encodeURIComponent(compareLabel)}` +
+      `&todayRate=${todayProfitRate || 0}&snapshots=${snapsJson}`;
+    wx.navigateTo({ url });
   },
 
   onTapProfit() {

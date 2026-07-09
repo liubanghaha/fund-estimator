@@ -28,20 +28,21 @@
       </view>
 
       <view wx:else class="dashboard">
-        <view class="asset-overview" bind:tap="onTapProfit">
+        <view class="asset-overview">
           <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
           <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
-          <view class="asset-label">今日收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
-          <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
-            {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? '+' : '') + groupSummary.todayProfit : (todayProfit > 0 ? '+' : '') + todayProfit) : '****'}}
+          <view class="asset-label">持仓市值<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
+          <view class="asset-value">
+            {{amountVisible ? (groupSummary ? groupSummary.totalAmount : totalAmount) : '****'}}
           </view>
           <view class="asset-sub">
-            <text>涨幅 {{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text>
-            <text class="asset-divider">|</text>
-            <text>市值 {{amountVisible ? (groupSummary ? groupSummary.totalAmount : totalAmount) : '****'}}</text>
-            <text class="asset-divider">|</text>
-            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? '+' : '') + groupSummary.totalReturn : (totalReturn > 0 ? '+' : '') + totalReturn) : '****'}}</text>
+            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计收益 {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? '+' : '') + groupSummary.totalReturn : (totalReturn > 0 ? '+' : '') + totalReturn) : '****'}}</text>
+          </view>
+          <!-- 盘中走势入口 → H5 -->
+          <view class="asset-h5-entry" bind:tap="onOpenH5Profit">
+            <text>📈 查看盘中走势与收益</text>
+            <text class="asset-h5-arrow">→</text>
           </view>
         </view>
 
@@ -106,10 +107,10 @@
               <view class="t-row t-head" bind:longpress="onLongPressHeader">
                 <view class="t-cell t-name">名称<text class="t-hint">长按排序</text></view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
-                  class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
-                  bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
-                  data-field="{{colDefs[col].sortable ? col : ''}}">
-                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable && sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
+                  class="t-cell {{sortField === col ? 'active' : ''}}"
+                  bind:tap="onSortTap"
+                  data-field="{{col}}">
+                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text>
                 </view>
               </view>
               <view wx:for="{{displayHoldings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
@@ -125,8 +126,8 @@
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
-                    <view class="t-val {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">{{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}</view>
+                    <view class="t-val">--</view>
+                    <view class="t-sub">--</view>
                   </block>
                   <block wx:elif="{{col === 'totalReturn'}}">
                     <view class="t-val {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">{{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%</view>
