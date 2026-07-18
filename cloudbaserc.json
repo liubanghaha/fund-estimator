@@ -3,6 +3,7 @@
   "envId": "cloudbase-d0gug00io7bfedd97",
   "functionRoot": "cloudfunctions",
   "functions": [
+    { "name": "bindH5", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "createCollection", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchFundInfo", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },

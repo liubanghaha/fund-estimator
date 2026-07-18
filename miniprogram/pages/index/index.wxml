@@ -1,290 +1,139 @@
-<view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}" style="height: {{pageHeight}}px">
-  <scroll-view
-    scroll-y
-    class="page-scroll"
-    refresher-enabled
-    refresher-background="#F5F5F5"
+<view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <scroll-view scroll-y class="page-scroll"
+    refresher-enabled refresher-background="#F5F5F5"
     refresher-triggered="{{refresherTriggered}}"
-    bindrefresherrefresh="onScrollRefresh"
-  >
-    <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
+    bindrefresherrefresh="onScrollRefresh">
 
-      <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
-        <text class="alert-icon">🔔</text>
-        <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
-        <text class="alert-text" wx:else>{{alertTriggered[0].fundName}} {{alertTriggered[0].type === 'up' ? '涨超' : '跌超'}}提醒<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
-        <text class="alert-close" bind:tap="onDismissAlert">✕</text>
+    <!-- 公众号关注引导 -->
+    <view wx:if="{{isLoggedIn}}" class="oa-card">
+      <view class="oa-text">📢 关注公众号，解锁更多功能</view>
+      <view class="oa-hint">搜索「你的公众号名称」关注</view>
+      <official-account></official-account>
+    </view>
+
+    <!-- 未登录 -->
+    <view wx:if="{{!isLoggedIn}}" class="empty-state">
+      <view class="empty-icon">📒</view>
+      <view class="empty-title">理财笔记</view>
+      <view class="empty-desc">简单记录记录，随时查看盈亏</view>
+      <view class="empty-btns">
+        <button class="login-btn" bind:tap="onLogin">微信一键登录</button>
       </view>
-      <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+    </view>
 
-      <view wx:elif="{{loadError}}" class="empty-state">
-        <view class="empty-icon">🔌</view>
-        <view class="empty-desc">网络异常，请检查网络后重试</view>
-        <view class="empty-btns">
-          <button class="login-btn" bind:tap="onScrollRefresh">点击重试</button>
+    <!-- 空记录 -->
+    <view wx:elif="{{dataReady && holdings.length === 0}}" class="empty-state">
+      <view class="empty-icon">📝</view>
+      <view class="empty-desc">添加你的第一笔记录</view>
+      <view class="empty-hint">支持截图导入或手动录入</view>
+      <view class="empty-btns">
+        <button class="login-btn" bind:tap="onAdd">添加记录</button>
+      </view>
+    </view>
+
+    <!-- 有数据 -->
+    <view wx:else class="dashboard">
+      <!-- 总成本卡片 -->
+      <view class="cost-overview">
+        <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
+        <view class="cost-label">记录总成本</view>
+        <view class="cost-value">{{amountVisible ? totalCost : '****'}}</view>
+        <view class="cost-sub">共 {{holdings.length}} 条记录</view>
+      </view>
+
+      <!-- 批量栏 -->
+      <view wx:if="{{batchMode}}" class="batch-top-bar">
+        <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
+        <text class="batch-top-title">已选 {{selectedCount}} 项</text>
+        <view class="batch-top-right">
+          <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
+          <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
+          <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
+          <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
         </view>
       </view>
 
-      <view wx:elif="{{holdings.length === 0}}" class="empty-state">
-        <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
-        <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
-        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
-        <view class="empty-btns">
-          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加</button>
-          <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加</button>
+      <!-- 快捷操作 -->
+      <view wx:else class="quick-actions">
+        <view class="action-item" bind:tap="onAdd">
+          <view class="action-icon">➕</view>
+          <view class="action-text">添加</view>
+        </view>
+        <view class="action-item" bind:tap="onToggleBatch">
+          <view class="action-icon">📋</view>
+          <view class="action-text">批量管理</view>
         </view>
       </view>
 
-      <view wx:else class="dashboard">
-        <view class="asset-overview" bind:tap="onTapProfit">
-          <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
-          <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
-          <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
-          <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
-          <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
-            {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? '+' : '') + groupSummary.todayProfit : (todayProfit > 0 ? '+' : '') + todayProfit) : '****'}}
-          </view>
-          <view class="asset-sub">
-            <text>涨幅 {{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text>
-            <text class="asset-divider">|</text>
-            <text>市值 {{amountVisible ? (groupSummary ? groupSummary.totalAmount : totalAmount) : '****'}}</text>
-            <text class="asset-divider">|</text>
-            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? '+' : '') + groupSummary.totalReturn : (totalReturn > 0 ? '+' : '') + totalReturn) : '****'}}</text>
-          </view>
-        </view>
+      <!-- 分组标签 -->
+      <view wx:if="{{holdings.length > 0}}" class="group-tabs-wrap">
+        <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+          <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部 {{groupCounts.all || 0}}</view>
+          <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组 {{groupCounts.ungrouped || 0}}</view>
+          <block wx:for="{{groups}}" wx:key="*this">
+            <view class="group-tab {{activeGroup === item ? 'active' : ''}}" bind:tap="onGroupTap" data-group="{{item}}">{{item}} {{groupCounts[item] || 0}}</view>
+          </block>
+          <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
+        </scroll-view>
+      </view>
 
-        <view wx:if="{{batchMode}}" class="batch-top-bar">
-          <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
-          <text class="batch-top-title">已选 {{selectedCount}} 项</text>
-          <view class="batch-top-right">
-            <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
-            <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
-            <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
-            <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
-          </view>
-        </view>
-
-        <view wx:else class="quick-actions">
-          <view class="action-item" bind:tap="onSearch">
-            <view class="action-icon">🔍</view>
-            <view class="action-text">搜索</view>
-          </view>
-          <view class="action-item" bind:tap="onAdd">
-            <view class="action-icon">📝</view>
-            <view class="action-text">新增</view>
-          </view>
-          <view class="action-item" bind:tap="onAdjust">
-            <view class="action-icon">✏️</view>
-            <view class="action-text">加减仓</view>
-          </view>
-          <view class="action-item" bind:tap="onCorrelation">
-            <view class="action-icon">📊</view>
-            <view class="action-text">资产分析</view>
-          </view>
-	          <view class="action-item" bind:tap="onToggleBatch">
-            <view class="action-icon">📋</view>
-            <view class="action-text">批量</view>
-          </view>
-        </view>
-
-        <!-- 分组标签栏 -->
-        <view wx:if="{{holdings.length > 0}}" class="group-tabs-wrap">
-          <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
-            <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部 {{groupCounts.all || 0}}</view>
-            <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组 {{groupCounts.ungrouped || 0}}</view>
-            <block wx:for="{{groups}}" wx:key="*this">
-              <view
-                class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
-                style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
-                bind:tap="onGroupTap"
-                bind:touchstart="onGroupTouchStart"
-                bind:touchmove="onGroupTouchMove"
-                bind:touchend="onGroupTouchEnd"
-                data-group="{{item}}"
-                data-index="{{index}}"
-              >{{item}} {{groupCounts[item] || 0}}</view>
-            </block>
-            <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
-          </scroll-view>
-        </view>
-
-        <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
-          <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
-            <view class="table-inner">
-              <view class="t-row t-head" bind:longpress="onLongPressHeader">
-                <view class="t-cell t-name">名称<text class="t-hint">长按排序</text></view>
-                <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
-                  class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
-                  bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
-                  data-field="{{colDefs[col].sortable ? col : ''}}">
-                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable && sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
-                </view>
-              </view>
-              <view wx:for="{{displayHoldings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
-                bind:tap="onTapHolding" bind:longpress="onLongPressHolding"
-                data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-id="{{item._id}}">
-                <view class="t-cell t-name">
-                  <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
-                  <view class="name-text">
-                    <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
-                    {{item.fundName}}
-                  </view>
-                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view>
-                </view>
-                <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
-                  <block wx:if="{{col === 'todayProfit'}}">
-                    <view class="t-val {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">{{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}</view>
-                  </block>
-                  <block wx:elif="{{col === 'totalReturn'}}">
-                    <view class="t-val {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">{{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}</view>
-                  </block>
-                  <block wx:elif="{{col === 'valuation'}}">
-                    <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>
-                    <view wx:elif="{{item.position != null}}" class="t-val {{item.currentNav < 0.75 ? 't-low' : item.position <= 37 ? 't-low' : item.position >= 63 ? 't-high' : 't-mid'}}">{{item.currentNav < 0.75 ? '🟢低估' : item.position <= 37 ? '🟢低估' : item.position >= 63 ? '🔴高估' : '🟡正常'}}</view>
-                    <view wx:else class="t-val">--</view>
-                    <view wx:if="{{item.peTemp && item.peTemp.signal !== 'nodata'}}" class="t-sub">{{item.peTemp.normPE}}</view>
-                  </block>
-                </view>
-              </view>
+      <!-- 记录列表 -->
+      <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
+        <view wx:for="{{displayHoldings}}" wx:key="_id"
+          class="h-row {{batchMode && item._checked ? 'selected' : ''}}"
+          bind:tap="onTapHolding"
+          bind:longpress="onLongPressHolding"
+          data-id="{{item._id}}" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
+          <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
+          <view class="h-info">
+            <view class="h-name">
+              <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
+              {{item.fundName}}
             </view>
-          </scroll-view>
+            <view class="h-code">{{item.fundCode}}</view>
+          </view>
+          <view class="h-right">
+            <view class="h-cost">{{amountVisible ? item.totalCost : '****'}}</view>
+            <view class="h-shares">{{item.shares}} 份</view>
+          </view>
         </view>
+      </view>
 
-        <view wx:elif="{{activeGroup !== 'all'}}" class="empty-group">
-          <view class="empty-icon">📂</view>
-          <view class="empty-desc">该分组暂无持仓</view>
-          <view class="empty-hint">长按持仓可移动到本分组</view>
-        </view>
-
-        <view wx:if="{{updateTime}}" class="update-time">估值时间：{{updateTime}}</view>
+      <view wx:elif="{{activeGroup !== 'all'}}" class="empty-group">
+        <view class="empty-icon">📂</view>
+        <view class="empty-desc">该分组暂无记录</view>
+        <view class="empty-hint">长按记录可移动到本分组</view>
       </view>
     </view>
   </scroll-view>
 
-  <view wx:if="{{indexCards.length > 0}}" class="index-bar">
-    <view wx:if="{{showIndexEdit}}" class="index-edit-panel">
-      <view class="idx-edit-header">
-        <text class="idx-edit-title">选择显示的指数</text>
-        <view class="idx-edit-done" bind:tap="onToggleIndexEdit">完成</view>
+  <!-- 手动盈亏计算浮层 -->
+  <view wx:if="{{showCalc}}" class="calc-mask" bind:tap="onCloseCalc">
+    <view class="calc-card" catch:tap="">
+      <view class="calc-title">手动算盈亏 — {{calcName}}</view>
+      <view class="calc-info">持有 {{calcShares}} 份 · 成本 {{calcCost}} 元</view>
+      <view class="calc-field">
+        <text class="calc-label">输入最新价格</text>
+        <input class="calc-input" value="{{calcPrice}}" bindinput="onCalcPriceInput" type="digit" placeholder="输入当前价格" focus/>
       </view>
-      <view wx:for="{{ALL_INDICES}}" wx:key="code" class="idx-check-item" bind:tap="onToggleIndexItem" data-code="{{item.code}}">
-        <view class="idx-checkbox {{editSelections[item.code] ? 'checked' : ''}}">{{editSelections[item.code] ? '✓' : ''}}</view>
-        <text class="idx-check-label">{{item.name}}</text>
+      <button class="calc-btn" bind:tap="onDoCalc">计算</button>
+      <view wx:if="{{calcResult}}" class="calc-result">
+        <view class="calc-result-row">当前市值：<text class="calc-result-val">{{calcResult.currentValue}} 元</text></view>
+        <view class="calc-result-row">浮动盈亏：<text class="{{calcResult.isUp ? 'up' : 'down'}}">{{calcResult.isUp ? '+' : ''}}{{calcResult.profit}} 元 ({{calcResult.isUp ? '+' : ''}}{{calcResult.profitRate}}%)</text></view>
       </view>
-      <view class="idx-edit-actions">
-        <view class="idx-save-btn" bind:tap="onSaveIndexPrefs">保存</view>
-      </view>
-    </view>
-    <view wx:elif="{{!indexExpanded}}" class="index-collapsed" bind:tap="onToggleIndex">
-      <text class="idx-name">{{indexCards[0].name}}</text>
-      <text class="idx-price {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].price}}</text>
-      <text class="idx-change {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].change}}</text>
-      <text class="idx-change-rate {{indexCards[0].isUp ? 'up' : 'down'}}">{{indexCards[0].changeRate}}%</text>
-      <text class="idx-expand-hint">▼</text>
-    </view>
-    <view wx:elif="{{indexExpanded}}" class="index-expanded-panel">
-      <view class="idx-expanded-top" bind:tap="onToggleIndex">
-        <text class="idx-gear" catch:tap="onToggleIndexEdit">⚙</text>
-        <text class="idx-collapse-arrow">▲</text>
-      </view>
-      <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
-        <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}">
-          <view class="ic-name">{{item.name}}</view>
-          <view class="ic-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
-          <view class="ic-change-row">
-            <text class="{{item.isUp ? 'up' : 'down'}}">{{item.change}}</text>
-            <text class="{{item.isUp ? 'up' : 'down'}}">  {{item.changeRate}}%</text>
-          </view>
-        </view>
-      </scroll-view>
-    </view>
-  </view>
-
-  <!-- 温度说明浮层（放在最外层，避免 scroll-view 内 fixed 失效） -->
-  <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
-    <view class="temp-tooltip-card" catch:tap="">
-      <view class="temp-tooltip-arrow"></view>
-      <view class="temp-tooltip-formula">
-        <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
-        <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
-      </view>
-      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
-      <view class="temp-tooltip-disclaimer">数据基于公开历史估值与实时行情计算，仅供参考</view>
-      <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
-    </view>
-  </view>
-
-  <!-- 列表头排序 -->
-  <view wx:if="{{showColEdit}}" class="col-edit-mask" bind:tap="onCloseColEdit">
-    <view class="col-edit-card" catch:tap="">
-      <view class="col-edit-title">调整列表头顺序<text class="col-edit-hint">（长按表头触发）</text></view>
-      <view wx:for="{{colOrder}}" wx:key="*this" class="col-edit-row">
-        <text class="col-edit-name">{{colDefs[item].label}}</text>
-        <view class="col-edit-btns">
-          <text class="col-edit-btn {{index === 0 ? 'disabled' : ''}}" bind:tap="onColMoveUp" data-index="{{index}}">↑</text>
-          <text class="col-edit-btn {{index === colOrder.length - 1 ? 'disabled' : ''}}" bind:tap="onColMoveDown" data-index="{{index}}">↓</text>
-        </view>
-      </view>
-      <view class="col-edit-close" bind:tap="onCloseColEdit">完成</view>
-    </view>
-  </view>
-
-  <!-- 止盈止损设置 -->
-  <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
-    <view class="col-edit-card" catch:tap="noop">
-      <view class="col-edit-title">止盈止损提醒 — {{alertEditFundName}}</view>
-      <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
-      <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
-      <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
-        <text class="alert-label">PE估值变化提醒</text>
-        <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">
-          <view class="pe-switch-dot"></view>
-        </view>
-      </view>
-      <view class="col-edit-close" bind:tap="onSaveAlert">保存</view>
-    </view>
-  </view>
-
-  <!-- 版本更新日志 -->
-  <view wx:if="{{showChangelog}}" class="changelog-mask" bind:tap="onCloseChangelog">
-    <view class="changelog-card" catch:tap="">
-      <view class="changelog-title">🎉 新版本更新</view>
-      <view class="changelog-version">{{changelog.version}} · {{changelog.date}}</view>
-      <view class="changelog-list">
-        <view wx:for="{{changelog.items}}" wx:key="*this" class="changelog-item">{{item}}</view>
-      </view>
-      <view class="changelog-close" bind:tap="onCloseChangelog">知道了</view>
     </view>
   </view>
 
   <!-- 移动分组选择器 -->
-  <view wx:if="{{showGroupPicker}}" class="col-edit-mask" bind:tap="onCloseGroupPicker">
-    <view class="col-edit-card" catch:tap="">
-      <view class="col-edit-title">移动到分组</view>
+  <view wx:if="{{showGroupPicker}}" class="calc-mask" bind:tap="onCloseGroupPicker">
+    <view class="picker-card" catch:tap="">
+      <view class="picker-title">移动到分组</view>
       <scroll-view scroll-y style="max-height:480rpx;margin:16rpx 0">
-        <view wx:if="{{groups.length === 0}}" class="group-picker-empty">暂无分组，请先新建</view>
-        <view wx:for="{{groups}}" wx:key="*this" class="group-picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
-        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">📂 未分组</view>
+        <view wx:for="{{groups}}" wx:key="*this" class="picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
+        <view class="picker-item" bind:tap="onPickGroup" data-group="">📂 未分组</view>
       </scroll-view>
-      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
-      <view class="col-edit-close" bind:tap="onCloseGroupPicker" style="margin-top:16rpx;background:#F5F5F5;color:#666">取消</view>
-    </view>
-  </view>
-
-  <!-- 分享卡片预览 -->
-  <view wx:if="{{showShareCard}}" class="share-card-mask" bind:tap="onCloseShareCard">
-    <view class="share-card-panel" catch:tap="">
-      <view class="share-card-header">
-        <text class="share-card-title">持仓分享卡片</text>
-        <text class="share-card-close" bind:tap="onCloseShareCard">✕</text>
-      </view>
-      <canvas type="2d" id="shareCanvas" class="share-canvas" style="width:600rpx;height:840rpx"></canvas>
-      <view class="share-card-actions">
-        <button class="share-save-btn" bind:tap="onSaveShareCard">保存到相册</button>
-        <button class="share-send-btn" bind:tap="onShareToFriend">分享给好友</button>
-      </view>
+      <view class="picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
+      <view class="picker-close" bind:tap="onCloseGroupPicker">取消</view>
     </view>
   </view>
 </view>

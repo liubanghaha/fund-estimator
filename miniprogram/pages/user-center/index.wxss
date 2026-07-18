@@ -1,58 +1,41 @@
-.container{padding:24rpx}
+.container{padding:24rpx;min-height:100vh;background:#F5F5F5}
+
+/* 用户区 */
 .user-header{display:flex;flex-direction:column;align-items:center;padding:60rpx 0 40rpx;background:#FFF;border-radius:16rpx;margin-bottom:24rpx}
-.avatar-btn{width:120rpx;height:120rpx;padding:0;margin:0 0 20rpx 0;border:none;background:transparent;display:flex;align-items:center;justify-content:center}
-.avatar-btn::after{border:none}
 .avatar{width:120rpx;height:120rpx;border-radius:50%}
-.avatar-placeholder{width:120rpx;height:120rpx;line-height:120rpx;text-align:center;font-size:80rpx;border-radius:50%;background:#F0F0F0}
-.nickname-tip{font-size:24rpx;color:#999;margin-bottom:8rpx}
-.nickname{font-size:32rpx;color:#333}
-.menu-list{background:#FFF;border-radius:16rpx;margin-bottom:24rpx}
-.menu-item{display:flex;justify-content:space-between;align-items:center;padding:32rpx;font-size:30rpx;border-bottom:1rpx solid #F0F0F0}
+.avatar-placeholder{font-size:80rpx;margin-bottom:16rpx}
+.nickname{font-size:32rpx;font-weight:600;color:#333;margin-top:16rpx}
+.login-tip{font-size:24rpx;color:var(--primary);margin-top:8rpx}
+
+/* 菜单 */
+.menu-list{background:#FFF;border-radius:16rpx;overflow:hidden;margin-bottom:24rpx}
+.menu-item{display:flex;align-items:center;justify-content:space-between;padding:28rpx 24rpx;font-size:28rpx;color:#333;border-bottom:1rpx solid #F5F5F5}
 .menu-item:last-child{border-bottom:none}
-.arrow{color:#CCC}
-.login-tip{text-align:center;padding:32rpx;font-size:28rpx;color:#07C160;background:#FFF;border-radius:16rpx}
-.logout-btn{text-align:center;padding:32rpx;font-size:28rpx;color:#CCC;background:#FFF;border-radius:16rpx}
+.menu-item.highlight{color:var(--primary);font-weight:500}
+.menu-left{display:flex;align-items:center;gap:12rpx}
+.menu-icon{font-size:32rpx}
+.arrow{font-size:24rpx;color:#CCC}
 
-/* ========== 反馈表单 ========== */
-.feedback-form{margin-bottom:24rpx;background:#FFF;border-radius:16rpx;padding:32rpx 24rpx 24rpx}
+/* 公众号引导 */
+.oa-guide{padding:24rpx;display:flex;flex-direction:column;align-items:center}
+.oa-text{font-size:26rpx;color:#666;margin-bottom:6rpx}
+.oa-hint{font-size:22rpx;color:#BBB;margin-bottom:12rpx}
 
-.fb-section{margin-bottom:28rpx}
-.fb-label{font-size:28rpx;color:#333;font-weight:500;margin-bottom:14rpx}
-
-/* 类型选择 */
+/* 反馈 */
+.feedback-form{background:#FFF;border-radius:16rpx;padding:24rpx;margin-bottom:24rpx}
+.fb-section{margin-bottom:20rpx}
+.fb-label{font-size:26rpx;color:#666;margin-bottom:10rpx}
 .fb-type-row{display:flex;gap:16rpx}
-.fb-type-item{flex:1;text-align:center;padding:18rpx 0;font-size:26rpx;color:#666;background:#F5F5F5;border-radius:12rpx;border:2rpx solid transparent;transition:all .2s}
-.fb-type-item.active{color:var(--primary);background:var(--primary-bg);border-color:var(--primary)}
-
-/* 联系方式 */
-.fb-input{width:100%;height:80rpx;padding:0 20rpx;font-size:28rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box}
-
-/* 描述 */
-.fb-textarea{width:100%;min-height:180rpx;font-size:28rpx;padding:16rpx 20rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box;line-height:1.6}
-.fb-count{text-align:right;font-size:22rpx;color:#BBB;margin-top:8rpx}
-
-/* 图片上传 */
-.fb-images{display:flex;flex-wrap:wrap;gap:16rpx}
-.fb-img-item{position:relative;width:160rpx;height:160rpx;border-radius:12rpx;overflow:hidden}
-.fb-img{width:100%;height:100%}
-.fb-img-del{position:absolute;top:0;right:0;width:40rpx;height:40rpx;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);border-radius:0 12rpx 0 12rpx;color:#FFF;font-size:28rpx;line-height:1}
-.fb-img-add{width:160rpx;height:160rpx;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F5F5F5;border-radius:12rpx;border:2rpx dashed #DDD}
-.fb-img-add-icon{font-size:48rpx;color:#CCC;line-height:1}
-.fb-img-add-text{font-size:22rpx;color:#BBB;margin-top:4rpx}
-
-/* 操作按钮 */
-.fb-actions{display:flex;justify-content:flex-end;gap:20rpx;margin-top:8rpx}
-.fb-cancel,.fb-submit{padding:16rpx 40rpx;font-size:28rpx;border-radius:10rpx;line-height:1.4}
-.fb-cancel{background:#F5F5F5;color:#666}
-.fb-submit{background:var(--primary);color:#FFF}
-.fb-submit[disabled]{opacity:.6}
-
-.ver-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
-.ver-card{width:580rpx;max-height:75vh;background:#FFF;border-radius:20rpx;display:flex;flex-direction:column;overflow:hidden}
-.ver-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;padding:36rpx 24rpx 4rpx;flex-shrink:0}
-.ver-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:16rpx;flex-shrink:0}
-.ver-body{flex:1;padding:0 32rpx;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
-.ver-block{margin-bottom:20rpx}
-.ver-block-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:10rpx}
-.ver-item{font-size:26rpx;color:#555;line-height:2;padding-left:4rpx}
-.ver-close{margin:16rpx 32rpx 28rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx;flex-shrink:0}
+.fb-type-item{padding:10rpx 24rpx;font-size:24rpx;color:#666;background:#F5F5F5;border-radius:20rpx}
+.fb-type-item.active{background:var(--primary);color:#FFF}
+.fb-textarea{width:100%;min-height:120rpx;padding:16rpx;background:#F9F9F9;border-radius:8rpx;font-size:26rpx;box-sizing:border-box}
+.fb-count{text-align:right;font-size:22rpx;color:#BBB;margin-top:4rpx}
+.fb-images{display:flex;flex-wrap:wrap;gap:12rpx}
+.fb-img-item{position:relative;width:140rpx;height:140rpx}
+.fb-img{width:100%;height:100%;border-radius:8rpx}
+.fb-img-del{position:absolute;top:-8rpx;right:-8rpx;width:36rpx;height:36rpx;background:#E4393C;color:#FFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24rpx}
+.fb-img-add{width:140rpx;height:140rpx;border:2rpx dashed #DDD;border-radius:8rpx;display:flex;align-items:center;justify-content:center}
+.fb-img-add-icon{font-size:48rpx;color:#CCC}
+.fb-actions{display:flex;gap:16rpx}
+.fb-cancel{flex:1;height:80rpx;line-height:80rpx;background:#F5F5F5;color:#666;border-radius:12rpx;font-size:28rpx;text-align:center;padding:0}
+.fb-submit{flex:1;height:80rpx;line-height:80rpx;background:var(--primary);color:#FFF;border-radius:12rpx;font-size:28rpx;text-align:center;padding:0}

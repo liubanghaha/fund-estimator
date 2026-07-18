@@ -1,129 +1,120 @@
-<view wx:if="{{!mode}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
-<view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+<view class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <!-- 顶部模式切换 -->
+  <view class="mode-tabs">
+    <view class="mode-tab {{mode === 'manual' ? 'active' : ''}}" bind:tap="switchMode" data-mode="manual">📝 手动录入</view>
+    <view class="mode-tab {{mode === 'ocr' ? 'active' : ''}}" bind:tap="switchMode" data-mode="ocr">📷 截图导入</view>
+  </view>
 
-  <!-- ========== 截图导入模式 ========== -->
-  <block wx:if="{{mode === 'screenshot'}}">
+  <!-- ========== 手动模式 ========== -->
+  <view wx:if="{{mode === 'manual'}}">
+    <view class="form-title">{{isEdit ? '编辑记录' : '添加记录'}}</view>
 
-
-      <!-- 未选图 -->
-      <view wx:if="{{!screenshotUrl && !ocrLoading}}" class="import-bar">
-        <text class="import-desc">上传持仓截图，自动识别代码和金额</text>
-        <text class="demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
-        <view class="import-btn" bind:tap="onImportScreenshot">
-          <text class="import-icon">📷</text>
-          <text class="import-text">截图导入</text>
-          <text class="import-hint">自动识别持仓信息，可手动修正</text>
-        </view>
+    <view class="form-group">
+      <view class="form-item">
+        <text class="form-label">产品代码</text>
+        <input class="form-input" value="{{fundCode}}" bindinput="onInput" data-field="fundCode" placeholder="输入6位产品代码"/>
       </view>
-
-
-    <!-- 截图预览 -->
-    <view wx:if="{{screenshotUrl && !ocrLoading}}" class="screenshot-preview">
-      <image class="preview-img" src="{{screenshotUrl}}" mode="widthFix" />
-      <view class="preview-actions">
-        <text class="preview-tip">截图已加载</text>
-        <text class="preview-remove" bind:tap="onRemoveScreenshot">移除</text>
+      <view class="form-item">
+        <text class="form-label">产品名称</text>
+        <input class="form-input" value="{{fundName}}" bindinput="onInput" data-field="fundName" placeholder="输入产品名称"/>
+      </view>
+      <view class="form-item">
+        <text class="form-label">持有份额</text>
+        <input class="form-input" value="{{shares}}" bindinput="onInput" data-field="shares" type="digit" placeholder="购买份额"/>
+      </view>
+      <view class="form-item">
+        <text class="form-label">投入成本</text>
+        <input class="form-input" value="{{cost}}" bindinput="onInput" data-field="cost" type="digit" placeholder="购买金额（元）"/>
+      </view>
+      <view class="form-item">
+        <text class="form-label">购买日期</text>
+        <input class="form-input" value="{{buyDate}}" bindinput="onInput" data-field="buyDate" placeholder="如 2024-01-15（选填）"/>
+      </view>
+      <view class="form-item" bind:tap="onToggleGroupPicker">
+        <text class="form-label">分组</text>
+        <view class="form-picker">{{group || '未分组'}} <text class="picker-arrow">▼</text></view>
       </view>
     </view>
 
+    <!-- 分组选择 -->
+    <view wx:if="{{showGroupPicker}}" class="group-picker">
+      <view class="gp-item {{group === '' ? 'active' : ''}}" bind:tap="onSelectGroup" data-group="">未分组</view>
+      <view wx:for="{{groups}}" wx:key="*this" class="gp-item {{group === item ? 'active' : ''}}" bind:tap="onSelectGroup" data-group="{{item}}">{{item}}</view>
+    </view>
 
-    <!-- 基金卡片列表 -->
-    <view wx:if="{{ocrFunds.length > 0}}" class="fund-cards">
-      <view class="cards-header">
-        <text class="cards-title">识别到 {{ocrFunds.length}} 条记录</text>
+    <!-- 按钮 -->
+    <view class="form-btns">
+      <button wx:if="{{isEdit}}" class="btn-del" bind:tap="onDelete">删除记录</button>
+      <button class="btn-save" bind:tap="onSave">{{isEdit ? '保存修改' : '添加记录'}}</button>
+    </view>
+
+    <!-- 加减仓（编辑模式才显示） -->
+    <view wx:if="{{isEdit}}" class="trade-section">
+      <view class="section-title" bind:tap="onToggleTrade">
+        <text>交易记录</text>
+        <text class="section-arrow">{{showTrade ? '▲' : '▼'}}</text>
       </view>
 
-      <view wx:for="{{ocrFunds}}" wx:key="index" class="fund-card {{item._saved ? 'saved' : ''}}">
-        <view class="card-left">
-          <input wx:if="{{!item._saved}}" class="card-code-input" value="{{item.fundCode}}" placeholder="输入代码" bind:input="onOcrCodeInput" data-index="{{index}}"/>
-          <text wx:else class="card-code">{{item.fundCode || '--'}}</text>
-          <text class="card-name">{{item.fundName}}</text>
-          <view class="card-nums">
-            <text wx:if="{{item.marketValue != null && item.marketValue !== ''}}" class="card-mv">持有金额 ¥{{item.marketValue}}</text>
-            <text wx:if="{{item.holdingReturn != null && item.holdingReturn !== ''}}" class="card-hr">持有收益 {{item.holdingReturn}}</text>
+      <view wx:if="{{showTrade}}" class="trade-form">
+        <view class="trade-type-row">
+          <view class="trade-type {{tradeType === 'buy' ? 'active buy' : ''}}" bind:tap="onTradeTypeChange" data-type="buy">买入</view>
+          <view class="trade-type {{tradeType === 'sell' ? 'active sell' : ''}}" bind:tap="onTradeTypeChange" data-type="sell">卖出</view>
+        </view>
+        <view class="form-item">
+          <text class="form-label">{{tradeType === 'buy' ? '买入' : '卖出'}}金额</text>
+          <input class="form-input" value="{{tradeAmount}}" bindinput="onTradeInput" data-field="tradeAmount" type="digit" placeholder="金额（元）"/>
+        </view>
+        <view class="form-item">
+          <text class="form-label">{{tradeType === 'buy' ? '买入' : '卖出'}}价格</text>
+          <input class="form-input" value="{{tradePrice}}" bindinput="onTradeInput" data-field="tradePrice" type="digit" placeholder="单位价格"/>
+        </view>
+        <view class="form-item">
+          <text class="form-label">日期</text>
+          <input class="form-input" value="{{tradeDate}}" bindinput="onTradeInput" data-field="tradeDate" placeholder="如 2024-01-15"/>
+        </view>
+        <button class="btn-save small" bind:tap="onSaveTrade">记录交易</button>
+      </view>
+
+      <!-- 已有交易记录 -->
+      <view wx:if="{{transactions.length > 0}}" class="tx-list">
+        <view wx:for="{{transactions}}" wx:key="_id" class="tx-item">
+          <view class="tx-type {{item.type === 'buy' ? 'buy' : 'sell'}}">{{item.type === 'buy' ? '买入' : '卖出'}}</view>
+          <view class="tx-info">
+            <view class="tx-amount">{{item.amount}} 元 / {{item.shares}} 份</view>
+            <view class="tx-date">{{item.date || ''}}</view>
           </view>
         </view>
-        <view class="card-right">
-          <text wx:if="{{item._saved}}" class="card-done">已保存</text>
-          <text wx:else class="card-edit" bind:tap="onEditFund" data-index="{{index}}">编辑</text>
-        </view>
-      </view>
-
-      <view class="cards-footer">
-        <button wx:if="{{unsavedCount > 0}}" class="save-all-btn" bind:tap="onSaveAll" disabled="{{saving}}">
-          全部保存 ({{unsavedCount}})
-        </button>
-        <text wx:else class="cards-footer-hint">全部已保存，可在首页查看持仓</text>
       </view>
     </view>
-  </block>
+  </view>
 
-  <!-- ========== 手动填写模式 ========== -->
-  <block wx:if="{{mode === 'manual'}}">
-    <view class="form">
-      <view wx:if="{{_editIdx < 0}}" class="form-item">
-        <text class="label">代码</text>
-        <input class="input" value="{{fundCode}}" bind:input="onFundCodeInput"
-               placeholder="输入代码" disabled="{{isEdit}}"/>
-      </view>
-      <view wx:if="{{_editIdx < 0}}" class="form-item">
-        <text class="label">名称</text>
-        <input class="input" value="{{fundName}}" bind:input="onFundNameInput"
-               placeholder="输入或自动获取" disabled="{{isEdit}}"/>
-      </view>
-      <view class="form-item">
-        <text class="label">持有金额</text>
-        <input class="input" type="digit" value="{{marketValue}}"
-               bind:input="onMarketValueInput" placeholder="0.00"/>
-      </view>
-      <view class="form-item">
-        <text class="label">持有收益</text>
-        <view class="signed-input">
-          <view class="sign-toggle {{holdingSign < 0 ? 'minus' : ''}}" bind:tap="onToggleHoldingSign">{{holdingSign < 0 ? '−' : '+'}}</view>
-          <input class="input signed-val" type="digit" value="{{holdingReturnAbs}}"
-                 bind:input="onHoldingReturnInput" placeholder="0.00"/>
-        </view>
-      </view>
-      <view wx:if="{{isEdit}}" class="form-item">
-        <text class="label">加减持仓</text>
-        <view class="signed-input">
-          <view class="sign-toggle {{adjustSign < 0 ? 'minus' : ''}}" bind:tap="onToggleAdjustSign">{{adjustSign < 0 ? '−' : '+'}}</view>
-          <input class="input signed-val" type="digit" value="{{adjustAmountAbs}}"
-                 bind:input="onAdjustInput" bind:focus="onAdjustFocus" placeholder="0.00"/>
-        </view>
-      </view>
-      <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
-        <text class="label">交易日期</text>
-        <picker mode="date" value="{{adjustDate}}" bind:change="onAdjustDateChange">
-          <view class="picker-value">{{adjustDate || '点击选择日期'}}</view>
-        </picker>
-      </view>
-      <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
-        <text class="label">备注</text>
-        <input class="input" value="{{adjustNote}}" bind:input="onAdjustNoteInput"
-               placeholder="选填：操作理由" maxlength="100"/>
-      </view>
-      <view class="form-item">
-        <text class="label">买入日期</text>
-        <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">
-          <view class="picker-value">{{buyDate || '请选择日期'}}</view>
-        </picker>
-      </view>
-      <view wx:if="{{_editIdx < 0}}" class="form-item">
-        <text class="label">所属分组</text>
-        <picker mode="selector" range="{{groupPickerRange}}" value="{{groupPickerIndex}}" bind:change="onGroupChange">
-          <view class="picker-value">{{selectedGroup || '未分组（点击选择）'}}</view>
-        </picker>
-      </view>
+  <!-- ========== OCR 模式 ========== -->
+  <view wx:if="{{mode === 'ocr'}}">
+    <view wx:if="{{!ocrLoading && ocrFunds.length === 0}}" class="ocr-empty">
+      <view class="ocr-icon">📷</view>
+      <view class="ocr-desc">上传理财平台记录截图</view>
+      <view class="ocr-hint">识别结果可能有偏差，请核对后保存</view>
+      <view class="ocr-hint-sub"></view>
+      <button class="btn-save" bind:tap="onChooseImage">选择截图</button>
     </view>
 
-    <view wx:if="{{isEdit}}" class="edit-actions">
-      <view class="action-row">
-        <button class="action-btn update-btn" bind:tap="onSubmit">更新持仓</button>
-        <button class="action-btn delete-btn" bind:tap="onDelete">删除持仓</button>
-      </view>
+    <view wx:if="{{ocrLoading}}" class="ocr-loading">
+      <view class="loading-icon">🔍</view>
+      <view class="loading-text">识别中...</view>
     </view>
-    <button wx:else class="submit-btn" bind:tap="onSubmit">保存持仓</button>
-  </block>
 
+    <view wx:if="{{ocrFunds.length > 0}}" class="ocr-result">
+      <view class="ocr-result-title">识别到 {{ocrFunds.length}} 条记录</view>
+      <view wx:for="{{ocrFunds}}" wx:key="index" class="ocr-item {{item._checked ? 'checked' : ''}}" bind:tap="toggleOcrItem" data-index="{{index}}">
+        <view class="ocr-checkbox {{item._checked ? 'on' : ''}}">{{item._checked ? '✓' : ''}}</view>
+        <view class="ocr-info">
+          <view class="ocr-code">{{item.fundCode}}</view>
+          <input class="ocr-name-input" value="{{item.fundName}}" bindinput="onOcrNameChange" data-index="{{index}}" placeholder="产品名称"/>
+          <view wx:if="{{item.shares}}" class="ocr-shares">{{item.shares}} 份</view>
+        </view>
+      </view>
+      <button class="btn-save" bind:tap="onOcrSave" loading="{{ocrSaving}}">确认添加（已选 {{ocrCheckedCount}} 只）</button>
+      <view class="ocr-retry" bind:tap="onChooseImage">重新选择</view>
+    </view>
+  </view>
 </view>

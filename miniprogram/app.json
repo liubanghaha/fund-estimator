@@ -3,20 +3,14 @@
     "pages/index/index",
     "pages/watchlist/index",
     "pages/user-center/index",
-    "pages/search/index",
-    "pages/fund-detail/index",
     "pages/add-holding/index",
-    "pages/adjust-holding/index",
-    "pages/login/index",
-    "pages/profit-detail/index",
-    "pages/fund-compare/index",
-    "pages/correlation-matrix/index"
+    "pages/login/index"
   ],
   "window": {
     "backgroundColor": "#F5F5F5",
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTitleText": "我的持仓",
+    "navigationBarTitleText": "理财笔记",
     "navigationBarTextStyle": "black"
   },
   "tabBar": {
@@ -24,8 +18,8 @@
     "selectedColor": "#E4393C",
     "backgroundColor": "#FFFFFF",
     "list": [
-      { "pagePath": "pages/index/index", "text": "我的持仓" },
-      { "pagePath": "pages/watchlist/index", "text": "自选" },
+      { "pagePath": "pages/index/index", "text": "我的账本" },
+      { "pagePath": "pages/watchlist/index", "text": "我的关注" },
       { "pagePath": "pages/user-center/index", "text": "我的" }
     ]
   },

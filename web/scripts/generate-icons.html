@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>生成 PWA 图标</title></head>
+<body style="font-family: sans-serif; padding: 40px;">
+  <h2>PWA 图标生成器</h2>
+  <p>点击按钮生成两个尺寸的图标，保存到 <code>public/icons/</code> 目录</p>
+  <canvas id="c192" width="192" height="192" style="display:none"></canvas>
+  <canvas id="c512" width="512" height="512" style="display:none"></canvas>
+  <p id="status"></p>
+  <button onclick="generate()">生成并下载图标</button>
+
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      // Gradient background
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, '#e74c3c');
+      grad.addColorStop(1, '#c0392b');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, size * 0.2);
+      ctx.fill();
+
+      // Text
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${size * 0.4}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🌿', size/2, size * 0.38);
+      ctx.font = `bold ${size * 0.14}px sans-serif`;
+      ctx.fillText('养基宝', size/2, size * 0.65);
+    }
+
+    function download(canvas, filename) {
+      canvas.toBlob(b => {
+        const url = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    }
+
+    function generate() {
+      drawIcon(document.getElementById('c192'), 192);
+      drawIcon(document.getElementById('c512'), 512);
+      setTimeout(() => {
+        download(document.getElementById('c192'), 'icon-192.png');
+        setTimeout(() => {
+          download(document.getElementById('c512'), 'icon-512.png');
+          document.getElementById('status').textContent = '✅ 已下载两个图标文件，请放入 public/icons/ 目录';
+        }, 300);
+      }, 100);
+    }
+  </script>
+</body></html>

@@ -1,61 +1,47 @@
 <view class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="user-header">
-    <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-      <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" wx:if="{{avatarUrl}}" />
-      <view class="avatar-placeholder" wx:else>👤</view>
-    </button>
-    <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
+    <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" wx:if="{{avatarUrl}}" />
+    <view class="avatar-placeholder" wx:else>🌿</view>
     <view class="nickname">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
+    <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理数据</view>
   </view>
+
+  <!-- 公众号关注 -->
   <view class="menu-list">
-    <view class="menu-item" bind:tap="onSearchFund"><text>搜索添加</text><text class="arrow">></text></view>
-    <view class="menu-item" bind:tap="onAddHolding"><text>添加持仓</text><text class="arrow">></text></view>
+    <view class="oa-guide">
+      <view class="oa-text">📢 关注公众号，解锁更多功能</view>
+      <view class="oa-hint">搜索「你的公众号名称」关注</view>
+      <official-account></official-account>
+    </view>
   </view>
+
   <view class="menu-list">
-    <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
-    <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
-    <view class="menu-item" bind:tap="onToggleTheme"><text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text></view>
+    <view class="menu-item" bind:tap="onFeedback">
+      <text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text>
+    </view>
+    <view class="menu-item" bind:tap="onShowVersion">
+      <text>关于</text><text class="arrow">></text>
+    </view>
+    <view class="menu-item" bind:tap="onToggleTheme">
+      <text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text>
+    </view>
   </view>
 
   <!-- 反馈表单 -->
   <view wx:if="{{showFeedback}}" class="feedback-form">
-    <!-- 反馈类型 -->
     <view class="fb-section">
       <view class="fb-label">反馈类型</view>
       <view class="fb-type-row">
-        <view
-          class="fb-type-item {{feedbackType === 'suggestion' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="suggestion"
-        >💡 功能建议</view>
-        <view
-          class="fb-type-item {{feedbackType === 'bug' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="bug"
-        >🐛 问题反馈</view>
-        <view
-          class="fb-type-item {{feedbackType === 'other' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="other"
-        >💬 其他</view>
+        <view class="fb-type-item {{feedbackType === 'suggestion' ? 'active' : ''}}" bind:tap="onTypeTap" data-type="suggestion">💡 功能建议</view>
+        <view class="fb-type-item {{feedbackType === 'bug' ? 'active' : ''}}" bind:tap="onTypeTap" data-type="bug">🐛 问题反馈</view>
+        <view class="fb-type-item {{feedbackType === 'other' ? 'active' : ''}}" bind:tap="onTypeTap" data-type="other">💬 其他</view>
       </view>
     </view>
-
-	    <!-- 详细描述 -->
     <view class="fb-section">
       <view class="fb-label">详细描述</view>
-      <textarea
-        class="fb-textarea"
-        value="{{feedbackText}}"
-        placeholder="请详细描述你的建议或遇到的问题…"
-        maxlength="500"
-        auto-height
-        bind:input="onFeedbackInput"
-      />
+      <textarea class="fb-textarea" value="{{feedbackText}}" placeholder="请详细描述你的建议或遇到的问题…" maxlength="500" auto-height bind:input="onFeedbackInput"/>
       <view class="fb-count">{{feedbackText.length}}/500</view>
     </view>
-
-    <!-- 截图上传 -->
     <view class="fb-section">
       <view class="fb-label">截图（选填，最多3张）</view>
       <view class="fb-images">
@@ -65,46 +51,15 @@
             <view class="fb-img-del" bind:tap="onRemoveImage" data-index="{{index}}">×</view>
           </view>
         </block>
-        <view
-          wx:if="{{feedbackImages.length < 3}}"
-          class="fb-img-add"
-          bind:tap="onAddImage"
-        >
+        <view wx:if="{{feedbackImages.length < 3}}" class="fb-img-add" bind:tap="onAddImage">
           <text class="fb-img-add-icon">+</text>
-          <text class="fb-img-add-text">{{feedbackImages.length === 0 ? '添加截图' : ''}}</text>
         </view>
       </view>
     </view>
-
-    <!-- 操作按钮 -->
     <view class="fb-actions">
       <button class="fb-cancel" bind:tap="onFeedback">取消</button>
-      <button
-        class="fb-submit"
-        bind:tap="onSubmitFeedback"
-        loading="{{feedbackSubmitting}}"
-        disabled="{{feedbackSubmitting}}"
-      >提交反馈</button>
+      <button class="fb-submit" bind:tap="onSubmitFeedback" loading="{{feedbackSubmitting}}" disabled="{{feedbackSubmitting}}">提交反馈</button>
     </view>
   </view>
 
-  <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
-  <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
-
-  <!-- 版本更新日志 -->
-  <view wx:if="{{showVersionLog}}" class="ver-mask" bind:tap="onCloseVersionLog">
-    <view class="ver-card" catch:tap="">
-      <view class="ver-title">韭菜养基宝</view>
-      <view class="ver-version">版本号：{{appVersion}}</view>
-      <view class="ver-body">
-        <block wx:for="{{versionLog}}" wx:key="version">
-          <view class="ver-block">
-            <view class="ver-block-title">📋 {{item.version}} 更新</view>
-            <view wx:for="{{item.items}}" wx:key="*this" wx:for-item="li" class="ver-item">• {{li}}</view>
-          </view>
-        </block>
-      </view>
-      <view class="ver-close" bind:tap="onCloseVersionLog">知道了</view>
-    </view>
-  </view>
 </view>

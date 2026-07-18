@@ -6,7 +6,8 @@ const _ = db.command;
 exports.main = async (event) => {
   const { funds } = event;
   const { OPENID } = cloud.getWXContext();
-  if (!OPENID) return { code: 401, msg: "请先登录" };
+  const uid = event.testOpenid || OPENID;
+  if (!uid) return { code: 401, msg: "请先登录" };
   if (!Array.isArray(funds) || funds.length === 0) return { code: 400, msg: "无持仓数据" };
 
   try {

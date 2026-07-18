@@ -1,66 +1,68 @@
-.container{padding:24rpx}
+.container{padding:24rpx;min-height:100vh;background:#F5F5F5}
 
-/* 截图导入入口 */
-.import-bar{display:flex;flex-direction:column;align-items:center;padding-top:80rpx}
-.import-desc{font-size:26rpx;color:#666;text-align:center;margin-bottom:12rpx}
-.import-btn{background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border:2rpx dashed #4CAF50;border-radius:16rpx;padding:28rpx 20rpx;text-align:center;width:calc(100% - 80rpx)}
-.import-icon{font-size:44rpx;display:block;margin-bottom:8rpx}
-.import-text{font-size:30rpx;color:#2E7D32;font-weight:600;display:block;margin-bottom:6rpx}
-.import-hint{font-size:22rpx;color:#81C784;display:block}
+/* 模式切换 */
+.mode-tabs{display:flex;background:#FFF;border-radius:12rpx;padding:8rpx;margin-bottom:24rpx}
+.mode-tab{flex:1;text-align:center;padding:16rpx 0;font-size:26rpx;color:#999;border-radius:8rpx;transition:all .2s}
+.mode-tab.active{background:var(--primary);color:#FFF;font-weight:500}
 
-.demo-sub-tip{font-size:22rpx;color:#BBB;text-align:center;display:block;margin-bottom:24rpx}
-
-/* 截图预览 */
-.screenshot-preview{margin-bottom:24rpx;background:#FFF;border-radius:20rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
-.preview-img{width:100%;display:block}
-.preview-actions{display:flex;justify-content:space-between;align-items:center;padding:20rpx 28rpx}
-.preview-tip{font-size:24rpx;color:#999}
-.preview-remove{font-size:24rpx;color:#E4393C}
-
-/* ========== 基金卡片列表 ========== */
-.cards-header{margin-bottom:16rpx}
-.cards-title{font-size:28rpx;font-weight:600;color:#1A1A1A}
-
-.fund-card{display:flex;align-items:center;justify-content:space-between;background:#FFF;border-radius:12rpx;margin-bottom:12rpx;padding:24rpx 24rpx;box-shadow:0 1rpx 6rpx rgba(0,0,0,.04)}
-.fund-card.saved{opacity:.45}
-
-.card-left{flex:1;min-width:0}
-.card-code{font-size:20rpx;color:#999;display:block}
-.card-name{font-size:28rpx;font-weight:600;color:#1A1A1A;margin:4rpx 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card-nums{display:flex;gap:20rpx;margin-top:6rpx}
-.card-mv{font-size:22rpx;color:#666}
-.card-hr{font-size:22rpx;color:#E4393C}
-
-.card-right{flex-shrink:0;margin-left:16rpx;display:flex;flex-direction:column;gap:10rpx;align-items:flex-end}
-.card-save{font-size:22rpx;color:#FFF;background:var(--primary);padding:8rpx 24rpx;border-radius:28rpx}
-.card-edit{font-size:22rpx;color:var(--primary);padding:8rpx 24rpx;border:1rpx solid var(--primary);border-radius:28rpx}
-.card-done{font-size:24rpx;color:#4CAF50}
-
-.cards-footer{text-align:center;padding:24rpx 0;font-size:24rpx;color:#CCC}
-.save-all-btn{width:100%;height:88rpx;line-height:88rpx;font-size:30rpx;color:#FFF;background:var(--primary-gradient);border-radius:44rpx;padding:0}
-.cards-footer-hint{font-size:24rpx;color:#4CAF50}
-
-/* ========== 手动填写 ========== */
-.form{background:#FFF;border-radius:20rpx;padding:0 32rpx;margin-bottom:32rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.03)}
-.form-item{display:flex;align-items:center;justify-content:space-between;padding:30rpx 0;border-bottom:1rpx solid #F5F5F5}
+/* 表单 */
+.form-title{font-size:28rpx;font-weight:600;color:#333;margin-bottom:16rpx}
+.form-group{background:#FFF;border-radius:12rpx;overflow:hidden;margin-bottom:24rpx}
+.form-item{display:flex;align-items:center;padding:24rpx;border-bottom:1rpx solid #F5F5F5}
 .form-item:last-child{border-bottom:none}
-.label{font-size:28rpx;color:#333;width:160rpx;font-weight:500}
-.input{flex:1;text-align:right;font-size:28rpx;color:#1A1A1A}
-.picker-value{font-size:28rpx;color:#999;text-align:right;width:100%}
+.form-label{width:140rpx;font-size:26rpx;color:#666;flex-shrink:0}
+.form-input{flex:1;font-size:26rpx;text-align:right}
+.form-picker{flex:1;font-size:26rpx;color:#333;text-align:right;display:flex;align-items:center;justify-content:flex-end}
+.picker-arrow{font-size:20rpx;color:#CCC;margin-left:8rpx}
 
-/* 正负号切换 */
-.signed-input{display:flex;align-items:center;gap:12rpx;flex:1;justify-content:flex-end}
-.sign-toggle{width:28rpx;height:28rpx;line-height:28rpx;text-align:center;font-size:18rpx;font-weight:600;color:#FFF;background:var(--primary);border-radius:14rpx;flex-shrink:0}
-.sign-toggle.minus{background:#2E8B57}
-.signed-val{flex:1}
+/* 分组选择 */
+.group-picker{background:#FFF;border-radius:12rpx;padding:16rpx;margin-bottom:24rpx}
+.gp-item{padding:16rpx;font-size:26rpx;color:#666;border-radius:8rpx;margin-bottom:8rpx}
+.gp-item.active{background:#E8F5E9;color:var(--primary);font-weight:500}
 
-.submit-btn{width:100%;height:92rpx;line-height:92rpx;font-size:32rpx;color:#FFF;background:var(--primary-gradient);border-radius:46rpx;text-align:center;padding:0;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(0,0,0,.15)}
+/* 按钮 */
+.form-btns{margin-bottom:24rpx}
+.btn-save{width:100%;height:88rpx;line-height:88rpx;background:var(--primary);color:#FFF;border-radius:44rpx;font-size:32rpx;text-align:center;padding:0}
+.btn-save.small{height:72rpx;line-height:72rpx;font-size:28rpx;border-radius:36rpx}
+.btn-del{width:100%;height:80rpx;line-height:80rpx;background:#FFF;color:#E4393C;border:1rpx solid #E4393C;border-radius:44rpx;font-size:28rpx;text-align:center;padding:0;margin-bottom:16rpx}
 
-/* 编辑模式 */
-.edit-actions{margin-bottom:24rpx}
-.action-row{display:flex;gap:16rpx;margin-bottom:16rpx}
-.action-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;border-radius:42rpx;text-align:center;padding:0}
-.sync-buy,.sync-sell{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
-.update-btn{background:var(--primary);color:#FFF}
-.delete-btn{background:#E4393C;color:#FFF}
-.adjust-btn{background:#2E8B57;color:#FFF}
+/* 交易记录 */
+.trade-section{margin-top:16rpx;background:#FFF;border-radius:12rpx;padding:16rpx 24rpx}
+.section-title{display:flex;justify-content:space-between;align-items:center;font-size:28rpx;font-weight:600;color:#333;padding:8rpx 0}
+.section-arrow{font-size:22rpx;color:#CCC}
+.trade-form{margin-top:16rpx}
+.trade-type-row{display:flex;gap:16rpx;margin-bottom:16rpx}
+.trade-type{flex:1;text-align:center;padding:14rpx 0;font-size:26rpx;color:#999;background:#F5F5F5;border-radius:8rpx}
+.trade-type.active.buy{background:#E4393C;color:#FFF}
+.trade-type.active.sell{background:#2E8B57;color:#FFF}
+.tx-list{margin-top:16rpx}
+.tx-item{display:flex;align-items:center;padding:16rpx 0;border-top:1rpx solid #F5F5F5}
+.tx-type{width:80rpx;text-align:center;font-size:24rpx;padding:6rpx 0;border-radius:6rpx;flex-shrink:0}
+.tx-type.buy{background:rgba(227,57,60,.1);color:#E4393C}
+.tx-type.sell{background:rgba(46,139,87,.1);color:#2E8B57}
+.tx-info{flex:1;margin-left:16rpx}
+.tx-amount{font-size:26rpx;color:#333}
+.tx-date{font-size:22rpx;color:#BBB;margin-top:4rpx}
+
+/* OCR */
+.ocr-empty{display:flex;flex-direction:column;align-items:center;padding-top:120rpx}
+.ocr-icon{font-size:100rpx;margin-bottom:24rpx}
+.ocr-desc{font-size:28rpx;color:#333;margin-bottom:8rpx}
+.ocr-hint{font-size:24rpx;color:#999;margin-bottom:4rpx}
+.ocr-hint-sub{font-size:22rpx;color:#BBB;margin-bottom:40rpx}
+.ocr-loading{display:flex;flex-direction:column;align-items:center;padding-top:120rpx}
+.loading-icon{font-size:60rpx;animation:spin 1.5s linear infinite}
+.loading-text{font-size:26rpx;color:#999;margin-top:16rpx}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+.ocr-result{margin-top:8rpx}
+.ocr-result-title{font-size:26rpx;color:#999;margin-bottom:16rpx;text-align:center}
+.ocr-item{display:flex;align-items:center;background:#FFF;border-radius:12rpx;padding:20rpx 24rpx;margin-bottom:12rpx}
+.ocr-item.checked{border:2rpx solid var(--primary)}
+.ocr-checkbox{width:40rpx;height:40rpx;border:2rpx solid #DDD;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-right:16rpx;flex-shrink:0;font-size:22rpx;color:#FFF}
+.ocr-checkbox.on{background:var(--primary);border-color:var(--primary)}
+.ocr-info{flex:1}
+.ocr-code{font-size:22rpx;color:#999}
+.ocr-name-input{width:100%;font-size:28rpx;font-weight:500;color:#333;margin-top:4rpx;padding:0}
+.ocr-shares{font-size:24rpx;color:#666;margin-top:4rpx}
+.ocr-retry{text-align:center;font-size:26rpx;color:var(--primary);padding:20rpx 0}

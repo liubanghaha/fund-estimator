@@ -1,9 +1,9 @@
 <view class="login-page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="login-logo">
     <view class="logo-icon">📈</view>
-    <view class="logo-title">涨跌有数</view>
-    <view class="logo-desc">收益追踪，心中有数</view>
+    <view class="logo-title">理财笔记</view>
+    <view class="logo-desc">简单记录，随时查看</view>
   </view>
   <button class="login-btn" bindtap="onLogin">微信一键登录</button>
-  <view class="login-tip">登录后可管理持仓记录</view>
+  <view class="login-tip">登录后可管理你的记录</view>
 </view>
