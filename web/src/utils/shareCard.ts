@@ -63,10 +63,10 @@ export function drawShareCard(canvas: HTMLCanvasElement, opts: ShareCardOpts = {
   ctx.fillStyle = '#1A1A1A';
   ctx.font = 'bold 28px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('🌿 韭菜养基宝', 40, headY);
+  ctx.fillText('🌿 仓记小簿', 40, headY);
   ctx.fillStyle = '#999';
   ctx.font = '16px sans-serif';
-  ctx.fillText('涨跌有数 · 心中有底', 40, headY + 30);
+  ctx.fillText('记录每一笔 · 心中有数', 40, headY + 30);
 
   // 分隔线
   ctx.strokeStyle = '#F0F0F0';
@@ -172,7 +172,7 @@ export function drawShareCard(canvas: HTMLCanvasElement, opts: ShareCardOpts = {
   ctx.fillStyle = '#BBB';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('韭菜养基宝 · 涨跌有数', w / 2, h - 14);
+  ctx.fillText('仓记小簿', w / 2, h - 14);
 
   // 二维码图片加载
   return new Promise((resolve) => {

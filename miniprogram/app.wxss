@@ -1,4 +1,7 @@
 page {
+  --primary: #E4393C;
+  --primary-gradient: linear-gradient(135deg, #E4393C, #FF6B6B);
+  --primary-bg: rgba(228,57,60,.1);
   --color-green: #2E8B57;
   --color-bg: #F5F5F5;
   --color-text: #333333;

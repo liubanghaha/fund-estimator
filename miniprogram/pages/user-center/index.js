@@ -2,18 +2,45 @@ const api = require("../../utils/api");
 
 Page({
   data: {
-    isLoggedIn: false, avatarUrl: "", nickName: "",
+    isLoggedIn: false, avatarUrl: "", nickName: "", openid: "",
     showFeedback: false, feedbackType: "suggestion", feedbackText: "", feedbackImages: [], feedbackSubmitting: false,
     theme: "red",
+    // 数据迁移
+    showMigrate: false, migrateLoading: false, migrateCode: "", migrateCounts: null, migrateError: "",
   },
 
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      this.setData({ isLoggedIn: true, avatarUrl: userInfo.avatarUrl || "", nickName: userInfo.nickName || "" });
+      this.setData({ isLoggedIn: true, avatarUrl: userInfo.avatarUrl || "", nickName: userInfo.nickName || "", openid: userInfo.openid || "" });
     }
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+  },
+
+  // ==== 数据迁移到网页版 ====
+  onMigrate() { this.setData({ showMigrate: !this.data.showMigrate, migrateError: "", migrateCode: "", migrateCounts: null }); },
+  async onDoExport() {
+    this.setData({ migrateLoading: true, migrateError: "", migrateCode: "", migrateCounts: null });
+    try {
+      const res = await api.exportData();
+      if (res.result && res.result.code === 0) {
+        const d = res.result.data;
+        this.setData({ migrateLoading: false, migrateCode: d.code, migrateCounts: d.counts });
+      } else {
+        this.setData({ migrateLoading: false, migrateError: (res.result && res.result.msg) || "导出失败" });
+      }
+    } catch (e) {
+      this.setData({ migrateLoading: false, migrateError: "网络错误，请重试" });
+    }
+  },
+  onCopyCode() {
+    if (!this.data.migrateCode) return;
+    wx.setClipboardData({ data: this.data.migrateCode, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
+  },
+  onCopyOpenid() {
+    if (!this.data.openid) return;
+    wx.setClipboardData({ data: this.data.openid, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
   },
 
   onToggleTheme() {

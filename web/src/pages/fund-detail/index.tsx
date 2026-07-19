@@ -16,6 +16,7 @@ export default function FundDetailPage(){
   const [isFollowed,setIsFollowed]=useState(false);
   const [txList,setTxList]=useState<any[]>([]);
   const [showFee,setShowFee]=useState(false);
+  const [showExited,setShowExited]=useState(false);
   const [showAllHist,setShowAllHist]=useState(false);
   const [showTx,setShowTx]=useState(true);
 
@@ -43,9 +44,10 @@ export default function FundDetailPage(){
 
   if(loading)return <div style={{display:'flex',justifyContent:'center',padding:48,color:c.textSecondary}}>加载中...</div>;
 
-  return <div style={{minHeight:'100%',background:c.bg,paddingBottom:80}}>
+  return <div style={{display:'flex',flexDirection:'column',minHeight:'100dvh',background:c.bg}}>
+    <div style={{flex:1,overflow:'auto'}}>
     {/* Header */}
-    <div style={{padding:'12px 16px',background:c.cardBg,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+    <div style={{padding:'12px 10px',background:c.cardBg,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
       <span onClick={()=>nav(-1)} style={{fontSize:18,cursor:'pointer',marginRight:12,flexShrink:0}}>‹</span>
       <div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ov.fundName||fundCode}</div><div style={{fontSize:11,color:c.textSecondary}}>{fundCode}</div></div>
       <button onClick={async()=>{try{if(isFollowed){await watchlist.remove(fundCode!);setIsFollowed(false)}else{await watchlist.add(fundCode!,ov.fundName||'');setIsFollowed(true)}}catch{}}} style={{padding:'5px 14px',borderRadius:14,border:`1px solid ${c.primary}`,background:isFollowed?c.primary:'transparent',color:isFollowed?c.cardBg:c.primary,fontSize:12,cursor:'pointer',flexShrink:0}}>{isFollowed?'已自选':'+ 加自选'}</button></div>
@@ -135,9 +137,10 @@ export default function FundDetailPage(){
         <span style={{color:tx.type==='buy'?c.up:c.down,fontWeight:600,fontSize:11,flexShrink:0}}>{tx.type==='buy'?'买入':'卖出'}</span>
         <span style={{flex:1}}>{tx.amount?`¥${tx.amount}`:''}{tx.shares?` ${tx.shares}份`:''}</span>
         <span style={{color:c.textSecondary,fontSize:11,flexShrink:0}}>{tx.date||tx.createTime?.slice(0,10)}</span></div>)}</div>}
+    </div>
 
     {/* Bottom bar */}
-    <div style={{position:'fixed',bottom:0,left:0,right:0,display:'flex',background:c.cardBg,borderTop:`1px solid ${c.border}`,padding:'8px 16px',paddingBottom:'calc(8px + env(safe-area-inset-bottom))',gap:12}}>
+    <div style={{display:'flex',background:c.cardBg,borderTop:`1px solid ${c.border}`,padding:'8px 10px',paddingBottom:'calc(8px + env(safe-area-inset-bottom))',gap:12,flexShrink:0}}>
       <button onClick={()=>nav(`/add-holding/${fundCode}`)} style={{flex:1,padding:10,borderRadius:20,border:'none',background:c.primary,color:'#fff',fontSize:13,cursor:'pointer'}}>添加持仓</button>
       <button onClick={()=>nav(`/fund-compare?b=${fundCode}`)} style={{flex:1,padding:10,borderRadius:20,border:`1px solid ${c.primary}`,background:'transparent',color:c.primary,fontSize:13,cursor:'pointer'}}>对比</button>
       <button onClick={()=>setShowTx(!showTx)} style={{flex:1,padding:10,borderRadius:20,border:`1px solid ${c.border}`,background:'transparent',color:c.textSecondary,fontSize:13,cursor:'pointer'}}>{showTx?'隐藏记录':'交易记录'}</button></div></div>;

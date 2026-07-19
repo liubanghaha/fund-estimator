@@ -31,7 +31,7 @@
 .batch-top-title{font-size:28rpx;font-weight:600;color:#333}
 .batch-top-right{display:flex;gap:24rpx}
 .batch-top-link{font-size:26rpx;color:var(--primary)}
-.batch-top-delete{font-size:26rpx;color:#E4393C}
+.batch-top-delete{font-size:26rpx;color:var(--primary)}
 
 /* 快捷操作 */
 .quick-actions{display:flex;justify-content:space-around;padding:22rpx 0;background:#FFF;border-radius:12rpx;margin:0 0 8rpx;border-bottom:1rpx solid #F5F5F5}
@@ -75,7 +75,7 @@
 .calc-result{border-top:1rpx solid #F5F5F5;padding-top:16rpx}
 .calc-result-row{font-size:26rpx;color:#666;margin-bottom:8rpx}
 .calc-result-val{font-weight:600;color:#333}
-.up{color:#E4393C}
+.up{color:var(--primary)}
 .down{color:#2E8B57}
 
 /* 分组选择器 */

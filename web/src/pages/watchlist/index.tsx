@@ -44,7 +44,7 @@ export default function WatchlistPage(){
         const wl=raw.map((w:WatchItem)=>{const e=ed[w.fundCode];return {fundCode:w.fundCode,fundName:w.fundName,group:w.group||'',nav:e?.nav||null,estimatedNav:e?.estimatedNav||null,estimatedChangeRate:e?.estimatedChangeRate||null,displayChangeRate:e?.displayChangeRate||null,estimateTime:e?.estimateTime||null}});
         setItems(wl);setLoaded(true);setUpdTime(new Date().toLocaleTimeString('zh-CN',{hour12:false}));
         let up=0,down=0,sum=0,valid=0;
-        wl.forEach(w=>{if(w.displayChangeRate!=null){sum+=w.displayChangeRate;valid++;if(w.displayChangeRate>0)up++;else if(w.displayChangeRate<0)down++}});
+        wl.forEach((w: any)=>{if(w.displayChangeRate!=null){sum+=w.displayChangeRate;valid++;if(w.displayChangeRate>0)up++;else if(w.displayChangeRate<0)down++}});
         setSummary({avg:valid?+(sum/valid).toFixed(2):0,up,down,total:valid});
         storage.set(CACHE_KEY,{watchlist:wl,groups:[...new Set([...cg,...sg])],time:Date.now()});
       }else{setItems([]);setLoaded(true)}

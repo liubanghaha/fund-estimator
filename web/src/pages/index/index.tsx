@@ -10,7 +10,7 @@ import GroupTabs from './GroupTabs';
 
 const ALL_INDICES=[{code:'000001',name:'上证指数'},{code:'399001',name:'深证成指'},{code:'399006',name:'创业板指'},{code:'000300',name:'沪深300'},{code:'HSTECH',name:'恒生科技'},{code:'HSI',name:'恒生指数'},{code:'SPX',name:'标普500'},{code:'IXIC',name:'纳斯达克'}];
 
-interface Holding{_id:string;fundCode:string;fundName:string;shares?:number;buyPrice?:number;marketValue?:number;todayProfit?:string;todayProfitRate?:string;estimateRate?:string;totalReturn?:string;totalReturnRate?:string;nav?:string;estimateUpdated?:boolean;group?:string;navHigh?:string|null;navLow?:string|null;peTemp?:{signal?:string;normPE?:number}}
+interface Holding{_id:string;fundCode:string;fundName:string;shares?:number;buyPrice?:number;marketValue?:number;todayProfit?:string;todayProfitRate?:string;todayChangeRate?:string;estimateRate?:string;totalReturn?:string;totalReturnRate?:string;nav?:string;currentNav?:string;estimateUpdated?:boolean;group?:string;navHigh?:string|null;navLow?:string|null;peTemp?:{signal?:string;normPE?:number}}
 
 export default function IndexPage(){
   const c=useThemeColors();
@@ -29,8 +29,8 @@ export default function IndexPage(){
   const [batch,setBatch]=useState(false);const [chk,setChk]=useState<Record<string,boolean>>({});
   const [activeG,setActiveG]=useState('all');
   const [groups,setGroups]=useState<string[]>(()=>{
-    const raw=storage.get<string[]>('holding_groups_cache')||[];
-    return raw.map(g=>typeof g==='string'?g:String(g?.name||g)).filter(Boolean);
+    const raw=(storage.get<any[]>('holding_groups_cache')||[]) as any[];
+    return raw.map((g:any)=>typeof g==='string'?g:String(g?.name||g)).filter(Boolean);
   });
   const [gCounts,setGCounts]=useState<Record<string,number>>({});
   const [groupSummary,setGSummary]=useState<any>(null);
@@ -204,7 +204,7 @@ export default function IndexPage(){
 
     {/* Quick Actions */}
     <div style={{display:'flex',justifyContent:'space-around',margin:'8px 12px',padding:12,background:c.cardBg,borderRadius:10}}>
-      {[['🔍','搜索',()=>nav('/search')],['➕','新增',()=>nav('/add-holding')],['📝','加减仓',()=>nav('/adjust-holding')],['📊','分析',()=>nav('/correlation-matrix')],['☑️','批量',()=>{setBatch(!batch);setChk({})}]].map(([icon,label,fn])=>(
+      {([['🔍','搜索',()=>nav('/search')],['➕','新增',()=>nav('/add-holding')],['📝','加减仓',()=>nav('/adjust-holding')],['📊','分析',()=>nav('/correlation-matrix')],['☑️','批量',()=>{setBatch(!batch);setChk({})}]] as [string,string,()=>void][]).map(([icon,label,fn])=>(
         <div key={label as string} onClick={fn as any} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,fontSize:11,color:c.textSecondary,cursor:'pointer'}}><span style={{fontSize:20}}>{icon}</span><span>{label}</span></div>))}
     </div>
 

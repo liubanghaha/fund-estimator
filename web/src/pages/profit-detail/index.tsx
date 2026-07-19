@@ -1,15 +1,46 @@
 import { useState,useEffect,useCallback,useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPortfolio,fetchMarketIndex } from '../../api';
+import { getPortfolio,fetchMarketIndex,fetchIndexIntraday } from '../../api';
 import { useUserStore } from '../../stores/user';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import LineChart from '../../components/Charts/LineChart';
 import DualLineChart from '../../components/Charts/DualLineChart';
+import IntradayChart from '../../components/Charts/IntradayChart';
 import { storage } from '../../stores/cache';
 import calculator from '../../utils/calculator';
 
 const CACHE='profit_detail_cache_v2';
+const INTRADAY_CACHE_KEY='intraday_h5_cache';
 const INDICES=[{code:'000001',name:'上证指数'},{code:'399001',name:'深证成指'},{code:'399006',name:'创业板指'},{code:'000300',name:'沪深300'}];
+
+function isTradingNow(){
+  const now=new Date();const day=now.getDay();const h=now.getHours();const m=now.getMinutes();
+  if(day<1||day>5)return false;
+  const total=h*60+m;
+  return (total>=570&&total<690)||(total>=780&&total<900);
+}
+
+function saveIntradayCache(fund:any[],idx:any[]){
+  if(!fund.length||!idx.length)return;
+  const today=calculator.formatDate(new Date());
+  storage.set(INTRADAY_CACHE_KEY,{date:today,fund,idx,ts:Date.now()});
+}
+
+function loadIntradayCache():{fund:any[];idx:any[]}|null{
+  try{
+    const cached=storage.get<any>(INTRADAY_CACHE_KEY);
+    if(cached&&cached.fund&&cached.fund.length>0){
+      const today=calculator.formatDate(new Date());
+      const dayOfWeek=new Date().getDay();
+      const isWeekend=dayOfWeek===0||dayOfWeek===6;
+      // 交易日严格校验日期，周末/非交易日放宽
+      if(cached.date===today||isWeekend||!isTradingNow()){
+        return {fund:cached.fund,idx:cached.idx||[]};
+      }
+    }
+  }catch{}
+  return null;
+}
 
 export default function ProfitDetailPage(){
   const c=useThemeColors();const nav=useNavigate();const {isLoggedIn}=useUserStore();
@@ -29,6 +60,10 @@ export default function ProfitDetailPage(){
   const allDailyRef=useRef<any[]>([]);
   const dcRef=useRef<Record<string,number>>({});
   const idxMapRef=useRef<Record<string,any[]>>({});
+  // 日内走势
+  const [intradayFund,setIntradayFund]=useState<{time:string;rate:number}[]>([]);
+  const [intradayIdx,setIntradayIdx]=useState<{time:string;rate:number}[]>([]);
+  const [intradayLoading,setIntradayLoading]=useState(false);
 
   const load=useCallback(async()=>{
     if(!isLoggedIn){setLoading(false);return}setLoading(true);setLoadErr(false);
@@ -114,6 +149,21 @@ export default function ProfitDetailPage(){
       // Build chart
       buildChart(allDaily,idxMap['000300'],'today');
 
+      // 日内走势：提取快照 + 获取指数分时数据
+      const snaps:any[]=(d.intradaySnapshots||[]).slice().sort((a:any,b:any)=>a.time.localeCompare(b.time));
+      if(snaps.length>0||isTradingNow()){
+        const fundData=snaps.map((s:any)=>{const[hh,mm]=String(s.time||'').split(':').map(Number);const cm=(hh*60+mm+480)%1440;return{time:String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0'),rate:s.rate??0}}).filter((d:any)=>d.rate!=null);
+        try{
+          const idxRes=await fetchIndexIntraday(compareIdx).catch(()=>null);
+          const idxData:any[]=[];
+          if(idxRes?.data?.length){
+            idxRes.data.forEach((d:any)=>{if(d.time){const[hh,mm]=d.time.split(':').map(Number);const cm=(hh*60+mm+480)%1440;const t=String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0');if(t>='09:30'&&t<='15:00')idxData.push({time:t,rate:d.changeRate??0})}});
+          }
+          setIntradayFund(fundData);setIntradayIdx(idxData);
+          saveIntradayCache(fundData,idxData);
+        }catch{/* silent */}
+      }
+
       storage.set(CACHE,{allDaily,dc,idxMap,tp,tpr:parseFloat(d.todayProfitRate||0),wr,mr,yr,ed:ec==="9999-99-99"?"":ec,ts:Date.now()});
       setLoading(false);
     }catch(e){
@@ -177,6 +227,16 @@ export default function ProfitDetailPage(){
 
   useEffect(()=>{load()},[load]);
 
+  // 非交易日加载缓存日内走势
+  useEffect(()=>{
+    if(!isTradingNow()&&activeTab==='today'&&intradayFund.length===0){
+      const cached=loadIntradayCache();
+      if(cached){
+        setIntradayFund(cached.fund);setIntradayIdx(cached.idx);
+      }
+    }
+  },[activeTab]);
+
   if(loading)return <div style={{display:'flex',justifyContent:'center',padding:48,color:c.textSecondary}}>加载中...</div>;
   if(loadErr)return <div style={{textAlign:'center',padding:48}}><div style={{fontSize:32,marginBottom:12}}>😵</div><div style={{color:c.textSecondary,marginBottom:12}}>加载失败</div><button onClick={()=>load()} style={{padding:'6px 24px',borderRadius:14,border:`1px solid ${c.primary}`,color:c.primary,background:'transparent'}}>重试</button></div>;
   if(empty)return <div style={{textAlign:'center',padding:48}}><div style={{fontSize:32,marginBottom:12}}>📉</div><div style={{color:c.textSecondary}}>暂无收益数据</div></div>;
@@ -204,7 +264,9 @@ export default function ProfitDetailPage(){
           <span onClick={()=>handleIdx('000300')} style={{fontSize:10,padding:'2px 6px',borderRadius:6,background:compareIdx==='000300'?c.primaryBg:'transparent',color:compareIdx==='000300'?c.primary:c.textSecondary,cursor:'pointer'}}>沪深300</span>
         </div>
       </div>
-      {chartDual&&dualData.length>0?<DualLineChart data={dualData} labelA="持仓" labelB="指数" height={220}/>:singleData.length>0?<LineChart data={singleData} height={220} color={profitUp?c.up:c.down} isReturn/>:<div style={{textAlign:'center',padding:32,color:c.textSecondary}}>暂无走势数据</div>}
+      {activeTab==='today'?<>
+        {intradayFund.length>0||intradayIdx.length>0?<IntradayChart fundData={intradayFund} indexData={intradayIdx} fundLabel="仓记小簿" indexLabel={INDICES.find(i=>i.code===compareIdx)?.name||'指数'} height={220}/>:<div style={{textAlign:'center',padding:32,color:c.textSecondary}}>今日暂无分时数据</div>}
+      </>:chartDual&&dualData.length>0?<DualLineChart data={dualData} labelA="持仓" labelB="指数" height={220}/>:singleData.length>0?<LineChart data={singleData} height={220} color={profitUp?c.up:c.down} isReturn/>:<div style={{textAlign:'center',padding:32,color:c.textSecondary}}>暂无走势数据</div>}
       {activeTab!=='today'&&<div style={{fontSize:10,color:c.textSecondary,marginTop:4}}>回撤 = 从历史最高点到当前的最大跌幅，衡量最坏情况下的亏损幅度</div>}
     </div>
 

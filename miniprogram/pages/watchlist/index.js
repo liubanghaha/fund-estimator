@@ -117,7 +117,25 @@ Page({
   // ==== 添加 ====
   onShowAdd() { this.setData({ showAdd: true, addCode: "", addName: "" }); },
   onCloseAdd() { this.setData({ showAdd: false }); },
-  onAddCodeInput(e) { this.setData({ addCode: e.detail.value }); },
+  onAddCodeInput(e) {
+    const code = e.detail.value;
+    this.setData({ addCode: code, addName: "" });
+    // 输入6位代码自动搜索产品名称
+    if (code.trim().length >= 6) {
+      this._searchCode(code.trim());
+    }
+  },
+  async _searchCode(code) {
+    try {
+      const res = await api.searchFund(code);
+      if (res.result && res.result.code === 0 && res.result.data) {
+        const fund = Array.isArray(res.result.data) ? res.result.data[0] : res.result.data;
+        if (fund && fund.fundName) {
+          this.setData({ addName: fund.fundName });
+        }
+      }
+    } catch (e) { /* silent */ }
+  },
   onAddNameInput(e) { this.setData({ addName: e.detail.value }); },
   async onConfirmAdd() {
     const { addCode, addName } = this.data;

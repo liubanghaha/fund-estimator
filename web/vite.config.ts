@@ -9,9 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: '韭菜养基宝',
-        short_name: '养基宝',
-        description: '实时基金估值与收益分析',
+        name: '仓记小簿',
+        short_name: '仓记小簿',
+        description: '个人数据记录与统计工具',
         theme_color: '#e74c3c',
         background_color: '#ffffff',
         display: 'standalone',

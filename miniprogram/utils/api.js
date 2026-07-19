@@ -11,6 +11,11 @@ const api = {
     return this.callFunction("submitFeedback", { content, type, contact, images });
   },
 
+  // === 搜索 ===
+  searchFund(keyword) {
+    return this.callFunction("searchFund", { keyword });
+  },
+
   // === 持仓管理 ===
   getPortfolio(historyDays) {
     return this.callFunction("getPortfolio", historyDays ? { historyDays } : {});

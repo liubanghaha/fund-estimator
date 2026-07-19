@@ -33,9 +33,26 @@
 .fb-images{display:flex;flex-wrap:wrap;gap:12rpx}
 .fb-img-item{position:relative;width:140rpx;height:140rpx}
 .fb-img{width:100%;height:100%;border-radius:8rpx}
-.fb-img-del{position:absolute;top:-8rpx;right:-8rpx;width:36rpx;height:36rpx;background:#E4393C;color:#FFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24rpx}
+.fb-img-del{position:absolute;top:-8rpx;right:-8rpx;width:36rpx;height:36rpx;background:var(--primary);color:#FFF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24rpx}
 .fb-img-add{width:140rpx;height:140rpx;border:2rpx dashed #DDD;border-radius:8rpx;display:flex;align-items:center;justify-content:center}
 .fb-img-add-icon{font-size:48rpx;color:#CCC}
 .fb-actions{display:flex;gap:16rpx}
 .fb-cancel{flex:1;height:80rpx;line-height:80rpx;background:#F5F5F5;color:#666;border-radius:12rpx;font-size:28rpx;text-align:center;padding:0}
 .fb-submit{flex:1;height:80rpx;line-height:80rpx;background:var(--primary);color:#FFF;border-radius:12rpx;font-size:28rpx;text-align:center;padding:0}
+
+/* 数据迁移 */
+.migrate-panel{background:#FFF;border-radius:16rpx;padding:24rpx;margin-bottom:24rpx}
+.migrate-section{margin-bottom:16rpx}
+.migrate-section:last-child{margin-bottom:0}
+.migrate-label{font-size:28rpx;font-weight:600;color:#333;margin-bottom:8rpx}
+.migrate-desc{font-size:24rpx;color:#999;margin-bottom:12rpx;line-height:1.5}
+.migrate-code-row{display:flex;align-items:center;justify-content:space-between;background:#F9F9F9;border-radius:8rpx;padding:16rpx 20rpx}
+.migrate-code{font-size:24rpx;color:#666;font-family:monospace;word-break:break-all}
+.migrate-code.large{font-size:40rpx;font-weight:700;color:#4CAF50;letter-spacing:8rpx}
+.migrate-copy{font-size:24rpx;color:var(--primary);flex-shrink:0;margin-left:16rpx;padding:4rpx 16rpx;border:1rpx solid var(--primary);border-radius:6rpx}
+.migrate-divider{height:1rpx;background:#F0F0F0;margin:20rpx 0}
+.migrate-btn{width:100%;height:72rpx;line-height:72rpx;background:var(--primary);color:#FFF;border-radius:12rpx;font-size:28rpx;text-align:center;padding:0;margin-top:8rpx}
+.migrate-result{background:#F6FFF6;border-radius:8rpx;padding:16rpx;margin-top:12rpx}
+.migrate-counts{font-size:24rpx;color:#666;margin-top:10rpx}
+.migrate-tip{font-size:22rpx;color:#E4393C;margin-top:8rpx}
+.migrate-error{font-size:24rpx;color:#E4393C;margin-top:8rpx;padding:8rpx 0}
