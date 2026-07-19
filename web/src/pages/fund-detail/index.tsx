@@ -24,7 +24,7 @@ export default function FundDetailPage(){
     try{const[ov,pf]=await Promise.all([fetchFundOverview(fundCode),fetchFundProfile(fundCode).catch(()=>null)]);
       if(ov.code===0){setOv(ov.data||ov);setNavH(ov.data?.history||[])}
       if(pf?.code===0)setPf(pf.data||pf);
-      if(isLoggedIn){const cr=await watchlist.check(fundCode);setIsFollowed(cr.code===0&&cr.data?.exists);
+      if(isLoggedIn){const cr=await watchlist.check(fundCode);setIsFollowed(cr.code===0&&cr.data?.followed);
         const tr=await transaction.list(fundCode);if(tr.code===0)setTxList(tr.data||[])}
     }catch{}setLoading(false)})()},[fundCode,isLoggedIn]);
 
