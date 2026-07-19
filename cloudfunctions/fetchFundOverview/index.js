@@ -39,6 +39,8 @@ async function fetchEstimate(fundCode) {
           try {
             const json = JSON.parse(body.replace(/^jsonpgz\(/, "").replace(/\)\;?$/, ""));
             resolve({
+              fundCode: json.fundcode || fundCode,
+              fundName: json.name || "",
               nav: parseFloat(json.dwjz) || null,
               estimatedNav: parseFloat(json.gsz) || null,
               estimatedChangeRate: parseFloat(json.gszzl) || null,

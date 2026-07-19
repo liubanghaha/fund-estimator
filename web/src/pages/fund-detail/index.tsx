@@ -50,7 +50,7 @@ export default function FundDetailPage(){
     <div style={{padding:'12px 10px',background:c.cardBg,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
       <span onClick={()=>nav(-1)} style={{fontSize:18,cursor:'pointer',marginRight:12,flexShrink:0}}>‹</span>
       <div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ov.fundName||fundCode}</div><div style={{fontSize:11,color:c.textSecondary}}>{fundCode}</div></div>
-      <button onClick={async()=>{try{if(isFollowed){await watchlist.remove(fundCode!);setIsFollowed(false)}else{await watchlist.add(fundCode!,ov.fundName||'');setIsFollowed(true)}}catch{}}} style={{padding:'5px 14px',borderRadius:14,border:`1px solid ${c.primary}`,background:isFollowed?c.primary:'transparent',color:isFollowed?c.cardBg:c.primary,fontSize:12,cursor:'pointer',flexShrink:0}}>{isFollowed?'已自选':'+ 加自选'}</button></div>
+      <button onClick={async()=>{if(!ov.fundName)return;try{if(isFollowed){await watchlist.remove(fundCode!);setIsFollowed(false)}else{const r=await watchlist.add(fundCode!,ov.fundName);if(r&&r.code===0)setIsFollowed(true);else alert((r&&r.msg)||'操作失败')}}catch(e:any){alert(e.message||'网络错误')}}} style={{padding:'5px 14px',borderRadius:14,border:`1px solid ${c.primary}`,background:isFollowed?c.primary:'transparent',color:isFollowed?c.cardBg:c.primary,fontSize:12,cursor:ov.fundName?'pointer':'default',flexShrink:0,opacity:loading?0.5:1}}>{loading?'加载中':isFollowed?'已自选':'+ 加自选'}</button></div>
 
     {/* NAV Card */}
     <div style={{margin:10,padding:16,background:c.cardBg,borderRadius:12,borderLeft:`4px solid ${rate>=0?c.up:c.down}`}}>
