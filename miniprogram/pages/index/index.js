@@ -119,7 +119,7 @@ Page({
         const totalCost = holdings.reduce((s, h) => s + parseFloat(h.totalCost || 0), 0).toFixed(2);
         this.setData({
           loading: false, dataReady: true, holdings, totalCost,
-          groups: d.groups || [],
+          groups: (d.groups || []).map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean),
         });
         this.applyGroupFilter();
         this.updateGroupCounts();
@@ -205,7 +205,10 @@ Page({
   _mergeGroups(serverGroups) {
     const cached = this._getCachedGroups();
     const merged = cached.concat();
-    for (const g of serverGroups) { if (!merged.includes(g)) merged.push(g); }
+    for (const g of serverGroups) {
+      const name = typeof g === 'string' ? g : (g && g.name);
+      if (name && !merged.includes(name)) merged.push(name);
+    }
     return merged;
   },
 
