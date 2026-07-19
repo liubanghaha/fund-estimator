@@ -1,4 +1,4 @@
-import { useState,useEffect } from 'react';import { useNavigate,useParams,useSearchParams } from 'react-router-dom';import { batchAddHoldings,fetchFundInfo,holding } from '../../api';import { useUserStore } from '../../stores/user';import { storage } from '../../stores/cache';import { useThemeColors } from '../../hooks/useThemeColors';
+import { useState,useEffect } from 'react';import { useNavigate,useParams,useSearchParams } from 'react-router-dom';import { batchAddHoldings,fetchFundInfo,holding,watchlist } from '../../api';import { useUserStore } from '../../stores/user';import { storage } from '../../stores/cache';import { useThemeColors } from '../../hooks/useThemeColors';
 
 export default function AddHoldingPage(){
   const c=useThemeColors();const {fundCode:pc}=useParams<{fundCode:string}>();const [sp]=useSearchParams();const editId=sp.get('id');
@@ -20,12 +20,13 @@ export default function AddHoldingPage(){
   const save=async()=>{
     if(!isLoggedIn){nav('/login');return}if(!code||!amount){alert('请完善信息');return}setL(true);
     try{
+      const fundName=name||code;
       if(isEdit){
-        const r=await holding.update(editId,{fundCode:code,fundName:name||code,amount:parseFloat(amount),return:(rs==='+'?1:-1)*parseFloat(rv||'0')});
+        const r=await holding.update(editId,{fundCode:code,fundName,amount:parseFloat(amount),return:(rs==='+'?1:-1)*parseFloat(rv||'0')});
         if(r.code===0){storage.set('portfolio_force_refresh',true);storage.remove('portfolio_cache');nav(-1)}else alert(r.msg||'失败');
       }else{
-        const r=await batchAddHoldings([{fundCode:code,fundName:name||code,amount:parseFloat(amount),return:(rs==='+'?1:-1)*parseFloat(rv||'0')}]);
-        if(r.code===0){storage.set('portfolio_force_refresh',true);storage.remove('portfolio_cache');nav('/',{replace:true})}else alert(r.msg||'失败');
+        const r=await batchAddHoldings([{fundCode:code,fundName,amount:parseFloat(amount),return:(rs==='+'?1:-1)*parseFloat(rv||'0')}]);
+        if(r.code===0){watchlist.add(code,fundName).catch(()=>{});storage.set('portfolio_force_refresh',true);storage.remove('portfolio_cache');nav('/',{replace:true})}else alert(r.msg||'失败');
       }
     }catch{alert('网络错误')}setL(false)};
 

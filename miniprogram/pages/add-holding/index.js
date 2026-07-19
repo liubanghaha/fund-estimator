@@ -204,6 +204,8 @@ Page({
       }
       wx.hideLoading();
       wx.showToast({ title: isEdit ? "已更新" : "已添加", icon: "success" });
+      // 自动加入关注列表
+      api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});
       wx.removeStorageSync("portfolio_cache");
       wx.removeStorageSync("ledger_cache");
       wx.setStorageSync("portfolio_force_refresh", true);

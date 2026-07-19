@@ -187,7 +187,7 @@ export default function IndexPage(){
     </div>}
 
     {/* Asset Overview - 参考小程序布局 */}
-    <div style={{position:'relative',margin:'10px 12px',padding:'30px 20px 24px',borderRadius:16,background:up?`linear-gradient(135deg,${c.primary},#FF6B6B)`:`linear-gradient(135deg,${c.down},#5DBA7D)`,color:'#fff',textAlign:'center'}} onClick={()=>nav('/profit-detail')}>
+    <div style={{position:'relative',margin:'10px 12px',padding:'30px 20px 24px',borderRadius:16,background:`linear-gradient(135deg,${c.primary},#FF6B6B)`,color:'#fff',textAlign:'center'}} onClick={()=>nav('/profit-detail')}>
       <span onClick={e=>{e.stopPropagation();setShowShare(true)}} style={{position:'absolute',left:16,top:10,fontSize:11,background:'rgba(255,255,255,0.35)',padding:'3px 12px',borderRadius:12,color:'#fff'}}>📤 分享</span>
       <span onClick={e=>{e.stopPropagation();toggleAmt()}} style={{position:'absolute',right:16,top:10,fontSize:11,background:'rgba(255,255,255,0.25)',padding:'3px 12px',borderRadius:12}}>{amountV?'隐藏':'显示'}</span>
       {activeG!=='all'&&groupSummary&&<span style={{display:'inline-block',fontSize:11,background:'rgba(255,255,255,0.25)',padding:'2px 10px',borderRadius:8,marginBottom:8}}>{activeG}</span>}

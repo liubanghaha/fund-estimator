@@ -1,7 +1,7 @@
 import { useState,useEffect,useCallback,useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../../stores/user';
-import { watchlist as wlApi,batchFetchEstimate } from '../../api';
+import { watchlist as wlApi,batchFetchEstimate,searchFund } from '../../api';
 import { storage } from '../../stores/cache';
 import { useThemeColors } from '../../hooks/useThemeColors';
 
@@ -22,6 +22,8 @@ export default function WatchlistPage(){
   const [kw,setKw]=useState('');const [updTime,setUpdTime]=useState('');
   const [summary,setSummary]=useState({avg:0,up:0,down:0,total:0});
   const timerRef=useRef<any>(null);const [swiping,setSwiping]=useState<string|null>(null);
+  // 添加弹窗
+  const [showAdd,setShowAdd]=useState(false);const [addCode,setAddCode]=useState('');const [addName,setAddName]=useState('');const [addLoading,setAddLoading]=useState(false);
 
   const applyF=useCallback((list:WatchItem[],g:string,k:string,p:string[],ch:Record<string,boolean>)=>{
     let f=g==='all'?list:g==='ungrouped'?list.filter(w=>!w.group):list.filter(w=>w.group===g);
@@ -65,10 +67,23 @@ export default function WatchlistPage(){
 
   if(!isLoggedIn)return <div style={{minHeight:'100vh',background:c.bg,display:'flex',alignItems:'center',justifyContent:'center',color:c.textSecondary}}>请先登录</div>;
 
+  const handleCodeInput=async(v:string)=>{
+    setAddCode(v);setAddName('');
+    if(v.trim().length>=6){
+      try{const r=await searchFund(v.trim());const d=(r as any)?.result||r;if(d?.code===0&&d?.data){const f=Array.isArray(d.data)?d.data[0]:d.data;if(f?.fundName)setAddName(f.fundName)}}catch{}
+    }
+  };
+  const doAdd=async()=>{
+    if(!addCode.trim()||!addName.trim())return;
+    setAddLoading(true);
+    try{await wlApi.add(addCode.trim(),addName.trim());setShowAdd(false);setAddCode('');setAddName('');fetchData()}catch{setAddLoading(false)}
+  };
+
   return <div style={{minHeight:'100%',background:c.bg,paddingBottom:10}}>
     <div style={{padding:'8px 12px',background:c.cardBg,display:'flex',gap:8,alignItems:'center'}}>
       <input placeholder="搜索基金" value={kw} onChange={e=>setKw(e.target.value)} style={{flex:1,padding:'6px 12px',borderRadius:16,border:`1px solid ${c.border}`,outline:'none',fontSize:14,background:c.cardBg}}/>
-      <span onClick={()=>{if(!sort){setSort('change');setSortO('desc')}else if(sort==='change'&&sortO==='desc'){setSort('change');setSortO('asc')}else{setSort('name');setSortO('')}}} style={{fontSize:13,color:c.primary,cursor:'pointer',whiteSpace:'nowrap'}}>{!sort?'排序':sort==='change'?(sortO==='desc'?'涨跌↓':'涨跌↑'):'名称'}</span></div>
+      <span onClick={()=>{if(!sort){setSort('change');setSortO('desc')}else if(sort==='change'&&sortO==='desc'){setSort('change');setSortO('asc')}else{setSort('name');setSortO('')}}} style={{fontSize:13,color:c.primary,cursor:'pointer',whiteSpace:'nowrap'}}>{!sort?'排序':sort==='change'?(sortO==='desc'?'涨跌↓':'涨跌↑'):'名称'}</span>
+      <span onClick={()=>setShowAdd(true)} style={{fontSize:20,color:c.primary,cursor:'pointer',lineHeight:'22px'}}>+</span></div>
     <div style={{display:'flex',overflowX:'auto',gap:4,padding:'6px 12px',background:c.cardBg,scrollbarWidth:'none'}}>
       {[{key:'all',label:'全部'},{key:'ungrouped',label:'未分组'},...groups.map(g=>({key:g,label:g}))].map(t=><div key={t.key} onClick={()=>{setActiveG(t.key);setBatch(false)}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',cursor:'pointer',background:activeG===t.key?c.primary:c.bg,color:activeG===t.key?c.cardBg:c.textSecondary,fontWeight:activeG===t.key?600:400}}>{t.label}</div>)}
       <div onClick={()=>{const n=prompt('新建分组');if(n?.trim()){const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set(GROUPS_KEY,gs)}}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',border:`1px dashed ${c.textHint}`,color:c.textSecondary,cursor:'pointer'}}>+</div></div>
@@ -90,5 +105,16 @@ export default function WatchlistPage(){
       {batch&&<input type="checkbox" checked={!!chk[w.fundCode]} readOnly style={{marginRight:8}}/>}
       <div style={{flex:1}}><div style={{fontSize:14,fontWeight:500}}>{w._isPinned?'📌 ':''}{w.fundName}</div><div style={{fontSize:11,color:c.textSecondary}}>{w.fundCode}{w.group?` · ${w.group}`:''}</div></div>
       <div style={{textAlign:'right'}}><div style={{fontSize:13,color:c.textSecondary}}>{w.nav||'--'}</div><div style={{fontSize:14,fontWeight:600,color:(w.displayChangeRate??0)>=0?c.up:c.down}}>{(w.displayChangeRate??0)>=0?'+':''}{(w.displayChangeRate)?.toFixed(2)??'--'}%</div></div></div>)}
-    <div style={{textAlign:'center',padding:8,fontSize:11,color:c.textHint}}>{updTime}</div></div>;
-}
+    <div style={{textAlign:'center',padding:8,fontSize:11,color:c.textHint}}>{updTime}</div>
+    {/* 添加弹窗 */}
+    {showAdd&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowAdd(false)}>
+      <div style={{width:300,background:'#fff',borderRadius:12,padding:24}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:16,fontWeight:600,marginBottom:16}}>添加关注</div>
+        <div style={{marginBottom:12}}><div style={{fontSize:12,color:'#999',marginBottom:4}}>产品代码</div>
+          <input value={addCode} onChange={e=>handleCodeInput(e.target.value)} placeholder="输入6位代码" maxLength={6} style={{width:'100%',padding:'8px 12px',border:'1px solid #eee',borderRadius:8,outline:'none',fontSize:14,boxSizing:'border-box'}}/></div>
+        <div style={{marginBottom:16}}><div style={{fontSize:12,color:'#999',marginBottom:4}}>产品名称</div>
+          <input value={addName} onChange={e=>setAddName(e.target.value)} placeholder="自动搜索或手动输入" style={{width:'100%',padding:'8px 12px',border:'1px solid #eee',borderRadius:8,outline:'none',fontSize:14,boxSizing:'border-box'}}/></div>
+        <button onClick={doAdd} disabled={addLoading||!addCode.trim()} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:addCode.trim()?c.primary:'#ccc',color:'#fff',fontSize:14,cursor:'pointer'}}>{addLoading?'添加中...':'确认添加'}</button>
+      </div>
+    </div>}</div>;
+  }
