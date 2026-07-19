@@ -254,7 +254,7 @@ export default function IndexPage(){
         <div style={{flex:2,minWidth:0}}><div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.fundName}</div><div style={{fontSize:11,color:c.textSecondary}}>{h.fundCode}{h.group?` · ${h.group}`:''}</div></div>
         {colOrder.includes('todayProfit')&&<div style={{flex:1.5,textAlign:'right',color:pu?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(pu?'+':'')+String(h.todayProfit??'--'):'****'}</div><div style={{fontSize:11}}>{h.todayChangeRate??'--'}%</div></div>}
         {colOrder.includes('totalReturn')&&<div style={{flex:1.5,textAlign:'right',color:ru?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(ru?'+':'')+String(h.totalReturn??'--'):'****'}</div><div style={{fontSize:11}}>{h.totalReturnRate??'--'}%</div></div>}
-        {colOrder.includes('valuation')&&<div style={{flex:1.5,textAlign:'right',fontSize:12}}><div style={{color:pc,fontWeight:600}}>{pl}</div><div style={{fontSize:10,color:c.textSecondary}}>{h.currentNav||h.nav||'--'}</div></div>}
+        {colOrder.includes('valuation')&&<div style={{flex:1.5,textAlign:'right',fontSize:12}}><div style={{color:pc,fontWeight:600}}>{pl}</div><div style={{fontSize:10,color:c.textSecondary}}>{h.peTemp?.normPE!=null?h.peTemp.normPE:'--'}</div></div>}
       </div>
     })}
 
