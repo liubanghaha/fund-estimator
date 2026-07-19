@@ -161,12 +161,24 @@ exports.main = async (event) => {
         .get();
       (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
 
-      // 对缺失温度的基金，按需计算（只算当前用户的持仓）
+      // 对今天没温度的基金，先用最近一次温度，都没有再按需计算
       const missingCodes = codes.filter(c => !tempMap[c]);
       if (missingCodes.length > 0) {
-        console.log(`[getPortfolio] 按需计算温度: ${missingCodes.length} 只基金 ${missingCodes.join(',')}`);
-        const computed = await computeTemperaturesForCodes(missingCodes, today);
-        Object.assign(tempMap, computed);
+        // 查最近温度
+        const recentRes = await db.collection("fund_temperatures")
+          .where({ fundCode: _.in(missingCodes) })
+          .orderBy("createTime", "desc")
+          .get();
+        (recentRes.data || []).forEach(t => {
+          if (!tempMap[t.fundCode]) tempMap[t.fundCode] = t;
+        });
+        // 还是没有的，按需计算
+        const stillMissing = missingCodes.filter(c => !tempMap[c]);
+        if (stillMissing.length > 0) {
+          console.log(`[getPortfolio] 按需计算温度: ${stillMissing.length} 只基金 ${stillMissing.join(',')}`);
+          const computed = await computeTemperaturesForCodes(stillMissing, today);
+          Object.assign(tempMap, computed);
+        }
       }
 
       enriched.forEach(h => {

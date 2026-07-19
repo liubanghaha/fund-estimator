@@ -10,7 +10,7 @@ import GroupTabs from './GroupTabs';
 
 const ALL_INDICES=[{code:'000001',name:'上证指数'},{code:'399001',name:'深证成指'},{code:'399006',name:'创业板指'},{code:'000300',name:'沪深300'},{code:'HSTECH',name:'恒生科技'},{code:'HSI',name:'恒生指数'},{code:'SPX',name:'标普500'},{code:'IXIC',name:'纳斯达克'}];
 
-interface Holding{_id:string;fundCode:string;fundName:string;shares?:number;buyPrice?:number;marketValue?:number;todayProfit?:string;todayProfitRate?:string;todayChangeRate?:string;estimateRate?:string;totalReturn?:string;totalReturnRate?:string;nav?:string;currentNav?:string;estimateUpdated?:boolean;group?:string;navHigh?:string|null;navLow?:string|null;peTemp?:{signal?:string;normPE?:number}}
+interface Holding{_id:string;fundCode:string;fundName:string;shares?:number;buyPrice?:number;marketValue?:number;todayProfit?:string;todayProfitRate?:string;todayChangeRate?:string;estimateRate?:string;totalReturn?:string;totalReturnRate?:string;nav?:string;currentNav?:string;estimatedNav?:string;estimateUpdated?:boolean;group?:string;navHigh?:string|null;navLow?:string|null;peTemp?:{signal?:string;normPE?:number}}
 
 export default function IndexPage(){
   const c=useThemeColors();
@@ -254,7 +254,7 @@ export default function IndexPage(){
         <div style={{flex:2,minWidth:0}}><div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.fundName}</div><div style={{fontSize:11,color:c.textSecondary}}>{h.fundCode}{h.group?` · ${h.group}`:''}</div></div>
         {colOrder.includes('todayProfit')&&<div style={{flex:1.5,textAlign:'right',color:pu?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(pu?'+':'')+String(h.todayProfit??'--'):'****'}</div><div style={{fontSize:11}}>{h.todayChangeRate??'--'}%</div></div>}
         {colOrder.includes('totalReturn')&&<div style={{flex:1.5,textAlign:'right',color:ru?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(ru?'+':'')+String(h.totalReturn??'--'):'****'}</div><div style={{fontSize:11}}>{h.totalReturnRate??'--'}%</div></div>}
-        {colOrder.includes('valuation')&&<div style={{flex:1.5,textAlign:'right',fontSize:12}}><div style={{color:pc,fontWeight:600}}>{pl}</div><div style={{fontSize:10,color:c.textSecondary}}>{h.currentNav||h.navHigh||h.navLow?`${h.navLow||'--'}~${h.navHigh||'--'}`:h.currentNav||'--'}</div></div>}
+        {colOrder.includes('valuation')&&<div style={{flex:1.5,textAlign:'right',fontSize:12}}><div style={{color:pc,fontWeight:600}}>{pl}</div><div style={{fontSize:10,color:c.textSecondary}}>{h.currentNav||h.nav||'--'}</div></div>}
       </div>
     })}
 
