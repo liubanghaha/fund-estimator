@@ -1,6 +1,6 @@
 import { useState,useEffect } from 'react';
 import { useParams,useNavigate } from 'react-router-dom';
-import { fetchFundOverview,fetchFundProfile,fetchFundNAVHistory,watchlist,transaction } from '../../api';
+import { fetchFundOverview,fetchFundProfile,fetchFundNAVHistory,watchlist,transaction,holding } from '../../api';
 import { useUserStore } from '../../stores/user';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import LineChart from '../../components/Charts/LineChart';
@@ -19,13 +19,16 @@ export default function FundDetailPage(){
   const [showExited,setShowExited]=useState(false);
   const [showAllHist,setShowAllHist]=useState(false);
   const [showTx,setShowTx]=useState(true);
+  const [holdingId,setHoldingId]=useState('');
 
   useEffect(()=>{if(!fundCode)return;(async()=>{setLoading(true);
     try{const[ov,pf]=await Promise.all([fetchFundOverview(fundCode),fetchFundProfile(fundCode).catch(()=>null)]);
       if(ov.code===0){setOv(ov.data||ov);setNavH(ov.data?.history||[])}
       if(pf?.code===0)setPf(pf.data||pf);
       if(isLoggedIn){const cr=await watchlist.check(fundCode);setIsFollowed(cr.code===0&&cr.data?.followed);
-        const tr=await transaction.list(fundCode);if(tr.code===0)setTxList(tr.data||[])}
+        const tr=await transaction.list(fundCode);if(tr.code===0)setTxList(tr.data||[]);
+        // 检查是否已持有该基金
+        try{const hr=await holding.check(fundCode);if(hr.code===0&&hr.data)setHoldingId(hr.data._id||'')}catch{}}
     }catch{}setLoading(false)})()},[fundCode,isLoggedIn]);
 
   const loadNav=async(days:number)=>{setPeriod(days);try{const r=await fetchFundNAVHistory(fundCode!,days);if(r.code===0&&r.data?.length)setNavH(r.data)}catch{}}
@@ -141,7 +144,7 @@ export default function FundDetailPage(){
 
     {/* Bottom bar */}
     <div style={{display:'flex',background:c.cardBg,borderTop:`1px solid ${c.border}`,padding:'8px 10px',paddingBottom:'calc(8px + env(safe-area-inset-bottom))',gap:12,flexShrink:0}}>
-      <button onClick={()=>nav(`/add-holding/${fundCode}`)} style={{flex:1,padding:10,borderRadius:20,border:'none',background:c.primary,color:'#fff',fontSize:13,cursor:'pointer'}}>添加持仓</button>
+      <button onClick={()=>nav(holdingId?`/add-holding?id=${holdingId}`:`/add-holding/${fundCode}`)} style={{flex:1,padding:10,borderRadius:20,border:'none',background:c.primary,color:'#fff',fontSize:13,cursor:'pointer'}}>{holdingId?'修改持仓':'添加持仓'}</button>
       <button onClick={()=>nav(`/fund-compare?b=${fundCode}`)} style={{flex:1,padding:10,borderRadius:20,border:`1px solid ${c.primary}`,background:'transparent',color:c.primary,fontSize:13,cursor:'pointer'}}>对比</button>
       <button onClick={()=>setShowTx(!showTx)} style={{flex:1,padding:10,borderRadius:20,border:`1px solid ${c.border}`,background:'transparent',color:c.textSecondary,fontSize:13,cursor:'pointer'}}>{showTx?'隐藏记录':'交易记录'}</button></div></div>;
 }

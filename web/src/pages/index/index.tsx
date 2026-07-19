@@ -280,7 +280,7 @@ export default function IndexPage(){
     {/* Temp Info */}
     {showTemp&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowTemp(false)}>
       <div style={{background:'#3A3F4B',borderRadius:12,padding:20,width:300,color:'#fff',fontSize:13,lineHeight:1.8}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:15,fontWeight:600,marginBottom:8}}>估值温度说明</div><div>基于PE历史分位计算：</div><div style={{margin:'8px 0'}}>📗 低估：PE分位&lt;25%</div><div>📙 正常：PE分位25%~75%</div><div>📕 高估：PE分位&gt;75%</div><div style={{marginTop:12,opacity:0.6}}>PE温度仅为参考，不构成投资建议</div></div></div>}
+        <div style={{fontSize:15,fontWeight:600,marginBottom:8}}>估值温度说明</div><div>穿透前十大成分股，基于每只个股历年PE历史区间计算当前分位，按成分占比加权汇总：</div><div style={{margin:'8px 0'}}>📗 低估：温度值 &lt; 0.7</div><div>📙 正常：温度值 0.7 ~ 1.3</div><div>📕 高估：温度值 &gt; 1.3</div><div style={{marginTop:12,opacity:0.6}}>温度值仅为参考，不构成投资建议</div></div></div>}
 
     {/* Share Card */}
     {showShare&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowShare(false)}>
