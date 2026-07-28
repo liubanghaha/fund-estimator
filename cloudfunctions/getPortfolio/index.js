@@ -85,18 +85,27 @@ exports.main = async (event) => {
       // 兜底：如果没有任何数据源，用 currentNav 估算（至少不为 null）
       const yesterdayNavSafe = yesterdayNav || currentNav || 0;
 
+      // 估值计算：优先实时估算，兜底用历史涨跌反推
       if (currentNav != null && yesterdayNav != null && currentNav !== yesterdayNav) {
+        // 东方财富已更新今日实际净值
         todayProfitAmount = (currentNav - yesterdayNav) * shares;
         todayChangeRate = eastmoney.actualChangeRate || tiantian.estimatedChangeRate || 0;
       } else if (tiantian.estimatedNav != null && yesterdayNav != null) {
+        // 天天基金实时估值可用
         todayProfitAmount = (tiantian.estimatedNav - yesterdayNav) * shares;
         todayChangeRate = tiantian.estimatedChangeRate || 0;
       } else {
-        todayChangeRate = eastmoney.actualChangeRate || tiantian.estimatedChangeRate || 0;
+        // 兜底：天天基金不可用时，用东方财富涨跌幅反推当日收益
+        const fallbackRate = parseFloat(eastmoney.actualChangeRate) || parseFloat(tiantian.estimatedChangeRate) || 0;
+        todayChangeRate = fallbackRate;
+        if (yesterdayNav > 0 && fallbackRate !== 0) {
+          todayProfitAmount = (fallbackRate / 100) * yesterdayNav * shares;
+        }
       }
 
       totalYesterdayMarket += yesterdayNavSafe * shares;
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
+      else if (!updateTime && eastmoney.actualDate) updateTime = eastmoney.actualDate; // 兜底：用东方财富净值日期
 
       const costValue = buyPrice * shares;
       const marketValue = currentNav * shares;
@@ -361,10 +370,12 @@ async function batchFetchTiantian(codes) {
       res.on("end", () => {
         try {
           // 批量返回格式：jsonpgzs({fundcode:{...}, fundcode:{...}})
+          if (!body.startsWith("jsonpgzs(")) { console.warn("天天基金API异常返回(非JSONP):", body.slice(0,100)); resolve({}); return; }
           const clean = body.replace(/^jsonpgzs\(/, "").replace(/\)\;?$/, "").trim();
           const obj = JSON.parse(clean);
           resolve(typeof obj === "object" && !Array.isArray(obj) ? obj : {});
         } catch (e) {
+          console.warn("天天基金API解析失败:", e.message);
           resolve({});
         }
       });

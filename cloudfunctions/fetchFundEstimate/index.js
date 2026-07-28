@@ -29,6 +29,8 @@ function fetchTiantian(fundCode) {
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
+          // 天天基金API异常时返回HTML而非JSONP
+          if (!body.startsWith("jsonpgz(")) { console.warn("天天基金API异常:", fundCode, body.slice(0,80)); resolve({}); return; }
           const json = JSON.parse(body.replace(/^jsonpgz\(/, "").replace(/\)\;?$/, ""));
           resolve({
             fundCode: json.fundcode,
@@ -39,6 +41,7 @@ function fetchTiantian(fundCode) {
             estimateTime: json.gztime || "",
           });
         } catch (e) {
+          console.warn("天天基金解析失败:", fundCode, e.message);
           resolve({});
         }
       });

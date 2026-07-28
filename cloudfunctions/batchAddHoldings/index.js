@@ -24,7 +24,7 @@ exports.main = async (event) => {
     // 3. 批量检查已存在的持仓
     const existCodes = new Set();
     const existRes = await db.collection("holdings")
-      .where({ _openid: OPENID, fundCode: _.in(codes) })
+      .where({ _openid: uid, fundCode: _.in(codes) })
       .field({ fundCode: true })
       .get();
     existRes.data.forEach(h => existCodes.add(h.fundCode));
@@ -69,7 +69,7 @@ exports.main = async (event) => {
         holdingReturn: hr,
         buyAmount: shares > 0 && buyPrice > 0 ? parseFloat((shares * buyPrice).toFixed(2)) : 0,
         buyDate: f.buyDate || "",
-        _openid: OPENID,
+        _openid: uid,
         createTime: new Date(),
       });
     }

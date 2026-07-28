@@ -6,7 +6,7 @@ export default function GroupTabs({groups,activeGroup,counts,onGroupChange,onGro
   onRenameGroup?:(oldName:string,newName:string)=>void;onDeleteGroup?:(groupName:string)=>void
 }){
   const c=useThemeColors();
-  const groupNames=groups.filter((g:any)=>typeof g==='string'&&g&&g!=='all'&&g!=='ungrouped').map((g:any)=>String(g));
+  const groupNames=groups.filter((g:any)=>typeof g==='string'&&g&&g!=='all'&&g!=='ungrouped'&&g!=='未分组'&&g!=='全部').map((g:any)=>String(g));
   const tabs=[{key:'all',label:`全部(${counts.all||0})`},{key:'ungrouped',label:`未分组(${counts.ungrouped||0})`},...groupNames.map(g=>({key:g,label:`${g}(${counts[g]||0})`}))];
 
   const showMenu=(g:string)=>{

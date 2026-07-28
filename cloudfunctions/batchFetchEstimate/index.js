@@ -12,6 +12,8 @@ function fetchTiantian(fundCode) {
         res.on("data", (c) => { body += c; });
         res.on("end", () => {
           try {
+            // 天天基金API异常时返回HTML而非JSONP
+            if (!body.startsWith("jsonpgz(")) { console.warn("天天基金API异常:", fundCode, body.slice(0,80)); resolve({}); return; }
             const json = JSON.parse(body.replace(/^jsonpgz\(/, "").replace(/\)\;?$/, ""));
             resolve({
               fundCode: json.fundcode,
@@ -21,7 +23,7 @@ function fetchTiantian(fundCode) {
               estimatedChangeRate: parseFloat(json.gszzl) || null,
               estimateTime: json.gztime || "",
             });
-          } catch (e) { resolve({}); }
+          } catch (e) { console.warn("天天基金解析失败:", fundCode, e.message); resolve({}); }
         });
       }
     );
@@ -70,16 +72,23 @@ exports.main = async (event) => {
 
   try {
     // 并行请求：每只基金同时查天天+东方财富
-    const results = await Promise.all(codes.map((code) =>
-      Promise.all([fetchTiantian(code), fetchEastMoney(code)]).then(([tt, em]) => {
-        if (!tt.fundCode) return null;
-        return {
-          ...tt,
-          ...em,
-          displayChangeRate: selectChangeRate(tt.nav, em.actualNav, tt.estimatedChangeRate, em.actualChangeRate),
-        };
-      })
-    ));
+	    const results = await Promise.all(codes.map((code) =>
+	      Promise.all([fetchTiantian(code), fetchEastMoney(code)]).then(([tt, em]) => {
+	        // 天天基金挂了时兜底：至少返回东方财富数据
+	        return {
+	          fundCode: tt.fundCode || code,
+	          fundName: tt.fundName || '',
+	          nav: tt.nav || em.actualNav || null,
+	          estimatedNav: tt.estimatedNav || null,
+	          estimatedChangeRate: tt.estimatedChangeRate || null,
+	          estimateTime: tt.estimateTime || '',
+	          actualNav: em.actualNav || null,
+	          actualDate: em.actualDate || '',
+	          actualChangeRate: em.actualChangeRate || null,
+	          displayChangeRate: selectChangeRate(tt.nav || em.actualNav, em.actualNav, tt.estimatedChangeRate, em.actualChangeRate),
+	        };
+	      })
+	    ));
     const data = {};
     results.forEach((r, i) => {
       data[codes[i]] = r;

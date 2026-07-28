@@ -18,10 +18,12 @@ export default function WatchlistPage(){
   const [activeG,setActiveG]=useState('all');
   const [pinned,setPinned]=useState<string[]>(storage.get<string[]>(PINNED_KEY)||[]);
   const [batch,setBatch]=useState(false);const [chk,setChk]=useState<Record<string,boolean>>({});
+  const [showGpick,setShowGpick]=useState(false);const [gpCodes,setGpCodes]=useState<string[]>([]);
   const [sort,setSort]=useState('');const [sortO,setSortO]=useState('');
   const [kw,setKw]=useState('');const [updTime,setUpdTime]=useState('');
   const [summary,setSummary]=useState({avg:0,up:0,down:0,total:0});
   const timerRef=useRef<any>(null);const [swiping,setSwiping]=useState<string|null>(null);
+  const itemsRef=useRef<WatchItem[]>([]);itemsRef.current=items;
   // 添加弹窗
   const [showAdd,setShowAdd]=useState(false);const [addCode,setAddCode]=useState('');const [addName,setAddName]=useState('');const [addLoading,setAddLoading]=useState(false);
 
@@ -56,7 +58,7 @@ export default function WatchlistPage(){
   useEffect(()=>{if(!isLoggedIn)return;fetchData();
     if(!isTrading())return;
     timerRef.current=setInterval(async()=>{if(!isTrading()){clearInterval(timerRef.current!);return}
-      const codes=items.map(w=>w.fundCode);if(!codes.length)return;
+      const codes=itemsRef.current.map(w=>w.fundCode);if(!codes.length)return;
       try{const er=await batchFetchEstimate(codes);if(!er||er.code!==0)return;const ed=er.data||{};
         setItems(p=>p.map(w=>{const e=ed[w.fundCode];if(!e)return w;return{...w,nav:e.nav||w.nav,displayChangeRate:e.displayChangeRate??w.displayChangeRate,estimatedChangeRate:e.estimatedChangeRate??w.estimatedChangeRate,estimateTime:e.estimateTime||w.estimateTime}}));
         setUpdTime(new Date().toLocaleTimeString('zh-CN',{hour12:false}));
@@ -76,7 +78,7 @@ export default function WatchlistPage(){
   const doAdd=async()=>{
     if(!addCode.trim()||!addName.trim())return;
     setAddLoading(true);
-    try{await wlApi.add(addCode.trim(),addName.trim());setShowAdd(false);setAddCode('');setAddName('');fetchData()}catch{setAddLoading(false)}
+    try{await wlApi.add(addCode.trim(),addName.trim());setShowAdd(false);setAddCode('');setAddName('');setAddLoading(false);fetchData()}catch{setAddLoading(false)}
   };
 
   return <div style={{minHeight:'100%',background:c.bg,paddingBottom:10}}>
@@ -85,20 +87,21 @@ export default function WatchlistPage(){
       <span onClick={()=>{if(!sort){setSort('change');setSortO('desc')}else if(sort==='change'&&sortO==='desc'){setSort('change');setSortO('asc')}else{setSort('name');setSortO('')}}} style={{fontSize:13,color:c.primary,cursor:'pointer',whiteSpace:'nowrap'}}>{!sort?'排序':sort==='change'?(sortO==='desc'?'涨跌↓':'涨跌↑'):'名称'}</span>
       <span onClick={()=>setShowAdd(true)} style={{fontSize:20,color:c.primary,cursor:'pointer',lineHeight:'22px'}}>+</span></div>
     <div style={{display:'flex',overflowX:'auto',gap:4,padding:'6px 12px',background:c.cardBg,scrollbarWidth:'none'}}>
-      {[{key:'all',label:'全部'},{key:'ungrouped',label:'未分组'},...groups.map(g=>({key:g,label:g}))].map(t=><div key={t.key} onClick={()=>{setActiveG(t.key);setBatch(false)}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',cursor:'pointer',background:activeG===t.key?c.primary:c.bg,color:activeG===t.key?c.cardBg:c.textSecondary,fontWeight:activeG===t.key?600:400}}>{t.label}</div>)}
-      <div onClick={()=>{const n=prompt('新建分组');if(n?.trim()){const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set(GROUPS_KEY,gs)}}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',border:`1px dashed ${c.textHint}`,color:c.textSecondary,cursor:'pointer'}}>+</div></div>
+      {[{key:'all',label:'全部'},{key:'ungrouped',label:'未分组'},...groups.filter(g=>g&&g!=='未分组').map(g=>({key:g,label:g}))].map(t=><div key={t.key} onClick={()=>{setActiveG(t.key);setBatch(false)}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',cursor:'pointer',background:activeG===t.key?c.primary:c.bg,color:activeG===t.key?c.cardBg:c.textSecondary,fontWeight:activeG===t.key?600:400}}>{t.label}</div>)}
+      <div onClick={()=>{const n=prompt('新建分组');if(!n?.trim())return;if(n.trim()==='未分组'||n.trim()==='全部'){alert('不能使用保留名称');return};const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set(GROUPS_KEY,gs)}} style={{padding:'4px 12px',borderRadius:14,fontSize:13,whiteSpace:'nowrap',border:`1px dashed ${c.textHint}`,color:c.textSecondary,cursor:'pointer'}}>+</div></div>
     <div style={{display:'flex',justifyContent:'space-between',padding:'6px 16px',fontSize:12,color:c.textSecondary,background:c.cardBg,margin:'0 12px',borderRadius:8}}>
       <span>共{summary.total}只</span><span>均{summary.avg>=0?'+':''}{summary.avg}%</span>
       <span style={{color:c.up}}>涨{summary.up}</span><span style={{color:c.down}}>跌{summary.down}</span>
       <span style={{color:c.primary,cursor:'pointer'}} onClick={()=>{setBatch(!batch);setChk({})}}>{batch?'完成':'批量'}</span></div>
     {batch&&<div style={{display:'flex',justifyContent:'space-between',padding:'6px 16px',background:c.primaryBg,fontSize:13,margin:'0 12px',borderRadius:8}}>
       <span onClick={()=>{const all=display.every(w=>chk[w.fundCode]);if(all)setChk({});else{const m:Record<string,boolean>={};display.forEach(w=>m[w.fundCode]=true);setChk(m)}}} style={{cursor:'pointer'}}>{display.every(w=>chk[w.fundCode])?'取消全选':'全选'}</span>
+      <span onClick={()=>{const codes=Object.keys(chk);if(!codes.length)return;setGpCodes(codes);setShowGpick(true)}} style={{cursor:'pointer'}}>移动分组</span>
       <span style={{color:c.up,cursor:'pointer'}} onClick={async()=>{const codes=Object.keys(chk);if(!codes.length)return;if(!confirm(`删除${codes.length}个?`))return;for(const code of codes)await wlApi.remove(code).catch(()=>{});setBatch(false);setChk({});fetchData()}}>删除</span></div>}
     {!loaded?<div style={{textAlign:'center',padding:48,color:c.textSecondary}}>加载中...</div>:
     display.length===0?<div style={{textAlign:'center',padding:48,color:c.textSecondary}}>{kw?'未找到':'暂无自选'}</div>:
     display.map(w=><div key={w.fundCode} onClick={()=>batch?setChk(p=>({...p,[w.fundCode]:!p[w.fundCode]})):nav(`/fund-detail/${w.fundCode}`)}
       onTouchStart={e=>{if(batch)return;const t=e.touches[0];(e.currentTarget as any)._sx=t.clientX;(e.currentTarget as any)._sy=t.clientY}}
-      onTouchMove={e=>{if(batch||!swiping&&swiping!==w.fundCode)return;const t=e.touches[0];const el=e.currentTarget as any;const dx=t.clientX-(el._sx||0);const dy=Math.abs(t.clientY-(el._sy||0));if(dy>Math.abs(dx))return;if(dx<0)setSwiping(w.fundCode);}}
+      onTouchMove={e=>{if(batch||(swiping&&swiping!==w.fundCode))return;const t=e.touches[0];const el=e.currentTarget as any;const dx=t.clientX-(el._sx||0);const dy=Math.abs(t.clientY-(el._sy||0));if(dy>Math.abs(dx))return;if(dx<0)setSwiping(w.fundCode);}}
       onTouchEnd={()=>{setTimeout(()=>setSwiping(null),300)}}
       style={{display:'flex',alignItems:'center',padding:'10px 16px',margin:'4px 12px',background:c.cardBg,borderRadius:10,boxShadow:'0 1px 3px rgba(0,0,0,0.03)',cursor:'pointer',position:'relative',overflow:'hidden',transform:swiping===w.fundCode?'translateX(-80px)':'none',transition:'0.2s'}}>
       {swiping===w.fundCode&&<div onClick={async(e)=>{e.stopPropagation();if(!confirm('确定删除?')){setSwiping(null);return};await wlApi.remove(w.fundCode);setSwiping(null);fetchData()}} style={{position:'absolute',right:0,top:0,bottom:0,width:80,background:c.up,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>删除</div>}
@@ -115,6 +118,27 @@ export default function WatchlistPage(){
         <div style={{marginBottom:16}}><div style={{fontSize:12,color:'#999',marginBottom:4}}>产品名称</div>
           <input value={addName} onChange={e=>setAddName(e.target.value)} placeholder="自动搜索或手动输入" style={{width:'100%',padding:'8px 12px',border:'1px solid #eee',borderRadius:8,outline:'none',fontSize:14,boxSizing:'border-box'}}/></div>
         <button onClick={doAdd} disabled={addLoading||!addCode.trim()} style={{width:'100%',padding:10,borderRadius:8,border:'none',background:addCode.trim()?c.primary:'#ccc',color:'#fff',fontSize:14,cursor:'pointer'}}>{addLoading?'添加中...':'确认添加'}</button>
+      </div>
+    </div>}
+
+    {/* 分组选择器 */}
+    {showGpick&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowGpick(false)}>
+      <div style={{background:'#fff',borderRadius:12,padding:16,width:260,maxHeight:'60vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:16,fontWeight:600,marginBottom:12}}>移动到分组</div>
+        {groups.map(g=><div key={g} style={{padding:'10px 0',borderBottom:'1px solid #eee',cursor:'pointer'}} onClick={async()=>{
+          await wlApi.setGroup(gpCodes,g).catch(()=>{});
+          setShowGpick(false);setBatch(false);setChk({});fetchData();
+        }}>{g}</div>)}
+        <div style={{padding:'10px 0',borderBottom:'1px solid #eee',cursor:'pointer',color:'#999'}} onClick={async()=>{
+          await wlApi.setGroup(gpCodes,'').catch(()=>{});
+          setShowGpick(false);setBatch(false);setChk({});fetchData();
+        }}>未分组</div>
+        <div style={{padding:'10px 0',cursor:'pointer',color:c.primary}} onClick={()=>{
+          const n=prompt('新建分组');if(!n?.trim())return;if(n.trim()==='未分组'||n.trim()==='全部'){alert('不能使用保留名称');return};
+          const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set(GROUPS_KEY,gs);
+          wlApi.setGroup(gpCodes,n.trim()).catch(()=>{});
+          setShowGpick(false);setBatch(false);setChk({});
+        }}>+ 新建分组</div>
       </div>
     </div>}</div>;
   }

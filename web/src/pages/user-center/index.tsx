@@ -41,7 +41,7 @@ export default function UserCenterPage(){
         <div style={{display:'flex',justifyContent:'space-between',marginTop:6,fontSize:11,color:c.textSecondary}}><span>{fbText.length}/500</span><button onClick={()=>{if(fbText.trim()){storage.set('feedback_draft',fbText);alert('感谢反馈！');setFbText('');setShowFeedback(false)}}} style={{padding:'3px 12px',borderRadius:10,border:'none',background:c.primary,color:'#fff',fontSize:11,cursor:'pointer'}}>提交</button></div></div>}
       <div onClick={toggle} style={{padding:'12px 16px',borderBottom:`1px solid ${c.bg}`,fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between'}}><span>主题颜色</span>
         <span style={{display:'inline-block',width:40,height:22,borderRadius:11,background:theme==='red'?c.up:'#2196F3',position:'relative'}}><span style={{position:'absolute',top:2,left:theme==='red'?20:2,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'0.2s'}}/></span></div>
-      <div onClick={()=>{['portfolio_cache','watchlist_cache','profit_detail_cache_v2','index_cache'].forEach(k=>storage.remove(k));alert('已清理')}} style={{padding:'12px 16px',fontSize:14,color:c.textSecondary,cursor:'pointer'}}>清理缓存</div></div>
+      <div onClick={()=>{['portfolio_cache','watchlist_cache','profit_detail_cache_v2','index_cache','holding_groups_cache','watchlist_groups_cache'].forEach(k=>storage.remove(k));alert('已清理')}} style={{padding:'12px 16px',fontSize:14,color:c.textSecondary,cursor:'pointer'}}>清理缓存</div></div>
 
     <div style={{margin:'0 10px 10px',background:c.cardBg,borderRadius:12,overflow:'hidden'}}>
       <div onClick={()=>nav('/fund-compare')} style={{padding:'12px 16px',borderBottom:`1px solid ${c.bg}`,fontSize:14,cursor:'pointer'}}>基金对比</div>

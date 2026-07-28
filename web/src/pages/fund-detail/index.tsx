@@ -12,14 +12,15 @@ export default function FundDetailPage(){
   const [profile,setPf]=useState<any>(null);
   const [navH,setNavH]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
-  const [tab,setTab]=useState('trend');const [period,setPeriod]=useState(90);
+  const [errMsg,setErrMsg]=useState('');
+  const [tab,setTab]=useState('trend');const [period,setPeriod]=useState(30);
   const [isFollowed,setIsFollowed]=useState(false);
   const [txList,setTxList]=useState<any[]>([]);
   const [showFee,setShowFee]=useState(false);
   const [showExited,setShowExited]=useState(false);
   const [showAllHist,setShowAllHist]=useState(false);
   const [showTx,setShowTx]=useState(true);
-  const [holdingId,setHoldingId]=useState('');
+  const [holdingId,setHoldingId]=useState('');const [rawHolding,setRawHolding]=useState<any>(null);
 
   useEffect(()=>{if(!fundCode)return;(async()=>{setLoading(true);
     try{const[ov,pf]=await Promise.all([fetchFundOverview(fundCode),fetchFundProfile(fundCode).catch(()=>null)]);
@@ -28,8 +29,10 @@ export default function FundDetailPage(){
       if(isLoggedIn){const cr=await watchlist.check(fundCode);setIsFollowed(cr.code===0&&cr.data?.followed);
         const tr=await transaction.list(fundCode);if(tr.code===0)setTxList(tr.data||[]);
         // 检查是否已持有该基金
-        try{const hr=await holding.check(fundCode);if(hr.code===0&&hr.data)setHoldingId(hr.data._id||'')}catch{}}
-    }catch{}setLoading(false)})()},[fundCode,isLoggedIn]);
+        try{const hr=await holding.check(fundCode);if(hr.code===0&&hr.data){setHoldingId(hr.data._id||'');setRawHolding(hr.data)}}catch{}}
+      // 默认加载近一月走势
+      try{const r=await fetchFundNAVHistory(fundCode,30);if(r.code===0&&r.data?.length)setNavH(r.data)}catch{}
+    }catch{setErrMsg('加载失败，请重试')}setLoading(false)})()},[fundCode,isLoggedIn]);
 
   const loadNav=async(days:number)=>{setPeriod(days);try{const r=await fetchFundNAVHistory(fundCode!,days);if(r.code===0&&r.data?.length)setNavH(r.data)}catch{}}
   const ov=overview||{};const pf=profile||{};
@@ -45,7 +48,39 @@ export default function FundDetailPage(){
   const holdings=pf.holdings||[];
   const exited=pf.exited||[];
 
+  // 交易标记点映射（走势图上描点）
+  const txMap:Record<string,{buys:number;sells:number}>={};
+  txList.forEach((tx:any)=>{if(!tx.date)return;if(!txMap[tx.date])txMap[tx.date]={buys:0,sells:0};if(tx.type==='buy')txMap[tx.date].buys++;else txMap[tx.date].sells++});
+
+  // 计算我的持仓展示数据
+  let holdingData:any=null;
+  if(rawHolding){
+    const yNav=parseFloat(ov.nav||ov.actualNav||ov.estimatedNav||0);
+    if(yNav){
+      const curNav=calculator.selectNav(yNav,ov.actualNav,ov.estimatedNav);
+      let shares=parseFloat(rawHolding.shares||rawHolding.amount||0);
+      let buyPrice=parseFloat(rawHolding.buyPrice||rawHolding.nav||0);
+      const dbMV=parseFloat(rawHolding.marketValue)||0;
+      const dbRet=parseFloat(rawHolding.holdingReturn)||0;
+      if((!shares||!buyPrice)&&dbMV>0&&curNav>0){
+        if(!shares)shares=dbMV/curNav;
+        if(!buyPrice&&shares>0){buyPrice=curNav-(dbRet/shares);if(buyPrice<=0)buyPrice=curNav}
+      }
+      const marketValue=curNav*shares;
+      const todayProfit=(curNav-yNav)*shares;
+      const costValue=buyPrice*shares;
+      const totalReturn=marketValue-costValue;
+      const totalReturnRate=costValue>0?(totalReturn/costValue)*100:0;
+      holdingData={
+        shares:shares.toFixed(2),buyPrice:buyPrice.toFixed(4),
+        marketValue:marketValue.toFixed(2),todayProfit:todayProfit.toFixed(2),
+        totalReturn:totalReturn.toFixed(2),totalReturnRate:totalReturnRate.toFixed(2),
+      };
+    }
+  }
+
   if(loading)return <div style={{display:'flex',justifyContent:'center',padding:48,color:c.textSecondary}}>加载中...</div>;
+  if(errMsg)return <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:48,color:c.textSecondary,gap:12}}><div>{errMsg}</div><button onClick={()=>{setErrMsg('');setLoading(true);window.location.reload()}} style={{padding:'8px 24px',borderRadius:20,border:`1px solid ${c.primary}`,color:c.primary,background:'transparent',cursor:'pointer'}}>重试</button></div>;
 
   return <div style={{display:'flex',flexDirection:'column',minHeight:'100dvh',background:c.bg}}>
     <div style={{flex:1,overflow:'auto'}}>
@@ -83,6 +118,19 @@ export default function FundDetailPage(){
       </div>
     </div>}
 
+    {/* 我的持仓 */}
+    {holdingData&&<div style={{margin:'0 10px 10px',padding:14,background:c.cardBg,borderRadius:12}}>
+      <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>我的持仓</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>持有金额</div><div style={{fontSize:15,fontWeight:600}}>¥{holdingData.marketValue}</div></div>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>持有份额</div><div style={{fontSize:15,fontWeight:600}}>{holdingData.shares}</div></div>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>买入净值</div><div style={{fontSize:15,fontWeight:600}}>{holdingData.buyPrice}</div></div>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>累计收益</div><div style={{fontSize:15,fontWeight:600,color:parseFloat(holdingData.totalReturn)>=0?c.up:c.down}}>{parseFloat(holdingData.totalReturn)>=0?'+':''}{holdingData.totalReturn}</div></div>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>累计收益率</div><div style={{fontSize:15,fontWeight:600,color:parseFloat(holdingData.totalReturnRate)>=0?c.up:c.down}}>{parseFloat(holdingData.totalReturnRate)>=0?'+':''}{holdingData.totalReturnRate}%</div></div>
+        <div><div style={{fontSize:11,color:c.textSecondary}}>当日收益</div><div style={{fontSize:15,fontWeight:600,color:parseFloat(holdingData.todayProfit)>=0?c.up:c.down}}>{parseFloat(holdingData.todayProfit)>=0?'+':''}{holdingData.todayProfit}</div></div>
+      </div>
+    </div>}
+
     {/* Tabs */}
     <div style={{display:'flex',background:c.cardBg,margin:'0 10px',borderRadius:'8px 8px 0 0'}}>
       {[{k:'trend',l:'走势'},{k:'holdings',l:'持仓'},{k:'profile',l:'档案'}].map(t=><div key={t.k} onClick={()=>{setTab(t.k);if(t.k==='trend'&&hist.length===0)loadNav(period)}} style={{flex:1,textAlign:'center',padding:10,fontSize:14,color:tab===t.k?c.primary:c.textSecondary,borderBottom:tab===t.k?`2px solid ${c.primary}`:'2px solid transparent',cursor:'pointer'}}>{t.l}</div>)}
@@ -94,7 +142,7 @@ export default function FundDetailPage(){
         {hist.length>1&&<div style={{marginBottom:12}}>
           <div style={{fontSize:14,fontWeight:600,marginBottom:8}}>收益走势</div>
           <div style={{display:'flex',gap:8,marginBottom:8}}>{[{d:30,l:'近一月'},{d:90,l:'近三月'},{d:180,l:'近半年'},{d:365,l:'近一年'},{d:1095,l:'近三年'}].map(p=><div key={p.d} onClick={()=>loadNav(p.d)} style={{padding:'3px 12px',borderRadius:12,fontSize:12,background:period===p.d?c.primary:c.bg,color:period===p.d?c.cardBg:c.textSecondary,cursor:'pointer'}}>{p.l}</div>)}</div>
-          <LineChart key={period} data={(()=>{const r=[...hist].reverse().filter((d:any)=>parseFloat(d.nav)>0);if(r.length<2)return r.map((d:any)=>({date:d.date?.slice(5)||'',value:0}));const base=r[0].nav;return r.map((d:any)=>({date:d.date?.slice(5)||'',value:+((d.nav/base-1)*100).toFixed(2)}))})()} height={200} color={rate>=0?c.up:c.down} isReturn/>
+          <LineChart data={(()=>{const r=[...hist].reverse().filter((d:any)=>parseFloat(d.nav)>0);if(r.length<2)return r.map((d:any)=>({date:d.date||'',value:0}));const base=r[0].nav;return r.map((d:any)=>({date:d.date||'',value:+((d.nav/base-1)*100).toFixed(2)}))})()} height={200} color={rate>=0?c.up:c.down} isReturn txMap={txMap}/>
         </div>}
         {rets&&<div style={{marginBottom:12}}><div style={{fontSize:14,fontWeight:600,marginBottom:8}}>收益表现</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>

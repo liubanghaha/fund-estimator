@@ -8,12 +8,18 @@ async function callFunction(name: string, data: Record<string, unknown> = {}) {
   return res.result ?? res;
 }
 
-/** 自动注入 uid（优先使用绑定的 OPENID，否则用本地 UID） */
+/** 自动注入 uid（优先使用绑定的 OPENID，否则用本地 UID，兜底生成） */
 function withUid(data: Record<string, unknown> = {}): Record<string, unknown> {
-  // 优先绑定的旧账号 OPENID
-  const boundOpenid = localStorage.getItem('h5_bound_openid');
-  const uid = boundOpenid || localStorage.getItem('h5_uid');
-  return uid ? { ...data, testOpenid: uid } : data;
+  const boundOpenid = safeGet('h5_bound_openid');
+  let uid = boundOpenid || safeGet('h5_uid');
+  if (!uid) { uid = 'h5_' + Math.random().toString(36).slice(2, 18); safeSet('h5_uid', uid); }
+  return { ...data, testOpenid: uid };
+}
+function safeGet(k: string): string | null {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
+function safeSet(k: string, v: string): void {
+  try { localStorage.setItem(k, v); } catch { /* ignore */ }
 }
 
 /** 获取基金基本信息 */
@@ -68,7 +74,7 @@ export function submitFeedback(params: { content?: string; type?: string; contac
 
 /** 批量添加持仓 */
 export function batchAddHoldings(funds: unknown[]) {
-  return callFunction('batchAddHoldings', { funds });
+  return callFunction('batchAddHoldings', withUid({ funds }));
 }
 
 /** OCR 截图识别 */
@@ -102,6 +108,8 @@ export const watchlist = {
 
 /** 持仓管理 */
 export const holding = {
+  add: (data: Record<string, unknown>) =>
+    callFunction('manageHolding', withUid({ action: 'add', data })),
   update: (id: string, data: Record<string, unknown>) =>
     callFunction('manageHolding', withUid({ action: 'update', id, data })),
   remove: (id: string) =>

@@ -80,7 +80,8 @@ Page({
     try {
       const res = await api.holdingGetGroups();
       if (res.result && res.result.code === 0) {
-        this.setData({ groups: res.result.data || [] });
+        const filtered = (res.result.data || []).filter(g => g && g !== 'all' && g !== 'ungrouped' && g !== '未分组' && g !== '全部');
+        this.setData({ groups: filtered });
       }
     } catch (e) { /* ignore */ }
   },

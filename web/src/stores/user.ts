@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 
+function safeGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key: string, val: string): void {
+  try { localStorage.setItem(key, val); } catch { /* quota exceeded */ }
+}
+function safeRemove(key: string): void {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
 function generateUid(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let result = 'h5_';
@@ -10,10 +20,10 @@ function generateUid(): string {
 }
 
 function getStoredUid(): string {
-  let uid = localStorage.getItem('h5_uid');
+  let uid = safeGet('h5_uid');
   if (!uid) {
     uid = generateUid();
-    localStorage.setItem('h5_uid', uid);
+    safeSet('h5_uid', uid);
   }
   return uid;
 }
@@ -33,35 +43,35 @@ interface UserState {
 
 export const useUserStore = create<UserState>((set, get) => ({
   uid: getStoredUid(),
-  openid: localStorage.getItem('h5_bound_openid') || '',
-  isLoggedIn: !!localStorage.getItem('h5_logged_in'),
+  openid: safeGet('h5_bound_openid') || '',
+  isLoggedIn: !!safeGet('h5_logged_in'),
   loading: false,
 
   init: () => {
     const uid = getStoredUid();
-    const loggedIn = !!localStorage.getItem('h5_logged_in');
-    const openid = localStorage.getItem('h5_bound_openid') || '';
+    const loggedIn = !!safeGet('h5_logged_in');
+    const openid = safeGet('h5_bound_openid') || '';
     set({ uid, isLoggedIn: loggedIn, openid, loading: false });
   },
 
   login: () => {
     const uid = getStoredUid();
-    localStorage.setItem('h5_logged_in', '1');
+    safeSet('h5_logged_in', '1');
     set({ uid, isLoggedIn: true });
   },
 
   logout: () => {
-    localStorage.removeItem('h5_logged_in');
+    safeRemove('h5_logged_in');
     set({ isLoggedIn: false });
   },
 
   bindOpenid: (openid: string) => {
-    localStorage.setItem('h5_bound_openid', openid);
+    safeSet('h5_bound_openid', openid);
     set({ openid });
   },
 
   unbindOpenid: () => {
-    localStorage.removeItem('h5_bound_openid');
+    safeRemove('h5_bound_openid');
     set({ openid: '' });
   },
 

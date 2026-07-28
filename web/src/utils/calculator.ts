@@ -129,7 +129,7 @@ const calculator = {
     const returns: number[] = [];
     for (let i = 1; i < history.length; i++) {
       if (history[i].nav > 0 && history[i - 1].nav > 0) {
-        returns.push((history[i].nav - history[i - 1].nav) / history[i - 1].nav);
+	        returns.push((history[i - 1].nav - history[i].nav) / history[i].nav);
       }
     }
     if (returns.length < 10) return null;

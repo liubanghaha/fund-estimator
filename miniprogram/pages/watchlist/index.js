@@ -2,6 +2,8 @@ const api = require("../../utils/api");
 
 const CACHE_KEY = "watchlist_cache";
 const GROUPS_CACHE_KEY = "watchlist_groups_cache";
+const RESERVED = new Set(["all", "ungrouped", "未分组", "全部"]);
+function filterGroups(arr) { return (arr || []).filter(g => g && !RESERVED.has(g)); }
 
 Page({
   data: {
@@ -29,7 +31,7 @@ Page({
     this.setData({ theme });
     const cachedGroups = this._getCachedGroups();
     if (cachedGroups.length && !this.data.groups.length) {
-      this.setData({ groups: cachedGroups });
+      this.setData({ groups: filterGroups(cachedGroups) });
     }
     this.fetchWatchlist();
   },
@@ -51,7 +53,7 @@ Page({
         this.applyFilter();
         this.updateGroupCounts();
         wx.setStorage({ key: CACHE_KEY, data: { list, ts: Date.now() } });
-        if (res.result.groups) this.setData({ groups: res.result.groups });
+        if (res.result.groups) this.setData({ groups: filterGroups(res.result.groups) });
       }
     } catch (e) {
       if (!this.data.loaded) this.setData({ loaded: true });
@@ -79,7 +81,7 @@ Page({
     }
     const merged = this._getCachedGroups().concat();
     for (const g of groups) { if (!merged.includes(g)) merged.push(g); }
-    this.setData({ groupCounts: counts, groups: merged });
+    this.setData({ groupCounts: counts, groups: filterGroups(merged) });
   },
 
   onGroupTap(e) {
@@ -102,7 +104,7 @@ Page({
       success: res => {
         if (!res.confirm || !res.content) return;
         const name = res.content.trim().slice(0, 20);
-        if (!name || name === "all" || name === "ungrouped") return;
+        if (!name || name === "all" || name === "ungrouped" || name === "未分组" || name === "全部") return;
         cb(name);
       },
     });

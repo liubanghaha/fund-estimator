@@ -171,7 +171,7 @@ export default function ProfitDetailPage(){
       const c2=storage.get<any>(CACHE);
       if(c2?.allDaily){allDailyRef.current=c2.allDaily;dcRef.current=c2.dc||{};idxMapRef.current=c2.idxMap||{};buildCalendar(c2.dc||{},new Date())}
     }
-  },[isLoggedIn]);
+  },[isLoggedIn, compareIdx]);
 
   const buildCalendar=(dc:Record<string,number>,now:Date)=>{
     const y=now.getFullYear();const m=now.getMonth();

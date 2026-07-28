@@ -123,7 +123,7 @@ export default function IntradayChart({
 
     const handleResize = () => instanceRef.current?.resize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => { window.removeEventListener('resize', handleResize); instanceRef.current?.dispose(); instanceRef.current = null; };
   }, [timeLabels, fundMap, indexMap, fundLabel, indexLabel, theme]);
 
   return <div ref={chartRef} style={{ width: '100%', height }} />;

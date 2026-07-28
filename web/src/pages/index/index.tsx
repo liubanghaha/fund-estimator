@@ -53,7 +53,7 @@ export default function IndexPage(){
   });
   const lastFetch=useRef(0);const cacheTs=useRef(0);
   const [showToastSettings] = useState(()=>storage.get<any>('showToastSettings')||{});
-  const [peSignalCache] = useState(()=>storage.get<any>('peSignalCache')||{});
+  const peSignalRef=useRef<any>(storage.get<any>('peSignalCache')||{});
 
   const sortH=useCallback((list:Holding[],f=sortF,o=sortO)=>{
     const d=o==='asc'?1:-1;
@@ -82,8 +82,8 @@ export default function IndexPage(){
         const list:Holding[]=(d.holdings||[]).map((h:any)=>({...h,navHigh:h.navHigh!=null?parseFloat(String(h.navHigh)).toFixed(2):null,navLow:h.navLow!=null?parseFloat(String(h.navLow)).toFixed(2):null}));
         const sorted=sortH(list);setHoldings(sorted);setDisplay(applyF(sorted,activeG));
         setTotalAmt(d.totalAmount??'0.00');
-        setTodayP(prev=>parseFloat(d.todayProfit)!==0?d.todayProfit:prev);
-        setTodayPR(prev=>parseFloat(d.todayProfitRate)!==0?d.todayProfitRate:prev);
+        setTodayP(d.todayProfit??'0.00');
+        setTodayPR(d.todayProfitRate??'0.00');
         setTotalR(d.totalReturn??'0.00');setTotalRR(d.totalReturnRate??'0.00');
         setUpdTime(d.updateTime||'');setAllUpdated(sorted.length>0&&sorted.every(h=>h.estimateUpdated));
         setFromCache(false);setLoadErr(false);setAllGData(d.groups||[]);
@@ -122,18 +122,19 @@ export default function IndexPage(){
   useEffect(()=>{
     const triggered:any[]=[];
     const dismissed=storage.get<any>('showToastDismissed')||{};
-    const newPeCache={...peSignalCache};
+    const newPeCache={...peSignalRef.current};
     holdings.forEach(h=>{
       const s=showToastSettings[h.fundCode];if(!s)return;
       if(dismissed[h.fundCode]&&Date.now()-dismissed[h.fundCode]<86400000)return;
       const rate=parseFloat(String(h.todayChangeRate??'0'));
       if((s.upper>0&&rate>=s.upper)||(s.lower<0&&rate<=s.lower))triggered.push({fundCode:h.fundCode,fundName:h.fundName,rate,type:rate>=(s.upper||999)?'up':'down'});
       if(s.peAlert&&h.peTemp&&h.peTemp.signal&&h.peTemp.signal!=='nodata'){
-        const prev=peSignalCache[h.fundCode];
+        const prev=peSignalRef.current[h.fundCode];
         if(prev&&prev!==h.peTemp.signal)triggered.push({fundCode:h.fundCode,fundName:h.fundName,rate:0,type:prev==='low'?'down':'up',peChange:`${prev==='low'?'低估':prev==='mid'?'正常':'高估'}→${h.peTemp.signal==='low'?'低估':h.peTemp.signal==='mid'?'正常':'高估'}`});
         newPeCache[h.fundCode]=h.peTemp.signal;
       }
     });
+    peSignalRef.current = newPeCache;
     storage.set('peSignalCache',newPeCache);
     setAlerts(triggered);
   },[holdings]);
@@ -273,9 +274,9 @@ export default function IndexPage(){
     {showGpick&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowGpick(false)}>
       <div style={{background:c.cardBg,borderRadius:12,padding:16,width:260,maxHeight:'60vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:16,fontWeight:600,marginBottom:12}}>移动到分组</div>
-	        {groups.map((g,i)=><div key={i} style={{padding:'10px 0',borderBottom:`1px solid ${c.border}`,cursor:'pointer'}} onClick={async()=>{try{console.log('移动到分组:',gpCodes,'→',g);const r=await holdingApi.setGroup(gpCodes,g);console.log('结果:',r);if(r.code===0){setShowGpick(false);setBatch(false);setChk({});storage.set('portfolio_force_refresh',true);loadData(true)}else showToast(r.msg||'失败')}catch(e:any){showToast('错误:'+e.message)}}}>{g}</div>)}
+	        {groups.filter((g:string)=>g&&g!=='未分组'&&g!=='全部').map((g,i)=><div key={g} style={{padding:'10px 0',borderBottom:`1px solid ${c.border}`,cursor:'pointer'}} onClick={async()=>{try{const r=await holdingApi.setGroup(gpCodes,g);if(r.code===0){setShowGpick(false);setBatch(false);setChk({});storage.set('portfolio_force_refresh',true);loadData(true)}else showToast(r.msg||'失败')}catch(e:any){showToast('错误:'+e.message)}}}>{g}</div>)}
         <div style={{padding:'10px 0',borderBottom:`1px solid ${c.border}`,cursor:'pointer',color:c.textSecondary}} onClick={async()=>{try{await holdingApi.setGroup(gpCodes,'');setShowGpick(false);setBatch(false);setChk({});storage.set('portfolio_force_refresh',true);loadData(true)}catch{}}}>未分组</div>
-        <div style={{padding:'10px 0',cursor:'pointer',color:c.primary}} onClick={()=>{const n=prompt('新建分组');if(n?.trim()){const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set('holding_groups_cache',gs);holdingApi.setGroup(gpCodes,n.trim()).catch(()=>{});setShowGpick(false);setBatch(false);setChk({})}}}>+ 新建分组</div></div></div>}
+        <div style={{padding:'10px 0',cursor:'pointer',color:c.primary}} onClick={()=>{const n=prompt('新建分组');if(!n?.trim())return;if(n.trim()==='未分组'||n.trim()==='全部'){alert('不能使用保留名称');return};const gs=[...new Set([...groups,n.trim()])];setGroups(gs);storage.set('holding_groups_cache',gs);holdingApi.setGroup(gpCodes,n.trim()).catch(()=>{});setShowGpick(false);setBatch(false);setChk({})}}>+ 新建分组</div></div></div>}
 
     {/* Temp Info */}
     {showTemp&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowTemp(false)}>

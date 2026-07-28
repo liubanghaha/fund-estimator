@@ -19,6 +19,7 @@ interface LineChartProps {
   onTouchMove?: (index: number) => void;
   onTouchEnd?: () => void;
   markLine?: { value: number; label: string }[];
+  txMap?: Record<string, { buys: number; sells: number }>;
 }
 
 export default function LineChart({
@@ -26,6 +27,7 @@ export default function LineChart({
   height = 200,
   color = '#E4393C',
   isReturn = false,
+  txMap,
 }: LineChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
@@ -43,6 +45,23 @@ export default function LineChart({
       ? 'rgba(228, 57, 60, 0.12)'
       : 'rgba(46, 139, 87, 0.12)';
 
+    // 构建折线数据：逐点控制 symbol，非交易点 symbol:'none'
+    const lineData: any[] = data.map((d) => {
+      const tx = txMap?.[d.date];
+      if (!tx) return { value: d.value, symbol: 'none' };
+      const isBoth = tx.buys > 0 && tx.sells > 0;
+      return {
+        value: d.value,
+        symbol: 'circle',
+        symbolSize: 5,
+        itemStyle: {
+          color: tx.sells > 0 && !isBoth ? '#2E8B57' : '#E4393C',
+          borderColor: isBoth ? '#2E8B57' : undefined,
+          borderWidth: isBoth ? 2 : 0,
+        },
+      };
+    });
+
     instanceRef.current.setOption({
       grid: { top: 12, right: 12, bottom: 28, left: 52 },
       xAxis: {
@@ -54,6 +73,7 @@ export default function LineChart({
           color: '#999',
           fontSize: 10,
           interval: Math.max(Math.floor(data.length / 5) - 1, 0),
+          formatter: (v: string) => v.length > 5 ? v.slice(5) : v,
         },
       },
       yAxis: {
@@ -71,16 +91,17 @@ export default function LineChart({
         borderColor: 'transparent',
         textStyle: { color: '#fff', fontSize: 12 },
         formatter: (params: unknown) => {
-          const p = (params as { data: number; axisValue: string }[])[0];
-          return `${p.axisValue}<br/>${isReturn ? '涨幅' : '净值'}: ${p.data}`;
+          const p = (params as { data: number | { value: number }; axisValue: string }[])[0];
+          const v = typeof p.data === 'object' ? p.data.value : p.data;
+          return `${p.axisValue}<br/>${isReturn ? '涨幅' : '净值'}: ${v}`;
         },
       },
       series: [
         {
           type: 'line',
-          data: values,
+          data: lineData,
           smooth: false,
-          symbol: 'none',
+          showAllSymbol: true,
           lineStyle: { color, width: 1.5 },
           areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: areaColor },
@@ -92,8 +113,12 @@ export default function LineChart({
 
     const handleResize = () => instanceRef.current?.resize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [data, color, isReturn]);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      instanceRef.current?.dispose();
+      instanceRef.current = null;
+    };
+  }, [data, color, isReturn, txMap]);
 
   return <div ref={chartRef} style={{ width: '100%', height }} />;
 }

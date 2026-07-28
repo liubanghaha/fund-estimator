@@ -48,7 +48,7 @@ Page({
 
     const cachedGroups = this._getCachedGroups();
     if (cachedGroups.length && !this.data.groups.length) {
-      this.setData({ groups: cachedGroups });
+      this.setData({ groups: cachedGroups.filter(g => g && g !== 'all' && g !== 'ungrouped' && g !== '未分组' && g !== '全部') });
     }
 
     const userInfo = wx.getStorageSync("userInfo");
@@ -119,7 +119,7 @@ Page({
         const totalCost = holdings.reduce((s, h) => s + parseFloat(h.totalCost || 0), 0).toFixed(2);
         this.setData({
           loading: false, dataReady: true, holdings, totalCost,
-          groups: (d.groups || []).map(g => (typeof g === 'string' ? g : g.name)).filter(Boolean),
+          groups: (d.groups || []).map(g => (typeof g === 'string' ? g : g.name)).filter(g => g && g !== 'all' && g !== 'ungrouped' && g !== '未分组' && g !== '全部'),
         });
         this.applyGroupFilter();
         this.updateGroupCounts();
@@ -183,7 +183,7 @@ Page({
         if (!res.confirm || !res.content) return;
         const name = res.content.trim().slice(0, 20);
         if (!name) return;
-        if (name === "all" || name === "ungrouped") {
+        if (name === "all" || name === "ungrouped" || name === "未分组" || name === "全部") {
           wx.showToast({ title: "分组名与系统保留字冲突", icon: "none" });
           return;
         }

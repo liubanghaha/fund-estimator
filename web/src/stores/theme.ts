@@ -8,8 +8,13 @@ interface ThemeState {
   toggleTheme: () => void;
 }
 
+function getStoredTheme(): Theme {
+  const v = localStorage.getItem('theme');
+  return v === 'red' || v === 'blue' ? v : 'red';
+}
+
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  theme: (localStorage.getItem('theme') as Theme) || 'red',
+  theme: getStoredTheme(),
   setTheme: (theme: Theme) => {
     localStorage.setItem('theme', theme);
     set({ theme });
