@@ -1,6 +1,6 @@
-const api = require("../../utils/api");
-const calc = require("../../utils/calculator");
-const chart = require("../../utils/chart");
+const api = require("../../../../utils/api");
+const calc = require("../../../../utils/calculator");
+const chart = require("../../../../utils/chart");
 
 Page({
   data: {
@@ -563,20 +563,27 @@ Page({
       }
     }
 
-    const marketValue = currentNav * shares;
-    const todayProfit = (currentNav - yesterdayNav) * shares;
-    const costValue = buyPrice * shares;
-    const totalReturn = marketValue - costValue;
-    const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
+	    const marketValue = currentNav * shares;
+	    // 今日收益：净值已公布用精确值，未公布用自主估算涨跌
+	    let todayProfit;
+	    if (currentNav !== yesterdayNav) {
+	      todayProfit = (currentNav - yesterdayNav) * shares;
+	    } else {
+	      const estRate = parseFloat(this.data.estimatedChangeRate);
+	      todayProfit = estRate ? yesterdayNav * estRate / 100 * shares : 0;
+	    }
+	    const costValue = buyPrice * shares;
+	    const totalReturn = marketValue - costValue;
+	    const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;
 
-    this._holdingParams = { shares, buyPrice };
+	    this._holdingParams = { shares, buyPrice };
 
-    this.setData({
-      holdingData: {
-        shares: shares.toFixed(2),
-        buyPrice: buyPrice.toFixed(4),
-        marketValue: marketValue.toFixed(2),
-        todayProfit: todayProfit.toFixed(2),
+	    this.setData({
+	      holdingData: {
+	        shares: shares.toFixed(2),
+	        buyPrice: buyPrice.toFixed(4),
+	        marketValue: marketValue.toFixed(2),
+	        todayProfit: todayProfit.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
       },
@@ -593,7 +600,13 @@ Page({
 
     const currentNav = calc.selectNav(yesterdayNav, actualNav, estimatedNav);
     const marketValue = currentNav * shares;
-    const todayProfit = (currentNav - yesterdayNav) * shares;
+    let todayProfit;
+    if (currentNav !== yesterdayNav) {
+      todayProfit = (currentNav - yesterdayNav) * shares;
+    } else {
+      const estRate = parseFloat(this.data.estimatedChangeRate);
+      todayProfit = estRate ? yesterdayNav * estRate / 100 * shares : 0;
+    }
     const costValue = buyPrice * shares;
     const totalReturn = marketValue - costValue;
     const totalReturnRate = costValue > 0 ? (totalReturn / costValue) * 100 : 0;

@@ -1,10 +1,10 @@
 
-const api = require("../../utils/api");
-const calc = require("../../utils/calculator");
+const api = require("../../../../utils/api");
+const calc = require("../../../../utils/calculator");
 
 const CACHE = "profit_detail_cache_v2";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
-const chartUtil = require("../../utils/chart");
+const chartUtil = require("../../../../utils/chart");
 
 Page({
   data: {
@@ -864,17 +864,19 @@ Page({
     if (this._pollingNow) return;
     this._pollingNow = true;
     try {
-      const res = await api.getPortfolio();
+      const res = await api.portfolioLight();
       if (!res.result || res.result.code !== 0) return;
-      const rate = parseFloat(res.result.data.todayProfitRate || 0);
-      const tp = res.result.data.todayProfit || "0";
+      const d = res.result.data;
+      const rate = parseFloat(d.todayProfitRate || 0);
+      // 今日收益 = 昨日市值 × 当日涨幅%
+      const yesterdayMarket = this.data.totalAmount ? parseFloat(this.data.totalAmount) / (1 + rate / 100) : 0;
+      const tp = (yesterdayMarket * rate / 100).toFixed(2);
       const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
       if (changed) {
         this.setData({ todayProfitRate: rate, todayProfit: tp });
-        // 仅当日视图需要重绘走势（周/月/年视图不包含当天数据）
         if (this.data.activeTab === 'today') this._draw();
       }
-      const snaps = res.result.data.intradaySnapshots;
+      const snaps = d.intradaySnapshots;
       if (snaps && snaps.length > (this._profitSnapshots || []).length) {
         this._profitSnapshots = snaps.slice().sort((a, b) => a.time.localeCompare(b.time));
         this._todayCaches = {};

@@ -156,7 +156,7 @@ Page({
       return;
     }
     const { code, name } = e.currentTarget.dataset;
-    wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
+    wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
   },
 
   onSearch() {

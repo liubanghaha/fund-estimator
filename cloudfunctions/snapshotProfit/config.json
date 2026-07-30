@@ -1,1 +1,1 @@
-{"runtime":"Nodejs20.19","timeout":30}
+{"runtime":"Nodejs20.19","timeout":60,"triggers":[{"name":"snapshotTimer","type":"timer","config":"0 */1 9-15 * * 1-5 *"}]}

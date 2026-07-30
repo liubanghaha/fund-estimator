@@ -146,7 +146,7 @@
       </view>
     </view>
 
-    <view wx:if="{{activeTab === 'holdings'}}">
+    <view hidden="{{activeTab !== 'holdings'}}">
       <view wx:if="{{holdings.length > 0}}" class="info-card">
         <view class="section-title">前十大持仓<text wx:if="{{quarterLabel}}" class="quarter-label" style="float:right;font-size:22rpx;color:#BBB;font-weight:400">{{quarterLabel}}</text></view>
         <view class="hold-header">
@@ -189,7 +189,7 @@
       <view wx:else class="info-card"><view class="empty-text">暂无持仓数据</view></view>
     </view>
 
-    <view wx:if="{{activeTab === 'profile'}}">
+    <view hidden="{{activeTab !== 'profile'}}">
       <view wx:if="{{profileLoading}}" class="loading-compact">
         <text class="loading-text">加载中...</text>
       </view>

@@ -535,7 +535,7 @@ Page({
   },
 
   onTapProfit() {
-    wx.navigateTo({ url: "/pages/profit-detail/index" });
+    wx.navigateTo({ url: "/subpackages/analysis/pages/profit-detail/index" });
   },
 
   noop() {},
@@ -641,7 +641,7 @@ Page({
       wx.showToast({ title: "至少需要2条记录", icon: "none" });
       return;
     }
-    wx.navigateTo({ url: "/pages/correlation-matrix/index" });
+    wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
   },
 
   // ==== 分享卡片 ====
@@ -759,7 +759,7 @@ Page({
   onTapHolding(e) {
     if (this.data.batchMode) return;
     const { code, name } = e.currentTarget.dataset;
-    wx.navigateTo({ url: `/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
+    wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || '')}` });
   },
 
   onLongPressHolding(e) {

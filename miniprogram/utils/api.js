@@ -1,6 +1,24 @@
 const api = {
+  // 请求去重缓存：相同参数 5s 内复用 Promise
+  _pending: {},
+  _pendingTs: {},
+
   callFunction(name, data = {}) {
-    return wx.cloud.callFunction({ name, data });
+    const key = name + "|" + JSON.stringify(data);
+    const now = Date.now();
+    if (this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
+      return this._pending[key];
+    }
+    const p = wx.cloud.callFunction({ name, data });
+    this._pending[key] = p;
+    this._pendingTs[key] = now;
+    p.finally(() => {
+      if (this._pending[key] === p) {
+        delete this._pending[key];
+        delete this._pendingTs[key];
+      }
+    });
+    return p;
   },
   searchFund(keyword) {
     return this.callFunction("searchFund", { keyword });
@@ -10,6 +28,9 @@ const api = {
   },
   getPortfolio(historyDays) {
     return this.callFunction("getPortfolio", historyDays ? { historyDays } : {});
+  },
+  portfolioLight() {
+    return this.callFunction("portfolioLight", {});
   },
   fetchFundNAVHistory(fundCode, days) {
     return this.callFunction("fetchFundNAVHistory", { fundCode, days });

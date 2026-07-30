@@ -4,14 +4,27 @@
     "pages/watchlist/index",
     "pages/user-center/index",
     "pages/search/index",
-    "pages/fund-detail/index",
     "pages/add-holding/index",
     "pages/adjust-holding/index",
-    "pages/login/index",
-    "pages/profit-detail/index",
-    "pages/fund-compare/index",
-    "pages/correlation-matrix/index"
+    "pages/login/index"
   ],
+  "subpackages": [
+    {
+      "root": "subpackages/analysis",
+      "pages": [
+        "pages/fund-detail/index",
+        "pages/profit-detail/index",
+        "pages/fund-compare/index",
+        "pages/correlation-matrix/index"
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/index/index": {
+      "packages": ["subpackages/analysis"],
+      "network": "wifi"
+    }
+  },
   "window": {
     "backgroundColor": "#F5F5F5",
     "backgroundTextStyle": "dark",

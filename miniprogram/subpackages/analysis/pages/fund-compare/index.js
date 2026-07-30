@@ -4,9 +4,9 @@ const _getChartColors = () => {
   return t === 'red' ? { primary: '#E4393C', secondary: '#1976D2', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' }
     : { primary: '#1976D2', secondary: '#E4393C', red: '#E4393C', green: '#2E8B57', up: '#E4393C', down: '#2E8B57' };
 };
-const api = require("../../utils/api");
-const calc = require("../../utils/calculator");
-const chartUtil = require("../../utils/chart");
+const api = require("../../../../utils/api");
+const calc = require("../../../../utils/calculator");
+const chartUtil = require("../../../../utils/chart");
 
 Page({
   data: {
