@@ -59,13 +59,22 @@ exports.main = async (event) => {
   }
 
   try {
-    // 1. 并行拉取每只基金的持仓股
-    const allHoldings = await Promise.all(fundCodes.map(async (code) => {
-      try {
-        const list = await fetchHoldings(code);
-        return { code, list };
-      } catch (e) { return { code, list: [] }; }
-    }));
+    // 1. 并行拉取每只基金的持仓股（限 10 只/批 + 100ms，避免用户传大量基金时瞬时并发被风控）
+    const CONCURRENT = 10;
+    const allHoldings = [];
+    for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
+      const batch = fundCodes.slice(i, i + CONCURRENT);
+      const results = await Promise.all(batch.map(async (code) => {
+        try {
+          const list = await fetchHoldings(code);
+          return { code, list };
+        } catch (e) { return { code, list: [] }; }
+      }));
+      allHoldings.push(...results);
+      if (i + CONCURRENT < fundCodes.length) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
 
     const fundStockMap = {};   // fundCode → [{stockCode, stockName, navRatio}]
     const stockFundMap = {};   // stockCode → [{fundCode, fundName, navRatio}]

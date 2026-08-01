@@ -4,8 +4,16 @@ const db = cloud.database();
 
 exports.main = async () => {
   try {
-    const res = await db.collection("holdings").get();
-    const holdings = res.data || [];
+    // 分页读取全部持仓（云函数 get() 默认最多返回 100 条，超出会静默截断）
+    const MAX_LIMIT = 100;
+    let holdings = [];
+    let offset = 0;
+    while (true) {
+      const page = await db.collection("holdings").skip(offset).limit(MAX_LIMIT).get();
+      holdings = holdings.concat(page.data || []);
+      if (!page.data || page.data.length < MAX_LIMIT) break;
+      offset += MAX_LIMIT;
+    }
     if (holdings.length === 0) return { code: 0, msg: "无持仓" };
 
     // 按用户分组
@@ -44,15 +52,12 @@ exports.main = async () => {
       }
       const rate = totalBase > 0 ? +((totalWeightedRate / totalBase)).toFixed(2) : 0;
 
-      // 去重：不写同分钟已有数据
-      const exist = await db.collection("profit_snapshots")
-        .where({ _openid: openid, date: today, "points.time": time }).count();
-      if (exist.total > 0) continue;
-
-      // upsert
+      // upsert：当天文档存在则 push（内存去重防同分钟重复），不存在则创建
       const doc = await db.collection("profit_snapshots")
         .where({ _openid: openid, date: today }).get();
       if (doc.data && doc.data.length > 0) {
+        const exists = (doc.data[0].points || []).some(p => p.time === time);
+        if (exists) continue;
         await db.collection("profit_snapshots").doc(doc.data[0]._id).update({
           data: { points: db.command.push({ time, rate }) }
         });
@@ -72,19 +77,36 @@ exports.main = async () => {
 
 // ---- 自主计算估值（取代已下线的天天基金 API） ----
 
+// 模块级持仓缓存：季报持仓日内不变，6 小时足够，避免每分钟定时任务重复抓取
+let _holdingsCache = {};
+let _holdingsCacheTime = 0;
+const HOLDINGS_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+async function getCachedHoldings(fundCode) {
+  const now = Date.now();
+  if (now - _holdingsCacheTime > HOLDINGS_CACHE_TTL) {
+    _holdingsCache = {};
+    _holdingsCacheTime = now;
+  }
+  if (!_holdingsCache[fundCode]) {
+    _holdingsCache[fundCode] = await fetchTempHoldings(fundCode);
+  }
+  return _holdingsCache[fundCode] || [];
+}
+
 async function batchFetchTiantian(codes) {
   const map = {};
   if (!codes || codes.length === 0) return map;
 
   try {
-    // 1. 并发拉取持仓
+    // 1. 并发拉取持仓（走缓存）
     const fundHoldingsMap = {};
     const CONCURRENT = 10;
     for (let i = 0; i < codes.length; i += CONCURRENT) {
       const batch = codes.slice(i, i + CONCURRENT);
       const results = await Promise.all(batch.map(async (code) => {
         try {
-          const holdings = await fetchTempHoldings(code);
+          const holdings = await getCachedHoldings(code);
           return { code, holdings, ok: holdings && holdings.length > 0 };
         } catch (e) { return { code, holdings: [], ok: false }; }
       }));
@@ -169,7 +191,7 @@ function fetchStockPricesTencent(codes) {
         resolve();
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve(); });
+    req.setTimeout(5000, () => { req.destroy(); resolve(); });
     req.on("error", () => resolve());
   });
 
@@ -230,7 +252,7 @@ function fetchTempHoldings(fundCode) {
         } catch (e) { resolve([]); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.setTimeout(5000, () => { req.destroy(); resolve([]); });
     req.on("error", () => resolve([]));
   });
 }

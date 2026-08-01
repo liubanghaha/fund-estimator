@@ -23,6 +23,7 @@
       "timeout": 30,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
+      "concurrency": 1,
       "triggers": [
         { "name": "snapshotTimer", "type": "timer", "config": "0 * 9-15 * * 1-5 *" }
       ]

@@ -8,6 +8,7 @@ exports.main = async (event) => {
   const { historyDays, testOpenid } = event || {};
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
+  const _startTime = Date.now();
 
   try {
     const res = await db.collection("holdings").where({ _openid: uid }).get();
@@ -25,28 +26,39 @@ exports.main = async (event) => {
     let updateTime = "";
     const navHistoryMap = {};
 
-    // 批量请求天天基金估值（N 合 1），再并行获取东方财富最新净值
+    // 批量请求估值（N 合 1），再并行获取东方财富最新净值与历史净值
+    // 历史净值合并为一次请求（max(60, historyDays)），内存拆分 nav60，避免重复拉取
     const codes = holdings.map((h) => h.fundCode);
     const tiantianMap = await computeSelfEstimates(codes);
-    const resultsList = await Promise.all(
-      holdings.map(async (h) => {
+    const needDays = Math.max(60, historyDays || 60);
+    // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控
+    const CONCURRENT = 8;
+    const resultsList = [];
+    for (let i = 0; i < holdings.length; i += CONCURRENT) {
+      const batch = holdings.slice(i, i + CONCURRENT);
+      const batchResults = await Promise.all(batch.map(async (h) => {
         try {
           const tiantian = tiantianMap[h.fundCode] || {};
-          const promises = [fetchEastMoney(h.fundCode), fetchNAVHistory(h.fundCode, 60)];
-          if (historyDays && historyDays !== 60) promises.push(fetchNAVHistory(h.fundCode, historyDays));
-          const results = await Promise.all(promises);
+          const [eastmoney, navHistoryAll] = await Promise.all([
+            fetchEastMoney(h.fundCode),
+            fetchNAVHistory(h.fundCode, needDays),
+          ]);
           return {
             h, tiantian,
-            eastmoney: results[0],
-            nav60: results[1] || [],
-            navHistory: historyDays ? (results[2] || results[1]) : null,
+            eastmoney,
+            nav60: (navHistoryAll || []).slice(0, 60),
+            navHistory: historyDays ? (navHistoryAll || []) : null,
           };
         } catch (e) {
           console.error(`获取基金 ${h.fundCode} 失败:`, e);
           return { h, tiantian: {}, eastmoney: {}, nav60: [], navHistory: [] };
         }
-      })
-    );
+      }));
+      resultsList.push(...batchResults);
+      if (i + CONCURRENT < holdings.length) {
+        await new Promise(r => setTimeout(r, 150));
+      }
+    }
 
     const enriched = [];
     let totalMarket = 0;
@@ -167,8 +179,9 @@ exports.main = async (event) => {
       (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
 
       // 对缺失温度的基金，按需计算（只算当前用户的持仓）
+      // 20s 时间预算内才计算，避免重计算拖垮用户请求（凌晨定时任务会兜底补全）
       const missingCodes = codes.filter(c => !tempMap[c]);
-      if (missingCodes.length > 0) {
+      if (missingCodes.length > 0 && Date.now() - _startTime < 20000) {
         console.log(`[getPortfolio] 按需计算温度: ${missingCodes.length} 只基金 ${missingCodes.join(',')}`);
         const computed = await computeTemperaturesForCodes(missingCodes, today);
         Object.assign(tempMap, computed);
@@ -480,7 +493,7 @@ function fetchStockPricesTencent(codes) {
         resolve();
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve(); });
+    req.setTimeout(5000, () => { req.destroy(); resolve(); });
     req.on("error", () => resolve());
   });
 
@@ -518,7 +531,7 @@ function fetchNAVHistory(fundCode, totalNeeded) {
         } catch (e) { resolve([]); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.setTimeout(5000, () => { req.destroy(); resolve([]); });
     req.on("error", () => resolve([]));
   });
 
@@ -558,7 +571,7 @@ function fetchEastMoney(fundCode) {
         });
       }
     );
-    req.setTimeout(8000, () => { req.destroy(); resolve({}); });
+    req.setTimeout(5000, () => { req.destroy(); resolve({}); });
     req.on("error", (e) => {
       console.error("东方财富请求失败:", e.message);
       resolve({});
@@ -699,7 +712,7 @@ function fetchTempHoldings(fundCode) {
         } catch (e) { resolve([]); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve([]); });
+    req.setTimeout(5000, () => { req.destroy(); resolve([]); });
     req.on("error", () => resolve([]));
   });
 }
@@ -791,7 +804,7 @@ async function _fetchLiveEastMoney(codes) {
           resolve();
         });
       });
-      req.setTimeout(12000, () => { req.destroy(); resolve(); });
+      req.setTimeout(5000, () => { req.destroy(); resolve(); });
       req.on("error", () => resolve());
     });
   }
@@ -840,7 +853,7 @@ async function _fetchLiveTencent(codes) {
           resolve();
         });
       });
-      req.setTimeout(10000, () => { req.destroy(); resolve(); });
+      req.setTimeout(5000, () => { req.destroy(); resolve(); });
       req.on("error", () => resolve());
     });
   }
@@ -868,10 +881,18 @@ async function batchFetchTempHist(codes) {
         resolve();
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve(); });
+    req.setTimeout(5000, () => { req.destroy(); resolve(); });
     req.on("error", () => resolve());
   });
-  await Promise.all(codes.map(fetchOne));
+  // 限并发 20 只/批 + 100ms 间隔，避免大量瞬时请求被风控
+  const CONCURRENT = 20;
+  for (let i = 0; i < codes.length; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    await Promise.all(batch.map(fetchOne));
+    if (i + CONCURRENT < codes.length) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
   return map;
 }
 

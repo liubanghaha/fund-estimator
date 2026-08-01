@@ -22,6 +22,7 @@ const _ = db.command;
  */
 exports.main = async (event) => {
   const today = formatDate(new Date());
+  const _startTime = Date.now();
   const inWindow = isInReportWindow();
   console.log(`[computeFundTemperature] 开始计算 ${today}, 季报窗口期: ${inWindow}`);
 
@@ -87,10 +88,14 @@ exports.main = async (event) => {
     console.log(`[computeFundTemperature] 持仓股去重数: ${codes.length}`);
 
     if (codes.length > 0) {
-      const [liveData, histData] = await Promise.all([
-        batchFetchLiveData(codes),
-        batchFetchHistoricalPE(codes),
-      ]);
+      const liveData = await batchFetchLiveData(codes);
+      let histData = {};
+      // 90s 总预算内才拉历史 PE 区间（120s 超时留 30s 给写库），超预算用实时 PE 兜底
+      if (Date.now() - _startTime < 90000) {
+        histData = await batchFetchHistoricalPE(codes);
+      } else {
+        console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
+      }
       // 合并数据
       codes.forEach(code => {
         const live = liveData[code] || {};
@@ -221,16 +226,15 @@ async function fetchHoldingsBatch(fundCodes) {
 async function getUniqueFundCodes() {
   const MAX_LIMIT = 100;
   const all = [];
-  let done = false;
-  while (!done) {
-    const res = await db.collection("holdings")
-      .field({ fundCode: true })
-      .limit(MAX_LIMIT)
-      .skip(all.length)
-      .get();
-    if (res.data.length === 0) { done = true; break; }
+  let lastId = "";
+  while (true) {
+    const q = db.collection("holdings").field({ fundCode: true }).limit(MAX_LIMIT);
+    // _id 游标分页（skip 深分页会随数据量增长而变慢）
+    const res = lastId ? await q.where({ _id: _.gt(lastId) }).get() : await q.get();
+    if (!res.data || res.data.length === 0) break;
     all.push(...res.data);
-    if (res.data.length < MAX_LIMIT) done = true;
+    if (res.data.length < MAX_LIMIT) break;
+    lastId = res.data[res.data.length - 1]._id;
   }
   return [...new Set(all.map(h => h.fundCode))];
 }
@@ -343,7 +347,7 @@ function fetchHoldings(fundCode) {
         } catch (e) { resolve({ rows: [] }); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve({ rows: [] }); });
+    req.setTimeout(5000, () => { req.destroy(); resolve({ rows: [] }); });
     req.on("error", () => resolve({ rows: [] }));
   });
 }
@@ -431,7 +435,7 @@ async function fetchLiveFromEastMoney(codes) {
           resolve();
         });
       });
-      req.setTimeout(12000, () => { req.destroy(); resolve(); });
+      req.setTimeout(5000, () => { req.destroy(); resolve(); });
       req.on("error", () => resolve());
     });
   }
@@ -485,7 +489,7 @@ async function fetchLiveFromTencent(codes) {
           resolve();
         });
       });
-      req.setTimeout(10000, () => { req.destroy(); resolve(); });
+      req.setTimeout(5000, () => { req.destroy(); resolve(); });
       req.on("error", () => resolve());
     });
   }
@@ -496,32 +500,40 @@ async function batchFetchHistoricalPE(codes) {
   const https = require("https");
   const map = {};
 
-  for (const code of codes) {
-    await new Promise((resolve) => {
-      const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
-      const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const d = JSON.parse(body);
-            const data = (d.result && d.result.data) || [];
-            map[code] = {
-              peYears: data.map(r => ({
-                avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN,
-              })).filter(r => r.avg > 0 && r.avg < 10000),
-              pbYears: data.map(r => ({
-                avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN,
-              })).filter(r => r.avg > 0 && r.avg < 1000),
-              totalYears: data.length,
-            };
-          } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
-          resolve();
-        });
+  const fetchOne = (code) => new Promise((resolve) => {
+    const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
+    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const d = JSON.parse(body);
+          const data = (d.result && d.result.data) || [];
+          map[code] = {
+            peYears: data.map(r => ({
+              avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN,
+            })).filter(r => r.avg > 0 && r.avg < 10000),
+            pbYears: data.map(r => ({
+              avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN,
+            })).filter(r => r.avg > 0 && r.avg < 1000),
+            totalYears: data.length,
+          };
+        } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
+        resolve();
       });
-      req.setTimeout(10000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
     });
+    req.setTimeout(5000, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+
+  // 限并发 15 只/批 + 100ms 间隔（原串行实现：200-400 只股票在 120s 超时内必然算不完）
+  const CONCURRENT = 15;
+  for (let i = 0; i < codes.length; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    await Promise.all(batch.map(fetchOne));
+    if (i + CONCURRENT < codes.length) {
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
   return map;
 }
