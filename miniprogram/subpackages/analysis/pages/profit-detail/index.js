@@ -529,14 +529,6 @@ Page({
     const idxRaw = this._intradayRaw || [];
     const fundRate = parseFloat(this.data.todayProfitRate || 0);
 
-    const toChina = (utcTime) => {
-      const [hh, mm] = utcTime.split(':').map(Number);
-      const totalMin = hh * 60 + mm + 480;
-      const ch = Math.floor(totalMin / 60) % 24;
-      const cm = totalMin % 60;
-      return String(ch).padStart(2, '0') + ':' + String(cm).padStart(2, '0');
-    };
-
     const isTrading = (chinaTime) => {
       const [hh, mm] = chinaTime.split(':').map(Number);
       const total = hh * 60 + mm;
@@ -544,11 +536,11 @@ Page({
     };
 
     const timeMap = {};
+    // 快照 time 由 snapshotProfit 写入，已是北京时间（getUTCHours()+8），与指数时间同一坐标系，无需再转换
     profitSnaps.forEach(p => {
-      const ct = toChina(p.time);
-      if (!isTrading(ct)) return;
-      timeMap[ct] = timeMap[ct] || { time: ct };
-      timeMap[ct].rate = p.rate;
+      if (!isTrading(p.time)) return;
+      timeMap[p.time] = timeMap[p.time] || { time: p.time };
+      timeMap[p.time].rate = p.rate;
     });
     idxRaw.forEach(d => {
       if (!isTrading(d.time)) return;

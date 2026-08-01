@@ -3,7 +3,7 @@ const api = require("../../utils/api");
 const CACHE_KEY = "watchlist_cache";
 const GROUPS_CACHE_KEY = "watchlist_groups_cache";
 const PINNED_KEY = "watchlist_pinned";
-const POLL_INTERVAL = 10000;
+const POLL_INTERVAL = 30000;  // 盘中轮询间隔 30 秒（原 10 秒，每次调用含多只基金的外部请求）
 
 // 交易时段判断
 function isTradingTime() {
@@ -123,7 +123,12 @@ Page({
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      this.fetchWatchlist();
+      // 30s 节流：切 Tab 频繁进出不重复全量刷新（缓存已在 onLoad 渲染）
+      const now = Date.now();
+      if (!this._lastFetch || now - this._lastFetch > 30000) {
+        this._lastFetch = now;
+        this.fetchWatchlist();
+      }
       this._startPolling();
     } else {
       this.setData({

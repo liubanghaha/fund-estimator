@@ -2,6 +2,10 @@ const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
 const chart = require("../../../../utils/chart");
 
+const CACHE_PREFIX = "fund_detail_cache_";
+const CACHE_TTL = 60000;  // 交易时段缓存有效期 60 秒
+const CACHE_TTL_IDLE = 30 * 60 * 1000;  // 盘外缓存有效期 30 分钟：长时间未进入也能秒开
+
 Page({
   data: {
     fundCode: "", fundName: "", loading: true, errorMsg: "",
@@ -46,6 +50,11 @@ Page({
     this._canvasW = canvasW;
     this._canvasH = canvasH;
     this.setData({ canvasW, canvasH, canvasHRpx: Math.round(canvasH * 750 / windowWidth) });
+    // 加减仓等操作后强制刷新，跳过缓存
+    if (wx.getStorageSync("portfolio_force_refresh")) {
+      wx.removeStorageSync("portfolio_force_refresh");
+      this._skipCache = true;
+    }
     this.fetchAll();
   },
 
@@ -89,38 +98,99 @@ Page({
     this.setData({ loading: true, errorMsg: "" });
     this._lastRefresh = Date.now();
     try {
-      const overviewRes = await api.fetchFundOverview(this.data.fundCode);
-      if (overviewRes.result && overviewRes.result.code === 0) {
-        const d = overviewRes.result.data;
-        const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
-        const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
-        const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
-        this.setData({
-          nav: d.nav, estimatedNav: d.estimatedNav,
-          estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
-          fundName: this.data.fundName || d.fundName || "",
-          actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
-          actualChangeRate: actualCR,
-          peTemp: d.peTemp || this.data.peTemp,
-        });
-        if (d.history && d.history.length > 0) {
+      // 缓存优先：命中即先渲染；缓存新鲜则跳过重请求，仅做轻量校验
+      const fresh = this._skipCache ? false : this._restoreCache();
+      this._skipCache = false;
+      if (!fresh) {
+        const overviewRes = await api.fetchFundOverview(this.data.fundCode);
+        if (overviewRes.result && overviewRes.result.code === 0) {
+          const d = overviewRes.result.data;
+          const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
+          const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
+          const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
+          const displayCR = calc.selectChangeRate(yesterdayNav, actNavRaw, d.estimatedChangeRate, actualCR);
           this.setData({
-            navHistory: d.history,
-            actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
-            actualDate: d.history[0].date,
-            actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
+            nav: d.nav, estimatedNav: d.estimatedNav,
+            estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
+            fundName: this.data.fundName || d.fundName || "",
+            actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
+            actualChangeRate: actualCR,
+            displayChangeRate: displayCR,
+            peTemp: d.peTemp || this.data.peTemp,
           });
-          this.calcReturns(d.history);
+          if (d.history && d.history.length > 0) {
+            this.setData({
+              navHistory: d.history,
+              actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
+              actualDate: d.history[0].date,
+              actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
+            });
+            this.calcReturns(d.history);
+          }
+          this._saveCache();
         }
         // profile 在切 Tab 时懒加载，但基础数据已就绪
       }
       await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
-      this.setData({ loading: false }, () => this.drawChart());
+      if (this.data.loading) {
+        this.setData({ loading: false }, () => this.drawChart());
+      } else {
+        this.drawChart();
+      }
     } catch (e) {
       this.setData({ loading: false, errorMsg: "加载失败" });
     }
+  },
+
+  // ============ 缓存 ============
+
+  _isTradingHours() {
+    const now = new Date();
+    const day = now.getDay();
+    if (day < 1 || day > 5) return false;
+    const total = now.getHours() * 60 + now.getMinutes();
+    return (total >= 570 && total < 690) || (total >= 780 && total < 900);
+  },
+
+  _restoreCache() {
+    try {
+      const cached = wx.getStorageSync(CACHE_PREFIX + this.data.fundCode);
+      if (!cached || !cached.history || !cached.history.length) return false;
+      const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
+      const fresh = Date.now() - (cached.ts || 0) < ttl;
+      this.setData({
+        loading: false,
+        fundName: this.data.fundName || cached.fundName || "",
+        nav: cached.nav, estimatedNav: cached.estimatedNav,
+        estimatedChangeRate: cached.estimatedChangeRate, estimateTime: cached.estimateTime,
+        actualNav: cached.actualNav, actualChangeRate: cached.actualChangeRate,
+        actualDate: cached.actualDate, displayChangeRate: cached.displayChangeRate,
+        peTemp: cached.peTemp || null,
+        navHistory: cached.history,
+      }, () => {
+        this.calcReturns(cached.history);
+        this.updateDisplay();
+        this.drawChart();
+      });
+      return fresh;
+    } catch (e) { return false; }
+  },
+
+  _saveCache() {
+    try {
+      wx.setStorageSync(CACHE_PREFIX + this.data.fundCode, {
+        fundName: this.data.fundName,
+        nav: this.data.nav, estimatedNav: this.data.estimatedNav,
+        estimatedChangeRate: this.data.estimatedChangeRate, estimateTime: this.data.estimateTime,
+        actualNav: this.data.actualNav, actualChangeRate: this.data.actualChangeRate,
+        actualDate: this.data.actualDate, displayChangeRate: this.data.displayChangeRate,
+        peTemp: this.data.peTemp,
+        history: this.data.navHistory,
+        ts: Date.now(),
+      });
+    } catch (e) { /* ignore */ }
   },
   async checkFollow() {
     try {

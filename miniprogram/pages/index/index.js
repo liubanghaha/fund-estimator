@@ -14,7 +14,8 @@ const ALL_INDICES = [
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
-const CACHE_TTL = 60000;  // 缓存有效期 60 秒
+const CACHE_TTL = 60000;  // 交易时段缓存有效期 60 秒
+const CACHE_TTL_IDLE = 30 * 60 * 1000;  // 盘外缓存有效期 30 分钟：长时间未进入也能秒开
 
 Page({
   data: {
@@ -156,9 +157,14 @@ Page({
         this._lastFetch = 0;
       }
       const cacheAge = this._cacheTs ? (now - this._cacheTs) : Infinity;
-      if (!this._lastFetch || now - this._lastFetch > 30000 || cacheAge > CACHE_TTL) {
+      // 盘外放宽缓存 TTL；冷启动且缓存新鲜时直接复用，避免每次进入全量刷新
+      const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
+      const needFetch = this._lastFetch
+        ? (now - this._lastFetch > 30000 || cacheAge > ttl)
+        : (cacheAge > ttl);
+      if (needFetch) {
         this._lastFetch = now;
-        this.fetchPortfolio();
+        this.fetchPortfolio(false);
       }
       if (!indexCached) this.fetchIndices();
     } else {
@@ -192,6 +198,7 @@ Page({
           fromCache: true,
           allUpdated,
           allGroupsData: cached.groups || [],
+          dataReady: true,
         });
         this.applyGroupFilter();
         this.updateGroupCounts();
