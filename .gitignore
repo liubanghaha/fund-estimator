@@ -5,3 +5,6 @@ private.*.key
 env.json
 pic/
 articles/screenshots/
+web/
+tools/
+.zcode/
