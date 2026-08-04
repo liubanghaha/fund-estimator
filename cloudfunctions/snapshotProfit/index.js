@@ -94,23 +94,72 @@ async function getCachedHoldings(fundCode) {
   return _holdingsCache[fundCode] || [];
 }
 
+// 基金最新净值缓存：盘中净值一天不变，按天只拉一次，避免每分钟定时任务重复请求
+let _navCache = {};
+let _navCacheDate = "";
+
+async function fetchLatestNav(fundCode) {
+  const now = new Date();
+  const dateKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  if (_navCacheDate !== dateKey) { _navCache = {}; _navCacheDate = dateKey; }
+  if (_navCache[fundCode] !== undefined) return _navCache[fundCode];
+  const nav = await fetchNavOnce(fundCode);
+  _navCache[fundCode] = nav;
+  return nav;
+}
+
+function fetchNavOnce(fundCode) {
+  const https = require("https");
+  return new Promise((resolve) => {
+    const req = https.get(
+      {
+        hostname: "api.fund.eastmoney.com",
+        path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=1`,
+        headers: { "Referer": "https://fundf10.eastmoney.com/" },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => { body += c; });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
+            const list = (json.Data && json.Data.LSJZList) || [];
+            resolve(parseFloat((list[0] || {}).DWJZ) || 0);
+          } catch (e) { resolve(0); }
+        });
+      }
+    );
+    req.setTimeout(5000, () => { req.destroy(); resolve(0); });
+    req.on("error", () => resolve(0));
+  });
+}
+
 async function batchFetchTiantian(codes) {
   const map = {};
   if (!codes || codes.length === 0) return map;
 
   try {
-    // 1. 并发拉取持仓（走缓存）
+    // 1. 并发拉取持仓（走缓存）+ 最新净值（当日缓存，用作快照加权权重）
     const fundHoldingsMap = {};
+    const fundNavMap = {};
     const CONCURRENT = 10;
     for (let i = 0; i < codes.length; i += CONCURRENT) {
       const batch = codes.slice(i, i + CONCURRENT);
       const results = await Promise.all(batch.map(async (code) => {
         try {
-          const holdings = await getCachedHoldings(code);
-          return { code, holdings, ok: holdings && holdings.length > 0 };
-        } catch (e) { return { code, holdings: [], ok: false }; }
+          const [holdings, nav] = await Promise.all([
+            getCachedHoldings(code),
+            fetchLatestNav(code),
+          ]);
+          return { code, holdings, nav, ok: holdings && holdings.length > 0 };
+        } catch (e) { return { code, holdings: [], nav: 0, ok: false }; }
       }));
-      results.forEach(r => { if (r.ok) fundHoldingsMap[r.code] = r.holdings; });
+      results.forEach(r => {
+        if (r.ok) {
+          fundHoldingsMap[r.code] = r.holdings;
+          if (r.nav > 0) fundNavMap[r.code] = r.nav;
+        }
+      });
       if (i + CONCURRENT < codes.length) {
         await new Promise(r => setTimeout(r, 200));
       }
@@ -139,7 +188,7 @@ async function batchFetchTiantian(codes) {
         map[code] = {
           fundCode: code,
           fundName: "",
-          nav: null,
+          nav: fundNavMap[code] || 0, // 最新净值（当日缓存），快照加权权重用，与昨日净值误差 <1%
           estimatedChangeRate: +(weightedChange / totalRatio).toFixed(2),
           estimateTime: timeStr,
         };
