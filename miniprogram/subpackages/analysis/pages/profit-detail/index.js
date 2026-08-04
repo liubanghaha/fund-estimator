@@ -62,6 +62,7 @@ Page({
   },
 
   onUnload() {
+    this._destroyed = true;
     this._stopPolling();
   },
 
@@ -108,6 +109,8 @@ Page({
   },
 
   async _fetch() {
+    if (this._fetching) return; // 防重入：下拉刷新/onShow 并发时只跑一个
+    this._fetching = true;
     try {
       const now = new Date();
       const yearStart = new Date(now.getFullYear(), 0, 1);
@@ -122,8 +125,14 @@ Page({
       this.data.availableIndices.forEach((i, n) => { idxMap[i.code] = idxResults[n] || []; });
       this._idxMap = idxMap;
       if (!pfRes.result || pfRes.result.code !== 0) {
-        if (!this._cacheApplied) wx.showToast({ title: '数据加载失败', icon: 'none' });
-        this.setData({ loading: false, loadError: true });
+        // 已有数据时静默失败并保留当前展示，避免刷新失败把页面打成全屏错误
+        if (this._allDaily && this._allDaily.length) {
+          wx.showToast({ title: '刷新失败，请稍后重试', icon: 'none' });
+          this.setData({ loading: false });
+        } else {
+          if (!this._cacheApplied) wx.showToast({ title: '数据加载失败', icon: 'none' });
+          this.setData({ loading: false, loadError: true });
+        }
         return;
       }
       const d = pfRes.result.data;
@@ -213,6 +222,7 @@ Page({
       this._dailyChange = dcFinal;
       this._indexDaily = idxMap[this.data.compareIndex] || [];
       this._totalCost = totalCost;
+      this._totalMarket = parseFloat(d.totalAmount) || 0;
       this._cacheApplied = false;
 
       const earliestCreate = hs.reduce((min, h) => { if (!h.createTime) return min; const d = calc.formatDate(h.createTime); return d < min ? d : min; }, "9999-99-99");
@@ -238,8 +248,17 @@ Page({
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
       }
     } catch (e) {
-      this.setData({ loading: false, loadError: true });
-      if (!this._cacheApplied) wx.showToast({ title: '数据加载失败', icon: 'none' });
+      // 已有数据时静默失败并保留当前展示
+      if (this._allDaily && this._allDaily.length) {
+        this.setData({ loading: false });
+        wx.showToast({ title: '刷新失败，请稍后重试', icon: 'none' });
+      } else {
+        this.setData({ loading: false, loadError: true });
+        if (!this._cacheApplied) wx.showToast({ title: '数据加载失败', icon: 'none' });
+      }
+    } finally {
+      this._fetching = false;
+      this._lastFetch = Date.now(); // 成败都更新，避免 onShow 无限重刷
     }
   },
 
@@ -330,6 +349,7 @@ Page({
   },
 
   _draw() {
+    if (this._destroyed) return; // 页面已卸载，不再绘制
     const w = this._canvasW || 340, h = this._canvasH || 200;
     const isToday = this.data.activeTab === 'today';
 
@@ -549,8 +569,9 @@ Page({
     });
 
     const result = Object.values(timeMap).sort((a, b) => a.time.localeCompare(b.time));
+    // 仅当最后一条没有快照 rate 时用当前收益率兜底，避免把真实快照值覆盖成 0/旧值
     const last = result[result.length - 1];
-    if (last) last.rate = fundRate;
+    if (last && last.rate == null) last.rate = fundRate;
 
     const hasRate = result.filter(d => d.rate != null).length;
     const hasIdx = result.filter(d => d.indexRate != null).length;
@@ -572,8 +593,9 @@ Page({
     if (memCache && memCache.data && memCache.data.length > 0) {
       if (this._isTradingNow()) {
         const data = [...memCache.data];
+        // 仅当缓存最后一条没有 rate 时用最新收益率兜底，避免覆盖真实快照值
         const last = data[data.length - 1];
-        if (last) last.rate = parseFloat(this.data.todayProfitRate || 0);
+        if (last && last.rate == null) last.rate = parseFloat(this.data.todayProfitRate || 0);
         this._renderToday(w, h, data, compareLabel);
         return;
       }
@@ -644,7 +666,7 @@ Page({
 
   // ============ 日历 ============
 
-  _cal() { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); },
+  _cal() { try { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); } catch (e) { console.warn('[profit-detail] 日历渲染异常:', e); } },
   _calCached() {
     const a = this._allDaily, c = this._dailyChange; if (!a || !c) return null;
     const dm = {}; a.forEach(d => { dm[d.date] = d.value; });
@@ -860,8 +882,9 @@ Page({
       if (!res.result || res.result.code !== 0) return;
       const d = res.result.data;
       const rate = parseFloat(d.todayProfitRate || 0);
-      // 今日收益 = 昨日市值 × 当日涨幅%
-      const yesterdayMarket = this.data.totalAmount ? parseFloat(this.data.totalAmount) / (1 + rate / 100) : 0;
+      // 今日收益 = 当前市值 - 昨日市值（_totalMarket 在 _fetch 时保存）
+      const totalMarket = this._totalMarket || 0;
+      const yesterdayMarket = totalMarket > 0 ? totalMarket / (1 + rate / 100) : 0;
       const tp = (yesterdayMarket * rate / 100).toFixed(2);
       const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
       if (changed) {
