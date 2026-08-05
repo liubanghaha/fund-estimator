@@ -8,7 +8,9 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 export default function ImportDataPage() {
   const c = useThemeColors();
   const nav = useNavigate();
-  const { uid } = useUserStore();
+  const { uid, openid } = useUserStore();
+  // 与 api/index.ts withUid 一致：绑定 OPENID 优先，保证写入的数据能被首页读到
+  const effUid = openid || uid;
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<null | { counts: { holdings: number; watchlist: number; transactions: number }; msg: string }>(null);
@@ -35,13 +37,17 @@ export default function ImportDataPage() {
       const wCount = watchlist?.length || 0;
       const tCount = transactions?.length || 0;
 
-      // 2. 批量导入持仓
+      // 2. 批量导入持仓（testOpenid 放顶层参数，云函数读 event.testOpenid）
       if (hCount > 0) {
         const funds = holdings.map((h: any) => ({
-          ...h,
-          testOpenid: uid,
+          fundCode: h.fundCode,
+          fundName: h.fundName,
+          shares: h.shares,
+          buyPrice: h.buyPrice,
+          marketValue: h.totalCost,
+          group: h.group || '',
         }));
-        await callFunction('batchAddHoldings', { funds });
+        await callFunction('batchAddHoldings', { funds, testOpenid: effUid });
       }
 
       // 3. 批量导入自选
@@ -52,19 +58,20 @@ export default function ImportDataPage() {
               action: 'add',
               fundCode: w.fundCode,
               fundName: w.fundName,
-              testOpenid: uid,
+              testOpenid: effUid,
             });
           } catch (e) { /* skip duplicates */ }
         }
       }
 
-      // 4. 导入交易记录
+      // 4. 导入交易记录（testOpenid 放顶层，不能塞进 data）
       if (tCount > 0) {
         for (const t of transactions) {
           try {
             await callFunction('manageTransaction', {
               action: 'add',
-              data: { ...t, testOpenid: uid },
+              data: t,
+              testOpenid: effUid,
             });
           } catch (e) { /* skip */ }
         }
