@@ -8,10 +8,8 @@
 
   <!-- 公众号关注 -->
   <view class="menu-list">
-    <view class="oa-guide">
-      <view class="oa-text">📢 关注公众号，解锁更多功能</view>
-      <view class="oa-hint">搜索「你的公众号名称」关注</view>
-      <official-account></official-account>
+    <view class="marquee-wrap">
+      <view class="marquee">📢 公众号：韭菜养基宝　｜　🌐 网页版：https://cloudbase-d0gug00io7bfedd97-1434082140.tcloudbaseapp.com</view>
     </view>
   </view>
 

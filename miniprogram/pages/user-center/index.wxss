@@ -16,10 +16,10 @@
 .menu-icon{font-size:32rpx}
 .arrow{font-size:24rpx;color:#CCC}
 
-/* 公众号引导 */
-.oa-guide{padding:24rpx;display:flex;flex-direction:column;align-items:center}
-.oa-text{font-size:26rpx;color:#666;margin-bottom:6rpx}
-.oa-hint{font-size:22rpx;color:#BBB;margin-bottom:12rpx}
+/* 滚动提示条 */
+.marquee-wrap{overflow:hidden;white-space:nowrap;padding:20rpx 0}
+.marquee{display:inline-block;font-size:24rpx;color:#666;padding-left:100%;animation:marquee 16s linear infinite}
+@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
 
 /* 反馈 */
 .feedback-form{background:#FFF;border-radius:16rpx;padding:24rpx;margin-bottom:24rpx}
