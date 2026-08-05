@@ -37,6 +37,12 @@ Page({
   },
 
   async fetchWatchlist() {
+    // 未登录：清空列表，不请求
+    const userInfo = wx.getStorageSync("userInfo");
+    if (!userInfo || !userInfo.loggedIn) {
+      this.setData({ watchlist: [], displayList: [], groups: [], loaded: true, activeGroup: "all" });
+      return;
+    }
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.list) {
