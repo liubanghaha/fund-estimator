@@ -75,5 +75,5 @@ Page({
     });
   },
 
-  onLogin() {},
+  onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
 });
