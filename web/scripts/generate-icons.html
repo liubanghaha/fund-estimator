@@ -13,21 +13,32 @@
       const ctx = canvas.getContext('2d');
       // Gradient background
       const grad = ctx.createLinearGradient(0, 0, size, size);
-      grad.addColorStop(0, '#e74c3c');
-      grad.addColorStop(1, '#c0392b');
+      grad.addColorStop(0, '#FF6B6B');
+      grad.addColorStop(0.55, '#E4393C');
+      grad.addColorStop(1, '#B9272B');
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.roundRect(0, 0, size, size, size * 0.2);
+      ctx.roundRect(0, 0, size, size, size * 0.22);
       ctx.fill();
 
-      // Text
+      // 叶子（矢量绘制，与 favicon.svg 一致）
       ctx.fillStyle = '#fff';
-      ctx.font = `bold ${size * 0.4}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🌿', size/2, size * 0.38);
-      ctx.font = `bold ${size * 0.14}px sans-serif`;
-      ctx.fillText('养基宝', size/2, size * 0.65);
+      ctx.beginPath();
+      ctx.moveTo(size * 0.5, size * 0.18);
+      ctx.bezierCurveTo(size * 0.65, size * 0.29, size * 0.74, size * 0.46, size * 0.74, size * 0.65);
+      ctx.bezierCurveTo(size * 0.74, size * 0.78, size * 0.68, size * 0.84, size * 0.5, size * 0.84);
+      ctx.bezierCurveTo(size * 0.32, size * 0.84, size * 0.26, size * 0.78, size * 0.26, size * 0.65);
+      ctx.bezierCurveTo(size * 0.26, size * 0.46, size * 0.35, size * 0.29, size * 0.5, size * 0.18);
+      ctx.fill();
+
+      // 叶脉
+      ctx.strokeStyle = 'rgba(228,57,60,.35)';
+      ctx.lineWidth = size * 0.025;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(size * 0.5, size * 0.23);
+      ctx.lineTo(size * 0.5, size * 0.81);
+      ctx.stroke();
     }
 
     function download(canvas, filename) {
