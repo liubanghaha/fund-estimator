@@ -98,8 +98,11 @@
 ### 部署
 - 云函数：`cloudbase fn deploy --all --force`
 - 小程序上传：`miniprogram-ci upload --pp . --pkp private.*.key --appid wx1473b1fa97b27717 -r 1`
+- Web（H5）：`cd web && tcb app deploy fundleek -e cloudbase-d0gug00io7bfedd97 --framework static --build-command "" --output-dir dist --deploy-path / --force`（服务名是 fundleek，cloudbaserc.json 里的 h5-web 是过时配置；勿用旧版 `cloudbase framework deploy`，会交互卡住）
+- **部署默认由 AI 代劳**：功能改动本地验证（构建/类型检查）通过后，直接部署上线（含 web / 云函数 / 小程序），无需再问用户；部署后主动验证线上生效（如对比线上 bundle 哈希），PWA 缓存导致旧包时提醒用户强刷
 
 ### 已知问题
 - 港股今日涨跌：白名单域名不支持
 - 较上季度数据偶发 undefined
 - profit-detail / fund-compare 折线图触摸未同步
+- 东方财富分钟线（klt=1）对云函数出口 IP 限流（push2/push2his/push2delay 均 socket hang up 或空数据，日线 klt=101 正常），`fetchIndexIntraday` 已改用腾讯 `web.ifzq.gtimg.cn/appstock/app/minute/query`（`qt[4]` 为昨收，行格式 `HHMM 价格 成交量 成交额`）

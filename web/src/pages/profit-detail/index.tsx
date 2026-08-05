@@ -10,7 +10,7 @@ import { storage } from '../../stores/cache';
 import calculator from '../../utils/calculator';
 
 const CACHE='profit_detail_cache_v2';
-const INTRADAY_CACHE_KEY='intraday_h5_cache';
+const INTRADAY_CACHE_KEY='intraday_h5_cache_v2';
 const INDICES=[{code:'000001',name:'上证指数'},{code:'399001',name:'深证成指'},{code:'399006',name:'创业板指'},{code:'000300',name:'沪深300'}];
 
 function isTradingNow(){
@@ -50,7 +50,7 @@ export default function ProfitDetailPage(){
   const [weekP,setWeekP]=useState(0);const [weekPR,setWeekPR]=useState(0);
   const [monthP,setMonthP]=useState(0);const [monthPR,setMonthPR]=useState(0);
   const [yearP,setYearP]=useState(0);const [yearPR,setYearPR]=useState(0);
-  const [compareIdx,setCompareIdx]=useState('000300');
+  const [compareIdx,setCompareIdx]=useState('000001');
   const [chartData,setChartData]=useState<any[]>([]);
   const [chartDual,setChartDual]=useState(false);
   const [calendarView,setCalendarView]=useState('day');
@@ -149,19 +149,11 @@ export default function ProfitDetailPage(){
       // Build chart
       buildChart(allDaily,idxMap['000300'],'today');
 
-      // 日内走势：提取快照 + 获取指数分时数据
+      // 日内走势：提取快照（指数分时由下方独立 effect 按 compareIdx 拉取，切换指数不整页重载）
       const snaps:any[]=(d.intradaySnapshots||[]).slice().sort((a:any,b:any)=>a.time.localeCompare(b.time));
       if(snaps.length>0||isTradingNow()){
-        const fundData=snaps.map((s:any)=>{const[hh,mm]=String(s.time||'').split(':').map(Number);const cm=(hh*60+mm+480)%1440;return{time:String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0'),rate:s.rate??0}}).filter((d:any)=>d.rate!=null);
-        try{
-          const idxRes=await fetchIndexIntraday(compareIdx).catch(()=>null);
-          const idxData:any[]=[];
-          if(idxRes?.data?.length){
-            idxRes.data.forEach((d:any)=>{if(d.time){const[hh,mm]=d.time.split(':').map(Number);const cm=(hh*60+mm+480)%1440;const t=String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0');if(t>='09:30'&&t<='15:00')idxData.push({time:t,rate:d.changeRate??0})}});
-          }
-          setIntradayFund(fundData);setIntradayIdx(idxData);
-          saveIntradayCache(fundData,idxData);
-        }catch{/* silent */}
+        const fundData=snaps.map((s:any)=>{const[hh,mm]=String(s.time||'').split(':').map(Number);const cm=hh*60+mm;return{time:String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0'),rate:s.rate??0}}).filter((d:any)=>d.rate!=null);
+        setIntradayFund(fundData);
       }
 
       storage.set(CACHE,{allDaily,dc,idxMap,tp,tpr:parseFloat(d.todayProfitRate||0),wr,mr,yr,ed:ec==="9999-99-99"?"":ec,ts:Date.now()});
@@ -171,7 +163,7 @@ export default function ProfitDetailPage(){
       const c2=storage.get<any>(CACHE);
       if(c2?.allDaily){allDailyRef.current=c2.allDaily;dcRef.current=c2.dc||{};idxMapRef.current=c2.idxMap||{};buildCalendar(c2.dc||{},new Date())}
     }
-  },[isLoggedIn, compareIdx]);
+  },[isLoggedIn]);
 
   const buildCalendar=(dc:Record<string,number>,now:Date)=>{
     const y=now.getFullYear();const m=now.getMonth();
@@ -236,6 +228,25 @@ export default function ProfitDetailPage(){
       }
     }
   },[activeTab]);
+
+  // 按选中指数拉取当日分时（独立于 load，切换指数只换对比线，不整页重载）
+  useEffect(()=>{
+    if(activeTab!=='today'||(intradayFund.length===0&&!isTradingNow()))return;
+    let cancelled=false;
+    (async()=>{
+      try{
+        const idxRes=await fetchIndexIntraday(compareIdx).catch(()=>null);
+        if(cancelled)return;
+        const idxData:any[]=[];
+        if(idxRes?.data?.length){
+          idxRes.data.forEach((d:any)=>{if(d.time){const[hh,mm]=d.time.split(':').map(Number);const cm=hh*60+mm;const t=String(Math.floor(cm/60)).padStart(2,'0')+':'+String(cm%60).padStart(2,'0');if(t>='09:30'&&t<='15:00')idxData.push({time:t,rate:d.changeRate??0})}});
+        }
+        setIntradayIdx(idxData);
+        saveIntradayCache(intradayFund,idxData);
+      }catch{/* silent */}
+    })();
+    return ()=>{cancelled=true};
+  },[compareIdx,activeTab,intradayFund]);
 
   if(loading)return <div style={{display:'flex',justifyContent:'center',padding:48,color:c.textSecondary}}>加载中...</div>;
   if(loadErr)return <div style={{textAlign:'center',padding:48}}><div style={{fontSize:32,marginBottom:12}}>😵</div><div style={{color:c.textSecondary,marginBottom:12}}>加载失败</div><button onClick={()=>load()} style={{padding:'6px 24px',borderRadius:14,border:`1px solid ${c.primary}`,color:c.primary,background:'transparent'}}>重试</button></div>;
