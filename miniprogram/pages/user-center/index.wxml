@@ -28,6 +28,9 @@
     <view class="menu-item" bind:tap="onToggleTheme">
       <text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text>
     </view>
+    <view wx:if="{{isLoggedIn}}" class="menu-item logout-item" bind:tap="onLogout">
+      <text class="logout-text">退出登录</text><text class="arrow">></text>
+    </view>
   </view>
 
   <!-- 网页版登录面板 -->

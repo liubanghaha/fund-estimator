@@ -56,3 +56,4 @@
 .migrate-counts{font-size:24rpx;color:#666;margin-top:10rpx}
 .migrate-tip{font-size:22rpx;color:#E4393C;margin-top:8rpx}
 .migrate-error{font-size:24rpx;color:#E4393C;margin-top:8rpx;padding:8rpx 0}
+.logout-text{color:#E4393C}

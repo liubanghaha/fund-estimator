@@ -58,5 +58,22 @@ Page({
 
   onShowVersion() { wx.showModal({ title: "理财笔记", content: "记录你的每一笔投资", showCancel: false }); },
 
+  onLogout() {
+    wx.showModal({
+      title: "提示",
+      content: "确定要退出登录吗？",
+      success: (res) => {
+        if (!res.confirm) return;
+        // 清除登录态和本地缓存，避免下一个账号看到上一个账号的数据
+        wx.removeStorageSync("userInfo");
+        wx.removeStorageSync("ledger_cache");
+        wx.removeStorageSync("holding_groups_cache");
+        wx.removeStorageSync("watchlist_cache");
+        this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "", openid: "", showWeb: false });
+        wx.showToast({ title: "已退出", icon: "success" });
+      },
+    });
+  },
+
   onLogin() {},
 });
