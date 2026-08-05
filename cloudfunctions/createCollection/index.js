@@ -4,14 +4,14 @@ const db = cloud.database();
 
 exports.main = async () => {
   const results = [];
-  const collections = ["holdings", "watchlist", "transactions", "feedback", "fund_temperatures", "profit_snapshots"];
+  const collections = ["holdings", "watchlist", "transactions", "feedback", "fund_temperatures", "profit_snapshots", "h5_bindings", "migration_codes"];
 
   for (const name of collections) {
     try {
       await db.createCollection(name);
       results.push(`${name}: 创建成功`);
     } catch (e) {
-      if (e.errCode === -502005) {
+      if (e.errCode === -502005 || e.errCode === -501001) {
         results.push(`${name}: 已存在`);
       } else {
         results.push(`${name}: ${e.message || "创建失败"}`);
