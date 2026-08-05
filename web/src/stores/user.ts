@@ -30,15 +30,15 @@ function getStoredUid(): string {
 
 interface UserState {
   uid: string;
-  openid: string;       // 绑定的旧账号 OPENID（空表示新账号）
+  openid: string;       // 绑定的小程序 OPENID（登录凭证）
   isLoggedIn: boolean;
   loading: boolean;
   init: () => void;
-  login: () => void;
+  login: (openid: string) => void;
   logout: () => void;
   bindOpenid: (openid: string) => void;
   unbindOpenid: () => void;
-  getEffectiveUid: () => string;  // 优先返回绑定的 OPENID
+  getEffectiveUid: () => string;  // 返回绑定的 OPENID
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -54,10 +54,11 @@ export const useUserStore = create<UserState>((set, get) => ({
     set({ uid, isLoggedIn: loggedIn, openid, loading: false });
   },
 
-  login: () => {
+  login: (openid: string) => {
     const uid = getStoredUid();
     safeSet('h5_logged_in', '1');
-    set({ uid, isLoggedIn: true });
+    safeSet('h5_bound_openid', openid);
+    set({ uid, openid, isLoggedIn: true });
   },
 
   logout: () => {
@@ -72,13 +73,14 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   unbindOpenid: () => {
     safeRemove('h5_bound_openid');
-    set({ openid: '' });
+    safeRemove('h5_logged_in');
+    set({ openid: '', isLoggedIn: false });
   },
 
-  // 优先使用绑定的 OPENID（能看旧数据），否则用本地 UID（新账号）
+  // 使用绑定的 OPENID（登录即绑定，必存在）
   getEffectiveUid: () => {
-    const { openid, uid } = get();
-    return openid || uid;
+    const { openid } = get();
+    return openid;
   },
 }));
 

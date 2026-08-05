@@ -5,8 +5,8 @@ Page({
     isLoggedIn: false, avatarUrl: "", nickName: "", openid: "",
     showFeedback: false, feedbackType: "suggestion", feedbackText: "", feedbackImages: [], feedbackSubmitting: false,
     theme: "red",
-    // 数据迁移
-    showMigrate: false, migrateLoading: false, migrateCode: "", migrateCounts: null, migrateError: "",
+    // 网页版登录
+    showWeb: false,
   },
 
   onShow() {
@@ -18,28 +18,10 @@ Page({
     this.setData({ theme });
   },
 
-  // ==== 数据迁移到网页版 ====
-  onMigrate() { this.setData({ showMigrate: !this.data.showMigrate, migrateError: "", migrateCode: "", migrateCounts: null }); },
-  async onDoExport() {
-    this.setData({ migrateLoading: true, migrateError: "", migrateCode: "", migrateCounts: null });
-    try {
-      const res = await api.exportData();
-      if (res.result && res.result.code === 0) {
-        const d = res.result.data;
-        this.setData({ migrateLoading: false, migrateCode: d.code, migrateCounts: d.counts });
-      } else {
-        this.setData({ migrateLoading: false, migrateError: (res.result && res.result.msg) || "导出失败" });
-      }
-    } catch (e) {
-      this.setData({ migrateLoading: false, migrateError: "网络错误，请重试" });
-    }
-  },
-  onCopyCode() {
-    if (!this.data.migrateCode) return;
-    wx.setClipboardData({ data: this.data.migrateCode, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
-  },
+  // ==== 网页版登录（复制账户ID） ====
+  onWebLogin() { this.setData({ showWeb: !this.data.showWeb }); },
   onCopyOpenid() {
-    if (!this.data.openid) return;
+    if (!this.data.openid) { wx.showToast({ title: "登录后才能复制", icon: "none" }); return; }
     wx.setClipboardData({ data: this.data.openid, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
   },
 

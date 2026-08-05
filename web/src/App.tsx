@@ -17,7 +17,6 @@ const AdjustHoldingPage = lazy(() => import('./pages/adjust-holding'));
 const FundComparePage = lazy(() => import('./pages/fund-compare'));
 const CorrelationMatrixPage = lazy(() => import('./pages/correlation-matrix'));
 const LoginPage = lazy(() => import('./pages/login'));
-const ImportDataPage = lazy(() => import('./pages/import-data'));
 
 export default function App() {
   const theme = useThemeStore((s) => s.theme);
@@ -45,7 +44,6 @@ export default function App() {
           <Route path="/fund-compare" element={<FundComparePage />} />
           <Route path="/correlation-matrix" element={<AuthGuard><CorrelationMatrixPage /></AuthGuard>} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/import-data" element={<ImportDataPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

@@ -16,8 +16,8 @@
   </view>
 
   <view class="menu-list">
-    <view wx:if="{{isLoggedIn}}" class="menu-item" bind:tap="onMigrate">
-      <text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text>
+    <view wx:if="{{isLoggedIn}}" class="menu-item" bind:tap="onWebLogin">
+      <text>网页版登录</text><text class="arrow">{{showWeb ? '∨' : '>'}}</text>
     </view>
     <view class="menu-item" bind:tap="onFeedback">
       <text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text>
@@ -30,34 +30,15 @@
     </view>
   </view>
 
-  <!-- 数据迁移面板 -->
-  <view wx:if="{{showMigrate}}" class="migrate-panel">
+  <!-- 网页版登录面板 -->
+  <view wx:if="{{showWeb}}" class="migrate-panel">
     <view class="migrate-section">
-      <view class="migrate-label">关联网页版</view>
-      <view class="migrate-desc">在网页版「我的」→「关联小程序」中输入你的账号ID</view>
+      <view class="migrate-label">复制账号ID</view>
+      <view class="migrate-desc">在网页版登录页粘贴此ID，即可同步你的数据</view>
       <view class="migrate-code-row" bind:tap="onCopyOpenid">
-        <text class="migrate-code">{{openid || '未获取'}}</text>
+        <text class="migrate-code">{{openid || '登录后获取'}}</text>
         <text class="migrate-copy">复制</text>
       </view>
-    </view>
-    <view class="migrate-divider"></view>
-    <view class="migrate-section">
-      <view class="migrate-label">迁移到网页版</view>
-      <view class="migrate-desc">生成迁移码，在网页版「导入数据」中输入即可同步数据</view>
-      <button wx:if="{{!migrateCode && !migrateError}}" class="migrate-btn" bind:tap="onDoExport" loading="{{migrateLoading}}" disabled="{{migrateLoading}}">生成迁移码</button>
-      <view wx:if="{{migrateCode}}" class="migrate-result">
-        <view class="migrate-code-row" bind:tap="onCopyCode">
-          <text class="migrate-code large">{{migrateCode}}</text>
-          <text class="migrate-copy">复制</text>
-        </view>
-        <view class="migrate-counts">
-          <text wx:if="{{migrateCounts.holdings > 0}}">📊 {{migrateCounts.holdings}} 条记录 </text>
-          <text wx:if="{{migrateCounts.watchlist > 0}}">⭐ {{migrateCounts.watchlist}} 只收藏 </text>
-          <text wx:if="{{migrateCounts.transactions > 0}}">📝 {{migrateCounts.transactions}} 条操作</text>
-        </view>
-        <view class="migrate-tip">迁移码 10 分钟内有效，请在网页版输入</view>
-      </view>
-      <view wx:if="{{migrateError}}" class="migrate-error">{{migrateError}}</view>
     </view>
   </view>
 

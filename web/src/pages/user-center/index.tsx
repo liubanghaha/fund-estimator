@@ -17,20 +17,17 @@ export default function UserCenterPage(){
       <button onClick={isLoggedIn?logout:()=>nav('/login')} style={{marginTop:10,padding:'6px 24px',borderRadius:16,border:`1px solid ${c.primary}`,background:'transparent',color:c.primary,fontSize:13,cursor:'pointer'}}>{isLoggedIn?'退出登录':'一键登录'}</button></div>
 
     {isLoggedIn&&<div style={{margin:'0 10px 10px',background:c.cardBg,borderRadius:12,overflow:'hidden'}}>
-      <div style={{padding:'12px 16px',borderBottom:`1px solid ${c.bg}`,fontSize:14}}>账号关联</div>
+      <div style={{padding:'12px 16px',fontSize:14}}>账号关联</div>
       {openid?<>
-        <div onClick={unbindOpenid} style={{padding:'12px 16px',fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between'}}><span>解除关联</span><span style={{color:c.down,fontSize:12}}>已关联</span></div>
+        <div style={{padding:'0 16px 4px',fontSize:12,color:c.textSecondary}}>已关联小程序账号：<span style={{fontWeight:600,color:c.text}}>{openid.slice(-8)}</span></div>
+        <div onClick={unbindOpenid} style={{padding:'12px 16px',fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between'}}><span>解除关联</span><span style={{color:c.down,fontSize:12}}>退出登录</span></div>
       </>:<>
         <div onClick={()=>setShowBind(!showBind)} style={{padding:'12px 16px',fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between'}}><span>关联小程序</span><span style={{color:c.textSecondary,fontSize:12}}>输入ID</span></div>
         {showBind&&<div style={{padding:'0 16px 12px'}}>
-          <div style={{fontSize:11,color:c.textSecondary,marginBottom:4}}>在小程序「我的」复制账号ID</div>
+          <div style={{fontSize:11,color:c.textSecondary,marginBottom:4}}>在小程序「我的」→「网页版登录」复制账号ID</div>
           <input value={bindInput} onChange={e=>setBindInput(e.target.value)} placeholder="粘贴OPENID" style={{width:'100%',padding:'6px 12px',borderRadius:8,border:`1px solid ${c.border}`,outline:'none',fontSize:13,marginBottom:8,background:c.cardBg}}/>
           <button onClick={()=>{if(bindInput.trim()){bindOpenid(bindInput.trim());storage.remove('portfolio_cache');setShowBind(false);setBindInput('')}}} style={{padding:'6px 16px',borderRadius:14,border:'none',background:c.primary,color:'#fff',fontSize:13,cursor:'pointer'}}>确认关联</button></div>}
       </>}
-    </div>}
-
-    {isLoggedIn&&<div style={{margin:'0 10px 10px',background:c.cardBg,borderRadius:12,overflow:'hidden'}}>
-      <div onClick={()=>nav('/import-data')} style={{padding:'12px 16px',fontSize:14,cursor:'pointer',display:'flex',justifyContent:'space-between',color:'#4CAF50'}}><span>📥 从小程序导入数据</span><span style={{color:c.textSecondary}}>▸</span></div>
     </div>}
 
     <div style={{margin:'0 10px 10px',background:c.cardBg,borderRadius:12,overflow:'hidden'}}>

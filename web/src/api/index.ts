@@ -160,12 +160,6 @@ export function computeCorrelation(params?: Record<string, unknown>) {
   return callFunction('computeCorrelation', withUid(params || {}));
 }
 
-/** H5 绑定码 */
-export const bindH5 = {
-  generate: (h5Uid: string) => callFunction('bindH5', { action: 'generate', h5Uid }),
-  check: (h5Uid: string) => callFunction('bindH5', { action: 'check', h5Uid }),
-};
-
 /** 估值温度 */
 export function computeFundTemperature(fundCode: string) {
   return callFunction('computeFundTemperature', { fundCode });

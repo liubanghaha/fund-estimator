@@ -107,14 +107,6 @@ const api = {
   ocrTransaction(fileID) {
     return this.callFunction("ocrTransaction", { fileID });
   },
-
-  // === 数据迁移 ===
-  exportData() {
-    return this.callFunction("transferData", { action: "export" });
-  },
-  importData(code) {
-    return this.callFunction("transferData", { action: "import", code });
-  },
 };
 
 module.exports = api;
