@@ -1,10 +1,10 @@
 .page-wrap{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#F5F5F5}
 .page-scroll{height:100%}
 
-/* 公众号关注卡片 */
-.oa-card{margin:16rpx 24rpx;padding:20rpx 24rpx;background:#FFF;border-radius:16rpx;display:flex;flex-direction:column;align-items:center}
-.oa-text{font-size:26rpx;color:#666;margin-bottom:6rpx}
-.oa-hint{font-size:22rpx;color:#BBB;margin-bottom:12rpx}
+/* 滚动提示条 */
+.marquee-wrap{margin:16rpx 24rpx;overflow:hidden;white-space:nowrap;background:#FFF;border-radius:16rpx;padding:20rpx 24rpx}
+.marquee{display:inline-block;font-size:24rpx;color:#666;padding-left:100%;animation:marquee 16s linear infinite}
+@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
 
 /* 空状态 */
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48rpx;min-height:70vh}
