@@ -24,6 +24,7 @@
       "timeout": 30,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
+      "concurrency": 1,
       "triggers": [
         { "name": "snapshotTimer", "type": "timer", "config": "0 * 9-15 * * 1-5 *" }
       ]
@@ -42,6 +43,7 @@
     { "name": "fetchFundRank", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "computeCorrelation", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "fetchIndexIntraday", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    { "name": "portfolioLight", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
     { "name": "transferData", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" }
   ]
 }

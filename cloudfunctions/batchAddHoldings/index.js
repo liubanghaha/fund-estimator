@@ -118,8 +118,8 @@ async function batchFetchNav(codes) {
       req.on("error", () => resolve(""));
     });
 
-    // 解析 jsonpgz({...}) 格式
-    const jsonStr = body.replace(/^jsonpgz\(/, "").replace(/\);?\s*$/, "");
+    // 解析 jsonpgzs({...}) 格式（批量返回多了一个 s）
+    const jsonStr = body.replace(/^jsonpgzs\(/, "").replace(/\);?\s*$/, "");
     if (!jsonStr) return map;
     const data = JSON.parse(jsonStr);
     // 批量返回格式：{ fundcode1: {...}, fundcode2: {...} }，也可能是数组

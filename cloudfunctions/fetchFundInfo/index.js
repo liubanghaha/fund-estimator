@@ -22,7 +22,7 @@ async function fetchFundDetail(fundCode) {
   return new Promise((resolve, reject) => {
     const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js`;
     const req = https
-      .get(url, (res) => {
+      .get(url, { headers: { Referer: "https://fundgz.1234567.com.cn/", "User-Agent": "Mozilla/5.0" } }, (res) => {
         let body = "";
         res.on("data", (chunk) => { body += chunk; });
         res.on("end", () => {
@@ -37,6 +37,9 @@ async function fetchFundDetail(fundCode) {
               fundType: "off-market",
             });
           } catch (err) {
+            if (body && /^<(!doctype|html)/i.test(body.trim())) {
+              console.error("天天基金API异常返回(非JSONP):", body.substring(0, 200));
+            }
             reject(err);
           }
         });
