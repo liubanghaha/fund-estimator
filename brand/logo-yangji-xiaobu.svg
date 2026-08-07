@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF6B6B"/>
+      <stop offset="0.55" stop-color="#E4393C"/>
+      <stop offset="1" stop-color="#B9272B"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景：红色渐变圆角方块（品牌色） -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 叶子（从本子中长出） -->
+  <path d="M256 88 Q 340 150 340 230 Q 340 306 256 330 Q 172 306 172 230 Q 172 150 256 88 Z" fill="#fff"/>
+  <!-- 叶脉 -->
+  <line x1="256" y1="120" x2="256" y2="300" stroke="#E4393C" stroke-width="11" stroke-linecap="round" opacity=".3"/>
+  <path d="M256 170 c-22 14 -38 32 -45 52" stroke="#E4393C" stroke-width="9" stroke-linecap="round" opacity=".2" fill="none"/>
+  <path d="M256 214 c18 12 31 28 40 48" stroke="#E4393C" stroke-width="9" stroke-linecap="round" opacity=".2" fill="none"/>
+  <!-- 小簿（本子，盖住叶柄） -->
+  <rect x="150" y="238" width="212" height="186" rx="26" fill="#fff"/>
+  <!-- 装订条 -->
+  <rect x="196" y="238" width="14" height="186" fill="url(#bg)" opacity=".85"/>
+  <!-- 记录线 -->
+  <line x1="230" y1="300" x2="338" y2="300" stroke="#E4393C" stroke-width="11" stroke-linecap="round" opacity=".8"/>
+  <line x1="230" y1="352" x2="310" y2="352" stroke="#E4393C" stroke-width="11" stroke-linecap="round" opacity=".8"/>
+</svg>
