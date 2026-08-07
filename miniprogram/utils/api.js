@@ -130,6 +130,9 @@ const api = {
   ocrTransaction(fileID) {
     return this.callFunction("ocrTransaction", { fileID });
   },
+  getMigrationCode() {
+    return this.callFunction("getMigrationCode", {});
+  },
 };
 
 module.exports = api;

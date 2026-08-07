@@ -7,6 +7,10 @@ Page({
     theme: "red",
     // 网页版登录
     showWeb: false,
+    // 数据迁移（迁移码）
+    showMigrate: false,
+    migrateCode: "",
+    migrateLoading: false,
   },
 
   onShow() {
@@ -16,6 +20,34 @@ Page({
     }
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+  },
+
+  // ==== 数据迁移（在新小程序输入迁移码认领数据） ====
+  async onMigrate() {
+    const next = !this.data.showMigrate;
+    this.setData({ showMigrate: next });
+    if (!next || this.data.migrateCode) return;
+    if (!this.data.isLoggedIn) { wx.showToast({ title: "登录后才能查看", icon: "none" }); return; }
+    this.setData({ migrateLoading: true });
+    try {
+      const res = await api.getMigrationCode();
+      const r = res.result || {};
+      if (r.code === 0) {
+        this.setData({ migrateCode: r.data.code });
+      } else if (r.code === 404) {
+        this.setData({ migrateCode: "" });
+        wx.showToast({ title: "未找到你的迁移码", icon: "none" });
+      } else {
+        wx.showToast({ title: r.msg || "获取失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "网络异常", icon: "none" });
+    }
+    this.setData({ migrateLoading: false });
+  },
+  onCopyMigrateCode() {
+    if (!this.data.migrateCode) return;
+    wx.setClipboardData({ data: this.data.migrateCode, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
   },
 
   // ==== 网页版登录（复制账户ID） ====

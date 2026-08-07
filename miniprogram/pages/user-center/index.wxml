@@ -17,6 +17,9 @@
     <view wx:if="{{isLoggedIn}}" class="menu-item" bind:tap="onWebLogin">
       <text>网页版登录</text><text class="arrow">{{showWeb ? '∨' : '>'}}</text>
     </view>
+    <view wx:if="{{isLoggedIn}}" class="menu-item" bind:tap="onMigrate">
+      <text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text>
+    </view>
     <view class="menu-item" bind:tap="onFeedback">
       <text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text>
     </view>
@@ -39,6 +42,18 @@
       <view class="migrate-code-row" bind:tap="onCopyOpenid">
         <text class="migrate-code">{{openid || '登录后获取'}}</text>
         <text class="migrate-copy">复制</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 数据迁移面板（迁移码） -->
+  <view wx:if="{{showMigrate}}" class="migrate-panel">
+    <view class="migrate-section">
+      <view class="migrate-label">我的迁移码</view>
+      <view class="migrate-desc">新小程序「我的」→「数据迁移」输入此码，即可认领你的持仓、自选和交易记录</view>
+      <view class="migrate-code-row" bind:tap="onCopyMigrateCode">
+        <text class="migrate-code">{{migrateCode || (migrateLoading ? '获取中...' : '点击获取')}}</text>
+        <text class="migrate-copy">{{migrateCode ? '复制' : '获取'}}</text>
       </view>
     </view>
   </view>
