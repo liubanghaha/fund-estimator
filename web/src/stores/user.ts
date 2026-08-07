@@ -28,6 +28,15 @@ function getStoredUid(): string {
   return uid;
 }
 
+// 最近一次已过的定时登出点（每天 9:00 / 16:00，本地时间）
+function getLastLogoutPoint(now: Date): number {
+  const today9 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0);
+  const today16 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0, 0);
+  if (now >= today16) return today16.getTime();
+  if (now >= today9) return today9.getTime();
+  return today9.getTime() - 17 * 3600 * 1000; // 昨天 16:00
+}
+
 interface UserState {
   uid: string;
   openid: string;       // 绑定的小程序 OPENID（登录凭证）
@@ -51,6 +60,17 @@ export const useUserStore = create<UserState>((set, get) => ({
     const uid = getStoredUid();
     const loggedIn = !!safeGet('h5_logged_in');
     const openid = safeGet('h5_bound_openid') || '';
+    // 定时登出：登录时间早于最近一次 9:00/16:00 登出点则强制登出（账号安全，需重新验证）
+    if (loggedIn) {
+      const loginTime = Number(safeGet('h5_login_time') || 0);
+      if (!loginTime || loginTime < getLastLogoutPoint(new Date())) {
+        safeRemove('h5_logged_in');
+        safeRemove('h5_bound_openid');
+        safeRemove('h5_login_time');
+        set({ uid, openid: '', isLoggedIn: false, loading: false });
+        return;
+      }
+    }
     set({ uid, isLoggedIn: loggedIn, openid, loading: false });
   },
 
@@ -58,11 +78,13 @@ export const useUserStore = create<UserState>((set, get) => ({
     const uid = getStoredUid();
     safeSet('h5_logged_in', '1');
     safeSet('h5_bound_openid', openid);
+    safeSet('h5_login_time', String(Date.now()));
     set({ uid, openid, isLoggedIn: true });
   },
 
   logout: () => {
     safeRemove('h5_logged_in');
+    safeRemove('h5_login_time');
     set({ isLoggedIn: false });
   },
 
@@ -74,6 +96,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   unbindOpenid: () => {
     safeRemove('h5_bound_openid');
     safeRemove('h5_logged_in');
+    safeRemove('h5_login_time');
     set({ openid: '', isLoggedIn: false });
   },
 
