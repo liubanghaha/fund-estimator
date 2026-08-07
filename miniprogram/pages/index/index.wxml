@@ -9,18 +9,8 @@
       <view class="marquee">📢 公众号：韭菜养基宝　｜　🌐 网页版：fundleek.com</view>
     </view>
 
-    <!-- 未登录 -->
-    <view wx:if="{{!isLoggedIn}}" class="empty-state">
-      <view class="empty-icon">📒</view>
-      <view class="empty-title">理财笔记</view>
-      <view class="empty-desc">简单记录记录，随时查看盈亏</view>
-      <view class="empty-btns">
-        <button class="login-btn" bind:tap="onLogin">微信一键登录</button>
-      </view>
-    </view>
-
-    <!-- 空记录 -->
-    <view wx:elif="{{dataReady && holdings.length === 0}}" class="empty-state">
+    <!-- 空记录（含未登录：可直接浏览体验，无需登录） -->
+    <view wx:if="{{dataReady && holdings.length === 0}}" class="empty-state">
       <view class="empty-icon">📝</view>
       <view class="empty-desc">添加你的第一笔记录</view>
       <view class="empty-hint">支持截图导入或手动录入</view>
@@ -88,11 +78,11 @@
               <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
               {{item.fundName}}
             </view>
-            <view class="h-code">{{item.fundCode}}</view>
+            <view wx:if="{{item.fundCode}}" class="h-code">{{item.fundCode}}</view>
           </view>
           <view class="h-right">
             <view class="h-cost">{{amountVisible ? item.totalCost : '****'}}</view>
-            <view class="h-shares">{{item.shares}} 份</view>
+            <view wx:if="{{item.shares > 0}}" class="h-shares">{{item.shares}} 份</view>
           </view>
         </view>
       </view>

@@ -409,7 +409,7 @@ async function doBaiduOCR(fileID) {
 // ========== 主入口 ==========
 
 exports.main = async (event) => {
-  const { fileID } = event;
+  const { fileID, mode } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
 
   const debug = {};
@@ -426,6 +426,11 @@ exports.main = async (event) => {
   }
 
   if (!text) return { code: 500, msg: "OCR识别失败", debug };
+
+  // 记账模式：只返回原始识别文本，由客户端解析金额/备注（不识别基金）
+  if (mode === "ledger") {
+    return { code: 0, data: { raw: text, method, debug } };
+  }
 
   console.log("[ocrScreenshot] raw text (" + text.length + " chars):", text.slice(0, 800));
   const holdings = parseText(text);

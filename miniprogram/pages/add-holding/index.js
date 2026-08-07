@@ -1,30 +1,34 @@
 const api = require("../../utils/api");
 
+// 记账记录 id 前缀（区分 ledger_records 与 holdings 两个集合）
+const LEDGER_PREFIX = "L_";
+
 Page({
   data: {
     theme: "red",
-    // 模式
-    mode: "manual", // manual | ocr
     isEdit: false,
+    isLedger: false, // true=记账记录(ledger_records)，false=旧基金记录(holdings)
     id: "",
 
     // OCR
     ocrLoading: false,
-    ocrFunds: [],
+    ocrRows: [],
     ocrSaving: false,
     ocrCheckedCount: 0,
 
     // 手动表单
-    fundCode: "",
-    fundName: "",
-    shares: "",
-    cost: "",
+    amount: "",
+    note: "",
     buyDate: "",
     group: "",
     groups: [],
     showGroupPicker: false,
 
-    // 加减仓/交易记录
+    // 旧基金记录字段（兼容编辑，仅 isLedger=false 时使用）
+    fundCode: "",
+    shares: "",
+
+    // 加减仓/交易记录（仅旧基金记录）
     showTrade: false,
     tradeType: "buy", // buy | sell
     tradeAmount: "",
@@ -40,7 +44,11 @@ Page({
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     if (options.id) {
-      this.setData({ isEdit: true, id: options.id });
+      this.setData({
+        isEdit: true,
+        id: options.id,
+        isLedger: options.id.indexOf(LEDGER_PREFIX) === 0,
+      });
     }
   },
 
@@ -53,23 +61,37 @@ Page({
 
   // ==== 加载数据 ====
   async loadHolding() {
+    const { id, isLedger } = this.data;
     try {
-      const res = await api.holdingGet(this.data.id);
-      if (res.result && res.result.code === 0) {
-        const h = res.result.data;
-        this.setData({
-          fundCode: h.fundCode || "",
-          fundName: h.fundName || "",
-          shares: String(h.shares || ""),
-          cost: String(h.totalCost || h.marketValue || h.buyPrice || ""),
-          buyDate: h.buyDate || "",
-          group: h.group || "",
-        });
-      }
-      // 加载交易记录
-      const txRes = await api.transactionList(this.data.fundCode);
-      if (txRes.result && txRes.result.code === 0) {
-        this.setData({ transactions: txRes.result.data || [] });
+      if (isLedger) {
+        const res = await api.ledgerGet(id.slice(LEDGER_PREFIX.length));
+        if (res.result && res.result.code === 0) {
+          const r = res.result.data;
+          this.setData({
+            amount: String(r.amount || ""),
+            note: r.note || "",
+            buyDate: r.date || "",
+            group: r.group || "",
+          });
+        }
+      } else {
+        const res = await api.holdingGet(id);
+        if (res.result && res.result.code === 0) {
+          const h = res.result.data;
+          this.setData({
+            fundCode: h.fundCode || "",
+            shares: String(h.shares || ""),
+            amount: String(h.totalCost || h.marketValue || h.buyPrice || ""),
+            note: h.fundName || "",
+            buyDate: h.buyDate || "",
+            group: h.group || "",
+          });
+        }
+        // 加载交易记录
+        const txRes = await api.transactionList(this.data.fundCode);
+        if (txRes.result && txRes.result.code === 0) {
+          this.setData({ transactions: txRes.result.data || [] });
+        }
       }
     } catch (e) {
       console.error("加载记录失败:", e);
@@ -86,13 +108,7 @@ Page({
     } catch (e) { /* ignore */ }
   },
 
-  // ==== 模式切换 ====
-  switchMode(e) {
-    const mode = e.currentTarget.dataset.mode;
-    this.setData({ mode });
-  },
-
-  // ==== OCR ====
+  // ==== OCR（添加记录：只支持截图导入） ====
   onChooseImage() {
     wx.chooseMedia({
       count: 1, mediaType: ["image"], sourceType: ["album"],
@@ -106,11 +122,11 @@ Page({
             cloudPath: `ocr/${Date.now()}.jpg`,
             filePath: tempPath,
           });
-          // 调用OCR
-          const ocrRes = await api.ocrScreenshot(cloudRes.fileID);
+          // 调用OCR（ledger 模式：返回原始文本）
+          const ocrRes = await api.ocrLedger(cloudRes.fileID);
           if (ocrRes.result && ocrRes.result.code === 0) {
-            const funds = (ocrRes.result.data || []).map(f => Object.assign({}, f, { _checked: true }));
-            this.setData({ ocrFunds: funds, ocrLoading: false, ocrCheckedCount: funds.length });
+            const rows = this.parseLedgerText(ocrRes.result.data.raw);
+            this.setData({ ocrRows: rows, ocrLoading: false, ocrCheckedCount: rows.length });
           } else {
             wx.showToast({ title: (ocrRes.result && ocrRes.result.msg) || "识别失败", icon: "none" });
             this.setData({ ocrLoading: false });
@@ -123,39 +139,52 @@ Page({
     });
   },
 
-  toggleOcrItem(e) {
-    const idx = e.currentTarget.dataset.index;
-    const funds = this.data.ocrFunds.concat();
-    funds[idx]._checked = !funds[idx]._checked;
-    const count = funds.filter(f => f._checked).length;
-    this.setData({ ocrFunds: funds, ocrCheckedCount: count });
+  // 从原始识别文本中提取金额行（如 ¥123.45 / 123.45元 / 1,234.56）
+  parseLedgerText(raw) {
+    const lines = String(raw || "").split("\n").map(l => l.trim()).filter(l => l);
+    const rows = [];
+    for (const line of lines) {
+      if (/[%％]/.test(line)) continue; // 跳过百分比
+      const m = line.match(/(?:¥|￥)?\s*([\d,]+\.\d{1,2})\s*(?:元)?/);
+      if (!m) continue;
+      const amount = parseFloat(m[1].replace(/,/g, ""));
+      if (!amount || amount <= 0) continue;
+      const note = line.replace(m[0], "").replace(/^[\s\-—:：·]+/, "").trim().slice(0, 30);
+      rows.push({ amount: amount.toFixed(2), note, _checked: true });
+    }
+    return rows.slice(0, 50);
   },
 
-  onOcrNameChange(e) {
+  toggleOcrItem(e) {
     const idx = e.currentTarget.dataset.index;
-    const funds = this.data.ocrFunds.concat();
-    funds[idx].fundName = e.detail.value;
-    this.setData({ ocrFunds: funds });
+    const rows = this.data.ocrRows.concat();
+    rows[idx]._checked = !rows[idx]._checked;
+    const count = rows.filter(r => r._checked).length;
+    this.setData({ ocrRows: rows, ocrCheckedCount: count });
+  },
+
+  onOcrNoteChange(e) {
+    const idx = e.currentTarget.dataset.index;
+    const rows = this.data.ocrRows.concat();
+    rows[idx].note = e.detail.value;
+    this.setData({ ocrRows: rows });
   },
 
   async onOcrSave() {
-    const selected = this.data.ocrFunds.filter(f => f._checked && f.fundCode && f.fundName);
+    const selected = this.data.ocrRows.filter(r => r._checked && r.amount);
     if (selected.length === 0) {
       wx.showToast({ title: "请至少选择一条记录", icon: "none" });
       return;
     }
     this.setData({ ocrSaving: true });
     try {
-      const res = await api.batchAddHoldings(selected);
-      if (res.result && res.result.code === 0) {
-        wx.showToast({ title: `已添加 ${selected.length} 条记录`, icon: "success" });
-        wx.removeStorageSync("portfolio_cache");
-        wx.removeStorageSync("ledger_cache");
-        wx.setStorageSync("portfolio_force_refresh", true);
-        setTimeout(() => wx.navigateBack(), 1500);
-      } else {
-        wx.showToast({ title: (res.result && res.result.msg) || "保存失败", icon: "none" });
+      for (const r of selected) {
+        await api.ledgerAdd({ amount: r.amount, note: r.note, date: "" });
       }
+      wx.showToast({ title: `已添加 ${selected.length} 条记录`, icon: "success" });
+      wx.removeStorageSync("ledger_cache");
+      wx.setStorageSync("portfolio_force_refresh", true);
+      setTimeout(() => wx.navigateBack(), 1500);
     } catch (e) {
       wx.showToast({ title: "保存失败", icon: "none" });
     }
@@ -174,40 +203,33 @@ Page({
     this.setData({ group: e.currentTarget.dataset.group || "", showGroupPicker: false });
   },
 
-  // ==== 保存/更新记录 ====
+  // ==== 保存修改（仅编辑模式有表单） ====
   async onSave() {
-    const { fundCode, fundName, shares, cost, buyDate, group, isEdit, id } = this.data;
-    if (!fundCode.trim()) { wx.showToast({ title: "请输入产品代码", icon: "none" }); return; }
-    if (!fundName.trim()) { wx.showToast({ title: "请输入产品名称", icon: "none" }); return; }
-    if (!shares || parseFloat(shares) <= 0) { wx.showToast({ title: "请输入有效份额", icon: "none" }); return; }
-    if (!cost || parseFloat(cost) <= 0) { wx.showToast({ title: "请输入有效成本", icon: "none" }); return; }
+    const { amount, note, buyDate, group, isEdit, id, isLedger, fundCode, shares } = this.data;
+    if (!amount || parseFloat(amount) <= 0) { wx.showToast({ title: "请输入有效金额", icon: "none" }); return; }
+    if (!isEdit) { wx.showToast({ title: "请先保存记录", icon: "none" }); return; }
 
-    wx.showLoading({ title: isEdit ? "更新中..." : "添加中..." });
+    wx.showLoading({ title: "更新中..." });
     try {
-      if (isEdit) {
+      if (isLedger) {
+        await api.ledgerUpdate(id.slice(LEDGER_PREFIX.length), {
+          amount: parseFloat(amount).toFixed(2),
+          note: note.trim(),
+          date: buyDate || "",
+          group: group || "",
+        });
+      } else {
         await api.holdingUpdate(id, {
           fundCode: fundCode.trim(),
-          fundName: fundName.trim(),
+          fundName: note.trim(),
           shares: parseFloat(shares),
-          totalCost: parseFloat(cost).toFixed(2),
+          totalCost: parseFloat(amount).toFixed(2),
           group: group || "",
           buyDate: buyDate || "",
         });
-      } else {
-        await api.batchAddHoldings([{
-          fundCode: fundCode.trim(),
-          fundName: fundName.trim(),
-          shares: parseFloat(shares),
-          totalCost: parseFloat(cost).toFixed(2),
-          group: group || "",
-          buyDate: buyDate || "",
-        }]);
       }
       wx.hideLoading();
-      wx.showToast({ title: isEdit ? "已更新" : "已添加", icon: "success" });
-      // 自动加入关注列表
-      api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});
-      wx.removeStorageSync("portfolio_cache");
+      wx.showToast({ title: "已更新", icon: "success" });
       wx.removeStorageSync("ledger_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
       setTimeout(() => wx.navigateBack(), 1500);
@@ -221,13 +243,16 @@ Page({
   onDelete() {
     wx.showModal({
       title: "确认删除",
-      content: "确定删除此条记录吗？关联的交易记录也会清除。",
+      content: "确定删除此条记录吗？",
       success: async (res) => {
         if (!res.confirm) return;
         try {
-          await api.holdingRemove(this.data.id);
+          if (this.data.isLedger) {
+            await api.ledgerRemove(this.data.id.slice(LEDGER_PREFIX.length));
+          } else {
+            await api.holdingRemove(this.data.id);
+          }
           wx.showToast({ title: "已删除", icon: "success" });
-          wx.removeStorageSync("portfolio_cache");
           wx.removeStorageSync("ledger_cache");
           setTimeout(() => wx.navigateBack(), 1500);
         } catch (e) {
@@ -237,7 +262,7 @@ Page({
     });
   },
 
-  // ==== 加减仓 / 交易记录 ====
+  // ==== 加减仓 / 交易记录（仅旧基金记录） ====
   onToggleTrade() { this.setData({ showTrade: !this.data.showTrade }); },
   onTradeTypeChange(e) { this.setData({ tradeType: e.currentTarget.dataset.type }); },
   onTradeInput(e) {
@@ -246,7 +271,7 @@ Page({
   },
 
   async onSaveTrade() {
-    const { tradeType, tradeAmount, tradePrice, tradeDate, fundCode, fundName, shares, cost, isEdit } = this.data;
+    const { tradeType, tradeAmount, tradePrice, tradeDate, fundCode, shares, amount, isEdit } = this.data;
     if (!tradeAmount || parseFloat(tradeAmount) <= 0) { wx.showToast({ title: "请输入金额", icon: "none" }); return; }
     if (!tradePrice || parseFloat(tradePrice) <= 0) { wx.showToast({ title: "请输入价格", icon: "none" }); return; }
 
@@ -255,20 +280,20 @@ Page({
       return;
     }
 
-    const amount = parseFloat(tradeAmount);
+    const amt = parseFloat(tradeAmount);
     const price = parseFloat(tradePrice);
-    const tradeShares = amount / price;
+    const tradeShares = amt / price;
     const sign = tradeType === "buy" ? 1 : -1;
     const newShares = Math.max(0, parseFloat(shares) + sign * tradeShares);
-    const newCost = Math.max(0, parseFloat(cost) + sign * amount);
+    const newCost = Math.max(0, parseFloat(amount) + sign * amt);
 
     wx.showLoading({ title: "保存中..." });
     try {
       await api.transactionAdd({
         fundCode,
-        fundName,
+        fundName: this.data.note,
         type: tradeType,
-        amount,
+        amount: amt,
         price,
         shares: tradeShares.toFixed(4),
         date: tradeDate || "",
@@ -282,10 +307,9 @@ Page({
       this.setData({
         showTrade: false,
         shares: String(newShares),
-        cost: String(newCost.toFixed(2)),
+        amount: String(newCost.toFixed(2)),
         tradeAmount: "", tradePrice: "", tradeDate: "",
       });
-      wx.removeStorageSync("portfolio_cache");
       wx.removeStorageSync("ledger_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
     } catch (e) {

@@ -65,9 +65,32 @@ Page({
         this._lastFetch = now;
         this.fetchHoldings();
       }
+    } else if (!userInfo) {
+      // 从未登录：静默登录（仅拿 openid，无任何授权弹窗），失败不阻塞浏览
+      this._silentLogin();
     } else {
+      // 显式退出过：保持未登录，空态可浏览
       this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
       wx.removeStorageSync(CACHE_KEY);
+    }
+  },
+
+  // 静默登录：后台调 userLogin 拿 openid 存本地，用户无感知
+  async _silentLogin() {
+    try {
+      const res = await api.userLogin();
+      if (res.result && res.result.code === 0) {
+        wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
+        this.setData({ isLoggedIn: true });
+        this.applyCache();
+        this._lastFetch = 0;
+        this.fetchHoldings();
+      } else {
+        this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
+      }
+    } catch (e) {
+      console.error("静默登录失败:", e);
+      this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
     }
   },
 
@@ -104,27 +127,42 @@ Page({
   async fetchHoldings(showLoading = false) {
     if (showLoading) this.setData({ loading: true });
     try {
-      const res = await api.getPortfolio(0);
-      if (res.result && res.result.code === 0) {
-        const d = res.result.data;
-        const holdings = (d.holdings || []).map(h => ({
-          _id: h._id,
-          fundCode: h.fundCode,
-          fundName: h.fundName,
-          shares: h.shares || "0",
-          buyPrice: h.buyPrice || "0.00",
-          totalCost: h.totalCost || h.marketValue || "0.00",
-          group: h.group || "",
-        }));
-        const totalCost = holdings.reduce((s, h) => s + parseFloat(h.totalCost || 0), 0).toFixed(2);
-        this.setData({
-          loading: false, dataReady: true, holdings, totalCost,
-          groups: (d.groups || []).map(g => (typeof g === 'string' ? g : g.name)).filter(g => g && g !== 'all' && g !== 'ungrouped' && g !== '未分组' && g !== '全部'),
-        });
-        this.applyGroupFilter();
-        this.updateGroupCounts();
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalCost, ts: Date.now() } });
-      }
+      const [pfRes, lgRes] = await Promise.all([
+        api.getPortfolio(0).catch(() => null),
+        api.ledgerList().catch(() => null),
+      ]);
+      const fundRows = (pfRes && pfRes.result && pfRes.result.code === 0 && pfRes.result.data) ? pfRes.result.data.holdings.map(h => ({
+        _id: h._id,
+        fundCode: h.fundCode,
+        fundName: h.fundName,
+        shares: h.shares || "0",
+        buyPrice: h.buyPrice || "0.00",
+        totalCost: h.totalCost || h.marketValue || "0.00",
+        group: h.group || "",
+        isLedger: false,
+      })) : [];
+      // 记账记录（ledger_records 集合，id 加 L_ 前缀与基金记录区分）
+      const ledgerRows = (lgRes && lgRes.result && lgRes.result.code === 0 && lgRes.result.data ? lgRes.result.data : []).map(r => ({
+        _id: "L_" + r._id,
+        fundCode: "",
+        fundName: r.note || "记账",
+        shares: "0",
+        buyPrice: "0.00",
+        totalCost: String(r.amount || "0"),
+        group: r.group || "",
+        isLedger: true,
+      }));
+      const holdings = ledgerRows.concat(fundRows);
+      const totalCost = holdings.reduce((s, h) => s + parseFloat(h.totalCost || 0), 0).toFixed(2);
+      const serverGroups = (pfRes && pfRes.result && pfRes.result.code === 0 && pfRes.result.data ? (pfRes.result.data.groups || []).map(g => (typeof g === 'string' ? g : g.name)) : []).filter(g => g && g !== 'all' && g !== 'ungrouped' && g !== '未分组' && g !== '全部');
+      const ledgerGroups = [...new Set(ledgerRows.map(r => r.group).filter(Boolean))];
+      this.setData({
+        loading: false, dataReady: true, holdings, totalCost,
+        groups: [...new Set(serverGroups.concat(ledgerGroups))],
+      });
+      this.applyGroupFilter();
+      this.updateGroupCounts();
+      wx.setStorage({ key: CACHE_KEY, data: { holdings, totalCost, ts: Date.now() } });
     } catch (e) {
       this.setData({ loading: false, dataReady: true });
       console.error("获取记录失败:", e);
@@ -233,22 +271,29 @@ Page({
       this.doMoveToGroup(codes, groupName);
     });
   },
-  async doMoveToGroup(codes, group) {
+  async doMoveToGroup(rows, group) {
     try {
-      const res = await api.holdingSetGroup(codes, group);
-      if (res.result && res.result.code === 0) {
-        wx.showToast({ title: "已移动", icon: "success" });
-        wx.removeStorageSync(CACHE_KEY);
-        this.fetchHoldings();
-      } else {
-        wx.showToast({ title: (res.result && res.result.msg) || "操作失败", icon: "none" });
+      const fundRows = rows.filter(r => !r.isLedger);
+      const ledgerRows = rows.filter(r => r.isLedger);
+      let ok = true;
+      if (fundRows.length) {
+        const res = await api.holdingSetGroup(fundRows.map(r => r.fundCode), group);
+        if (!(res.result && res.result.code === 0)) ok = false;
       }
+      if (ledgerRows.length) {
+        const res = await api.ledgerSetGroup(ledgerRows.map(r => r._id.slice(2)), group);
+        if (!(res.result && res.result.code === 0)) ok = false;
+      }
+      if (!ok) { wx.showToast({ title: "操作失败", icon: "none" }); return; }
+      wx.showToast({ title: "已移动", icon: "success" });
+      wx.removeStorageSync(CACHE_KEY);
+      this.fetchHoldings();
     } catch (e) { wx.showToast({ title: "网络错误", icon: "none" }); }
   },
   onBatchMoveToGroup() {
     const selected = this.data.displayHoldings.filter(h => h._checked);
     if (selected.length === 0) { wx.showToast({ title: "请先选择记录", icon: "none" }); return; }
-    this.moveHoldingToGroup(selected.map(h => h.fundCode));
+    this.moveHoldingToGroup(selected);
   },
 
   // ==== 资产管理 ====
@@ -265,9 +310,34 @@ Page({
     const h = this.data.holdings.find(x => x._id === id);
     if (!h) return;
     const self = this;
+    // 记账记录无份额概念，不显示"手动算盈亏"
+    const itemList = h.isLedger ? ['编辑', '移动到分组', '删除'] : ['编辑', '手动算盈亏', '移动到分组', '删除'];
     wx.showActionSheet({
-      itemList: ['编辑', '手动算盈亏', '移动到分组', '删除'],
+      itemList,
       success(res) {
+        if (h.isLedger) {
+          if (res.tapIndex === 0) {
+            wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
+          } else if (res.tapIndex === 1) {
+            self.moveHoldingToGroup([h]);
+          } else if (res.tapIndex === 2) {
+            wx.showModal({
+              title: "确认删除", content: "确定要删除此条记录吗？",
+              success(r) {
+                if (!r.confirm) return;
+                wx.showLoading({ title: "删除中..." });
+                api.ledgerRemove(id.slice(2)).then(() => {
+                  wx.hideLoading(); wx.showToast({ title: "已删除", icon: "success" });
+                  wx.removeStorageSync(CACHE_KEY);
+                  self.fetchHoldings();
+                }).catch(() => {
+                  wx.hideLoading(); wx.showToast({ title: "删除失败", icon: "none" });
+                });
+              },
+            });
+          }
+          return;
+        }
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
@@ -277,7 +347,7 @@ Page({
             calcPrice: "", calcResult: null,
           });
         } else if (res.tapIndex === 2) {
-          self.moveHoldingToGroup([h.fundCode]);
+          self.moveHoldingToGroup([h]);
         } else if (res.tapIndex === 3) {
           wx.showModal({
             title: "确认删除", content: "确定要删除此条记录吗？",
@@ -349,8 +419,12 @@ Page({
         let done = 0;
         for (const h of selected) {
           try {
-            await db.collection("holdings").doc(h._id).remove();
-            await db.collection("transactions").where({ fundCode: h.fundCode }).remove();
+            if (h.isLedger) {
+              await api.ledgerRemove(h._id.slice(2));
+            } else {
+              await db.collection("holdings").doc(h._id).remove();
+              await db.collection("transactions").where({ fundCode: h.fundCode }).remove();
+            }
             done++;
           } catch (e) { /* ignore */ }
         }
@@ -363,6 +437,5 @@ Page({
     });
   },
 
-  onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   noop() {},
 });

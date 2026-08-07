@@ -92,6 +92,26 @@ const api = {
     return this.callFunction("manageWatchlist", { action: "deleteGroup", group });
   },
 
+  // === 记账记录 ===
+  ledgerList() {
+    return this.callFunction("manageLedger", { action: "list" });
+  },
+  ledgerGet(id) {
+    return this.callFunction("manageLedger", { action: "get", id });
+  },
+  ledgerAdd(data) {
+    return this.callFunction("manageLedger", { action: "add", data });
+  },
+  ledgerUpdate(id, data) {
+    return this.callFunction("manageLedger", { action: "update", id, data });
+  },
+  ledgerRemove(id) {
+    return this.callFunction("manageLedger", { action: "remove", id });
+  },
+  ledgerSetGroup(ids, group) {
+    return this.callFunction("manageLedger", { action: "setGroup", ids, group });
+  },
+
   // === 交易记录 ===
   transactionAdd(data) {
     return this.callFunction("manageTransaction", { action: "add", data });
@@ -103,6 +123,9 @@ const api = {
   // === OCR ===
   ocrScreenshot(fileID) {
     return this.callFunction("ocrScreenshot", { fileID });
+  },
+  ocrLedger(fileID) {
+    return this.callFunction("ocrScreenshot", { fileID, mode: "ledger" });
   },
   ocrTransaction(fileID) {
     return this.callFunction("ocrTransaction", { fileID });

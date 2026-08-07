@@ -64,8 +64,8 @@ Page({
       content: "确定要退出登录吗？",
       success: (res) => {
         if (!res.confirm) return;
-        // 清除登录态和本地缓存，避免下一个账号看到上一个账号的数据
-        wx.removeStorageSync("userInfo");
+        // 标记显式退出（保留 loggedIn:false，首页据此不自动静默登录），并清除本地缓存避免串号
+        wx.setStorageSync("userInfo", { loggedIn: false });
         wx.removeStorageSync("ledger_cache");
         wx.removeStorageSync("holding_groups_cache");
         wx.removeStorageSync("watchlist_cache");
