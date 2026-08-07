@@ -1,23 +1,98 @@
 {
   "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
-  "envId": "cloudbase-d0gug00io7bfedd97",
+  "envId": "cloud1-d7gu9zv3i796839b8",
   "functionRoot": "cloudfunctions",
   "functions": [
-    { "name": "createCollection", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundInfo", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundNAVHistory", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundProfile", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "getPortfolio", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "ocrScreenshot", "timeout": 60, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "searchFund", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "manageWatchlist", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "userLogin", "timeout": 10, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchMarketIndex", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "ocrTransaction", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "manageHolding", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "manageTransaction", "timeout": 15, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "batchFetchEstimate", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
+    {
+      "name": "createCollection",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundEstimate",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundInfo",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundNAVHistory",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundProfile",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "getPortfolio",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "ocrScreenshot",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "searchFund",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageWatchlist",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "userLogin",
+      "timeout": 10,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchMarketIndex",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "ocrTransaction",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageHolding",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageTransaction",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "batchFetchEstimate",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
     {
       "name": "snapshotProfit",
       "timeout": 30,
@@ -25,7 +100,11 @@
       "handler": "index.main",
       "concurrency": 1,
       "triggers": [
-        { "name": "snapshotTimer", "type": "timer", "config": "0 * 9-15 * * 1-5 *" }
+        {
+          "name": "snapshotTimer",
+          "type": "timer",
+          "config": "0 * 9-15 * * 1-5 *"
+        }
       ]
     },
     {
@@ -34,13 +113,54 @@
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "triggers": [
-        { "name": "dailyTempTrigger", "type": "timer", "config": "0 0 3 * * * *" }
+        {
+          "name": "dailyTempTrigger",
+          "type": "timer",
+          "config": "0 0 3 * * * *"
+        }
       ]
     },
-    { "name": "fetchFundOverview", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "dcaBacktest", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchFundRank", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "computeCorrelation", "timeout": 30, "runtime": "Nodejs20.19", "handler": "index.main" },
-    { "name": "fetchIndexIntraday", "timeout": 20, "runtime": "Nodejs20.19", "handler": "index.main" }
+    {
+      "name": "fetchFundOverview",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "dcaBacktest",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundRank",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "computeCorrelation",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchIndexIntraday",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "bindMigrationCode",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "getMigrationCode",
+      "timeout": 10,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    }
   ]
 }

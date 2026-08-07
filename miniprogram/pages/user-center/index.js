@@ -8,6 +8,10 @@ Page({
     feedbackText: "",
     feedbackImages: [],
     feedbackSubmitting: false,
+    // 数据迁移（旧版本用户认领数据）
+    showMigrate: false,
+    migrateCode: "",
+    migrating: false,
   },
 
   onShow() {
@@ -89,6 +93,42 @@ Page({
 
   onSearchFund() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
+
+  // ========== 数据迁移（输入迁移码认领旧数据） ==========
+
+  onMigrate() {
+    if (this.data.showMigrate) {
+      this.setData({ showMigrate: false, migrateCode: "" });
+    } else {
+      this.setData({ showMigrate: true });
+    }
+  },
+
+  onMigrateInput(e) {
+    this.setData({ migrateCode: e.detail.value });
+  },
+
+  async onSubmitMigrate() {
+    const code = (this.data.migrateCode || "").trim();
+    if (!code) { wx.showToast({ title: "请输入迁移码", icon: "none" }); return; }
+    if (!this.data.isLoggedIn) { wx.showToast({ title: "请先登录", icon: "none" }); return; }
+    this.setData({ migrating: true });
+    try {
+      const res = await api.bindMigrationCode(code);
+      const r = res.result || {};
+      if (r.code === 0) {
+        wx.showToast({ title: "迁移成功！", icon: "success" });
+        wx.setStorageSync("migrated", true);
+        this.setData({ showMigrate: false, migrateCode: "", migrating: false });
+      } else {
+        wx.showToast({ title: r.msg || "迁移失败", icon: "none" });
+        this.setData({ migrating: false });
+      }
+    } catch (e) {
+      wx.showToast({ title: "网络异常，请重试", icon: "none" });
+      this.setData({ migrating: false });
+    }
+  },
 
   // ========== 意见反馈 ==========
 

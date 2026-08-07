@@ -56,3 +56,9 @@
 .ver-block-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:10rpx}
 .ver-item{font-size:26rpx;color:#555;line-height:2;padding-left:4rpx}
 .ver-close{margin:16rpx 32rpx 28rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx;flex-shrink:0}
+
+/* 数据迁移 */
+.migrate-input{min-height:auto;height:88rpx;text-align:center;font-size:34rpx;letter-spacing:8rpx;text-transform:lowercase}
+.migrate-tip{font-size:24rpx;color:#999;margin:16rpx 4rpx;line-height:1.6}
+.migrate-btn{margin-top:20rpx;background:var(--primary);color:#FFF;font-size:30rpx;border-radius:44rpx;padding:18rpx 0}
+.migrate-btn[disabled]{opacity:.6;color:#FFF}

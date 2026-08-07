@@ -59,6 +59,9 @@ const api = {
   ocrTransaction(fileID) {
     return this.callFunction("ocrTransaction", { fileID });
   },
+  bindMigrationCode(code) {
+    return this.callFunction("bindMigrationCode", { code });
+  },
   watchlistAdd(fundCode, fundName) {
     return this.callFunction("manageWatchlist", { action: "add", fundCode, fundName });
   },

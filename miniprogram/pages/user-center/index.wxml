@@ -13,8 +13,25 @@
   </view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
+    <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onToggleTheme"><text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text></view>
+  </view>
+
+  <!-- 数据迁移（认领旧数据） -->
+  <view wx:if="{{showMigrate}}" class="feedback-form">
+    <view class="fb-section">
+      <view class="fb-label">输入迁移码</view>
+      <input
+        class="fb-textarea migrate-input"
+        value="{{migrateCode}}"
+        placeholder="6 位迁移码，在旧小程序「我的」页查看"
+        maxlength="6"
+        bindinput="onMigrateInput"
+      />
+      <view class="migrate-tip">迁移码在旧版小程序「我的」→「数据迁移」中查看，输入后自动认领你的持仓、自选和交易记录。</view>
+      <button class="migrate-btn" bind:tap="onSubmitMigrate" disabled="{{migrating}}">{{migrating ? '迁移中...' : '开始迁移'}}</button>
+    </view>
   </view>
 
   <!-- 反馈表单 -->

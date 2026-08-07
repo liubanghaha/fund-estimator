@@ -35,7 +35,7 @@ App({
     if (wx.cloud) {
       try {
         wx.cloud.init({
-          env: "cloudbase-d0gug00io7bfedd97",
+          env: "cloud1-d7gu9zv3i796839b8",
           traceUser: true,
         });
       } catch (e) {
