@@ -5,3 +5,4 @@ private.*.key
 env.json
 pic/
 articles/screenshots/
+project.private.config.json
