@@ -33,8 +33,9 @@ exports.main = async (event) => {
 
 function searchByName(name) {
   const https = require("https");
+  // searchapi.eastmoney.com 对 Node 运行时返回 JSONP，改用东财基金站搜索接口
   const encoded = encodeURIComponent(name);
-  const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encoded}&type=14&token=DGCE23MHKBN23AKDN23&count=5`;
+  const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encoded}`;
 
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
@@ -43,14 +44,14 @@ function searchByName(name) {
       res.on("end", () => {
         try {
           const json = JSON.parse(body);
-          const datas = (json.QuotationCodeTable && json.QuotationCodeTable.Data) || [];
-          resolve(datas.map((d) => ({
-            code: d.Code,
-            fundCode: d.Code,
-            fundName: d.Name,
-            name: d.Name,
-            fundType: d.SecurityTypeName || "",
-          })));
+          const datas = (json.Datas || []).map((d) => ({
+            code: d.CODE,
+            fundCode: d.CODE,
+            fundName: d.NAME,
+            name: d.NAME,
+            fundType: d.CATEGORYDESC || "",
+          }));
+          resolve(datas);
         } catch (e) {
           resolve([]);
         }
@@ -63,29 +64,34 @@ function searchByName(name) {
 
 function lookUpFund(fundCode) {
   const https = require("https");
-  const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js`;
+  // fundgz.1234567.com.cn 估值接口已失效（全部返回页面未找到）；
+  // searchapi.eastmoney.com 对 Node 运行时返回 JSONP，统一改用东财基金站搜索接口
+  const encoded = encodeURIComponent(fundCode);
+  const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encoded}`;
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Referer: "https://fundgz.1234567.com.cn/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
-          const jsonStr = body.replace(/^jsonpgz\(/, "").replace(/\)\;?$/, "");
-          const data = JSON.parse(jsonStr);
-          resolve({
-            fundCode: data.fundcode,
-            fundName: data.name,
-            fundType: "off-market",
-          });
-        } catch (e) {
-          if (body && /^<(!doctype|html)/i.test(body.trim())) {
-            console.error("天天基金API异常返回(非JSONP):", body.substring(0, 200));
+          const json = JSON.parse(body);
+          const datas = (json.Datas || []);
+          const hit = datas.find((d) => String(d.CODE) === fundCode);
+          if (hit) {
+            resolve({
+              fundCode: hit.CODE,
+              fundName: hit.NAME,
+              fundType: hit.CATEGORYDESC || "",
+            });
+          } else {
+            resolve(null);
           }
+        } catch (e) {
           resolve(null);
         }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
-    req.on("error", reject);
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
   });
 }

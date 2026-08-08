@@ -161,6 +161,24 @@
       "timeout": 10,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "submitFeedback",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "portfolioLight",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "batchAddHoldings",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

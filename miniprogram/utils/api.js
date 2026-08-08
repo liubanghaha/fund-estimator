@@ -1,12 +1,19 @@
 const api = {
-  // 请求去重缓存：相同参数 5s 内复用 Promise
+  // 请求去重缓存：只读函数相同参数 5s 内复用 Promise；写操作不缓存，避免双击吞操作
   _pending: {},
   _pendingTs: {},
+  READ_ONLY_FUNCS: [
+    "userLogin", "searchFund", "getPortfolio", "portfolioLight",
+    "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
+    "fetchFundProfile", "fetchFundRank", "fetchFundInfo", "fetchMarketIndex",
+    "fetchIndexIntraday", "batchFetchEstimate", "computeCorrelation",
+    "dcaBacktest", "getMigrationCode",
+  ],
 
   callFunction(name, data = {}) {
     const key = name + "|" + JSON.stringify(data);
     const now = Date.now();
-    if (this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
+    if (this.READ_ONLY_FUNCS.includes(name) && this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
       return this._pending[key];
     }
     const p = wx.cloud.callFunction({ name, data });

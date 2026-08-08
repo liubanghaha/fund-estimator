@@ -9,6 +9,8 @@
   >
     <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
 
+      <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
+
       <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
         <text class="alert-icon">🔔</text>
         <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>

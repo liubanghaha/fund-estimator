@@ -1,5 +1,6 @@
 <view wx:if="{{!ready}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
   <view class="search-bar">
     <input class="search-input" placeholder="输入代码或名称搜索" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>

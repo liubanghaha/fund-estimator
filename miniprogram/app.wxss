@@ -91,3 +91,12 @@ page {
   color: #999;
   margin-bottom: 8rpx;
 }
+
+/* 数据来源提示（页面顶部） */
+.disclaimer {
+  padding: 16rpx 32rpx;
+  text-align: center;
+  color: #999;
+  font-size: 20rpx;
+  line-height: 1.6;
+}
