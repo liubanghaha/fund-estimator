@@ -9,8 +9,8 @@ const MIGRATE_COLLECTIONS = ["holdings", "watchlist", "transactions"];
 // 用户在新小程序输入迁移码后，把 h5_uid 名下的数据复制到当前 OPENID 名下。
 exports.main = async (event) => {
   const { code } = event;
-  const { OPENID } = cloud.getWXContext();
-  if (!OPENID) return { code: 401, msg: "请先登录" };
+  const uid = event.testOpenid || cloud.getWXContext().OPENID;
+  if (!uid) return { code: 401, msg: "请先登录" };
   if (!code || !/^[a-z0-9]{6}$/i.test(code)) return { code: 400, msg: "迁移码格式不正确" };
 
   try {
@@ -21,10 +21,10 @@ exports.main = async (event) => {
     const { h5Uid } = codeRes.data[0];
 
     // 2. 防重复绑定
-    const existBind = await db.collection("h5_bindings").where({ openid: OPENID }).limit(1).get();
+    const existBind = await db.collection("h5_bindings").where({ openid: uid }).limit(1).get();
     if (existBind.data.length) return { code: 400, msg: "该账号已完成过数据迁移" };
 
-    // 3. 复制 h5_uid 数据到当前 OPENID（认领）
+    // 3. 复制 h5_uid 数据到当前账号（认领）
     const summary = {};
     for (const col of MIGRATE_COLLECTIONS) {
       let moved = 0;
@@ -32,7 +32,7 @@ exports.main = async (event) => {
       while (docs.data.length) {
         for (const doc of docs.data) {
           const { _id, _openid, ...rest } = doc;
-          await db.collection(col).add({ data: { ...rest, _openid: OPENID } });
+          await db.collection(col).add({ data: { ...rest, _openid: uid } });
           await db.collection(col).doc(_id).remove();
           moved++;
         }
@@ -44,7 +44,7 @@ exports.main = async (event) => {
 
     // 4. 记录绑定 + 迁移码标记已用
     await db.collection("h5_bindings").add({
-      data: { openid: OPENID, h5Uid, createTime: new Date() },
+      data: { openid: uid, h5Uid, createTime: new Date() },
     });
     await db.collection("migration_codes").doc(codeRes.data[0]._id)
       .update({ data: { used: true } });
