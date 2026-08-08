@@ -8,3 +8,4 @@ articles/screenshots/
 web/
 tools/
 .zcode/
+project.private.config.json
