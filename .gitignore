@@ -6,3 +6,8 @@ env.json
 pic/
 articles/screenshots/
 project.private.config.json
+.zcode/
+# 数据迁移备份（含用户 openid，不入库）
+tools/migrate/out/
+# OCR 编译产物
+tools/ocr
