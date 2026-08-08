@@ -21,7 +21,7 @@ Page({
       if (res.result && res.result.code === 0) {
         this.setData({ fundList: res.result.data, isLoading: false });
       } else {
-        this.setData({ errorMsg: res.result?.msg || "搜索失败", isLoading: false });
+        this.setData({ errorMsg: (res.result && res.result.msg) || "搜索失败", isLoading: false });
       }
     } catch (e) {
       this.setData({ errorMsg: "网络错误，请重试", isLoading: false });

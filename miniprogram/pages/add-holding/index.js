@@ -290,7 +290,7 @@ Page({
           wx.showToast({ title: "所有持仓已存在", icon: "none" });
         }
       } else {
-        wx.showToast({ title: res.result?.msg || "保存失败", icon: "none" });
+        wx.showToast({ title: (res.result && res.result.msg) || "保存失败", icon: "none" });
       }
     } catch (e) {
       wx.hideLoading();
@@ -360,7 +360,7 @@ Page({
 	      const buyPrice = parseFloat(h.buyPrice) || 0;
 	      try {
 	        const estRes = await api.fetchFundEstimate(h.fundCode);
-	        const currentNav = estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+	        const currentNav = ((estRes.result && estRes.result.data && estRes.result.data.actualNav) || (estRes.result && estRes.result.data && estRes.result.data.nav));
 	        if (currentNav && shares > 0 && buyPrice > 0) {
 	          mv = parseFloat((currentNav * shares).toFixed(2));
 	          hr = parseFloat(((currentNav - buyPrice) * shares).toFixed(2));
@@ -592,7 +592,7 @@ Page({
     wx.showLoading({ title: '处理中...' });
     try {
       const estRes = await api.fetchFundEstimate(h.fundCode);
-      const liveNav = estRes.result?.data?.estimatedNav || estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+      const liveNav = ((estRes.result && estRes.result.data && estRes.result.data.estimatedNav) || (estRes.result && estRes.result.data && estRes.result.data.actualNav) || (estRes.result && estRes.result.data && estRes.result.data.nav));
       const price = parseFloat(liveNav) || 0;
       if (price <= 0) throw new Error('获取净值失败');
 

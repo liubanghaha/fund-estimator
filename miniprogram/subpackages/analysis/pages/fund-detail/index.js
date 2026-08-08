@@ -248,7 +248,7 @@ Page({
               }
               wx.showToast({ title: group ? `已加自选 · ${group}` : "已加自选", icon: "success" });
             } else {
-              wx.showToast({ title: addRes.result?.msg || "操作失败", icon: "none" });
+              wx.showToast({ title: (addRes.result && addRes.result.msg) || "操作失败", icon: "none" });
             }
           },
         });
@@ -864,7 +864,7 @@ Page({
       if (res.result && res.result.code === 0) {
         this.setData({ dcaResult: res.result.data });
       } else {
-        wx.showToast({ title: res.result?.msg || "回测失败", icon: "none" });
+        wx.showToast({ title: (res.result && res.result.msg) || "回测失败", icon: "none" });
       }
     } catch (e) {
       wx.showToast({ title: "回测失败", icon: "none" });

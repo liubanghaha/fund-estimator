@@ -314,7 +314,7 @@ Page({
     wx.showLoading({ title: '保存中...' });
     try {
       const estRes = await api.fetchFundEstimate(h.fundCode);
-      const liveNav = estRes.result?.data?.estimatedNav || estRes.result?.data?.actualNav || estRes.result?.data?.nav;
+      const liveNav = ((estRes.result && estRes.result.data && estRes.result.data.estimatedNav) || (estRes.result && estRes.result.data && estRes.result.data.actualNav) || (estRes.result && estRes.result.data && estRes.result.data.nav));
       const price = parseFloat(liveNav) || 0;
       if (price <= 0) throw new Error('获取净值失败');
 

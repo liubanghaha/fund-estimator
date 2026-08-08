@@ -225,8 +225,8 @@ Page({
           feedbackImages: [],
         });
       } else {
-        const errDetail = res.result?.errCode ? ` [${res.result.errCode}]` : "";
-        wx.showToast({ title: (res.result?.msg || "提交失败") + errDetail, icon: "none", duration: 3000 });
+        const errDetail = (res.result && res.result.errCode) ? ` [${res.result.errCode}]` : "";
+        wx.showToast({ title: ((res.result && res.result.msg) || "提交失败") + errDetail, icon: "none", duration: 3000 });
       }
     } catch (e) {
       wx.hideLoading();
