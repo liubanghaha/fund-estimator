@@ -64,7 +64,6 @@ Page({
       totalReturn: { label: "累计收益", sortable: true },
       valuation: { label: "估值", sortable: false, isValuation: true },
     },
-    showChangelog: false, changelog: null,
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
     alertEditPeAlert: false,
@@ -130,12 +129,6 @@ Page({
     const cachedGroups = this._getCachedGroups();
     if (cachedGroups.length && !this.data.groups.length) {
       this.setData({ groups: cachedGroups });
-    }
-
-    // 版本更新日志
-    const app = getApp();
-    if (app.globalData._pendingChangelog) {
-      this.setData({ showChangelog: true, changelog: app.globalData._pendingChangelog });
     }
 
     const savedCodes = wx.getStorageSync("indexCodes");
@@ -272,10 +265,6 @@ Page({
   },
   onCloseColEdit() {
     this.setData({ showColEdit: false });
-  },
-  onCloseChangelog() {
-    this.setData({ showChangelog: false });
-    getApp().markChangelogRead();
   },
 
   // ---- 止盈止损提醒 ----

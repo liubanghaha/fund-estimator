@@ -15,8 +15,7 @@ Page({
   onLoad() {
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
-    if (typeof wx.showChangelog === 'function') wx.showChangelog();
-    this.fetchAll();
+        this.fetchAll();
   },
 
   toggleIndustries() {

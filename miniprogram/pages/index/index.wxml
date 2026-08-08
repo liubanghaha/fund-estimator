@@ -247,18 +247,6 @@
     </view>
   </view>
 
-  <!-- 版本更新日志 -->
-  <view wx:if="{{showChangelog}}" class="changelog-mask" bind:tap="onCloseChangelog">
-    <view class="changelog-card" catch:tap="">
-      <view class="changelog-title">🎉 新版本更新</view>
-      <view class="changelog-version">{{changelog.version}} · {{changelog.date}}</view>
-      <view class="changelog-list">
-        <view wx:for="{{changelog.items}}" wx:key="*this" class="changelog-item">{{item}}</view>
-      </view>
-      <view class="changelog-close" bind:tap="onCloseChangelog">知道了</view>
-    </view>
-  </view>
-
   <!-- 移动分组选择器 -->
   <view wx:if="{{showGroupPicker}}" class="col-edit-mask" bind:tap="onCloseGroupPicker">
     <view class="col-edit-card" catch:tap="">

@@ -41,8 +41,7 @@ Page({
     this.setData({ fundCode: options.fundCode, fundName });
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
-    if (typeof wx.showChangelog === 'function') wx.showChangelog();
-    wx.setNavigationBarTitle({ title: fundName });
+        wx.setNavigationBarTitle({ title: fundName });
     this._firstLoad = true;
     const { windowWidth } = wx.getSystemInfoSync();
     const canvasW = windowWidth - 24;
