@@ -245,14 +245,14 @@ export default function IndexPage(){
       const pc=h.peTemp?.signal==='low'?c.down:h.peTemp?.signal==='high'?c.primary:h.peTemp?.signal==='mid'?c.mid:c.textHint;
       const pl=h.peTemp?.signal==='low'?'低估':h.peTemp?.signal==='high'?'高估':h.peTemp?.signal==='mid'?'正常':h.peTemp?.signal||'--';
       let longPressTimer:any;
-      return <div key={h._id} style={{display:'flex',alignItems:'center',padding:'10px 16px',background:c.cardBg,margin:'0 12px',borderBottom:`1px solid ${c.bg}`,cursor:batch?'default':'pointer',opacity:h.estimateUpdated?1:0.55,position:'relative'}}
+      return <div key={h._id} style={{display:'flex',alignItems:'center',padding:'10px 16px',background:c.cardBg,margin:'0 12px',borderBottom:`1px solid ${c.bg}`,cursor:batch?'default':'pointer',position:'relative'}}
         onClick={()=>batch?setChk(p=>({...p,[h._id]:!p[h._id]})):nav(`/fund-detail/${h.fundCode}`)}
         onContextMenu={e=>{e.preventDefault();if(!batch)showHoldingMenu(h)}}
         onTouchStart={()=>{if(!batch)longPressTimer=setTimeout(()=>showHoldingMenu(h),500)}}
         onTouchMove={()=>clearTimeout(longPressTimer)}
         onTouchEnd={()=>clearTimeout(longPressTimer)}>
         {batch&&<input type="checkbox" checked={!!chk[h._id]} readOnly style={{marginRight:8,flexShrink:0}}/>}
-        <div style={{flex:2,minWidth:0}}><div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.fundName}</div><div style={{fontSize:11,color:c.textSecondary}}>{h.fundCode}{h.group?` · ${h.group}`:''}</div></div>
+        <div style={{flex:2,minWidth:0}}><div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.fundName}</div><div style={{fontSize:11,color:c.textSecondary}}>{h.estimateUpdated&&<span style={{display:'inline-block',width:14,height:14,lineHeight:'14px',textAlign:'center',borderRadius:'50%',background:c.primary,color:'#fff',fontSize:10,marginRight:4,verticalAlign:'middle'}}>✓</span>}{h.fundCode}{h.group?` · ${h.group}`:''}</div></div>
         {colOrder.includes('todayProfit')&&<div style={{flex:1.5,textAlign:'right',color:pu?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(pu?'+':'')+String(h.todayProfit??'--'):'****'}</div><div style={{fontSize:11}}>{h.todayChangeRate??'--'}%</div></div>}
         {colOrder.includes('totalReturn')&&<div style={{flex:1.5,textAlign:'right',color:ru?c.up:c.down,fontSize:13}}><div style={{fontWeight:600}}>{amountV?(ru?'+':'')+String(h.totalReturn??'--'):'****'}</div><div style={{fontSize:11}}>{h.totalReturnRate??'--'}%</div></div>}
         {colOrder.includes('valuation')&&<div style={{flex:1.5,textAlign:'right',fontSize:12}}><div style={{color:pc,fontWeight:600}}>{pl}</div><div style={{fontSize:10,color:c.textSecondary}}>{h.peTemp?.normPE!=null?h.peTemp.normPE:'--'}</div></div>}

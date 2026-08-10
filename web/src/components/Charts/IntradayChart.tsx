@@ -106,7 +106,7 @@ export default function IntradayChart({
           data: timeLabels.map((t) => fundMap[t] ?? null),
           smooth: true,
           symbol: 'none',
-          lineStyle: { color: colors.fund, width: 2 },
+          lineStyle: { color: colors.fund, width: 1.5 },
           connectNulls: false,
         },
         {

@@ -170,13 +170,18 @@ export default function ProfitDetailPage(){
     const firstDay=new Date(y,m,1).getDay();
     const dim=new Date(y,m+1,0).getDate();
     const cm=`${y}-${String(m+1).padStart(2,'0')}`;
+    const all=allDailyRef.current;
     const rows:any[][]=[[]];
     for(let i=0;i<firstDay;i++)rows[0].push({day:'',empty:true,profit:null});
     for(let d2=1;d2<=dim;d2++){
       const ds=`${cm}-${String(d2).padStart(2,'0')}`;
       const v=dc[ds]!=null?dc[ds]:null;
+      // 收益率 = 当天收益 ÷ 前一个交易日收盘市值
+      let prevMv:number|null=null;
+      for(let i=all.length-1;i>=0;i--){if(all[i].date<ds){prevMv=all[i].value;break}}
+      const rate=(v!=null&&prevMv&&prevMv>0)?+((v/prevMv)*100).toFixed(2):null;
       const row=rows[rows.length-1];
-      row.push({day:d2,empty:false,profit:v,rate:null});
+      row.push({day:d2,empty:false,profit:v,rate});
       if(row.length===7){rows.push([]);}
     }
     if(rows[rows.length-1].length===0)rows.pop();
@@ -292,7 +297,7 @@ export default function ProfitDetailPage(){
       </div>
       {calendarView==='day'&&<div style={{background:c.cardBg,borderRadius:12,padding:8}}>
         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',textAlign:'center',fontSize:10,color:c.textSecondary,marginBottom:4}}>{['日','一','二','三','四','五','六'].map(d=><div key={d}>{d}</div>)}</div>
-        {dayCal.map((row,i)=><div key={i} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',textAlign:'center'}}>{row.map((d:any,j)=><div key={j} style={{padding:'3px 0',borderRadius:4,background:!d.empty&&d.profit!=null?(d.profit>=0?c.primaryBg:c.downBg):'transparent',opacity:d.empty?0.3:1}}><div style={{fontSize:9}}>{d.day}</div>{!d.empty&&d.profit!=null&&<div style={{fontSize:8,color:d.profit>=0?c.up:c.down}}>{profitMode==='rate'?'--':(!isNaN(d.profit)?fmt(d.profit):'--')}</div>}</div>)}</div>)}
+        {dayCal.map((row,i)=><div key={i} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',textAlign:'center'}}>{row.map((d:any,j)=><div key={j} style={{padding:'3px 0',borderRadius:4,background:!d.empty&&d.profit!=null?(d.profit>=0?c.primaryBg:c.downBg):'transparent',opacity:d.empty?0.3:1}}><div style={{fontSize:9}}>{d.day}</div>{!d.empty&&d.profit!=null&&<div style={{fontSize:8,color:d.profit>=0?c.up:c.down}}>{profitMode==='rate'?(d.rate!=null?d.rate+'%':'--'):(!isNaN(d.profit)?fmt(d.profit):'--')}</div>}</div>)}</div>)}
       </div>}
       {calendarView!=='day'&&<div style={{textAlign:'center',padding:24,color:c.textSecondary,background:c.cardBg,borderRadius:12}}>月/年视图开发中</div>}
     </div></div>;
