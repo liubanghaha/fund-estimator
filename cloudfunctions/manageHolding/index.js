@@ -3,6 +3,17 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
 
+// 持仓字段白名单：客户端只能写入这些字段，防止覆盖 _openid 或注入任意数据
+const HOLDING_FIELDS = ["fundCode", "fundName", "shares", "buyPrice", "marketValue", "holdingReturn", "buyAmount", "buyDate", "group"];
+
+function pickHoldingData(data) {
+  const out = {};
+  HOLDING_FIELDS.forEach(k => {
+    if (data && data[k] !== undefined) out[k] = data[k];
+  });
+  return out;
+}
+
 exports.main = async (event) => {
   const { action, data, id, fundCodes, group, newGroup } = event;
   const { OPENID } = cloud.getWXContext();
@@ -12,18 +23,22 @@ exports.main = async (event) => {
     switch (action) {
       case "add": {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少参数" };
+        const clean = pickHoldingData(data);
+        if (!clean.fundCode) return { code: 400, msg: "缺少参数" };
         const exist = await db.collection("holdings")
-          .where({ _openid: OPENID, fundCode: data.fundCode }).count();
+          .where({ _openid: OPENID, fundCode: clean.fundCode }).count();
         if (exist.total > 0) return { code: 409, msg: "已存在" };
         const res = await db.collection("holdings").add({
-          data: { ...data, _openid: OPENID, createTime: new Date() },
+          data: { ...clean, _openid: OPENID, createTime: new Date() },
         });
         return { code: 0, msg: "success", id: res._id };
       }
       case "update": {
         if (!id) return { code: 400, msg: "缺少id" };
+        const clean = pickHoldingData(data);
+        if (Object.keys(clean).length === 0) return { code: 400, msg: "没有可更新字段" };
         await db.collection("holdings")
-          .where({ _id: id, _openid: OPENID }).update({ data });
+          .where({ _id: id, _openid: OPENID }).update({ data: clean });
         return { code: 0, msg: "success" };
       }
       case "remove": {

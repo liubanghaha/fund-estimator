@@ -7,6 +7,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
  * 输出：累计投入、当前市值、总收益、年化收益率、逐月明细
  */
 exports.main = async (event) => {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "未登录" };
   const { fundCode, monthlyAmount, startYear, startMonth, monthlyDay, endYear, endMonth } = event;
   if (!fundCode || !monthlyAmount || !startYear || !startMonth) {
     return { code: 400, msg: "参数不完整" };

@@ -1,21 +1,14 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+const fd = require("./_shared/fund-data");
 
 exports.main = async (event) => {
   const { fundCode } = event;
   if (!fundCode) return { code: 400, msg: "请提供基金代码" };
 
   try {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
     // 最新已发布季报：1-3月→12月, 4-6月→3月, 7-9月→6月, 10-12月→9月
-    const pubMonths = [12, 3, 6, 9];
-    let curM = 3, curY = year;
-    for (let i = 3; i >= 0; i--) {
-      if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
-      if (i === 0) { curY = year - 1; curM = 12; }
-    }
+    const { year: curY, month: curM } = fd.getQuarterParams();
     let prevY = curY, prevM = curM - 3;
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 
@@ -88,6 +81,7 @@ exports.main = async (event) => {
 
     return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates } };
   } catch (e) {
+    console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
   }
 };
@@ -196,7 +190,6 @@ function fetchHoldings(fundCode, year, month) {
     });
     req.setTimeout(8000, () => { req.destroy(); resolve({ holdings: [], reportMonth: null }); });
     req.on("error", () => resolve({ holdings: [], reportMonth: null }));
-    req.on("error", () => resolve([]));
   });
 }
 

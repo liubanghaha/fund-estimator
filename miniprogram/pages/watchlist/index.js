@@ -772,9 +772,8 @@ Page({
   async _fetchHoldingCodes() {
     if (Date.now() - this._holdingCacheTime < 60000) return;
     try {
-      const db = wx.cloud.database();
-      const res = await db.collection("holdings").field({ fundCode: true }).get();
-      const codes = (res.data || []).map(h => h.fundCode).filter(Boolean);
+      const res = await api.holdingList();
+      const codes = ((res.result && res.result.data) || []).map(h => h.fundCode).filter(Boolean);
       this._holdingCacheTime = Date.now();
       this.setData({ holdingCodes: codes }, () => {
         this.updateGroupCounts();

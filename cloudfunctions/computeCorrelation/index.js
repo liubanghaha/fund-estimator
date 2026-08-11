@@ -53,6 +53,8 @@ async function fetchHoldings(fundCode) {
 }
 
 exports.main = async (event) => {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "未登录" };
   const { fundCodes } = event;
   if (!fundCodes || !Array.isArray(fundCodes) || fundCodes.length < 2) {
     return { code: 400, msg: "请提供至少2个基金代码" };

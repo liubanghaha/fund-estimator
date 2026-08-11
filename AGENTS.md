@@ -48,36 +48,34 @@
 
 ---
 
-## fund-estimator（韭菜养基宝）架构
+## fund-estimator（养基小簿）架构
 
-小程序名：韭菜养基宝 | AppID：wx1473b1fa97b27717 | 云环境：cloudbase-d0gug00io7bfedd97
+小程序名：养基小簿 | AppID：wxb95098fe432ed765 | 云环境：cloud1-d7gu9zv3i796839b8
 
 ### 页面结构
 - `pages/index/index` — 首页，展示持仓基金实时估值列表
 - `pages/search/index` — 搜索基金（6 位代码）
-- `pages/fund-detail/index` — 基金详情（估值+净值+档案+持仓+风险指标+费用黑洞）
+- `subpackages/analysis/pages/fund-detail/index` — 基金详情（估值+净值+档案+持仓+风险指标+费用黑洞）
 - `pages/add-holding/index` — 添加持仓（输入代码+金额）
 - `pages/user-center/index` — 用户中心（反馈/关于/主题）
 - `pages/login/index` — 登录页
 - `pages/watchlist/index` — 自选列表（分组/排序/轮询）
-- `pages/profit-detail/index` — 收益走势（日历/走势图）
-- `pages/fund-compare/index` — 基金对比（双基金净值对比）
+- `subpackages/analysis/pages/profit-detail/index` — 收益走势（日历/走势图）
+- `subpackages/analysis/pages/fund-compare/index` — 基金对比（双基金净值对比）
 - `pages/adjust-holding/index` — 加减仓（OCR截图识别）
-- `pages/sync-trade/index` — 交易记录同步
-- `pages/correlation-matrix/index` — 资产分析（健康分+穿透+重合度）
+- `subpackages/analysis/pages/correlation-matrix/index` — 资产分析（健康分+穿透+重合度）
 
 ### 云函数
 
 | 函数 | 用途 | 外部 API |
 |---|---|---|
 | `userLogin` | 获取 OPENID | 无 |
-| `searchFund` | 按代码查基金 | 天天基金 |
-| `fetchFundInfo` | 基金基本信息 | 天天基金 |
-| `fetchFundEstimate` | 实时估算涨跌 | 天天基金 + 东方财富 |
+| `searchFund` | 按代码查基金 | 东方财富 |
+| `fetchFundEstimate` | 实时估算涨跌 | 东方财富 + 腾讯行情 |
 | `fetchFundNAVHistory` | 历史净值 | 东方财富 |
 | `fetchFundProfile` | 基金档案+持仓 | 东方财富（3 个接口并行） |
-| `fetchFundOverview` | 基金概览（估值+净值+档案） | 天天基金 + 东方财富 |
-| `getPortfolio` | 持仓组合估值+温度+健康分 | 天天基金 + 东方财富 |
+| `fetchFundOverview` | 基金概览（估值+净值+档案） | 东方财富 + 腾讯行情 |
+| `getPortfolio` | 持仓组合估值+温度+健康分 | 东方财富 + 腾讯行情 |
 | `createCollection` | 初始化数据库 | 无 |
 | `ocrScreenshot` | 截图识别基金 | 微信 OCR + OCR.space |
 | `computeFundTemperature` | 定时计算估值温度 | 东方财富 |
@@ -93,11 +91,11 @@
 - `profit_snapshots`：盘中收益快照
 
 ### 已配置 API 白名单
-`api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundgz.1234567.com.cn`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。不在白名单里的优先走客户端 `wx.request`。
+`api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。不在白名单里的优先走客户端 `wx.request`。
 
 ### 部署
 - 云函数：`cloudbase fn deploy --all --force`
-- 小程序上传：`miniprogram-ci upload --pp . --pkp private.*.key --appid wx1473b1fa97b27717 -r 1`
+- 小程序上传：`miniprogram-ci upload --pp . --pkp private.*.key --appid wxb95098fe432ed765 -r 1`
 
 ### 已知问题
 - 港股今日涨跌：白名单域名不支持

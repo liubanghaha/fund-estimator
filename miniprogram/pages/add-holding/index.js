@@ -343,14 +343,8 @@ Page({
 
   async loadHolding(id) {
     try {
-      const db = wx.cloud.database();
-      const ui = wx.getStorageSync("userInfo") || {};
-      const cr = await db.collection("holdings").where({ _openid: ui.openid || "", _id: id }).get();
-      const h = (cr.data && cr.data[0]) || {};
-      if (!h._id) {
-        const res = await api.holdingGet(id);
-        if (res.result && res.result.code === 0 && res.result.data) Object.assign(h, res.result.data);
-      }
+      const res = await api.holdingGet(id);
+      const h = (res.result && res.result.code === 0 && res.result.data) || {};
       if (!h._id) { wx.showToast({ title: "加载失败", icon: "none" }); return; }
 
 	      // 用当前净值重算市值和收益，与详情页保持一致
@@ -447,7 +441,6 @@ Page({
 
       const hr = parseFloat(holdingReturn) || 0;
       let shares, buyPrice, finalMV, finalHR;
-      const db = wx.cloud.database();
       const today = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
 
       // 处理加减持仓
@@ -478,13 +471,10 @@ Page({
           newMV = +(oldMV - absAmount).toFixed(2);
         }
 
-        await db.collection('transactions').add({
-          data: {
-            fundCode: fundCode.trim(), fundName: fundName.trim(),
-            type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
-            note: this.data.adjustNote.trim() || '',
-            createTime: new Date(),
-          },
+        await api.transactionAdd({
+          fundCode: fundCode.trim(), fundName: fundName.trim(),
+          type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
+          note: this.data.adjustNote.trim() || '',
         });
 
         shares = ns;
@@ -501,8 +491,8 @@ Page({
       }
       const buyAmount = parseFloat((shares * buyPrice).toFixed(2));
       if (!isEdit) {
-        const cr = await db.collection("holdings").where({ fundCode: fundCode.trim() }).get();
-        if (cr.data && cr.data.length > 0) {
+        const chk = await api.holdingCheck(fundCode.trim());
+        if (chk.result && chk.result.code === 0 && chk.result.data) {
           wx.hideLoading();
           wx.showModal({ title: "重复添加", content: `基金 ${fundCode.trim()} 已在持仓中`, showCancel: false });
           return;
@@ -516,10 +506,9 @@ Page({
         group: this.data.selectedGroup || "",
       };
       if (isEdit) {
-        await db.collection("holdings").doc(id).update({ data });
+        await api.holdingUpdate(id, data);
       } else {
-        data.createTime = new Date();
-        await db.collection("holdings").add({ data });
+        await api.holdingAdd(data);
       }
       if (!isEdit) {
         api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});
@@ -551,16 +540,14 @@ Page({
   // ========== 编辑已有持仓 ==========
 
   async onDelete() {
-    const { id, isEdit, fundCode } = this.data;
+    const { isEdit } = this.data;
     if (!isEdit) return;
     wx.showModal({
       title: "确认删除", content: "确定要删除这条持仓及关联交易记录吗？",
       success: async (res) => {
         if (!res.confirm) return;
         try {
-          const db = wx.cloud.database();
-          await db.collection("holdings").doc(id).remove();
-          await db.collection("transactions").where({ fundCode: fundCode.trim() }).remove();
+          await api.holdingRemove(id);
           wx.showToast({ title: "已删除", icon: "success" });
           setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
         } catch (e) {
@@ -609,13 +596,9 @@ Page({
         return;
       }
 
-      const db = wx.cloud.database();
-      await db.collection('transactions').add({
-        data: {
-          fundCode: h.fundCode, fundName: h.fundName,
-          type, shares, price, amount: absAmount, date: today,
-          createTime: new Date(),
-        },
+      await api.transactionAdd({
+        fundCode: h.fundCode, fundName: h.fundName,
+        type, shares, price, amount: absAmount, date: today,
       });
 
       let ns, np, newMV;
@@ -629,14 +612,12 @@ Page({
         newMV = +(oldMV - absAmount).toFixed(2);
       }
 
-      await db.collection('holdings').doc(h._id).update({
-        data: {
-          shares: parseFloat(ns.toFixed(4)),
-          buyPrice: parseFloat(np.toFixed(4)),
-          buyAmount: parseFloat((ns * np).toFixed(2)),
-          marketValue: newMV,
-          holdingReturn: +(newMV - ns * np).toFixed(2),
-        },
+      await api.holdingUpdate(h._id, {
+        shares: parseFloat(ns.toFixed(4)),
+        buyPrice: parseFloat(np.toFixed(4)),
+        buyAmount: parseFloat((ns * np).toFixed(2)),
+        marketValue: newMV,
+        holdingReturn: +(newMV - ns * np).toFixed(2),
       });
 
       wx.hideLoading();

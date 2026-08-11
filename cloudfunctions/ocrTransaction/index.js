@@ -4,10 +4,12 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 // 从 env.json 读取密钥（不提交 Git），fallback 到环境变量
 let BAIDU_API_KEY = process.env.BAIDU_API_KEY || "";
 let BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || "";
+let OCRSPACE_API_KEY = process.env.OCRSPACE_API_KEY || "";
 try {
   const env = require("./env.json");
   BAIDU_API_KEY = env.BAIDU_API_KEY || BAIDU_API_KEY;
   BAIDU_SECRET_KEY = env.BAIDU_SECRET_KEY || BAIDU_SECRET_KEY;
+  OCRSPACE_API_KEY = env.OCRSPACE_API_KEY || OCRSPACE_API_KEY;
 } catch (e) { /* env.json 不存在则使用环境变量 */ }
 
 exports.main = async (event) => {
@@ -64,6 +66,10 @@ async function doWechatOCR(fileID) {
 }
 
 async function doSpaceOCR(fileID) {
+  if (!OCRSPACE_API_KEY) {
+    console.log("[ocrTx] ocr.space skipped: no API key");
+    return null;
+  }
   try {
     const tr = await cloud.getTempFileURL({ fileList: [fileID] });
     const url = tr.fileList[0] && tr.fileList[0].tempFileURL;
@@ -73,10 +79,14 @@ async function doSpaceOCR(fileID) {
     return new Promise((resolve) => {
       const req = https.request({
         hostname: "api.ocr.space", path: "/parse/image", method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", apikey: "helloworld", "Content-Length": Buffer.byteLength(body) },
+        headers: { "Content-Type": "application/x-www-form-urlencoded", apikey: OCRSPACE_API_KEY, "Content-Length": Buffer.byteLength(body) },
       }, (res) => {
         let d = ""; res.on("data", c => d += c); res.on("end", () => {
-          try { const j = JSON.parse(d); resolve((j.ParsedResults||[])[0]?.ParsedText||null); } catch(e) { resolve(null); }
+          try {
+            const j = JSON.parse(d);
+            const results = (j.ParsedResults || [])[0];
+            resolve((results && results.ParsedText) || null);
+          } catch (e) { resolve(null); }
         });
       });
       req.setTimeout(15000, () => { req.destroy(); resolve(null); });

@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "miniprogram-automator": "^0.12.1"
+  },
+  "scripts": {
+    "sync:shared": "node scripts/sync-shared.js"
   }
 }

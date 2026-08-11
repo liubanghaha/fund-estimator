@@ -70,6 +70,7 @@ exports.main = async (event) => {
 
     return { code: 400, msg: "无效操作" };
   } catch (e) {
+    console.error("manageWatchlist error:", e);
     return { code: 500, msg: "操作失败" };
   }
 };

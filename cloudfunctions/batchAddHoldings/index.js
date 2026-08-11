@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
+const fd = require("./_shared/fund-data");
 
 exports.main = async (event) => {
   const { funds } = event;
@@ -95,76 +96,21 @@ exports.main = async (event) => {
 };
 
 /**
- * 批量获取天天基金净值估算（单次 HTTP 请求）
+ * 批量获取最新净值（东方财富，fundgz 已失效）
+ * 限并发 10 只/批，避免瞬时大量外部请求被风控
  */
 async function batchFetchNav(codes) {
-  const https = require("https");
   const map = {};
-  const batchCode = codes.join(",");
-
-  try {
-    const body = await new Promise((resolve) => {
-      const req = https.get(
-        `https://fundgz.1234567.com.cn/js/${batchCode}.js`,
-        { headers: { Referer: "https://fundgz.1234567.com.cn/" } },
-        (res) => {
-          let data = "";
-          res.on("data", c => data += c);
-          res.on("end", () => resolve(data));
-        }
-      );
-      req.setTimeout(8000, () => { req.destroy(); resolve(""); });
-      req.on("error", () => resolve(""));
-    });
-
-    // 解析 jsonpgzs({...}) 格式（批量返回多了一个 s）
-    const jsonStr = body.replace(/^jsonpgzs\(/, "").replace(/\);?\s*$/, "");
-    if (!jsonStr) return map;
-    const data = JSON.parse(jsonStr);
-    // 批量返回格式：{ fundcode1: {...}, fundcode2: {...} }，也可能是数组
-    const entries = Array.isArray(data) ? data : [data];
-    for (const item of entries) {
-      if (item && item.fundcode) {
-        // gsz: 估算净值, dwjz: 单位净值
-        const nav = parseFloat(item.gsz) || parseFloat(item.dwjz) || 0;
-        if (nav > 0) map[item.fundcode] = nav;
-      }
+  const CONCURRENT = 10;
+  for (let i = 0; i < codes.length; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    await Promise.all(batch.map(async (code) => {
+      const em = await fd.fetchLatestNavEastMoney(code, { pageSize: 1 });
+      if (em.actualNav && em.actualNav > 0) map[code] = em.actualNav;
+    }));
+    if (i + CONCURRENT < codes.length) {
+      await new Promise(r => setTimeout(r, 100));
     }
-  } catch (e) {
-    console.error("批量获取净值失败:", e.message);
   }
-
-  // 批量接口失败的基金，逐个 fallback
-  const missingCodes = codes.filter(c => !map[c]);
-  if (missingCodes.length > 0) {
-    await Promise.all(missingCodes.map(code =>
-      fetchSingleNav(code).then(nav => { if (nav) map[code] = nav; }).catch(() => {})
-    ));
-  }
-
   return map;
-}
-
-async function fetchSingleNav(code) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const req = https.get(
-      `https://fundgz.1234567.com.cn/js/${code}.js`,
-      { headers: { Referer: "https://fundgz.1234567.com.cn/" } },
-      (res) => {
-        let data = "";
-        res.on("data", c => data += c);
-        res.on("end", () => {
-          try {
-            const json = data.replace(/^jsonpgz\(/, "").replace(/\);?\s*$/, "");
-            const item = JSON.parse(json);
-            const nav = parseFloat(item.gsz) || parseFloat(item.dwjz) || 0;
-            resolve(nav > 0 ? nav : null);
-          } catch (e) { resolve(null); }
-        });
-      }
-    );
-    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
-    req.on("error", () => resolve(null));
-  });
 }

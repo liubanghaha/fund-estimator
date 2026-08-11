@@ -2,6 +2,8 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
+const fd = require("./_shared/fund-data");
+const ft = require("./_shared/fund-temperature");
 
 /**
  * 定时任务：每日凌晨 3:00 计算所有持仓基金的估值温度
@@ -10,7 +12,7 @@ const _ = db.command;
  *    每只股票独立打分 — 当前PE在自身历史 PE 区间的分位
  *    亏损股用 PB 替代、周期股加风险提示
  *    基金估值 = 持仓股估值按持仓占比的几何加权平均
- *    判定：< 0.7 低估 | 0.7~1.3 正常 | > 1.3 高估
+ *    判定：< 0.75 低估 | 0.75~1.25 正常 | > 1.25 高估
  *
  *  流程：
  *    1. 获取持仓基金代码（去重）
@@ -21,7 +23,7 @@ const _ = db.command;
  *    4. 每只股票打分 → 基金加权汇总 → 写入 fund_temperatures
  */
 exports.main = async (event) => {
-  const today = formatDate(new Date());
+  const today = fd.formatBJDate();
   const _startTime = Date.now();
   const inWindow = isInReportWindow();
   console.log(`[computeFundTemperature] 开始计算 ${today}, 季报窗口期: ${inWindow}`);
@@ -88,15 +90,14 @@ exports.main = async (event) => {
     console.log(`[computeFundTemperature] 持仓股去重数: ${codes.length}`);
 
     if (codes.length > 0) {
-      const liveData = await batchFetchLiveData(codes);
+      const liveData = await ft.fetchStockLiveBatch(codes);
       let histData = {};
       // 90s 总预算内才拉历史 PE 区间（120s 超时留 30s 给写库），超预算用实时 PE 兜底
       if (Date.now() - _startTime < 90000) {
-        histData = await batchFetchHistoricalPE(codes);
+        histData = await ft.fetchStockHistBatch(codes);
       } else {
         console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
       }
-      // 合并数据
       codes.forEach(code => {
         const live = liveData[code] || {};
         const hist = histData[code] || {};
@@ -115,10 +116,10 @@ exports.main = async (event) => {
     const withHist = Object.values(stockMap).filter(s => s.totalYears > 0).length;
     console.log(`[computeFundTemperature] 有历史PE数据: ${withHist}/${codes.length}`);
 
-    // 4. 计算估值信号
+    // 4. 计算估值信号（统一算法/阈值）
     const candidates = [];
     for (const [fundCode, holdings] of Object.entries(fundHoldings)) {
-      const result = calcSignal(fundCode, holdings, stockMap);
+      const result = ft.calcSignal(fundCode, holdings, stockMap);
       if (result) {
         result.isETF = etfMap[fundCode] || false;
         candidates.push(result);
@@ -176,10 +177,6 @@ exports.main = async (event) => {
 
 // ---- helpers ----
 
-function formatDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 /**
  * 判断当前是否在季报发布窗口期
  * 季报窗口: 1/4/7/10月 15日起至月底（各基金公司集中在截止日前几天披露）
@@ -189,9 +186,9 @@ function formatDate(d) {
  *   - 10月: 三季报（9月）
  */
 function isInReportWindow() {
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
+  const parts = fd.formatBJDate().split("-");
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
   return [1, 4, 7, 10].includes(month) && day >= 15;
 }
 
@@ -207,14 +204,14 @@ async function fetchHoldingsBatch(fundCodes) {
     const batch = fundCodes.slice(i, i + CONCURRENT);
     const results = await Promise.all(batch.map(async (fundCode) => {
       try {
-        const { rows, fundName } = await fetchHoldings(fundCode);
+        const { holdings: rows, fundName } = await fd.fetchTempHoldingsWithMeta(fundCode);
         return { fundCode, holdings: rows, fundName, ok: rows.length > 0 };
       } catch (e) { return { fundCode, holdings: [], fundName: "", ok: false }; }
     }));
     for (const r of results) {
       if (r.ok) holdings[r.fundCode] = r.holdings;
       else failCount++;
-      etfMap[r.fundCode] = isETFByName(r.fundName);
+      etfMap[r.fundCode] = ft.isETFByName(r.fundName);
     }
     if (i + CONCURRENT < fundCodes.length) {
       await new Promise(r => setTimeout(r, 300));
@@ -243,7 +240,7 @@ async function recoverHoldingsFromHistory(fundCodes) {
   const holdings = {};
   // 往前尝试最近 10 天（跨假期、季度末空窗）
   for (let d = 1; d <= 10; d++) {
-    const targetDate = formatDate(new Date(Date.now() - d * 86400000));
+    const targetDate = fd.formatBJDate(new Date(Date.now() - d * 86400000));
     const BATCH = 100;
     for (let i = 0; i < fundCodes.length; i += BATCH) {
       const batch = fundCodes.slice(i, i + BATCH);
@@ -294,385 +291,4 @@ async function getCachedHoldings(fundCodes) {
     });
   }
   return holdings;
-}
-
-function fetchHoldings(fundCode) {
-  const https = require("https");
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const pubMonths = [12, 3, 6, 9];
-  let curM = 3, curY = year;
-  for (let i = 3; i >= 0; i--) {
-    if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
-    if (i === 0) { curY = year - 1; curM = 12; }
-  }
-
-  return new Promise((resolve) => {
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=20&year=${curY}&month=${curM}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve({ rows: [] }); return; }
-          const html = match[1].replace(/\\"/g, '"');
-          // 提取基金名称（从页面标题）
-          const nameMatch = html.match(/<a title='([^']*)'/);
-          const fundName = nameMatch ? nameMatch[1] : "";
-          const rows = [];
-          const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
-          let trMatch;
-          while ((trMatch = trRegex.exec(html)) !== null) {
-            const tds = [];
-            const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
-            let tdMatch;
-            while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
-              tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
-            }
-            if (tds.length >= 7 && !tds[0].includes("*")) {
-              const n = tds.length;
-              rows.push({
-                rank: tds[0],
-                stockCode: tds[1],
-                stockName: tds[2],
-                navRatio: parseFloat(tds[n - 3]) || 0,
-                shares: tds[n - 2],
-                marketValue: tds[n - 1],
-              });
-            }
-          }
-          resolve({ rows, fundName });
-        } catch (e) { resolve({ rows: [] }); }
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve({ rows: [] }); });
-    req.on("error", () => resolve({ rows: [] }));
-  });
-}
-
-/** 从基金名称判断是否为 ETF / 指数基金 */
-function isETFByName(fundName) {
-  return /ETF|交易型开放式|指数/.test(fundName || "");
-}
-
-async function batchFetchLiveData(codes) {
-  // 第一轮：东方财富
-  let map = await fetchLiveFromEastMoney(codes);
-  let withPE = Object.values(map).filter(s => s.pe != null).length;
-  console.log(`[batchFetchLiveData] 东方财富 PE 覆盖率: ${withPE}/${codes.length}`);
-
-  // PE 覆盖率不足 50% 时重试一轮
-  if (withPE < codes.length * 0.5) {
-    console.log(`[batchFetchLiveData] PE 覆盖率偏低 (${withPE}/${codes.length})，1秒后重试缺失的`);
-    await new Promise(r => setTimeout(r, 1000));
-    const missed = codes.filter(c => !map[c] || map[c].pe == null);
-    const retryMap = await fetchLiveFromEastMoney(missed);
-    // 合并：只补充第一轮缺失的
-    for (const [code, data] of Object.entries(retryMap)) {
-      if (!map[code] || map[code].pe == null) map[code] = data;
-    }
-    withPE = Object.values(map).filter(s => s.pe != null).length;
-    console.log(`[batchFetchLiveData] 重试后 PE 覆盖率: ${withPE}/${codes.length}`);
-  }
-
-  // 剩余缺失的用腾讯财经兜底
-  const missedCodes = codes.filter(c => !map[c] || map[c].pe == null);
-  if (missedCodes.length > 0) {
-    console.log(`[batchFetchLiveData] ${missedCodes.length} 只从腾讯财经兜底获取`);
-    const tencentMap = await fetchLiveFromTencent(missedCodes);
-    for (const [code, data] of Object.entries(tencentMap)) {
-      if (!map[code] || map[code].pe == null) map[code] = data;
-    }
-    withPE = Object.values(map).filter(s => s.pe != null).length;
-    console.log(`[batchFetchLiveData] 兜底后 PE 覆盖率: ${withPE}/${codes.length}`);
-  }
-
-  return map;
-}
-
-/** 东方财富 push2 API 拉取实时 PE/PB/行业 */
-async function fetchLiveFromEastMoney(codes) {
-  const https = require("https");
-  const map = {};
-  const BATCH = 40;
-
-  const buildSecid = (code) => {
-    if (code.length === 5) return `116.${code}`;
-    if (code.startsWith("6")) return `1.${code}`;
-    return `0.${code}`;
-  };
-
-  for (let i = 0; i < codes.length; i += BATCH) {
-    const batch = codes.slice(i, i + BATCH);
-    const secids = batch.map(buildSecid).join(",");
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}`;
-
-    await new Promise((resolve) => {
-      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(body).data;
-            if (data && data.diff) {
-              data.diff.forEach(item => {
-                const pe = item.f9;
-                if (pe !== undefined && pe !== null) {
-                  const actualPE = pe > 500 ? pe / 100 : pe;
-                  const pb = item.f164 != null ? (+item.f164) : null;
-                  map[item.f12] = {
-                    pe: actualPE,
-                    pb: pb && pb > 0 ? pb : null,
-                    price: item.f2 || null,
-                    industry: item.f100 || "其他",
-                  };
-                }
-              });
-            }
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
-      });
-      req.setTimeout(5000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
-    });
-  }
-  return map;
-}
-
-/** 腾讯财经 qt.gtimg.cn 兜底拉取 PE/PB（无 industry 字段） */
-async function fetchLiveFromTencent(codes) {
-  const http = require("http");
-  const map = {};
-  const BATCH = 20;
-
-  const toQtCode = (code) => {
-    if (code.length === 5) return `hk${code}`;
-    if (code.startsWith("6")) return `sh${code}`;
-    return `sz${code}`;
-  };
-
-  for (let i = 0; i < codes.length; i += BATCH) {
-    const batch = codes.slice(i, i + BATCH);
-    const qtCodes = batch.map(toQtCode).join(",");
-    const url = `http://qt.gtimg.cn/q=${qtCodes}`;
-
-    await new Promise((resolve) => {
-      const req = http.get(url, (res) => {
-        const chunks = [];
-        res.on("data", (c) => { chunks.push(c); });
-        res.on("end", () => {
-          try {
-            const body = Buffer.concat(chunks).toString("utf-8");
-            // 腾讯行情格式: v_sh600519="1~茅台~..." PE@39 PB@46 价格@3
-            for (const code of batch) {
-              const qtCode = toQtCode(code);
-              const re = new RegExp(`v_${qtCode}="([^"]*)"`);
-              const match = body.match(re);
-              if (!match) continue;
-              const fields = match[1].split("~");
-              const pe = parseFloat(fields[39]) || null;
-              const pb = parseFloat(fields[46]) || null;
-              const price = parseFloat(fields[3]) || null;
-              if (pe || pb || price) {
-                map[code] = {
-                  pe: pe && pe > 0 ? pe : null,
-                  pb: pb && pb > 0 ? pb : null,
-                  price: price,
-                  industry: map[code]?.industry || "其他",
-                };
-              }
-            }
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
-      });
-      req.setTimeout(5000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
-    });
-  }
-  return map;
-}
-
-async function batchFetchHistoricalPE(codes) {
-  const https = require("https");
-  const map = {};
-
-  const fetchOne = (code) => new Promise((resolve) => {
-    const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
-    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const d = JSON.parse(body);
-          const data = (d.result && d.result.data) || [];
-          map[code] = {
-            peYears: data.map(r => ({
-              avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN,
-            })).filter(r => r.avg > 0 && r.avg < 10000),
-            pbYears: data.map(r => ({
-              avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN,
-            })).filter(r => r.avg > 0 && r.avg < 1000),
-            totalYears: data.length,
-          };
-        } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
-        resolve();
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-
-  // 限并发 15 只/批 + 100ms 间隔（原串行实现：200-400 只股票在 120s 超时内必然算不完）
-  const CONCURRENT = 15;
-  for (let i = 0; i < codes.length; i += CONCURRENT) {
-    const batch = codes.slice(i, i + CONCURRENT);
-    await Promise.all(batch.map(fetchOne));
-    if (i + CONCURRENT < codes.length) {
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }
-  return map;
-}
-
-/**
- * 行业分类 → 估值逻辑
- */
-function classifyIndustry(industry) {
-  const cyc = ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃"];
-  const fin = ["银行","保险","证券","地产","房地产","多元金融"];
-  const tech = ["半导体","芯片","软件","计算机","通信","电子","光模块","互联网","游戏","传媒"];
-  const util = ["电力","水务","高速","公路","港口","铁路","燃气","环保"];
-  const biomed = ["医药","生物","医疗","中药","化学制药","医疗器械"];
-  const consume = ["白酒","食品","饮料","家电","汽车","服装","旅游","零售","免税","调味品","乳业","养殖"];
-  const mfg = ["机械","电气","新能源","电池","军工","航天","船舶","仪器仪表","电力设备"];
-
-  for (const kw of cyc) if (industry.includes(kw)) return "cycle";
-  for (const kw of fin) if (industry.includes(kw)) return "finance";
-  for (const kw of tech) if (industry.includes(kw)) return "tech";
-  for (const kw of util) if (industry.includes(kw)) return "utility";
-  for (const kw of biomed) if (industry.includes(kw)) return "biomed";
-  for (const kw of consume) if (industry.includes(kw)) return "consume";
-  for (const kw of mfg) if (industry.includes(kw)) return "mfg";
-  return "other";
-}
-
-function computePEPercentile(currentPE, peYears) {
-  if (!peYears || peYears.length < 3) return null;
-  const avgs = peYears.map(y => y.avg).sort((a, b) => a - b);
-  let below = 0;
-  for (const a of avgs) { if (currentPE > a) below++; }
-  return Math.round((below / avgs.length) * 100);
-}
-
-function getStockScore(pe, pePct, pb, pbPct, industryType) {
-  // 1. 亏损股 / 负PE
-  if (!pe || pe <= 0 || pe > 500) {
-    if (pb && pb > 0 && pbPct != null) {
-      return { score: pbPct < 25 ? 1.6 : pbPct < 65 ? 1.0 : 0.4, note: `PB${pbPct}%分位(PE无效)`, warn: false };
-    }
-    return { score: 1.0, note: "PE无效", warn: false };
-  }
-
-  // 2. 高PE绝对值 天花板限制
-  if (pe > 80 && pePct != null) {
-    return { score: 0.5, note: `PE${pe}倍·${pePct}%分位`, warn: false };
-  }
-  if (pe > 50 && pePct != null && pePct < 40) {
-    return { score: 0.7, note: `PE${pe}倍偏高·${pePct}%分位`, warn: false };
-  }
-
-  // 3. 金融股：PE + PB 各半
-  if (industryType === "finance" && pb && pb > 0 && pbPct != null) {
-    const peS = pePct != null ? (pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) : 1.0;
-    const pbS = pbPct < 25 ? 1.5 : pbPct < 65 ? 1.0 : 0.5;
-    return { score: +(peS * 0.5 + pbS * 0.5).toFixed(2), note: `PE${pePct}% PB${pbPct}%分位`, warn: false };
-  }
-
-  // 4. 周期股：PE 低位 + 警告
-  if (industryType === "cycle" && pePct != null && pePct < 40) {
-    return { score: pePct < 20 ? 1.4 : 1.0, note: `PE${pePct}%分位⚠️周期顶部`, warn: true };
-  }
-
-  // 5. 通用：PE 分位
-  if (pePct != null) {
-    return { score: pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5, note: `PE${pePct}%分位`, warn: false };
-  }
-
-  return { score: 1.0, note: "数据不足", warn: false };
-}
-
-/**
- * 计算基金估值信号（PE 历史分位 + 行业修正）
- *
- * 判定：
- *   PE 分位 < 30% → 低估（normPE < 0.7）
- *   30%-70% → 正常
- *   > 70% → 高估（normPE > 1.3）
- *
- * 行业修正：
- *   金融/银行 → 优先 PB 分位
- *   周期 → 仅 PE 分位，分位 < 30% 时加风险提示
- *   亏损股 → 仅 PB（如 PB 不可用则标注"PE无效"）
- */
-function calcSignal(fundCode, holdings, stockMap) {
-  const MIN_COVERAGE = 20;
-  let totalRatio = 0, totalScore = 0, stocksWithData = 0, totalStocks = 0;
-  const detailPEs = [];
-  const warnings = [];
-
-  holdings.forEach(h => {
-    const stock = stockMap[h.stockCode];
-    if (!stock) return;
-    totalStocks++;
-
-    const pePct = stock.pe && stock.pe > 0 ? computePEPercentile(stock.pe, stock.peHistory) : null;
-    const pbPct = stock.pb && stock.pb > 0 ? computePEPercentile(stock.pb, stock.pbHistory) : null;
-    const iType = classifyIndustry(stock.industry || "");
-    const sr = getStockScore(stock.pe, pePct, stock.pb, pbPct, iType);
-
-    totalScore += sr.score * h.navRatio;
-    totalRatio += h.navRatio;
-    stocksWithData++;
-    if (sr.warn) warnings.push(`${h.stockName}: ${sr.note}`);
-
-    detailPEs.push({
-      code: h.stockCode, name: h.stockName,
-      pe: stock.pe ? +stock.pe.toFixed(2) : null,
-      pb: stock.pb ? +stock.pb.toFixed(2) : null,
-      industry: stock.industry, normPE: sr.score, ratio: h.navRatio, note: sr.note,
-    });
-  });
-
-  if (totalRatio < MIN_COVERAGE) return null;
-  if (stocksWithData === 0) {
-    const wp = totalRatio > 0 ? +(totalRatio / totalRatio).toFixed(2) : 0;
-    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWithData: 0, totalStocks, detailPEs, warnings };
-  }
-
-  const avgScore = +(totalScore / totalRatio).toFixed(3);
-  const normPE = +(2.0 - avgScore).toFixed(3);
-
-  let totalWeightedPE = 0;
-  holdings.forEach(h => {
-    const stock = stockMap[h.stockCode];
-    if (stock && stock.pe && stock.pe > 0) totalWeightedPE += stock.pe * h.navRatio;
-  });
-  const weightedPE = totalRatio > 0 ? +(totalWeightedPE / totalRatio).toFixed(2) : 0;
-
-  let signal, label;
-  // 阈值放宽：avgScore ∈ [0.5, 1.5], normPE ∈ [0.5, 1.5]
-  // < 0.75 → 低估（avgScore > 1.25, 即组合里多数股票显著低估）
-  // 0.75-1.25 → 正常
-  // > 1.25 → 高估
-  if (normPE < 0.75) { signal = "low"; label = "低估"; }
-  else if (normPE > 1.25) { signal = "high"; label = "高估"; }
-  else { signal = "mid"; label = "正常"; }
-
-  if (warnings.length > 0) label += "⚠️";
-
-  return { fundCode, signal, label, normPE, weightedPE, coverage: +totalRatio.toFixed(1), stocksWithData, totalStocks, detailPEs, warnings };
 }

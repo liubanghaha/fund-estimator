@@ -571,13 +571,11 @@ Page({
   },
 
   async checkHolding() {
-    // 客户端直查（不按 _openid 过滤，确保查到数据）
     try {
-      const db = wx.cloud.database();
-      const cr = await db.collection("holdings").where({ fundCode: this.data.fundCode }).get();
-      if (cr.data && cr.data.length > 0) {
-        this._rawHolding = cr.data[0];
-        this.setData({ hasHolding: true, holdingId: cr.data[0]._id });
+      const res = await api.holdingCheck(this.data.fundCode);
+      if (res.result && res.result.code === 0 && res.result.data) {
+        this._rawHolding = res.result.data;
+        this.setData({ hasHolding: true, holdingId: res.result.data._id });
         return;
       }
     } catch (e) { console.error("checkHolding 客户端失败:", e); }
@@ -763,20 +761,14 @@ Page({
             success: async (mr) => {
               if (!mr.confirm) return;
               wx.showLoading({ title: "添加中..." });
-              const db = wx.cloud.database();
-              const ui = wx.getStorageSync("userInfo") || {};
-              await db.collection("holdings").add({
-                data: {
-                  fundCode: this.data.fundCode,
-                  fundName: this.data.fundName,
-                  buyPrice: parseFloat(h.buyPrice || 0),
-                  shares: parseFloat(h.shares || 0),
-                  marketValue: parseFloat(h.marketValue || 0),
-                  holdingReturn: parseFloat(h.holdingReturn || 0),
-                  buyAmount: parseFloat(h.buyAmount || 0),
-                  _openid: ui.openid || "",
-                  createTime: new Date(),
-                },
+              await api.holdingAdd({
+                fundCode: this.data.fundCode,
+                fundName: this.data.fundName,
+                buyPrice: parseFloat(h.buyPrice || 0),
+                shares: parseFloat(h.shares || 0),
+                marketValue: parseFloat(h.marketValue || 0),
+                holdingReturn: parseFloat(h.holdingReturn || 0),
+                buyAmount: parseFloat(h.buyAmount || 0),
               });
               wx.hideLoading();
               wx.showToast({ title: "添加成功", icon: "success" });

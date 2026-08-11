@@ -98,7 +98,7 @@ Page({
   // 启用分享到好友和朋友圈
   onShareAppMessage() {
     return {
-      title: '韭菜养基宝 · 涨跌有数',
+      title: '养基小簿 · 涨跌有数',
       path: '/pages/index/index',
       imageUrl: '',
     };
@@ -106,7 +106,7 @@ Page({
 
   onShareTimeline() {
     return {
-      title: '韭菜养基宝 · 持仓估值一目了然',
+      title: '养基小簿 · 持仓估值一目了然',
       imageUrl: '',
     };
   },
@@ -604,12 +604,10 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         wx.showLoading({ title: "删除中..." });
-        const db = wx.cloud.database();
         let done = 0;
         for (const h of selected) {
           try {
-            await db.collection("holdings").doc(h._id).remove();
-            await db.collection("transactions").where({ fundCode: h.fundCode }).remove();
+            await api.holdingRemove(h._id);
             done++;
           } catch (e) { /* ignore */ }
         }

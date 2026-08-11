@@ -2,6 +2,8 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
+const fd = require("./_shared/fund-data");
+const ft = require("./_shared/fund-temperature");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
@@ -40,8 +42,8 @@ exports.main = async (event) => {
         try {
           const tiantian = tiantianMap[h.fundCode] || {};
           const [eastmoney, navHistoryAll] = await Promise.all([
-            fetchEastMoney(h.fundCode),
-            fetchNAVHistory(h.fundCode, needDays),
+            fd.fetchLatestNavEastMoney(h.fundCode),
+            fd.fetchNAVHistory(h.fundCode, needDays),
           ]);
           return {
             h, tiantian,
@@ -75,7 +77,16 @@ exports.main = async (event) => {
         shares = parseFloat(h.amount) / buyPrice;
       }
 
+      // 昨日净值兜底链：东方财富 day-1 → 东方财富当前 → 数据库存储值
+      const yesterdayNav = eastmoney.yesterdayNav || eastmoney.actualNav || h.nav || null;
+      const yesterdayNavSafe = yesterdayNav || 0;
+
       let currentNav = eastmoney.actualNav || tiantian.nav || null;
+      // 单只基金数据源全挂时降级：用昨日净值兜底，仍拿不到则置 null，
+      // 绝不能让一只失败基金拖垮整个持仓接口
+      if (!currentNav || currentNav <= 0) {
+        currentNav = yesterdayNavSafe > 0 ? yesterdayNavSafe : null;
+      }
       let todayChangeRate = 0;
       let todayProfitAmount = 0;
 
@@ -92,14 +103,9 @@ exports.main = async (event) => {
         }
       }
 
-      // 昨日净值兜底链：东方财富 day-1 → 东方财富当前 → 数据库存储值
-      const yesterdayNav = eastmoney.yesterdayNav || eastmoney.actualNav || h.nav || null;
-      // 兜底：如果没有任何数据源，用 currentNav 估算（至少不为 null）
-      const yesterdayNavSafe = yesterdayNav || currentNav || 0;
-
       // 今日净值是否已公布（北京时间 = UTC，净值日期无时区问题）
       const now = new Date();
-      const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+      const todayStr = fd.formatBJDate(now);
       const estimateUpdated = eastmoney.actualDate === todayStr;
       if (!estimateUpdated && tiantian.estimatedChangeRate != null) {
         console.log(`[enrich] ${h.fundCode} 使用自主估算 estChangeRate=${tiantian.estimatedChangeRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
@@ -121,7 +127,7 @@ exports.main = async (event) => {
       if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
 
       const costValue = buyPrice * shares;
-      const marketValue = currentNav * shares;
+      const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;
       const totalReturn = marketValue - costValue;
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
 
@@ -139,7 +145,7 @@ exports.main = async (event) => {
           navHigh = high;
           navLow = low;
           const range = high - low;
-          if (range > 0) position = Math.round(((currentNav - low) / range) * 100);
+          if (range > 0 && currentNav != null) position = Math.round(((currentNav - low) / range) * 100);
         }
       }
 
@@ -147,7 +153,7 @@ exports.main = async (event) => {
         ...h,
         shares,
         buyPrice,
-        currentNav: currentNav.toFixed(4),
+        currentNav: currentNav != null ? currentNav.toFixed(4) : null,
         marketValue: marketValue.toFixed(2),
         todayChangeRate: todayChangeRate.toFixed(2),
         todayProfit: todayProfitAmount.toFixed(2),
@@ -164,7 +170,7 @@ exports.main = async (event) => {
     const totalReturn = totalMarket - totalCost;
     const totalReturnRate = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0;
 
-    const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+    const today = fd.formatBJDate();
 
     // 按当日收益金额倒序排序
     enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
@@ -198,18 +204,18 @@ exports.main = async (event) => {
         }
         const t = tempMap[h.fundCode];
         if (t) {
-            h.peTemp = {
-              signal: t.signal,
-              label: t.label,
-              normPE: t.normPE,
-              weightedPE: t.weightedPE,
-              coverage: t.coverage,
-              stocksWith52w: t.stocksWith52w,
-              totalStocks: t.totalStocks,
-            };
-          }
-        });
-      } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
+          h.peTemp = {
+            signal: t.signal,
+            label: t.label,
+            normPE: t.normPE,
+            weightedPE: t.weightedPE,
+            coverage: t.coverage,
+            stocksWith52w: t.stocksWith52w,
+            totalStocks: t.totalStocks,
+          };
+        }
+      });
+    } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
 
     // 查询当天收益快照
     let intradaySnapshots = [];
@@ -240,17 +246,17 @@ exports.main = async (event) => {
         withDetailCount++;
         for (const pe of t.detailPEs) {
           const w = fundValue * (pe.ratio / 100);
-          const cat = _classifyIndustry(pe.industry, pe.name);
+          const cat = ft.classifyIndustryLabel(pe.industry, pe.name);
           industryMap[cat] = (industryMap[cat] || 0) + w;
           totalWeight += w;
         }
       }
       if (totalWeight > 0) {
-	        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
+        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
         const list = Object.entries(industryMap)
           .map(([industry, w]) => ({ industry, raw: (w / totalWeight) * 100 }))
           .sort((a, b) => b.raw - a.raw);
-        // 分离「其他」与真实行业；top10 只排真实行业，其余全合并到一个「其他」
+        // 分离「其他」与真实行业；top20 只排真实行业，其余全合并到一个「其他」
         const realList = list.filter(i => i.industry !== "其他");
         const otherRaw = list.filter(i => i.industry === "其他").reduce((s, i) => s + i.raw, 0);
         const top10 = realList.slice(0, 20).map(i => ({ industry: i.industry, percent: +i.raw.toFixed(1) }));
@@ -263,8 +269,8 @@ exports.main = async (event) => {
           top10[0].percent = +(top10[0].percent + (100 - sum)).toFixed(1);
         }
         const maxReal = top10.find(i => i.industry !== "其他");
-        const maxPercent = maxReal?.percent || 0;
-        const maxName = maxReal?.industry || "";
+        const maxPercent = maxReal ? maxReal.percent : 0;
+        const maxName = maxReal ? maxReal.industry : "";
         assetAllocation = {
           items: top10,
           warning: maxPercent > 30 ? `单一行业「${maxName}」占比 ${maxPercent}%，建议分散配置` : null,
@@ -282,8 +288,9 @@ exports.main = async (event) => {
         if (h.peTemp && h.peTemp.normPE > 0) tempScores.push(h.peTemp.normPE);
       });
       const avgNormPE = tempScores.length > 0 ? tempScores.reduce((a, b) => a + b, 0) / tempScores.length : null;
+      // 与统一信号阈值 0.75/1.25 对齐
       const tempScore = avgNormPE != null
-        ? (avgNormPE < 0.7 ? 90 : avgNormPE < 1.0 ? 70 : avgNormPE < 1.3 ? 50 : 30)
+        ? (avgNormPE < 0.75 ? 90 : avgNormPE < 1.0 ? 70 : avgNormPE < 1.25 ? 50 : 30)
         : 50;
       const maxIndustry = assetAllocation && assetAllocation.items && assetAllocation.items.length > 0
         ? (assetAllocation.items.find(i => i.industry !== "其他") || assetAllocation.items[0]).percent : 0;
@@ -351,7 +358,7 @@ exports.main = async (event) => {
     console.error("获取持仓失败:", e);
     return { code: 500, msg: "获取持仓失败" };
   }
-	};
+};
 
 // ---- 模块级持仓缓存（同一容器实例内复用，避免高频轮询重复抓取） ----
 let _holdingsCache = {};
@@ -365,7 +372,7 @@ async function getCachedHoldings(code) {
     _holdingsCacheTime = now;
   }
   if (!_holdingsCache[code]) {
-    _holdingsCache[code] = await fetchTempHoldingsDeep(code);
+    _holdingsCache[code] = await fd.fetchTempHoldingsDeep(code);
   }
   return _holdingsCache[code] || [];
 }
@@ -377,10 +384,7 @@ async function computeSelfEstimates(codes) {
 
   // 仅工作日计算（周一至周五），不限时段
   // 盘中用实时股价，盘后用收盘价，净值公布后 enrichment 自动切到精确值
-  const now = new Date();
-  const bjHours = (now.getUTCHours() + 8) % 24;
-  const bjDay = (now.getUTCDay() + (now.getUTCHours() + 8 >= 24 ? 1 : 0)) % 7;
-  if (bjDay === 0 || bjDay === 6) {
+  if (!fd.isBJWeekday()) {
     console.log(`[computeSelfEstimates] 周末, 跳过自主估算`);
     return map;
   }
@@ -414,10 +418,10 @@ async function computeSelfEstimates(codes) {
     const stockCodes = [...stockSet];
 
     // 3. 批量查腾讯实时行情（全球股票：A股/港股/美股）
-    const stockPriceMap = stockCodes.length > 0 ? await fetchStockPricesTencent(stockCodes) : {};
+    const stockPriceMap = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
 
     // 4. 逐基金计算加权涨跌
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timeStr = fd.formatBJTime();
     for (const code of codes) {
       const holdings = fundHoldingsMap[code];
       if (!holdings || holdings.length === 0) continue;
@@ -450,137 +454,7 @@ async function computeSelfEstimates(codes) {
   return map;
 }
 
-// 腾讯 qt.gtimg.cn 全球股票行情（A股/港股/美股）
-function fetchStockPricesTencent(codes) {
-  const http = require("http");
-  const map = {};
-  const BATCH = 50;
-
-  const toQtCode = (code) => {
-    const c = String(code).trim().toUpperCase();
-    if (c.length === 5) return `hk${c}`;                         // 港股 5 位代码
-    if (c.length <= 5 && /^[A-Z]/.test(c)) return `us${c}`;     // 美股 ticker
-    if (c.startsWith("6") || c.startsWith("5") || c.startsWith("688")) return `sh${c}`;
-    return `sz${c}`;
-  };
-
-  const fetchBatch = (batchCodes) => new Promise((resolve) => {
-    const qtCodes = batchCodes.map(toQtCode).join(",");
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          const body = Buffer.concat(chunks).toString("utf-8");
-          for (const code of batchCodes) {
-            const qtCode = toQtCode(code);
-            const re = new RegExp(`v_${qtCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}="([^"]*)"`);
-            const match = body.match(re);
-            if (!match) continue;
-            const fields = match[1].split("~");
-            if (fields.length < 5) continue;
-            const curr = parseFloat(fields[3]);
-            const prev = parseFloat(fields[4]);
-            if (!isNaN(prev) && !isNaN(curr) && prev > 0) {
-              map[code] = {
-                price: curr,
-                prevClose: prev,
-                changeRate: +(((curr - prev) / prev) * 100).toFixed(2),
-              };
-            }
-          }
-        } catch (e) { /* ignore */ }
-        resolve();
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-
-  return (async () => {
-    for (let i = 0; i < codes.length; i += BATCH) {
-      await fetchBatch(codes.slice(i, i + BATCH));
-    }
-    return map;
-  })();
-}
-
-function fetchNAVHistory(fundCode, totalNeeded) {
-  const https = require("https");
-  const PER_PAGE = 20;
-  const pages = Math.ceil(totalNeeded / PER_PAGE);
-
-  const fetchPage = (pageIndex) => new Promise((resolve) => {
-    const req = https.get({
-      hostname: "api.fund.eastmoney.com",
-      path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${pageIndex}&pageSize=${PER_PAGE}`,
-      headers: { Referer: "https://fundf10.eastmoney.com/" },
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
-          const list = (json.Data.LSJZList || []).map((item) => ({
-            date: item.FSRQ,
-            nav: parseFloat(item.DWJZ) || 0,
-            cumulativeNav: parseFloat(item.LJJZ) || 0,
-            changeRate: parseFloat(item.JZZZL) || 0,
-          }));
-          resolve(list);
-        } catch (e) { resolve([]); }
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
-  });
-
-  return Promise.all(
-    Array.from({ length: pages }, (_, i) => fetchPage(i + 1))
-  ).then((results) => results.flat());
-}
-
-function fetchEastMoney(fundCode) {
-  const https = require("https");
-  return new Promise((resolve) => {
-    const req = https.get(
-      {
-        hostname: "api.fund.eastmoney.com",
-        path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=2`,
-        headers: { "Referer": "https://fundf10.eastmoney.com/" },
-      },
-      (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(body.replace(/^jQuery\(/, "").replace(/\)$/, ""));
-            const list = (json.Data && json.Data.LSJZList) || [];
-            const today = list[0] || {};
-            const yesterday = list[1] || {};
-            resolve({
-              actualNav: parseFloat(today.DWJZ) || null,
-              actualDate: today.FSRQ || "",
-              actualChangeRate: parseFloat(today.JZZZL) || null,
-              yesterdayNav: parseFloat(yesterday.DWJZ) || null,
-            });
-          } catch (e) {
-            console.error("东方财富解析失败:", e.message);
-            resolve({});
-          }
-        });
-      }
-    );
-    req.setTimeout(5000, () => { req.destroy(); resolve({}); });
-    req.on("error", (e) => {
-      console.error("东方财富请求失败:", e.message);
-      resolve({});
-    });
-  });
-}
-
 // ---- 按需温度计算（仅算当前用户的持仓基金） ----
-
 async function computeTemperaturesForCodes(fundCodes, today) {
   const map = {};
   const fundHoldings = {};
@@ -591,7 +465,7 @@ async function computeTemperaturesForCodes(fundCodes, today) {
     const batch = fundCodes.slice(i, i + CONCURRENT);
     const results = await Promise.all(batch.map(async (code) => {
       try {
-        const h = await fetchTempHoldingsDeep(code);
+        const h = await fd.fetchTempHoldingsDeep(code);
         return { code, holdings: h, ok: h.length > 0 };
       } catch (e) { return { code, holdings: [], ok: false }; }
     }));
@@ -617,21 +491,27 @@ async function computeTemperaturesForCodes(fundCodes, today) {
     });
   });
   const stockCodes = [...stockSet];
-  const stockMap = stockCodes.length > 0 ? await batchFetchTempLive(stockCodes) : {};
+  const stockMap = {};
   if (stockCodes.length > 0) {
-    const histMap = await batchFetchTempHist(stockCodes);
+    const [liveMap, histMap] = await Promise.all([
+      ft.fetchStockLiveBatch(stockCodes),
+      ft.fetchStockHistBatch(stockCodes),
+    ]);
     stockCodes.forEach(code => {
-      if (stockMap[code] && histMap[code]) {
-        stockMap[code].peHistory = histMap[code].peYears || [];
-        stockMap[code].pbHistory = histMap[code].pbYears || [];
-        stockMap[code].totalYears = histMap[code].totalYears || 0;
+      if (liveMap[code]) {
+        stockMap[code] = {
+          ...liveMap[code],
+          peHistory: (histMap[code] && histMap[code].peYears) || [],
+          pbHistory: (histMap[code] && histMap[code].pbYears) || [],
+          totalYears: (histMap[code] && histMap[code].totalYears) || 0,
+        };
       }
     });
   }
 
-  // 3. 计算信号
+  // 3. 计算信号（统一阈值与定时任务一致）
   for (const [code, holdings] of Object.entries(fundHoldings)) {
-    const result = calcTempSignal(code, holdings, stockMap);
+    const result = ft.calcSignal(code, holdings, stockMap);
     if (result) {
       map[code] = {
         fundCode: code,
@@ -644,6 +524,7 @@ async function computeTemperaturesForCodes(fundCodes, today) {
         stocksWithData: result.stocksWithData,
         totalStocks: result.totalStocks,
         detailPEs: result.detailPEs,
+        warnings: result.warnings || [],
         createTime: new Date(),
       };
     }
@@ -651,7 +532,6 @@ async function computeTemperaturesForCodes(fundCodes, today) {
 
   // 4. 写入 DB 缓存
   if (Object.keys(map).length > 0) {
-    const db = cloud.database();
     for (const [code, data] of Object.entries(map)) {
       await db.collection("fund_temperatures")
         .where({ fundCode: code, date: today })
@@ -664,337 +544,11 @@ async function computeTemperaturesForCodes(fundCodes, today) {
   return map;
 }
 
-function fetchTempHoldings(fundCode) {
-  const https = require("https");
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const pubMonths = [12, 3, 6, 9];
-  let curM = 3, curY = year;
-  for (let i = 3; i >= 0; i--) {
-    if (month >= pubMonths[i] + 1) { curM = pubMonths[i]; break; }
-    if (i === 0) { curY = year - 1; curM = 12; }
-  }
-
-  return new Promise((resolve) => {
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=100&year=${curY}&month=${curM}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve([]); return; }
-          const html = match[1].replace(/\\"/g, '"');
-          const rows = [];
-          const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
-          let trMatch;
-          while ((trMatch = trRegex.exec(html)) !== null) {
-            const tds = [];
-            const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
-            let tdMatch;
-            while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
-              tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
-            }
-            if (tds.length >= 7 && !tds[0].includes("*")) {
-              const n = tds.length;
-              rows.push({
-                rank: tds[0],
-                stockCode: tds[1],
-                stockName: tds[2],
-                navRatio: parseFloat(tds[n - 3]) || 0,
-                shares: tds[n - 2],
-                marketValue: tds[n - 1],
-              });
-            }
-          }
-          resolve(rows);
-        } catch (e) { resolve([]); }
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
-  });
-}
-
-// ETF 联接穿透：拿到的是 ETF 份额，需要穿透到 ETF 的持仓股
-async function fetchTempHoldingsDeep(fundCode) {
-  let holdings = await fetchTempHoldings(fundCode);
-  if (!holdings || holdings.length === 0) return [];
-  // 检查是否为 ETF 联接（持仓为 ETF 代码，非普通股票）
-  // ETF 代码规则：5位(1xxxx/5xxxx/159xxx) 或 6位(51xxxx/56xxxx/58xxxx)
-  const isEtfCode = (code) => /^(1\d{4}|5\d{4}|159\d{3}|51\d{4}|56\d{4}|58\d{4})$/.test(code);
-  const etfCodes = holdings.filter(h => h.stockCode && isEtfCode(h.stockCode)).map(h => h.stockCode);
-  // 仅当主要持仓是ETF份额时才穿透
-  if (etfCodes.length > 0 && etfCodes.length >= holdings.length * 0.3) {
-    console.log(`[getPortfolio] ETF联接穿透: fund=${fundCode} etf=${etfCodes[0]}`);
-    const etfHoldings = await fetchTempHoldings(etfCodes[0]);
-    if (etfHoldings && etfHoldings.length > 0) return etfHoldings;
-  }
-  return holdings;
-}
-
-async function batchFetchTempLive(codes) {
-  let map = await _fetchLiveEastMoney(codes);
-  let withPE = Object.values(map).filter(s => s.pe != null).length;
-  console.log(`[batchFetchTempLive] 东方财富 PE 覆盖率: ${withPE}/${codes.length}`);
-
-  if (withPE < codes.length * 0.5) {
-    console.log(`[batchFetchTempLive] PE 覆盖率偏低，1秒后重试缺失的`);
-    await new Promise(r => setTimeout(r, 1000));
-    const missed = codes.filter(c => !map[c] || map[c].pe == null);
-    const retryMap = await _fetchLiveEastMoney(missed);
-    for (const [code, data] of Object.entries(retryMap)) {
-      if (!map[code] || map[code].pe == null) map[code] = data;
-    }
-    withPE = Object.values(map).filter(s => s.pe != null).length;
-    console.log(`[batchFetchTempLive] 重试后 PE 覆盖率: ${withPE}/${codes.length}`);
-  }
-
-  const missedCodes = codes.filter(c => !map[c] || map[c].pe == null);
-  if (missedCodes.length > 0) {
-    console.log(`[batchFetchTempLive] ${missedCodes.length} 只从腾讯财经兜底`);
-    const tencentMap = await _fetchLiveTencent(missedCodes);
-    for (const [code, data] of Object.entries(tencentMap)) {
-      if (!map[code] || map[code].pe == null) map[code] = data;
-    }
-    withPE = Object.values(map).filter(s => s.pe != null).length;
-    console.log(`[batchFetchTempLive] 兜底后 PE 覆盖率: ${withPE}/${codes.length}`);
-  }
-
-  return map;
-}
-
-async function _fetchLiveEastMoney(codes) {
-  const https = require("https");
-  const map = {};
-  const BATCH = 40;
-  const buildSecid = (code) => {
-    if (code.length === 5) return `116.${code}`;
-    if (code.startsWith("6")) return `1.${code}`;
-    return `0.${code}`;
-  };
-  for (let i = 0; i < codes.length; i += BATCH) {
-    const batch = codes.slice(i, i + BATCH);
-    const secids = batch.map(buildSecid).join(",");
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}`;
-    await new Promise((resolve) => {
-      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(body).data;
-            if (data && data.diff) {
-              data.diff.forEach(item => {
-                const pe = item.f9;
-                if (pe !== undefined && pe !== null) {
-                  const actualPE = pe > 500 ? pe / 100 : pe;
-                  const pb = item.f164 != null ? (+item.f164) : null;
-                  map[item.f12] = {
-                    pe: actualPE,
-                    pb: pb && pb > 0 ? pb : null,
-                    price: item.f2 || null,
-                    industry: item.f100 || "其他",
-                  };
-                }
-              });
-            }
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
-      });
-      req.setTimeout(5000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
-    });
-  }
-  return map;
-}
-
-async function _fetchLiveTencent(codes) {
-  const http = require("http");
-  const map = {};
-  const BATCH = 20;
-  const toQtCode = (code) => {
-    if (code.length === 5) return `hk${code}`;
-    if (code.startsWith("6")) return `sh${code}`;
-    return `sz${code}`;
-  };
-  for (let i = 0; i < codes.length; i += BATCH) {
-    const batch = codes.slice(i, i + BATCH);
-    const qtCodes = batch.map(toQtCode).join(",");
-    const url = `http://qt.gtimg.cn/q=${qtCodes}`;
-    await new Promise((resolve) => {
-      const req = http.get(url, (res) => {
-        const chunks = [];
-        res.on("data", (c) => { chunks.push(c); });
-        res.on("end", () => {
-          try {
-            const body = Buffer.concat(chunks).toString("utf-8");
-            for (const code of batch) {
-              const qtCode = toQtCode(code);
-              const re = new RegExp(`v_${qtCode}="([^"]*)"`);
-              const match = body.match(re);
-              if (!match) continue;
-              const fields = match[1].split("~");
-              const pe = parseFloat(fields[39]) || null;
-              const pb = parseFloat(fields[46]) || null;
-              const price = parseFloat(fields[3]) || null;
-              if (pe || pb || price) {
-                map[code] = {
-                  pe: pe && pe > 0 ? pe : null,
-                  pb: pb && pb > 0 ? pb : null,
-                  price: price,
-                  industry: "其他",
-                };
-              }
-            }
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
-      });
-      req.setTimeout(5000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
-    });
-  }
-  return map;
-}
-
-async function batchFetchTempHist(codes) {
-  const https = require("https");
-  const map = {};
-  const fetchOne = (code) => new Promise((resolve) => {
-    const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
-    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          const d = JSON.parse(body);
-          const data = (d.result && d.result.data) || [];
-          map[code] = {
-            peYears: data.map(r => ({ avg: +r.PEAVG, max: +r.PEMAX, min: +r.PEMIN })).filter(r => r.avg > 0 && r.avg < 10000),
-            pbYears: data.map(r => ({ avg: +r.PBAVG, max: +r.PBMAX, min: +r.PBMIN })).filter(r => r.avg > 0 && r.avg < 1000),
-            totalYears: data.length,
-          };
-        } catch (e) { map[code] = { peYears: [], pbYears: [], totalYears: 0 }; }
-        resolve();
-      });
-    });
-    req.setTimeout(5000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-  // 限并发 20 只/批 + 100ms 间隔，避免大量瞬时请求被风控
-  const CONCURRENT = 20;
-  for (let i = 0; i < codes.length; i += CONCURRENT) {
-    const batch = codes.slice(i, i + CONCURRENT);
-    await Promise.all(batch.map(fetchOne));
-    if (i + CONCURRENT < codes.length) {
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }
-  return map;
-}
-
-function _classifyIndustry(industry) {
-  const cyc = ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃"];
-  const fin = ["银行","保险","证券","地产","房地产","多元金融"];
-  for (const kw of cyc) if (industry.includes(kw)) return "cycle";
-  for (const kw of fin) if (industry.includes(kw)) return "finance";
-  return "other";
-}
-
-function _pePct(currentPE, peYears) {
-  if (!peYears || peYears.length < 3) return null;
-  const avgs = peYears.map(y => y.avg).sort((a, b) => a - b);
-  let below = 0;
-  for (const a of avgs) { if (currentPE > a) below++; }
-  return Math.round((below / avgs.length) * 100);
-}
-
-function calcTempSignal(fundCode, holdings, stockMap) {
-  const MIN_COVERAGE = 20;
-  let totalRatio = 0, totalScore = 0, stocksWithData = 0, totalStocks = 0;
-  const detailPEs = [];
-
-  holdings.forEach(h => {
-    const stock = stockMap[h.stockCode];
-    if (!stock) return;
-    totalStocks++;
-    const iType = _classifyIndustry(stock.industry || "");
-    let stockScore, note = "";
-
-	    if (!stock.pe || stock.pe <= 0 || stock.pe > 500) {
-	      if (stock.pb && stock.pb > 0 && iType === "finance") {
-	        const pp = _pePct(stock.pb, stock.pbHistory);
-	        stockScore = pp != null ? (pp < 25 ? 1.6 : pp < 65 ? 1.0 : 0.4) : 1.0;
-	        note = pp != null ? `PB${pp}%分位(PE无效)` : "PE无效";
-	      } else { stockScore = 1.0; note = "PE无效"; }
-	    } else if (stock.pe > 80) {
-	      const pePct = _pePct(stock.pe, stock.peHistory);
-	      stockScore = 0.5;
-	      note = `PE${stock.pe.toFixed(0)}倍·${pePct != null ? pePct + '%分位' : ''}`;
-	    } else if (stock.pe > 50) {
-	      const pePct = _pePct(stock.pe, stock.peHistory);
-	      if (pePct != null && pePct < 40) {
-	        stockScore = 0.7;
-	        note = `PE${stock.pe.toFixed(0)}倍偏高·${pePct}%分位`;
-	      } else {
-	        stockScore = pePct != null ? (pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) : 1.0;
-	        note = pePct != null ? `PE${pePct}%分位` : "数据不足";
-	      }
-	    } else {
-	      const pePct = _pePct(stock.pe, stock.peHistory);
-	      if (pePct == null) { stockScore = 1.0; note = "数据不足"; }
-	      else if (iType === "finance" && stock.pb && stock.pb > 0) {
-	        const pp = _pePct(stock.pb, stock.pbHistory);
-	        if (pp != null) {
-	          stockScore = +((pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5) * 0.5 + (pp < 25 ? 1.5 : pp < 65 ? 1.0 : 0.5) * 0.5).toFixed(2);
-	          note = `PE${pePct}%分位 PB${pp}%分位`;
-	        } else { stockScore = pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5; note = `PE${pePct}%分位`; }
-	      } else if (iType === "cycle" && pePct < 40) {
-	        stockScore = pePct < 20 ? 1.4 : 1.0;
-	        note = pePct != null ? `PE${pePct}%分位⚠️周期顶` : "";
-	      } else {
-	        stockScore = pePct < 30 ? 1.5 : pePct < 70 ? 1.0 : 0.5;
-	        note = `PE${pePct}%分位`;
-	      }
-	    }
-
-    totalScore += stockScore * h.navRatio;
-    totalRatio += h.navRatio;
-    stocksWithData++;
-    detailPEs.push({
-      code: h.stockCode, name: h.stockName,
-      pe: stock.pe ? +stock.pe.toFixed(2) : null,
-      pb: stock.pb ? +stock.pb.toFixed(2) : null,
-      industry: stock.industry, normPE: stockScore, ratio: h.navRatio, note,
-    });
-  });
-
-  if (totalRatio < MIN_COVERAGE) return null;
-  if (stocksWithData === 0) {
-    let tp = 0;
-    holdings.forEach(h => { const s = stockMap[h.stockCode]; if (s && s.pe > 0) tp += s.pe * h.navRatio; });
-    return { fundCode, signal: "nodata", label: "--", normPE: 0, weightedPE: totalRatio > 0 ? +(tp / totalRatio).toFixed(2) : 0, coverage: +totalRatio.toFixed(1), stocksWithData: 0, totalStocks, detailPEs };
-  }
-  const avgScore = +(totalScore / totalRatio).toFixed(3);
-  const normPE = +(2.0 - avgScore).toFixed(3);
-  let tp = 0;
-  holdings.forEach(h => { const s = stockMap[h.stockCode]; if (s && s.pe > 0) tp += s.pe * h.navRatio; });
-  const wp = totalRatio > 0 ? +(tp / totalRatio).toFixed(2) : 0;
-  let signal, label;
-  if (normPE < 0.7) { signal = "low"; label = "低估"; }
-  else if (normPE > 1.3) { signal = "high"; label = "高估"; }
-  else { signal = "mid"; label = "正常"; }
-  return { fundCode, signal, label, normPE, weightedPE: wp, coverage: +totalRatio.toFixed(1), stocksWithData, totalStocks, detailPEs };
-}
-
+// ---- 从历史温度数据恢复持仓（东方财富拉取失败时兜底） ----
 async function recoverTempHoldings(fundCodes) {
   const holdings = {};
-  const db = cloud.database();
   for (let d = 1; d <= 10; d++) {
-    const targetDate = `${new Date(Date.now() - d * 86400000).getFullYear()}-${String(new Date(Date.now() - d * 86400000).getMonth() + 1).padStart(2, '0')}-${String(new Date(Date.now() - d * 86400000).getDate()).padStart(2, '0')}`;
+    const targetDate = fd.formatBJDate(new Date(Date.now() - d * 86400000));
     const BATCH = 100;
     for (let i = 0; i < fundCodes.length; i += BATCH) {
       const batch = fundCodes.slice(i, i + BATCH);
@@ -1004,37 +558,14 @@ async function recoverTempHoldings(fundCodes) {
       (res.data || []).forEach(t => {
         if (t.detailPEs && t.detailPEs.length > 0 && !holdings[t.fundCode]) {
           holdings[t.fundCode] = t.detailPEs.map(p => ({
-            stockCode: p.code, stockName: p.name, navRatio: p.ratio,
+            stockCode: p.code,
+            stockName: p.name,
+            navRatio: p.ratio,
           }));
         }
       });
     }
     if (Object.keys(holdings).length > 0) break;
   }
-	  return holdings;
-}
-
-// ---- 行业分类（与 computeFundTemperature 保持一致） ----
-function _classifyIndustry(ind, stockName) {
-  // 东方财富 f100 直接可用，仅对「其他」兜底
-  if (ind && ind !== "其他" && ind !== "其它") return ind;
-  // f100 为「其他」时用股票名匹配
-  const labels = { tech: "科技", biomed: "医药", consume: "消费", finance: "金融", cycle: "周期", utility: "公用事业", mfg: "制造" };
-  const map = {
-    tech: ["半导体","芯片","软件","计算机","通信","电子","光模块","互联网","游戏","传媒","元件","IT","信息","数据","智能","科技"],
-    biomed: ["医药","生物","医疗","中药","化学制药","器械","医"],
-    consume: ["白酒","食品","饮料","家电","汽车","服装","旅游","零售","免税","调味品","乳业","养殖","消费","农业","牧原","酒店","餐饮","美妆","纺织"],
-    finance: ["银行","保险","证券","地产","房地产","金融","信托","期货","基金"],
-    cycle: ["煤炭","钢铁","有色","石油","化工","稀土","黄金","铜","铝","海运","造船","矿石","建材","水泥","玻璃","金属","纸","化纤","塑料","橡胶","化学"],
-    utility: ["电力","水务","高速","公路","港口","铁路","燃气","环保","新能源发电","电网","核电","水"],
-    mfg: ["机械","电气","新能源","电池","军工","航天","船舶","仪器仪表","电力设备","航空","光伏","风电","通用设备","专用设备","电源","装备","重工","锅炉","电机","自动化","机器人","电器"],
-  };
-  if (stockName) {
-    for (const [cat, keywords] of Object.entries(map)) {
-      for (const kw of keywords) {
-        if (stockName.includes(kw)) return labels[cat];
-      }
-    }
-  }
-  return "其他";
+  return holdings;
 }

@@ -2,6 +2,8 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 exports.main = async (event) => {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "未登录" };
   const { keyword } = event;
   if (!keyword || !keyword.trim()) {
     return { code: 400, msg: "请输入关键词", data: [] };

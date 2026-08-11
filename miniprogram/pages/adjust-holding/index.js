@@ -35,9 +35,8 @@ Page({
 
   async loadHoldings() {
     try {
-      const db = wx.cloud.database();
-      const cr = await db.collection("holdings").get();
-      const data = cr.data || [];
+      const res = await api.holdingList();
+      const data = (res.result && res.result.code === 0 && res.result.data) || [];
       this.setData({
         holdings: data.map((h) => {
           const s = h.shares || h.amount || 0;

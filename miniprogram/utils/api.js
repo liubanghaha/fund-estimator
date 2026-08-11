@@ -5,8 +5,8 @@ const api = {
   READ_ONLY_FUNCS: [
     "userLogin", "searchFund", "getPortfolio", "portfolioLight",
     "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
-    "fetchFundProfile", "fetchFundRank", "fetchFundInfo", "fetchMarketIndex",
-    "fetchIndexIntraday", "batchFetchEstimate", "computeCorrelation",
+    "fetchFundProfile", "fetchMarketIndex",
+    "batchFetchEstimate", "computeCorrelation",
     "dcaBacktest", "getMigrationCode",
   ],
 
@@ -47,9 +47,6 @@ const api = {
   },
   fetchFundOverview(fundCode) {
     return this.callFunction("fetchFundOverview", { fundCode });
-  },
-  fetchFundRank(fundCode, fundType) {
-    return this.callFunction("fetchFundRank", { fundCode, fundType });
   },
   userLogin() {
     return this.callFunction("userLogin", {});
@@ -95,6 +92,12 @@ const api = {
   },
   holdingUpdate(id, data) {
     return this.callFunction("manageHolding", { action: "update", id, data });
+  },
+  holdingAdd(data) {
+    return this.callFunction("manageHolding", { action: "add", data });
+  },
+  holdingList() {
+    return this.callFunction("manageHolding", { action: "list" });
   },
   holdingRemove(id) {
     return this.callFunction("manageHolding", { action: "remove", id });
