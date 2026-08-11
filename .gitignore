@@ -9,3 +9,7 @@ web/
 tools/
 .zcode/
 project.private.config.json
+
+# CloudBase skills 安装产物
+.agents/
+skills-lock.json

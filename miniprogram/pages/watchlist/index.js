@@ -119,6 +119,16 @@ Page({
     this.setData({ pinnedCodes: this._getPinnedCodes() });
   },
 
+  // 首次渲染完成后自动调起下拉刷新动画（onShow 已标记需要刷新时）
+  onReady() {
+    this._ready = true;
+    if (this._pendingAutoRefresh) {
+      this._pendingAutoRefresh = false;
+      // 延迟等页面完全就绪（过早调用 startPullDownRefresh 无效）
+      setTimeout(() => wx.startPullDownRefresh(), 500);
+    }
+  },
+
   onShow() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
@@ -126,7 +136,9 @@ Page({
       const now = Date.now();
       if (!this._lastFetch || now - this._lastFetch > 30000) {
         this._lastFetch = now;
-        this.fetchWatchlist();
+        // 自动调起下拉刷新动画，让用户感知数据更新（页面未就绪时先标记，onReady 后调起）
+        if (this._ready) wx.startPullDownRefresh();
+        else this._pendingAutoRefresh = true;
       }
       this._startPolling();
     } else {

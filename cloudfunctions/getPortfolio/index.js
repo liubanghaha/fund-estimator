@@ -336,6 +336,35 @@ exports.main = async (event) => {
       };
     });
 
+    // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----
+    // 仅在交易时段补（与定时任务语义一致），距上一点 >= 5 分钟才写，避免高频请求刷库
+    try {
+      const _bj = new Date(Date.now() + 8 * 3600000);
+      const _day = _bj.getUTCDay();
+      const _min = _bj.getUTCHours() * 60 + _bj.getUTCMinutes();
+      const _inTrading = _day >= 1 && _day <= 5 && ((_min >= 570 && _min < 690) || (_min >= 780 && _min <= 900));
+      if (_inTrading) {
+        const _last = intradaySnapshots[intradaySnapshots.length - 1];
+        const _lastMin = _last ? parseInt(_last.time.slice(0, 2)) * 60 + parseInt(_last.time.slice(3, 5)) : -Infinity;
+        if (_min - _lastMin >= 5) {
+          const _time = `${String(_bj.getUTCHours()).padStart(2, "0")}:${String(_bj.getUTCMinutes()).padStart(2, "0")}`;
+          const _rate = +todayProfitRate.toFixed(2);
+          const _doc = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
+          if (_doc.data && _doc.data.length > 0) {
+            await db.collection("profit_snapshots").doc(_doc.data[0]._id).update({
+              data: { points: _.push({ time: _time, rate: _rate }) },
+            });
+          } else {
+            await db.collection("profit_snapshots").add({
+              data: { _openid: uid, date: today, points: [{ time: _time, rate: _rate }] },
+            });
+          }
+          intradaySnapshots.push({ time: _time, rate: _rate });
+          intradaySnapshots.sort((a, b) => a.time.localeCompare(b.time));
+        }
+      }
+    } catch (e) { console.warn("[getPortfolio] 快照兜底失败:", e.message); }
+
     return {
       code: 0,
       data: {

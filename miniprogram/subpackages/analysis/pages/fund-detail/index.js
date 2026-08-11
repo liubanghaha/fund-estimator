@@ -54,7 +54,22 @@ Page({
       wx.removeStorageSync("portfolio_force_refresh");
       this._skipCache = true;
     }
+    // 缓存新鲜（交易 60s / 盘外 30min）时直接复用，无需自动刷新动画
+    const cached = wx.getStorageSync(CACHE_PREFIX + options.fundCode);
+    const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
+    const cacheFresh = cached && cached.history && cached.history.length && (Date.now() - (cached.ts || 0) < ttl);
+    // 缓存缺失/过期时自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
+    this._pendingAutoRefresh = !this._skipCache && !cacheFresh;
+    // 立即加载（缓存秒开 + 过期则拉新），不依赖下拉动画链路，避免页面卡加载
     this.fetchAll();
+  },
+
+  // 首次渲染完成后自动调起下拉刷新动画（过早调用 startPullDownRefresh 无效）
+  onReady() {
+    if (this._pendingAutoRefresh) {
+      this._pendingAutoRefresh = false;
+      setTimeout(() => wx.startPullDownRefresh(), 500);
+    }
   },
 
   onShow() {
@@ -94,6 +109,8 @@ Page({
   },
 
   async fetchAll() {
+    if (this._fetchingAll) return; // 防重入：onLoad 与下拉动画可能并发触发
+    this._fetchingAll = true;
     this.setData({ loading: true, errorMsg: "" });
     this._lastRefresh = Date.now();
     try {
@@ -126,13 +143,14 @@ Page({
             });
             this.calcReturns(d.history);
           }
-          this._saveCache();
+          // 缓存保存移到 fetchAll 末尾（需等 enrichHoldingData 设置持仓数据后）
         }
         // profile 在切 Tab 时懒加载，但基础数据已就绪
       }
       await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
+      this._saveCache();
       if (this.data.loading) {
         this.setData({ loading: false }, () => this.drawChart());
       } else {
@@ -141,6 +159,7 @@ Page({
     } catch (e) {
       this.setData({ loading: false, errorMsg: "加载失败" });
     }
+    this._fetchingAll = false;
   },
 
   // ============ 缓存 ============
@@ -168,6 +187,8 @@ Page({
         actualDate: cached.actualDate, displayChangeRate: cached.displayChangeRate,
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
+        // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
+        holdingData: cached.holdingData || null,
       }, () => {
         this.calcReturns(cached.history);
         this.updateDisplay();
@@ -187,6 +208,7 @@ Page({
         actualDate: this.data.actualDate, displayChangeRate: this.data.displayChangeRate,
         peTemp: this.data.peTemp,
         history: this.data.navHistory,
+        holdingData: this.data.holdingData,
         ts: Date.now(),
       });
     } catch (e) { /* ignore */ }

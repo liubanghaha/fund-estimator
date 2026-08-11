@@ -38,6 +38,25 @@ Page({
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
         this._fromCache();
+    // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
+    // 无缓存时 _fromCache 已直接拉取，无需动画
+    const now = Date.now();
+    const ttl = this._isTradingNow() ? 30000 : 120000;
+    const c = wx.getStorageSync(CACHE);
+    const hasCache = c && c.d && c.d.length && c.idx && c.idx.length;
+    const cacheAge = this._lastFetch ? (now - this._lastFetch) : Infinity;
+    if (hasCache && cacheAge > ttl) {
+      this._lastFetch = now;
+      this._pendingAutoRefresh = true;
+    }
+  },
+
+  // 首次渲染完成后自动调起下拉刷新动画（过早调用 startPullDownRefresh 无效）
+  onReady() {
+    if (this._pendingAutoRefresh) {
+      this._pendingAutoRefresh = false;
+      setTimeout(() => wx.startPullDownRefresh(), 500);
+    }
   },
 
   onShow() {
@@ -49,7 +68,8 @@ Page({
       const ttl = isTrading ? 30000 : 120000;
       if (cacheAge > ttl) {
         this._lastFetch = now;
-        this._fetch();
+        // 自动调起下拉刷新动画，让用户感知数据更新
+        wx.startPullDownRefresh();
       }
     }
     // 交易时段启动收益轮询
@@ -98,9 +118,8 @@ Page({
           dayCalendar: c.cal.days || [], monthCalendar: c.cal.mons || [], yearData: c.cal.yrs || [],
         });
         setTimeout(() => this._draw(), 150);
-        // 缓存渲染后立即后台刷新，确保不展示过期数据
-        this._lastFetch = 0;
-        this._fetch();
+        // 缓存过期与否由 onLoad 的 TTL 判断统一决定（过期 → 自动下拉动画刷新），
+        // 避免与下拉动画双重刷新
       }
     } catch (e) { /* ignore */ }
     this._first = true;
@@ -353,7 +372,8 @@ Page({
     const isToday = this.data.activeTab === 'today';
 
     if (isToday) {
-      if ((this._profitSnapshots || []).length === 0) {
+      // 快照和指数数据都缺失时才依赖当日缓存；任一数据源有数据即可绘制
+      if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length === 0) {
         const idx = this.data.compareIndex || '000001';
         this._todayCaches = this._todayCaches || {};
         if (!this._todayCaches[idx]) {

@@ -120,6 +120,16 @@ Page({
     this.setData({ theme });
   },
 
+  // 首次渲染完成后自动调起下拉刷新动画，让用户感知后台正在更新数据
+  onReady() {
+    if (this._pendingAutoRefresh) {
+      this._pendingAutoRefresh = false;
+      this._autoPull = true;
+      // 延迟等页面完全就绪（onReady 过早调用 startPullDownRefresh 无效）
+      setTimeout(() => wx.startPullDownRefresh(), 500);
+    }
+  },
+
   onShow() {
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
@@ -157,7 +167,8 @@ Page({
         : (cacheAge > ttl);
       if (needFetch) {
         this._lastFetch = now;
-        this.fetchPortfolio(false);
+        // 标记待自动刷新：onReady 后再调起下拉动画（onLoad 时机页面未就绪，动画无效）
+        this._pendingAutoRefresh = true;
       }
       if (!indexCached) this.fetchIndices();
     } else {
@@ -367,11 +378,33 @@ Page({
         this.updateGroupCounts();
         this._checkAlerts();
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
+        return true;
       }
+      return false;
     } catch (e) {
       this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
       console.error("获取持仓失败:", e);
+      return false;
     }
+  },
+
+  // 下拉刷新：绕过缓存直接拉最新数据，刷新过程有原生动画 + 导航栏 loading 感知
+  onPullDownRefresh() {
+    const now = Date.now();
+    // 自动触发（startPullDownRefresh）绕过防抖；仅用户连续下拉时 5s 防抖
+    const isAuto = this._autoPull;
+    this._autoPull = false;
+    if (!isAuto && this._lastFetch && now - this._lastFetch < 5000) {
+      wx.stopPullDownRefresh();
+      return;
+    }
+    this._lastFetch = now;
+    wx.showNavigationBarLoading();
+    this.fetchPortfolio(true).then((ok) => {
+      wx.hideNavigationBarLoading();
+      wx.stopPullDownRefresh();
+      wx.showToast({ title: ok ? "已更新" : "刷新失败", icon: "none", duration: 1500 });
+    });
   },
 
   onSortTap(e) {
