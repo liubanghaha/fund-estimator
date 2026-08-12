@@ -192,6 +192,11 @@ Page({
       }, () => {
         this.calcReturns(cached.history);
         this.updateDisplay();
+        // 缓存含原始持仓时直接用缓存数据计算持仓区，避免等 checkHolding 网络请求出现空白窗口
+        if (cached.rawHolding) {
+          this._rawHolding = cached.rawHolding;
+          this.enrichHoldingData();
+        }
         this.drawChart();
       });
       return fresh;
@@ -209,6 +214,7 @@ Page({
         peTemp: this.data.peTemp,
         history: this.data.navHistory,
         holdingData: this.data.holdingData,
+        rawHolding: this._rawHolding || this._lastRawHolding,
         ts: Date.now(),
       });
     } catch (e) { /* ignore */ }
@@ -631,6 +637,8 @@ Page({
 
   enrichHoldingData() {
     if (!this._rawHolding) return;
+    // 备份原始持仓供缓存保存（函数末尾会清空 _rawHolding）
+    this._lastRawHolding = this._rawHolding;
     const raw = this._rawHolding;
     const { nav, estimatedNav, actualNav } = this.data;
     let yesterdayNav = parseFloat(nav || actualNav || estimatedNav || 0);
