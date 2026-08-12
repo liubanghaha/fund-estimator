@@ -176,6 +176,10 @@ Page({
     try {
       const cached = wx.getStorageSync(CACHE_PREFIX + this.data.fundCode);
       if (!cached || !cached.history || !cached.history.length) return false;
+      // 跨日缓存不秒开：净值/涨跌按日变化，展示昨天数据没有意义，直接拉新
+      // （同日缓存才渲染：新鲜时秒开，过期时渲染后后台刷新）
+      const sameDay = cached.actualDate === calc.formatDate(new Date());
+      if (!sameDay) return false;
       const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
       const fresh = Date.now() - (cached.ts || 0) < ttl;
       this.setData({
