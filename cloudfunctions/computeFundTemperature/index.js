@@ -147,20 +147,15 @@ exports.main = async (event) => {
     }
 
     if (results.length > 0) {
-      // 批量删除今日旧数据
-      const allCodes = results.map(r => r.fundCode);
-      for (let i = 0; i < allCodes.length; i += 100) {
-        const batch = allCodes.slice(i, i + 100);
-        await db.collection("fund_temperatures")
-          .where({ fundCode: _.in(batch), date: today })
-          .remove()
-          .catch(() => {});
-      }
-      // 批量写入
+      // _id = fundCode_date 单文档 upsert（doc.set 幂等：存在覆盖、不存在创建），
+      // 替代原 remove+add 两步写库，天然防并发重复计算重复写
       for (let i = 0; i < results.length; i += 50) {
         const batch = results.slice(i, i + 50);
         await Promise.all(batch.map(r =>
-          db.collection("fund_temperatures").add({ data: r }).catch(() => {})
+          db.collection("fund_temperatures")
+            .doc(`${r.fundCode}_${r.date}`)
+            .set({ data: r })
+            .catch(() => {})
         ));
       }
     }
@@ -221,7 +216,7 @@ async function fetchHoldingsBatch(fundCodes) {
 }
 
 async function getUniqueFundCodes() {
-  const MAX_LIMIT = 100;
+  const MAX_LIMIT = 1000;
   const all = [];
   let lastId = "";
   while (true) {

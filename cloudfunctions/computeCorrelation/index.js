@@ -59,13 +59,15 @@ exports.main = async (event) => {
   if (!fundCodes || !Array.isArray(fundCodes) || fundCodes.length < 2) {
     return { code: 400, msg: "请提供至少2个基金代码" };
   }
+  // 上限保护：超过 20 只基金时按 30s 超时预算拉取不完，直接截断并提示
+  const codes = fundCodes.slice(0, 20);
 
   try {
     // 1. 并行拉取每只基金的持仓股（限 10 只/批 + 100ms，避免用户传大量基金时瞬时并发被风控）
     const CONCURRENT = 10;
     const allHoldings = [];
-    for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
-      const batch = fundCodes.slice(i, i + CONCURRENT);
+    for (let i = 0; i < codes.length; i += CONCURRENT) {
+      const batch = codes.slice(i, i + CONCURRENT);
       const results = await Promise.all(batch.map(async (code) => {
         try {
           const list = await fetchHoldings(code);
@@ -73,7 +75,7 @@ exports.main = async (event) => {
         } catch (e) { return { code, list: [] }; }
       }));
       allHoldings.push(...results);
-      if (i + CONCURRENT < fundCodes.length) {
+      if (i + CONCURRENT < codes.length) {
         await new Promise(r => setTimeout(r, 100));
       }
     }
@@ -102,7 +104,7 @@ exports.main = async (event) => {
       .sort((a, b) => b.fundCount - a.fundCount);
 
     // 3. 计算每对基金的重合度（两两对比持仓交集）
-    const codeList = fundCodes;
+    const codeList = codes;
     const pairs = [];
     for (let i = 0; i < codeList.length; i++) {
       for (let j = i + 1; j < codeList.length; j++) {
@@ -130,7 +132,7 @@ exports.main = async (event) => {
       data: {
         sharedStocks,
         pairs,
-        totalFunds: fundCodes.length,
+        totalFunds: codes.length,
         hasHoldingsCount: Object.values(fundStockMap).filter(l => l.length > 0).length,
       },
     };

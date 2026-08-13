@@ -127,10 +127,10 @@ async function fetchProfileData(fundCode) {
 
 async function fetchPeTemp(fundCode) {
   try {
-    const db = cloud.database();
+    const today = fd.formatBJDate();
     const res = await db.collection("fund_temperatures")
-      .where({ fundCode })
-      .orderBy("createTime", "desc")
+      .where({ fundCode, date: today })
+      .field({ signal: true, label: true, normPE: true })
       .limit(1)
       .get();
     if (res.data && res.data.length > 0) {

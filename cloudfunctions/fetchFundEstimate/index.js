@@ -2,7 +2,6 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const fd = require("./_shared/fund-data");
-const ft = require("./_shared/fund-temperature");
 
 exports.main = async (event) => {
   const { fundCode } = event;
@@ -69,9 +68,10 @@ async function fetchSelfEstimate(fundCode) {
 
 async function fetchTemperature(fundCode) {
   try {
+    const today = fd.formatBJDate();
     const res = await db.collection("fund_temperatures")
-      .where({ fundCode })
-      .orderBy("createTime", "desc")
+      .where({ fundCode, date: today })
+      .field({ signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWithData: true, totalStocks: true, warnings: true, isETF: true })
       .limit(1)
       .get();
     if (res.data && res.data.length > 0) {
@@ -84,71 +84,11 @@ async function fetchTemperature(fundCode) {
         coverage: t.coverage,
         stocksWithData: t.stocksWithData,
         totalStocks: t.totalStocks,
-        detailPEs: t.detailPEs || [],
         warnings: t.warnings || [],
         isETF: t.isETF || false,
       };
     }
   } catch (e) { /* ignore */ }
-
-  // 数据库中无记录，按需计算
-  try {
-    return await computeTempOnDemand(fundCode);
-  } catch (e) { console.error("按需计算温度失败:", e.message); }
+  // 缺失温度不做请求内重计算（每只持仓股一个 HTTP 会拖垮请求），凌晨定时任务会补全
   return null;
-}
-
-async function computeTempOnDemand(fundCode) {
-  // 1. 拉取持仓股
-  const { holdings, fundName } = await fd.fetchTempHoldingsWithMeta(fundCode);
-  if (!holdings || holdings.length === 0) return null;
-  const isETF = ft.isETFByName(fundName);
-
-  // 2. 收集股票代码
-  const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(c => c && (c.length === 6 || c.length === 5)))];
-  if (stockCodes.length === 0) return null;
-
-  // 3. 拉取实时 PE/PB + 历史 PE
-  const [liveMap, histMap] = await Promise.all([
-    ft.fetchStockLiveBatch(stockCodes),
-    ft.fetchStockHistBatch(stockCodes),
-  ]);
-
-  // 4. 组装 stockMap 并统一打分
-  const stockMap = {};
-  stockCodes.forEach(code => {
-    if (liveMap[code]) {
-      stockMap[code] = {
-        ...liveMap[code],
-        peHistory: (histMap[code] && histMap[code].peYears) || [],
-        pbHistory: (histMap[code] && histMap[code].pbYears) || [],
-        totalYears: (histMap[code] && histMap[code].totalYears) || 0,
-      };
-    }
-  });
-  const result = ft.calcSignal(fundCode, holdings, stockMap);
-  if (!result) return null;
-
-  const doc = {
-    signal: result.signal,
-    label: result.label,
-    normPE: result.normPE,
-    weightedPE: result.weightedPE,
-    coverage: result.coverage,
-    stocksWithData: result.stocksWithData,
-    totalStocks: result.totalStocks,
-    detailPEs: result.detailPEs,
-    warnings: result.warnings || [],
-    isETF,
-  };
-
-  // 写入 DB 缓存
-  try {
-    const today = fd.formatBJDate();
-    await db.collection("fund_temperatures").add({
-      data: { fundCode, date: today, ...doc, createTime: new Date() },
-    }).catch(() => {});
-  } catch (e) { /* ignore */ }
-
-  return doc;
 }

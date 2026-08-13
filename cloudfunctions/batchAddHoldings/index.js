@@ -18,16 +18,17 @@ exports.main = async (event) => {
     const codes = validFunds.map(f => f.fundCode.trim());
     const codeSet = new Set(codes);
 
-    // 2. 批量获取净值估算（一次 HTTP 调用）
-    const navMap = await batchFetchNav(codes);
-
-    // 3. 批量检查已存在的持仓
+    // 2. 先查已存在持仓，只对新增的基金拉净值（避免重复导入时白拉净值 HTTP）
     const existCodes = new Set();
     const existRes = await db.collection("holdings")
       .where({ _openid: OPENID, fundCode: _.in(codes) })
       .field({ fundCode: true })
       .get();
     existRes.data.forEach(h => existCodes.add(h.fundCode));
+    const newCodes = codes.filter(c => !existCodes.has(c));
+
+    // 3. 只对新增代码批量获取净值估算
+    const navMap = newCodes.length > 0 ? await batchFetchNav(newCodes) : {};
 
     // 4. 计算并准备写入数据
     const toInsert = [];

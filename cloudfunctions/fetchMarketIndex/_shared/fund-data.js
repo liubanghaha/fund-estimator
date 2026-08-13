@@ -253,10 +253,12 @@ function fetchLatestNavEastMoney(fundCode, opts = {}) {
 
 /**
  * 历史净值（分页并发拉取，页序从新到旧）
+ * perPage 用东方财富上限 100，天数钳制 600（防止 days 参数被滥用为外部 API DoS）
  */
 function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
-  const { perPage = 20, timeoutMs = 8000 } = opts;
-  const pages = Math.max(1, Math.ceil((totalNeeded || 0) / perPage));
+  const { perPage = 100, timeoutMs = 8000 } = opts;
+  const need = Math.max(1, Math.min(600, totalNeeded || 0));
+  const pages = Math.max(1, Math.ceil(need / perPage));
 
   const fetchPage = (pageIndex) => new Promise((resolve) => {
     const req = https.get({
@@ -285,9 +287,19 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
     req.on("error", () => resolve([]));
   });
 
-  return Promise.all(
-    Array.from({ length: pages }, (_, i) => fetchPage(i + 1))
-  ).then((results) => results.flat());
+  // 分批限并发（每批 3 页），避免页数多时瞬时大量请求打东财接口
+  const pageIndexes = Array.from({ length: pages }, (_, i) => i + 1);
+  const results = [];
+  const CONCURRENT = 3;
+  const pump = async () => {
+    while (pageIndexes.length) {
+      const batch = pageIndexes.splice(0, CONCURRENT);
+      const batchRes = await Promise.all(batch.map(fetchPage));
+      results.push(...batchRes);
+      if (pageIndexes.length) await new Promise(r => setTimeout(r, 120));
+    }
+  };
+  return pump().then(() => results.flat());
 }
 
 module.exports = {

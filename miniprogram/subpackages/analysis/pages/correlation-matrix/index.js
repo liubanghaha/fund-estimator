@@ -35,7 +35,8 @@ Page({
         }
       }
       if (!d) {
-        const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0 } });
+        // withNav60:false 跳过历史净值拉取（本页只需持仓列表 + 健康分），减小响应与耗时
+        const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0, withNav60: false, withAnalysis: true } });
         d = res.result && res.result.data;
       }
       if (!d || !d.holdings || d.holdings.length === 0) {

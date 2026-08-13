@@ -16,7 +16,12 @@ exports.main = async (event) => {
 
   const amount = parseFloat(monthlyAmount);
   const day = parseInt(monthlyDay) || 1;
-  const start = new Date(parseInt(startYear), parseInt(startMonth) - 1, 1);
+  const sy = parseInt(startYear);
+  // startYear 下限校验：过小的年份会导致按年循环拉取大量净值页（20s 超时被杀）
+  if (!sy || sy < 1990 || sy > new Date().getFullYear() + 1) {
+    return { code: 400, msg: "起始年份无效" };
+  }
+  const start = new Date(sy, parseInt(startMonth) - 1, 1);
   const end = endYear && endMonth
     ? new Date(parseInt(endYear), parseInt(endMonth) - 1, 1)
     : new Date(); // 默认到现在
