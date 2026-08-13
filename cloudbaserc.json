@@ -161,6 +161,12 @@
       "timeout": 20,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "migrateFundTempIndexes",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

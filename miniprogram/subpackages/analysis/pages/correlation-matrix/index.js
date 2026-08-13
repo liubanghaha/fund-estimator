@@ -68,7 +68,7 @@ Page({
             data: { fundCodes },
           });
           if (corrRes.result && corrRes.result.code === 0) {
-            const { pairs, sharedStocks } = corrRes.result.data;
+            const { pairs, sharedStocks, truncated } = corrRes.result.data;
             const enrichStock = (s) => ({
               ...s,
               _open: false,
@@ -84,6 +84,9 @@ Page({
               nameB: fundNames[fundCodes.indexOf(p.fundB)],
             }));
             this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
+            if (truncated) {
+              wx.showToast({ title: "持仓较多，仅分析前 20 只基金", icon: "none" });
+            }
             // 写缓存
             wx.setStorageSync('asset_analysis_cache', {
               codeKey, ts: Date.now(),

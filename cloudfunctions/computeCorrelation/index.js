@@ -59,7 +59,8 @@ exports.main = async (event) => {
   if (!fundCodes || !Array.isArray(fundCodes) || fundCodes.length < 2) {
     return { code: 400, msg: "请提供至少2个基金代码" };
   }
-  // 上限保护：超过 20 只基金时按 30s 超时预算拉取不完，直接截断并提示
+  // 上限保护：超过 20 只基金时按 30s 超时预算拉取不完，截断并通知前端
+  const truncated = fundCodes.length > 20;
   const codes = fundCodes.slice(0, 20);
 
   try {
@@ -133,6 +134,7 @@ exports.main = async (event) => {
         sharedStocks,
         pairs,
         totalFunds: codes.length,
+        truncated,
         hasHoldingsCount: Object.values(fundStockMap).filter(l => l.length > 0).length,
       },
     };
