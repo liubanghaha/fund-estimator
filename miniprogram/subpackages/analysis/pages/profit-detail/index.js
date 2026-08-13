@@ -588,9 +588,18 @@ Page({
     });
 
     const result = Object.values(timeMap).sort((a, b) => a.time.localeCompare(b.time));
-    // 仅当最后一条没有快照 rate 时用当前收益率兜底，避免把真实快照值覆盖成 0/旧值
+    // 末端兜底：最后一条没有快照 rate 时用当前收益率补点；仅当最后快照点距末端 ≤ 20 分钟才补，
+    // 避免快照稀疏时（全天只有几个点）末端补点造成悬崖式跳变
     const last = result[result.length - 1];
-    if (last && last.rate == null) last.rate = fundRate;
+    if (last && last.rate == null) {
+      const lastSnap = [...result].reverse().find(d => d.rate != null);
+      if (lastSnap && this._toMin(last.time) - this._toMin(lastSnap.time) <= 20) {
+        last.rate = fundRate;
+      }
+    }
+
+    // 平滑「我的收益」分钟线：快照率 = 持仓股实时价加权估算，分钟噪声大，直接连线呈锯齿折线
+    this._smoothRate(result);
 
     const hasRate = result.filter(d => d.rate != null).length;
     const hasIdx = result.filter(d => d.indexRate != null).length;
@@ -600,6 +609,39 @@ Page({
     } catch(e) {
       return [];
     }
+  },
+
+  // 居中移动平均平滑（窗口 9 点）：首尾点保留原始值（首点是开盘基准，末点是当前真实收益率）。
+  // 仅在时间连续的区段内平滑：相邻点时间差 > 30 分钟（午休/断点）即断开，避免跨时段混合。
+  _smoothRate(result) {
+    const WINDOW = 9, half = Math.floor(WINDOW / 2);
+    const runs = [];
+    let run = [];
+    for (let i = 0; i < result.length; i++) {
+      const d = result[i];
+      if (typeof d.rate !== 'number') continue;
+      if (run.length && this._toMin(d.time) - this._toMin(result[run[run.length - 1]].time) > 30) {
+        runs.push(run);
+        run = [];
+      }
+      run.push(i);
+    }
+    if (run.length) runs.push(run);
+    runs.forEach((run) => {
+      if (run.length < 3) return; // 点数太少不平滑，保持原始值
+      for (let i = 1; i < run.length - 1; i++) {
+        const lo = Math.max(0, i - half), hi = Math.min(run.length - 1, i + half);
+        let sum = 0;
+        for (let j = lo; j <= hi; j++) sum += result[run[j]].rate;
+        result[run[i]].rate = +(sum / (hi - lo + 1)).toFixed(2);
+      }
+    });
+  },
+
+  // "HH:mm" → 当日分钟数
+  _toMin(t) {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
   },
 
   _drawToday() {
@@ -612,9 +654,14 @@ Page({
     if (memCache && memCache.data && memCache.data.length > 0) {
       if (this._isTradingNow()) {
         const data = [...memCache.data];
-        // 仅当缓存最后一条没有 rate 时用最新收益率兜底，避免覆盖真实快照值
+        // 仅当缓存最后一条没有 rate 且最后快照点接近末端时用最新收益率兜底，避免悬崖跳变
         const last = data[data.length - 1];
-        if (last && last.rate == null) last.rate = parseFloat(this.data.todayProfitRate || 0);
+        if (last && last.rate == null) {
+          const lastSnap = [...data].reverse().find(d => d.rate != null);
+          if (lastSnap && this._toMin(last.time) - this._toMin(lastSnap.time) <= 20) {
+            last.rate = parseFloat(this.data.todayProfitRate || 0);
+          }
+        }
         this._renderToday(w, h, data, compareLabel);
         return;
       }
