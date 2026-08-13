@@ -11,7 +11,7 @@ Page({
     fundCode: "", fundName: "", loading: true, errorMsg: "",
     nav: null, estimatedNav: null, estimatedChangeRate: null, estimateTime: "",
     actualNav: "", actualDate: "", actualChangeRate: null,
-    navHistory: [],
+    navHistory: [], displayHistory: [],
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
@@ -84,8 +84,7 @@ Page({
     const now = Date.now();
     // 30s 内不重复拉取非估值数据，仅刷新估值（但仍查 DB 确保持仓最新）
     if (this._lastRefresh && now - this._lastRefresh < 30000) {
-      this.fetchEstimate().then(async () => {
-        await this.checkHolding();
+      Promise.all([this.fetchEstimate(), this.checkHolding()]).then(() => {
         this.updateDisplay();
         this.enrichHoldingData();
       });
@@ -118,7 +117,13 @@ Page({
       const fresh = this._skipCache ? false : this._restoreCache();
       this._skipCache = false;
       if (!fresh) {
-        const overviewRes = await api.fetchFundOverview(this.data.fundCode);
+        // 概览与 follow/holding/transactions 并行，冷启动 2 RTT → 1
+        const [overviewRes] = await Promise.all([
+          api.fetchFundOverview(this.data.fundCode),
+          this.checkFollow().catch(() => {}),
+          this.checkHolding().catch(() => {}),
+          this.fetchTransactions().catch(() => {}),
+        ]);
         if (overviewRes.result && overviewRes.result.code === 0) {
           const d = overviewRes.result.data;
           const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
@@ -137,6 +142,7 @@ Page({
           if (d.history && d.history.length > 0) {
             this.setData({
               navHistory: d.history,
+              displayHistory: d.history.slice(0, 10),
               actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
               actualDate: d.history[0].date,
               actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
@@ -146,8 +152,9 @@ Page({
           // 缓存保存移到 fetchAll 末尾（需等 enrichHoldingData 设置持仓数据后）
         }
         // profile 在切 Tab 时懒加载，但基础数据已就绪
+      } else {
+        await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       }
-      await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       this.updateDisplay();
       this.enrichHoldingData();
       this._saveCache();
@@ -191,6 +198,7 @@ Page({
         actualDate: cached.actualDate, displayChangeRate: cached.displayChangeRate,
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
+        displayHistory: (cached.history || []).slice(0, 10),
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cached.holdingData || null,
       }, () => {
@@ -335,6 +343,7 @@ Page({
         if (history.length > 0) {
           this.setData({
             navHistory: history,
+            displayHistory: history.slice(0, 10),
             actualNav: this.data.actualNav || (history[0].nav != null ? history[0].nav.toFixed(4) : ""),
             actualDate: history[0].date,
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),
@@ -736,8 +745,8 @@ Page({
       this.setData({ scrollRefreshing: false });
     });
   },
-  onShowMore() { this.setData({ showAllHistory: true }); },
-  onShowLess() { this.setData({ showAllHistory: false }); },
+  onShowMore() { this.setData({ showAllHistory: true, displayHistory: this.data.navHistory }); },
+  onShowLess() { this.setData({ showAllHistory: false, displayHistory: this.data.navHistory.slice(0, 10) }); },
   onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;

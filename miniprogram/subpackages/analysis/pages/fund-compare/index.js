@@ -54,12 +54,13 @@ Page({
       this.setData({
         "fundA.nav": d.actualNav || d.nav || null,
         "fundA.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
-        "fundA.history": d.history || [],
         "fundA.profile": d.profile || {},
         "fundA.manager": d.manager || {},
       loading: false,
       loadError: false,
     });
+    // 历史净值只用于绘图，存实例变量避免 260 点全量进 data
+    this._histA = d.history || [];
     } catch (e) {
       this.setData({ loading: false, loadError: true });
     }
@@ -113,10 +114,11 @@ Page({
       this.setData({
         "fundB.nav": d.actualNav || d.nav || null,
         "fundB.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
-        "fundB.history": d.history || [],
         "fundB.profile": d.profile || {},
         "fundB.manager": d.manager || {},
       }, () => {
+        // 历史净值只用于绘图，存实例变量避免 260 点全量进 data
+        this._histB = d.history || [];
         this.buildComparison();
         this.drawChart();
       });
@@ -157,17 +159,18 @@ Page({
   },
 
   onRemoveFundB() {
+    this._histB = null;
     this.setData({
       "fundB.code": "", "fundB.name": "", "fundB.nav": null, "fundB.changeRate": null,
-      "fundB.history": null, "fundB.profile": null, "fundB.manager": null,
+      "fundB.profile": null, "fundB.manager": null,
       comparison: null, searchFocus: false,
     });
   },
 
   buildComparison() {
     const { fundA, fundB } = this.data;
-    const histA = fundA.history || [];
-    const histB = fundB.history || [];
+    const histA = this._histA || [];
+    const histB = this._histB || [];
 
     const retA = this.calcReturns(histA);
     const retB = this.calcReturns(histB);

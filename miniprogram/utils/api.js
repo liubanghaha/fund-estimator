@@ -1,5 +1,5 @@
 const api = {
-  // 请求去重缓存：只读函数相同参数 5s 内复用 Promise；写操作不缓存，避免双击吞操作
+  // 请求去重缓存：只读请求 5s 窗口内复用结果（含已完成的结果），写操作不缓存，避免双击吞操作
   _pending: {},
   _pendingTs: {},
   READ_ONLY_FUNCS: [
@@ -9,22 +9,36 @@ const api = {
     "batchFetchEstimate", "computeCorrelation",
     "dcaBacktest", "getMigrationCode",
   ],
+  // CRUD 函数中纯读的 action 也去重（list/check/get 类），写 action 不缓存
+  READ_ONLY_ACTIONS: {
+    manageWatchlist: ["list", "check", "getGroups"],
+    manageHolding: ["list", "get", "check", "getGroups"],
+    manageTransaction: ["list"],
+  },
 
   callFunction(name, data = {}) {
     const key = name + "|" + JSON.stringify(data);
     const now = Date.now();
-    if (this.READ_ONLY_FUNCS.includes(name) && this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
+    const acts = this.READ_ONLY_ACTIONS[name];
+    const isReadOnly = this.READ_ONLY_FUNCS.includes(name) || (acts && acts.includes(data && data.action));
+    if (isReadOnly && this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
       return this._pending[key];
     }
-    const p = wx.cloud.callFunction({ name, data });
+    // 统一超时：慢请求不长期占用槽位（云函数调用无内置 timeout 选项）
+    const CALL_TIMEOUT = 15000;
+    const p = Promise.race([
+      wx.cloud.callFunction({ name, data }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("云函数超时: " + name)), CALL_TIMEOUT)),
+    ]);
     this._pending[key] = p;
     this._pendingTs[key] = now;
-    p.finally(() => {
+    // 5s 窗口后清理；窗口期内请求已完成也保留 resolved Promise，供短时间重复调用复用
+    setTimeout(() => {
       if (this._pending[key] === p) {
         delete this._pending[key];
         delete this._pendingTs[key];
       }
-    });
+    }, 5000);
     return p;
   },
   searchFund(keyword) {

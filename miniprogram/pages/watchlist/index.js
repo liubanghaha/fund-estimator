@@ -262,13 +262,18 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         wx.showLoading({ title: "删除中..." });
-        let count = 0;
-        for (const code of codes) {
-          try {
-            await api.watchlistRemove(code);
-            count++;
-          } catch (e) { /* ignore */ }
-        }
+        // 写操作限并发 3，避免 N 条串行云函数调用拖慢批量删除
+        const CONCURRENT = 3;
+        let count = 0, idx = 0;
+        const workers = [];
+        const run = async () => {
+          while (idx < codes.length) {
+            const code = codes[idx++];
+            try { await api.watchlistRemove(code); count++; } catch (e) { /* ignore */ }
+          }
+        };
+        for (let i = 0; i < Math.min(CONCURRENT, codes.length); i++) workers.push(run());
+        await Promise.all(workers);
         wx.hideLoading();
         wx.showToast({ title: `已删除 ${count} 个`, icon: "success" });
         this.setData({ batchMode: false, checkedMap: {} });
@@ -560,13 +565,12 @@ Page({
 
   async fetchWatchlist() {
     try {
+      // holdingList 与 list/groups 无依赖，三路并行（原串行多一轮 RTT）
       const [listRes, groupsRes] = await Promise.all([
         api.watchlistList(),
         api.watchlistGetGroups().catch(() => ({ result: { code: 0, data: [] } })),
+        this._fetchHoldingCodes().catch(() => {}),
       ]);
-
-      // 先拉取持仓代码，再算分组数量（否则「持有」显示不准）
-      await this._fetchHoldingCodes().catch(() => {});
 
       // 处理分组列表（合并服务端 + 本地缓存）
       let serverGroups = [];

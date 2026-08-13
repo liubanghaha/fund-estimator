@@ -350,7 +350,13 @@ Page({
       this.setData({ refresherTriggered: false });
       return;
     }
-    this._lastFetch = Date.now();
+    // 5s 防抖：scroll-view refresher 可被快速连续触发，避免连发请求
+    const now = Date.now();
+    if (this._lastFetch && now - this._lastFetch < 5000) {
+      this.setData({ refresherTriggered: false });
+      return;
+    }
+    this._lastFetch = now;
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
     });
@@ -644,13 +650,18 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         wx.showLoading({ title: "删除中..." });
-        let done = 0;
-        for (const h of selected) {
-          try {
-            await api.holdingRemove(h._id);
-            done++;
-          } catch (e) { /* ignore */ }
-        }
+        // 写操作限并发 3，避免 N 条串行云函数调用拖慢批量删除
+        const CONCURRENT = 3;
+        let done = 0, idx = 0;
+        const workers = [];
+        const run = async () => {
+          while (idx < selected.length) {
+            const h = selected[idx++];
+            try { await api.holdingRemove(h._id); done++; } catch (e) { /* ignore */ }
+          }
+        };
+        for (let i = 0; i < Math.min(CONCURRENT, selected.length); i++) workers.push(run());
+        await Promise.all(workers);
         wx.hideLoading();
         wx.showToast({ title: `已删除 ${done} 个`, icon: "success" });
         this.setData({ batchMode: false });

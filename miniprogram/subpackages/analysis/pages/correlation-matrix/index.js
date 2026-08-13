@@ -139,8 +139,7 @@ Page({
 
   onToggleSharedStock(e) {
     const idx = e.currentTarget.dataset.index;
-    const stocks = this.data.sharedStocks;
-    stocks[idx]._open = !stocks[idx]._open;
-    this.setData({ sharedStocks: stocks });
+    // 不直接 mutate data（保持不可变，用 setData 路径更新单字段）
+    this.setData({ [`sharedStocks[${idx}]._open`]: !this.data.sharedStocks[idx]._open });
   },
 });

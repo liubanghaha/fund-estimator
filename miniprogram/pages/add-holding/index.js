@@ -172,13 +172,22 @@ Page({
   async autoMatchCodes(funds) {
     const codesToSearch = funds.filter((f) => !f.fundCode && f.fundName && f.fundName !== "未知基金");
     if (codesToSearch.length === 0) return;
-    for (const f of codesToSearch) {
-      try {
-        f.fundCode = await this.searchFundCode(f.fundName);
-      } catch (e) {
-        // 搜索失败不阻塞流程
+    // 限并发 4：OCR 多基金时串行（每只最多 3 次搜索）会拖到数十秒
+    const CONCURRENT = 4;
+    let idx = 0;
+    const workers = [];
+    const run = async () => {
+      while (idx < codesToSearch.length) {
+        const f = codesToSearch[idx++];
+        try {
+          f.fundCode = await this.searchFundCode(f.fundName);
+        } catch (e) {
+          // 搜索失败不阻塞流程
+        }
       }
-    }
+    };
+    for (let w = 0; w < Math.min(CONCURRENT, codesToSearch.length); w++) workers.push(run());
+    await Promise.all(workers);
     this.setData({ ocrFunds: funds });
   },
 

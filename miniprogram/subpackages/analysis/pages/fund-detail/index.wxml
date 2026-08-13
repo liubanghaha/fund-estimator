@@ -137,7 +137,7 @@
       </view>
       <view wx:if="{{navHistory.length > 0}}" class="info-card">
         <view class="section-title">历史净值</view>
-        <view wx:for="{{navHistory}}" wx:key="date" wx:if="{{index < 10 || showAllHistory}}" class="history-row">
+        <view wx:for="{{displayHistory}}" wx:key="date" class="history-row">
           <view class="h-date">{{item.date}}</view>
           <view class="h-nav">{{item.nav}}</view>
           <view class="h-change {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.changeRate > 0 ? '+' : ''}}{{item.changeRate}}%</view>
