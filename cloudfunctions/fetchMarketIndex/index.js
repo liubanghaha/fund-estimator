@@ -106,46 +106,36 @@ const HK_EM_REALTIME = { "HSTECH": "124.HSTECH", "HSI": "124.HSI" };
 const HK_TENCENT = { "HSTECH": "hkHSTECH", "HSI": "hkHSI" };
 
 async function fetchHKIndexData(code, days) {
-  // 1) 腾讯实时行情（最可靠，已验证）
-  const tencentRealtime = await fetchTencentRealtime(HK_TENCENT[code]);
-  if (tencentRealtime && tencentRealtime.length > 0) return tencentRealtime;
-
-  // 2) 东方财富实时行情
-  const emRealtime = await fetchEastMoneyRealtime(HK_EM_REALTIME[code]);
-  if (emRealtime && emRealtime.length > 0) return emRealtime;
-
-  // 3) 新浪实时行情（港股指数通常无数据）
-  const sinaQuote = await fetchSinaJSQuote(HK_SINA_SYMBOLS[code]);
-  if (sinaQuote && sinaQuote.length > 0) return sinaQuote;
-
-  // 4) 腾讯财经港股 K 线
-  const tencentKline = await fetchTencentHKKline(HK_TENCENT[code], days);
-  if (tencentKline && tencentKline.length > 0) return tencentKline;
-
-  // 5) 东方财富全球 K 线
-  const emKline = await fetchEastMoneyGlobalKline(HK_EM_SECIDS[code], days);
-  if (emKline && emKline.length > 0) return emKline;
-
-  // 6) 新浪港股 K 线
-  const sinaKline = await fetchSinaHKKline(code, days);
-  if (sinaKline && sinaKline.length > 0) return sinaKline;
-
-  // 7) Yahoo 兜底
-  return (await fetchYahooKline(code, days)) || [];
+  // 数据源并行竞速（按可靠性排序取首个有数据的），
+  // 原 7 级串行最坏 7×8s=56s，15s 超时下兜底链形同虚设
+  const settled = await Promise.allSettled([
+    fetchTencentRealtime(HK_TENCENT[code]),            // 1) 腾讯实时（最可靠）
+    fetchEastMoneyRealtime(HK_EM_REALTIME[code]),      // 2) 东方财富实时
+    fetchSinaJSQuote(HK_SINA_SYMBOLS[code]),           // 3) 新浪实时
+    fetchTencentHKKline(HK_TENCENT[code], days),       // 4) 腾讯 K 线
+    fetchEastMoneyGlobalKline(HK_EM_SECIDS[code], days), // 5) 东财全球 K 线
+    fetchSinaHKKline(code, days),                      // 6) 新浪 K 线
+    fetchYahooKline(code, days),                       // 7) Yahoo 兜底
+  ]);
+  for (const r of settled) {
+    if (r.status === "fulfilled" && r.value && r.value.length > 0) return r.value;
+  }
+  return [];
 }
 
 // ========== 美股指数 ==========
 
 async function fetchUSIndexData(code, days) {
-  // 新浪实时行情（主力源）
-  const sinaQuote = await fetchSinaUSQuote(US_SINA_SYMBOLS[code]);
-  if (sinaQuote && sinaQuote.length > 0) return sinaQuote;
-
-  // K 线兜底
-  const tencentKline = await fetchTencentHKKline(US_SINA_SYMBOLS[code], days);
-  if (tencentKline && tencentKline.length > 0) return tencentKline;
-
-  return (await fetchYahooKline(code, days)) || [];
+  // 并行竞速（原 3 级串行，超时下兜底走不到）
+  const settled = await Promise.allSettled([
+    fetchSinaUSQuote(US_SINA_SYMBOLS[code]),          // 新浪实时（主力源）
+    fetchTencentHKKline(US_SINA_SYMBOLS[code], days), // 腾讯 K 线
+    fetchYahooKline(code, days),                      // Yahoo 兜底
+  ]);
+  for (const r of settled) {
+    if (r.status === "fulfilled" && r.value && r.value.length > 0) return r.value;
+  }
+  return [];
 }
 
 function fetchSinaUSQuote(symbol) {

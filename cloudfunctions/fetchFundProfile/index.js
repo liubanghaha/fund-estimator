@@ -73,9 +73,15 @@ exports.main = async (event) => {
     // 提取前 10 持仓（排除带 * 的非固定持仓）
     const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
 
+    // 云函数内批量拉取股票实时行情（避开客户端 6 连接限制，港股也能显示涨跌）
+    let stockQuotes = {};
+    try {
+      stockQuotes = await fetchStockQuotes(top10);
+    } catch (e) { /* 行情失败不阻塞主流程 */ }
+
     const enrichedHoldings = top10.map(h => ({
       ...h,
-      stockChangeRate: null,
+      stockChangeRate: stockQuotes[h.stockCode] != null ? stockQuotes[h.stockCode] : null,
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 

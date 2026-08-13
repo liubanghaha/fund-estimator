@@ -50,7 +50,7 @@
 
 /* 正负号切换 */
 .signed-input{display:flex;align-items:center;gap:12rpx;flex:1;justify-content:flex-end}
-.sign-toggle{width:28rpx;height:28rpx;line-height:28rpx;text-align:center;font-size:18rpx;font-weight:600;color:#FFF;background:var(--primary);border-radius:14rpx;flex-shrink:0}
+.sign-toggle{width:64rpx;height:64rpx;line-height:64rpx;text-align:center;font-size:32rpx;font-weight:600;color:#FFF;background:var(--primary);border-radius:32rpx;flex-shrink:0}
 .sign-toggle.minus{background:#2E8B57}
 .signed-val{flex:1}
 

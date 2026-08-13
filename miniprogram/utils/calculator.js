@@ -42,6 +42,16 @@ const calculator = {
     return v > 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`;
   },
 
+  // 金额千分位格式化：1234567.89 → "1,234,567.89"；保留 2 位小数
+  formatMoney(value, withSign = false) {
+    const v = parseFloat(value);
+    if (isNaN(v)) return "--";
+    const sign = withSign && v > 0 ? "+" : "";
+    const [int, dec] = Math.abs(v).toFixed(2).split(".");
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return sign + (v < 0 ? "-" : "") + grouped + "." + dec;
+  },
+
   // 最大回撤：返回最大回撤率(%)、峰值日期、谷底日期、距峰值的当前回撤
   calcMaxDrawdown(history) {
     if (!history || history.length < 5) return { drawdown: null, peakDate: null, troughDate: null, currentDrawdown: null };

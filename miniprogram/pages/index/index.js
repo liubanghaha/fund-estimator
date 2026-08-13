@@ -357,6 +357,7 @@ Page({
       return;
     }
     this._lastFetch = now;
+    this.setData({ refresherTriggered: true });
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
     });
@@ -460,8 +461,10 @@ Page({
       return;
     }
     const FETCH_TIMEOUT = 3000;
+    const HK_FETCH_TIMEOUT = 8000; // 港股走云函数多源并行竞速，放宽到 8s
     const A_CODES = ["000001", "399001", "000300", "399006"];
     const fetchOne = async (idx) => {
+      const isHK = !A_CODES.includes(idx.code);
       if (A_CODES.includes(idx.code)) {
         const clientRes = await Promise.race([
           api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
@@ -473,7 +476,7 @@ Page({
       }
       const res = await Promise.race([
         api.fetchMarketIndex(idx.code, 2).catch(() => null),
-        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+        new Promise((r) => setTimeout(() => r(null), isHK ? HK_FETCH_TIMEOUT : FETCH_TIMEOUT)),
       ]);
       return (res && res.result && res.result.code === 0 && res.result.data) || [];
     };

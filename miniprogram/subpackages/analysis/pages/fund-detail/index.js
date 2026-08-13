@@ -369,16 +369,19 @@ Page({
         const exited = res.result.data.exited || [];
         this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
 
-        // 后台拉取股票行情，不阻塞渲染
-        this._fetchStockQuotes(holdings).then(quotes => {
-          if (!Object.keys(quotes).length) return;
-          const updated = holdings.map(h => ({
-            ...h,
-            stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
-            isHK: h.stockCode && h.stockCode.length === 5,
-          }));
-          this.setData({ holdings: updated });
-        });
+        // 后台拉取股票行情（仅补云函数未返回的），不阻塞渲染
+        const missingQuotes = holdings.filter(h => h.stockChangeRate == null);
+        if (missingQuotes.length > 0) {
+          this._fetchStockQuotes(missingQuotes).then(quotes => {
+            if (!Object.keys(quotes).length) return;
+            const updated = holdings.map(h => ({
+              ...h,
+              stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
+              isHK: h.stockCode && h.stockCode.length === 5,
+            }));
+            this.setData({ holdings: updated });
+          });
+        }
       }
     } catch (e) { console.error("获取基金档案失败:", e); }
   },
@@ -741,6 +744,12 @@ Page({
     this.fetchAll().finally(() => wx.stopPullDownRefresh());
   },
   onScrollRefresh() {
+    // 防重入：已有 fetch 进行中直接收回动画，避免双刷
+    if (this._fetchingAll) {
+      this.setData({ scrollRefreshing: false });
+      return;
+    }
+    this.setData({ scrollRefreshing: true });
     this.fetchAll().finally(() => {
       this.setData({ scrollRefreshing: false });
     });

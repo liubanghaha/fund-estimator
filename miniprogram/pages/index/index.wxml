@@ -1,3 +1,16 @@
+<wxs module="fmt">
+  // 金额千分位：1234567.89 → "1,234,567.89"（保留 2 位）
+  function money(v, withSign) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return "--";
+    var sign = withSign && n > 0 ? "+" : "";
+    var neg = n < 0 ? "-" : "";
+    var s = Math.abs(n).toFixed(2).split(".");
+    var int = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return sign + neg + int + "." + s[1];
+  }
+  module.exports = { money: money };
+</wxs>
 <view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}" style="height: {{pageHeight}}px">
   <scroll-view
     scroll-y
@@ -44,14 +57,14 @@
           <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
           <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
           <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
-            {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? '+' : '') + groupSummary.todayProfit : (todayProfit > 0 ? '+' : '') + todayProfit) : '****'}}
+            {{amountVisible ? (groupSummary ? fmt.money(groupSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
           </view>
           <view class="asset-sub">
             <text>涨幅 {{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text>
             <text class="asset-divider">|</text>
-            <text>市值 {{amountVisible ? (groupSummary ? groupSummary.totalAmount : totalAmount) : '****'}}</text>
+            <text>市值 {{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text>
             <text class="asset-divider">|</text>
-            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? '+' : '') + groupSummary.totalReturn : (totalReturn > 0 ? '+' : '') + totalReturn) : '****'}}</text>
+            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text>
           </view>
         </view>
 
@@ -136,11 +149,11 @@
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
                     <view class="t-val {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">{{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.todayProfit > 0 ? '+' : '') + item.todayProfit : '****'}}</view>
+                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'totalReturn'}}">
                     <view class="t-val {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">{{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? (item.totalReturn > 0 ? '+' : '') + item.totalReturn : '****'}}</view>
+                    <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? fmt.money(item.totalReturn, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
                     <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>

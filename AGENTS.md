@@ -91,7 +91,7 @@
 - `profit_snapshots`：盘中收益快照
 
 ### 已配置 API 白名单
-`api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。不在白名单里的优先走客户端 `wx.request`。
+`api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。客户端 `wx.request` 只能访问白名单域名；不在白名单里的接口走云函数（云函数无域名限制）。
 
 ### 部署
 - 云函数：`cloudbase fn deploy --all --force`
