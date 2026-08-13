@@ -73,15 +73,17 @@ exports.main = async (event) => {
     // 提取前 10 持仓（排除带 * 的非固定持仓）
     const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
 
-    // 云函数内批量拉取股票实时行情（避开客户端 6 连接限制，港股也能显示涨跌）
+    // 云函数内批量拉取股票实时行情（腾讯批量接口，1 个 HTTP，避开客户端 6 连接限制）
     let stockQuotes = {};
     try {
-      stockQuotes = await fetchStockQuotes(top10);
+      const q = await fd.fetchStockPricesTencent(top10.map(h => h.stockCode).filter(Boolean));
+      stockQuotes = q; // { [code]: { price, prevClose, changeRate } }
     } catch (e) { /* 行情失败不阻塞主流程 */ }
 
     const enrichedHoldings = top10.map(h => ({
       ...h,
-      stockChangeRate: stockQuotes[h.stockCode] != null ? stockQuotes[h.stockCode] : null,
+      stockChangeRate: stockQuotes[h.stockCode] && stockQuotes[h.stockCode].changeRate != null
+        ? stockQuotes[h.stockCode].changeRate : null,
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 
@@ -208,51 +210,6 @@ function fetchHoldings(fundCode, year, month) {
     req.setTimeout(8000, () => { req.destroy(); resolve({ holdings: [], reportMonth: null, ok: false }); });
     req.on("error", () => resolve({ holdings: [], reportMonth: null, ok: false }));
   });
-}
-
-/**
- * 服务端批量拉取股票实时行情，避开客户端 6 连接限制
- */
-async function fetchStockQuotes(holdings) {
-  const https = require("https");
-  const map = {};
-
-  const tasks = holdings.map(h => {
-    const code = h.stockCode;
-    let secid;
-    if (code.length === 6) {
-      secid = (code.startsWith("6") ? "1." : "0.") + code;
-    } else if (code.length === 5) {
-      secid = "116." + code; // 港股
-    } else {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      const url = `https://push2his.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f170`;
-      const req = https.get(url, {
-        headers: {
-          Referer: "https://quote.eastmoney.com/",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      }, (res) => {
-        let body = "";
-        res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const d = (JSON.parse(body).data) || {};
-            map[code] = d.f170 != null ? +(d.f170 / 100).toFixed(2) : null;
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
-      });
-      req.setTimeout(5000, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
-    });
-  });
-
-  await Promise.all(tasks);
-  return map;
 }
 
 /**

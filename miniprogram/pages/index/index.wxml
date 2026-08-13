@@ -1,13 +1,20 @@
 <wxs module="fmt">
-  // 金额千分位：1234567.89 → "1,234,567.89"（保留 2 位）
+  // 金额千分位：1234567.89 → "1,234,567.89"（保留 2 位；WXS 不支持正则字面量，用循环）
   function money(v, withSign) {
     var n = parseFloat(v);
     if (isNaN(n)) return "--";
     var sign = withSign && n > 0 ? "+" : "";
     var neg = n < 0 ? "-" : "";
     var s = Math.abs(n).toFixed(2).split(".");
-    var int = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return sign + neg + int + "." + s[1];
+    var intPart = s[0];
+    var grouped = "";
+    var count = 0;
+    for (var i = intPart.length - 1; i >= 0; i--) {
+      grouped = intPart[i] + grouped;
+      count++;
+      if (count % 3 === 0 && i > 0) grouped = "," + grouped;
+    }
+    return sign + neg + grouped + "." + s[1];
   }
   module.exports = { money: money };
 </wxs>
