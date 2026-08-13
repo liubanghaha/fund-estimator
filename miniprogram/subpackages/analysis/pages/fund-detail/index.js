@@ -143,6 +143,7 @@ Page({
             this.setData({
               navHistory: d.history,
               displayHistory: d.history.slice(0, 10),
+              showAllHistory: false,
               actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
               actualDate: d.history[0].date,
               actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
@@ -199,6 +200,7 @@ Page({
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
         displayHistory: (cached.history || []).slice(0, 10),
+        showAllHistory: false,
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cached.holdingData || null,
       }, () => {
@@ -344,6 +346,7 @@ Page({
           this.setData({
             navHistory: history,
             displayHistory: history.slice(0, 10),
+            showAllHistory: false,
             actualNav: this.data.actualNav || (history[0].nav != null ? history[0].nav.toFixed(4) : ""),
             actualDate: history[0].date,
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),

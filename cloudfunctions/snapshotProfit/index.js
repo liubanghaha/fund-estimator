@@ -161,9 +161,11 @@ async function buildGlobalFundRates(fundCodes, startTime) {
         try {
           const h = await fd.fetchTempHoldings(code);
           if (h && h.length > 0) {
-            await db.collection("fund_holdings_cache").add({
-              data: { fundCode: code, date: today, holdings: h }
-            }).catch(() => {});
+            // _id=fundCode_date 幂等 upsert，避免并发重复 add 累积垃圾文档
+            await db.collection("fund_holdings_cache")
+              .doc(`${code}_${today}`)
+              .set({ data: { fundCode: code, date: today, holdings: h } })
+              .catch(() => {});
           }
           return { code, holdings: h, ok: h && h.length > 0 };
         } catch (e) { return { code, holdings: [], ok: false }; }
@@ -231,7 +233,11 @@ async function loadNavMap(fundCodes, startTime) {
           const em = await fd.fetchLatestNavEastMoney(code);
           const nav = em.actualNav || em.yesterdayNav;
           if (nav && nav > 0) {
-            await db.collection("fund_navs").add({ data: { fundCode: code, date: today, yesterdayNav: nav } }).catch(() => {});
+            // _id=fundCode_date 幂等 upsert
+            await db.collection("fund_navs")
+              .doc(`${code}_${today}`)
+              .set({ data: { fundCode: code, date: today, yesterdayNav: nav } })
+              .catch(() => {});
             return { code, nav };
           }
         } catch (e) { /* ignore */ }

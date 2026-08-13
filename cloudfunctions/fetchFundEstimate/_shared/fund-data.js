@@ -253,10 +253,11 @@ function fetchLatestNavEastMoney(fundCode, opts = {}) {
 
 /**
  * 历史净值（分页并发拉取，页序从新到旧）
- * perPage 用东方财富上限 100，天数钳制 600（防止 days 参数被滥用为外部 API DoS）
+ * 注意：东财 lsjz 接口固定每页 20 条（实测 pageSize 任意值均被忽略），
+ * 页数 = ceil(need/20)；天数钳制 600（防止 days 参数被滥用为外部 API DoS）
  */
 function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
-  const { perPage = 100, timeoutMs = 8000 } = opts;
+  const { perPage = 20, timeoutMs = 8000 } = opts;
   const need = Math.max(1, Math.min(600, totalNeeded || 0));
   const pages = Math.max(1, Math.ceil(need / perPage));
 

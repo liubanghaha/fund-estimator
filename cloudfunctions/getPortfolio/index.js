@@ -47,9 +47,16 @@ exports.main = async (event) => {
       const batchResults = await Promise.all(batch.map(async (h) => {
         try {
           const tiantian = tiantianMap[h.fundCode] || {};
-          const eastmoney = await fd.fetchLatestNavEastMoney(h.fundCode);
-          let navHistoryAll = [];
-          if (needDays > 0) navHistoryAll = await fd.fetchNAVHistory(h.fundCode, needDays);
+          // 净值与历史净值并行拉取（needDays=0 时只取净值，避免串行翻倍耗时）
+          let eastmoney, navHistoryAll = [];
+          if (needDays > 0) {
+            [eastmoney, navHistoryAll] = await Promise.all([
+              fd.fetchLatestNavEastMoney(h.fundCode),
+              fd.fetchNAVHistory(h.fundCode, needDays),
+            ]);
+          } else {
+            eastmoney = await fd.fetchLatestNavEastMoney(h.fundCode);
+          }
           return {
             h, tiantian,
             eastmoney,
@@ -360,6 +367,8 @@ exports.main = async (event) => {
               await db.collection("profit_snapshots").doc(_doc.data[0]._id).update({
                 data: { points: _.push({ time: _time, rate: _rate }) },
               });
+              // update 分支同样同步本地数组，本次响应带上最新点
+              if (!intradaySnapshots.some(p => p.time === _time)) intradaySnapshots.push({ time: _time, rate: _rate });
             }
           } else {
             await db.collection("profit_snapshots").add({
@@ -461,8 +470,10 @@ async function computeSelfEstimates(codes, startTime) {
           try {
             const h = await fd.fetchTempHoldings(code);
             if (h && h.length > 0) {
+              // _id=fundCode_date 幂等 upsert，避免并发重复 add 累积垃圾文档
               await db.collection("fund_holdings_cache")
-                .add({ data: { fundCode: code, date: today, holdings: h } })
+                .doc(`${code}_${today}`)
+                .set({ data: { fundCode: code, date: today, holdings: h } })
                 .catch(() => {});
             }
             return { code, holdings: h, ok: h && h.length > 0 };
@@ -478,14 +489,17 @@ async function computeSelfEstimates(codes, startTime) {
       if (fetched > 0) console.log(`[computeSelfEstimates] 实时兜底拉取持仓 ${fetched} 只，仍缺 ${codes.length - known.size} 只 t=${el()}ms`);
     }
 
-    // 2. 全量股票行情只拉一次（所有基金持仓股并集）
+    // 2. 全量股票行情只拉一次（所有基金持仓股并集，限预算；超预算则跳过估算，走 position/精确模式兜底）
     const stockSet = new Set();
     for (const holdings of Object.values(holdingsMap)) {
       holdings.forEach(h => {
         if (h.stockCode && h.stockCode.length >= 4) stockSet.add(h.stockCode);
       });
     }
-    const stockPriceMap = stockSet.size > 0 ? await fd.fetchStockPricesTencent([...stockSet]) : {};
+    let stockPriceMap = {};
+    if (el() < 60000 && stockSet.size > 0) {
+      stockPriceMap = await fd.fetchStockPricesTencent([...stockSet]);
+    }
 
     // 3. 逐基金计算加权涨跌
     const timeStr = fd.formatBJTime();

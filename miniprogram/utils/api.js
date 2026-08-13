@@ -24,21 +24,32 @@ const api = {
     if (isReadOnly && this._pending[key] && now - (this._pendingTs[key] || 0) < 5000) {
       return this._pending[key];
     }
-    // 统一超时：慢请求不长期占用槽位（云函数调用无内置 timeout 选项）
-    const CALL_TIMEOUT = 15000;
+    // 写操作（非只读）不缓存且超时放宽到 30s（避免慢写被误判超时后用户重试造成重复写入）
+    const CALL_TIMEOUT = isReadOnly ? 15000 : 30000;
     const p = Promise.race([
       wx.cloud.callFunction({ name, data }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("云函数超时: " + name)), CALL_TIMEOUT)),
     ]);
-    this._pending[key] = p;
-    this._pendingTs[key] = now;
-    // 5s 窗口后清理；窗口期内请求已完成也保留 resolved Promise，供短时间重复调用复用
-    setTimeout(() => {
-      if (this._pending[key] === p) {
-        delete this._pending[key];
-        delete this._pendingTs[key];
-      }
-    }, 5000);
+    if (isReadOnly) {
+      this._pending[key] = p;
+      this._pendingTs[key] = now;
+      // 失败/超时的请求不缓存（否则 5s 内点击重试会拿到同一 rejected promise 必失败）
+      p.catch(() => {
+        if (this._pending[key] === p) {
+          delete this._pending[key];
+          delete this._pendingTs[key];
+        }
+      });
+      setTimeout(() => {
+        if (this._pending[key] === p) {
+          delete this._pending[key];
+          delete this._pendingTs[key];
+        }
+      }, 5000);
+    } else {
+      // 写操作完成后清空读缓存（如删除持仓后立即刷新，避免命中旧 getPortfolio 缓存导致已删项回弹）
+      p.then(() => { this._pending = {}; this._pendingTs = {}; });
+    }
     return p;
   },
   searchFund(keyword) {

@@ -350,9 +350,12 @@ Page({
       this.setData({ refresherTriggered: false });
       return;
     }
+    // 消费 _autoPull 标记（onShow 自动刷新可能通过 scroll-view 触发），避免残留绕过防抖
+    const isAuto = this._autoPull;
+    this._autoPull = false;
     // 5s 防抖：scroll-view refresher 可被快速连续触发，避免连发请求
     const now = Date.now();
-    if (this._lastFetch && now - this._lastFetch < 5000) {
+    if (!isAuto && this._lastFetch && now - this._lastFetch < 5000) {
       this.setData({ refresherTriggered: false });
       return;
     }

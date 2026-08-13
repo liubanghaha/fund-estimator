@@ -173,7 +173,9 @@ function fetchHoldings(fundCode, year, month) {
       res.on("end", () => {
         try {
           const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve({ holdings: [], reportMonth: null, ok: false }); return; }
+          // content 未匹配 = 该季度确实无持仓数据（新基金/无季报），不算拉取失败；
+          // 拉取失败仅指无匹配/超时/网络错误（走下方 catch/超时分支）
+          if (!match) { resolve({ holdings: [], reportMonth: null, ok: true }); return; }
           const html = match[1].replace(/\\"/g, '"');
           // 解析实际报告截止日期（e.g. "2025-12-31" → year=2025, month=12）
           const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
@@ -203,7 +205,7 @@ function fetchHoldings(fundCode, year, month) {
               });
             }
           }
-          resolve({ holdings: rows, reportYear, reportMonth, ok: rows.length > 0 });
+          resolve({ holdings: rows, reportYear, reportMonth, ok: true });
         } catch (e) { resolve({ holdings: [], reportMonth: null, ok: false }); }
       });
     });

@@ -61,6 +61,11 @@ Page({
     });
     // 历史净值只用于绘图，存实例变量避免 260 点全量进 data
     this._histA = d.history || [];
+    // 若用户已选 fundB（fundA 晚到），补一次图表构建
+    if (this.data.fundB && this.data.fundB.code) {
+      this.buildComparison();
+      this.drawChart();
+    }
     } catch (e) {
       this.setData({ loading: false, loadError: true });
     }

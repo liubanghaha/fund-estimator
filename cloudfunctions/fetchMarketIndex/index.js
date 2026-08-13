@@ -106,19 +106,24 @@ const HK_EM_REALTIME = { "HSTECH": "124.HSTECH", "HSI": "124.HSI" };
 const HK_TENCENT = { "HSTECH": "hkHSTECH", "HSI": "hkHSI" };
 
 async function fetchHKIndexData(code, days) {
-  // 数据源并行竞速（按可靠性排序取首个有数据的），
-  // 原 7 级串行最坏 7×8s=56s，15s 超时下兜底链形同虚设
-  const settled = await Promise.allSettled([
-    fetchTencentRealtime(HK_TENCENT[code]),            // 1) 腾讯实时（最可靠）
-    fetchEastMoneyRealtime(HK_EM_REALTIME[code]),      // 2) 东方财富实时
-    fetchSinaJSQuote(HK_SINA_SYMBOLS[code]),           // 3) 新浪实时
-    fetchTencentHKKline(HK_TENCENT[code], days),       // 4) 腾讯 K 线
-    fetchEastMoneyGlobalKline(HK_EM_SECIDS[code], days), // 5) 东财全球 K 线
-    fetchSinaHKKline(code, days),                      // 6) 新浪 K 线
-    fetchYahooKline(code, days),                       // 7) Yahoo 兜底
-  ]);
-  for (const r of settled) {
-    if (r.status === "fulfilled" && r.value && r.value.length > 0) return r.value;
+  // 数据源并行发起 + 按可靠性优先级依次取首个有数据的。
+  // 慢源（K线/Yahoo，优先级低）额外 3.5s 兜底超时，避免整体被拖到 8-10s
+  const sources = [
+    { fn: () => fetchTencentRealtime(HK_TENCENT[code]), t: 9000 },             // 1) 腾讯实时（最可靠）
+    { fn: () => fetchEastMoneyRealtime(HK_EM_REALTIME[code]), t: 9000 },       // 2) 东方财富实时
+    { fn: () => fetchSinaJSQuote(HK_SINA_SYMBOLS[code]), t: 9000 },            // 3) 新浪实时
+    { fn: () => fetchTencentHKKline(HK_TENCENT[code], days), t: 3500 },        // 4) 腾讯 K 线
+    { fn: () => fetchEastMoneyGlobalKline(HK_EM_SECIDS[code], days), t: 3500 },// 5) 东财全球 K 线
+    { fn: () => fetchSinaHKKline(code, days), t: 3500 },                       // 6) 新浪 K 线
+    { fn: () => fetchYahooKline(code, days), t: 3500 },                        // 7) Yahoo 兜底
+  ];
+  const pending = sources.map((s, i) => Promise.race([
+    s.fn(),
+    new Promise((r) => setTimeout(() => r([]), s.t)),
+  ]).catch(() => []));
+  for (let i = 0; i < pending.length; i++) {
+    const r = await pending[i];
+    if (r && r.length > 0) return r;
   }
   return [];
 }
@@ -126,14 +131,15 @@ async function fetchHKIndexData(code, days) {
 // ========== 美股指数 ==========
 
 async function fetchUSIndexData(code, days) {
-  // 并行竞速（原 3 级串行，超时下兜底走不到）
-  const settled = await Promise.allSettled([
-    fetchSinaUSQuote(US_SINA_SYMBOLS[code]),          // 新浪实时（主力源）
-    fetchTencentHKKline(US_SINA_SYMBOLS[code], days), // 腾讯 K 线
-    fetchYahooKline(code, days),                      // Yahoo 兜底
-  ]);
-  for (const r of settled) {
-    if (r.status === "fulfilled" && r.value && r.value.length > 0) return r.value;
+  // 并行发起 + 按优先级取首个有数据（慢源 Yahoo 3.5s 兜底超时）
+  const pending = [
+    Promise.race([fetchSinaUSQuote(US_SINA_SYMBOLS[code]), new Promise((r) => setTimeout(() => r([]), 9000))]).catch(() => []),
+    Promise.race([fetchTencentHKKline(US_SINA_SYMBOLS[code], days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []),
+    Promise.race([fetchYahooKline(code, days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []),
+  ];
+  for (let i = 0; i < pending.length; i++) {
+    const r = await pending[i];
+    if (r && r.length > 0) return r;
   }
   return [];
 }
