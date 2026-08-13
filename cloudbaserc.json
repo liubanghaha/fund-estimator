@@ -29,7 +29,7 @@
     },
     {
       "name": "getPortfolio",
-      "timeout": 30,
+      "timeout": 60,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
@@ -89,7 +89,7 @@
     },
     {
       "name": "snapshotProfit",
-      "timeout": 30,
+      "timeout": 120,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "concurrency": 1,

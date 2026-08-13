@@ -265,7 +265,12 @@ Page({
     query.select('#compareCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
-      const opts = { ...this._getCompareOpts(), data: chartData };
+      // 用 selector 实测宽度（canvas 实际被 margin/padding 收窄，windowWidth-24 会差约 15%）
+      const rw = res[0].width || this._canvasW || 340;
+      const rh = res[0].height || this._canvasH || 212;
+      this._realW = rw;
+      this._realH = rh;
+      const opts = { ...this._getCompareOpts(), w: rw, h: rh, data: chartData };
       chartUtil.drawDualLineChart(canvas, opts);
       this._compareCanvas = canvas;
       this._compareOpts = opts;
@@ -299,9 +304,11 @@ Page({
     if (this._ctT && now - this._ctT < 60) return;
     this._ctT = now;
 
-    const opts = { ...this._compareOpts || this._getCompareOpts(), data: chartData };
+    const opts = { ...(this._compareOpts || this._getCompareOpts()), data: chartData };
     const dpr = wx.getSystemInfoSync().pixelRatio;
-    const { canvasW: w, canvasH: h } = this.data;
+    // 使用绘制时的实测宽度/高度，保证 canvas 物理尺寸与绘制坐标系一致（触摸坐标才对齐）
+    const w = opts.w || this._realW || this._canvasW || 340;
+    const h = opts.h || this._realH || this._canvasH || 212;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     const ctx = canvas.getContext('2d');

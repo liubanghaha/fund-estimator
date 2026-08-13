@@ -14,7 +14,7 @@ Page({
     navHistory: [],
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
-    profile: null, manager: null, holdings: [], quarterLabel: "",
+    profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
     hasHolding: false, holdingId: null, holdingData: null, followed: false, activeTab: "trend",
     showAllHistory: false,
     isTrading: false,
@@ -358,7 +358,7 @@ Page({
         const holdings = res.result.data.holdings || [];
         // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
         const exited = res.result.data.exited || [];
-        this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
+        this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
 
         // 后台拉取股票行情，不阻塞渲染
         this._fetchStockQuotes(holdings).then(quotes => {
@@ -859,7 +859,7 @@ Page({
       return;
     }
     wx.navigateTo({
-      url: `/pages/fund-compare/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName || "")}`,
+      url: `/subpackages/analysis/pages/fund-compare/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName || "")}`,
       fail: (err) => {
         console.error("跳转对比页失败:", err);
         wx.showToast({ title: err.errMsg || "跳转失败", icon: "none" });

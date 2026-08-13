@@ -122,6 +122,7 @@ Page({
 
   // 首次渲染完成后自动调起下拉刷新动画，让用户感知后台正在更新数据
   onReady() {
+    this._ready = true;
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
       this._autoPull = true;
@@ -167,8 +168,14 @@ Page({
         : (cacheAge > ttl);
       if (needFetch) {
         this._lastFetch = now;
-        // 标记待自动刷新：onReady 后再调起下拉动画（onLoad 时机页面未就绪，动画无效）
-        this._pendingAutoRefresh = true;
+        // 页面已就绪直接调起下拉刷新（二次进入 onShow 时 onReady 不会再触发，标记会白置）
+        if (this._ready) {
+          this._autoPull = true;
+          wx.startPullDownRefresh();
+        } else {
+          // 首次进入：标记待 onReady 后再调起动画（onLoad 时机页面未就绪，动画无效）
+          this._pendingAutoRefresh = true;
+        }
       }
       if (!indexCached) this.fetchIndices();
     } else {

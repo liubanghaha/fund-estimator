@@ -36,7 +36,9 @@ Page({
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
-    this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
+    // 读取主题色（其他页面均读，此处缺失导致恒为蓝色主题）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx, theme });
         this._fromCache();
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
@@ -684,8 +686,14 @@ Page({
     const query = wx.createSelectorQuery();
     query.select('#profitCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
+      // 用 selector 实测宽度（canvas 在 .chart-card 内被 margin/padding 收窄，
+      // 沿用 windowWidth-24 会导致触摸坐标偏移约 10%）
+      const rw = res[0].width || w;
+      const rh = res[0].height || h;
+      this._realW = rw;
+      this._realH = rh;
       chartUtil.drawIntradayChart(res[0].node, {
-        w, h, data,
+        w: rw, h: rh, data,
         labelA: '我的收益', labelB: compareLabel,
       });
     });
@@ -781,7 +789,10 @@ Page({
         if (!res || !res[0] || !res[0].node) return;
         const canvas = res[0].node;
         const dpr = wx.getSystemInfoSync().pixelRatio;
-        canvas.width = this._canvasW * dpr; canvas.height = this._canvasH * dpr;
+        // 用绘制时的实测尺寸，与底图坐标系对齐
+        const rw = this._realW || this._canvasW;
+        const rh = this._realH || this._canvasH;
+        canvas.width = rw * dpr; canvas.height = rh * dpr;
         const ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
         chartUtil._drawIntradayFast(ctx);
@@ -829,11 +840,7 @@ Page({
       canvas.height = d.ch * dpr;
       ctx.scale(dpr, dpr);
 
-      if (isToday) {
-        this._touchIntraday(ctx, d, e.touches[0].x);
-      } else {
-        this._touchHistory(ctx, d, e.touches[0].x);
-      }
+      this._touchHistory(ctx, d, e.touches[0].x);
     });
   },
 

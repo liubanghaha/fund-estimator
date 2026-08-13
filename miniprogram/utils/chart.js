@@ -543,13 +543,15 @@ const chart = {
     const tw = maxLen * 7 + 8;
     const lh = 18;
     const ty = Math.max(p.top + 4, yp(Math.max(va || -999, vb || -999)) - 36);
+    // tooltip 水平钳制在画布内（左缘不越过绘图区、右缘不出画布）
+    const tx = Math.max(p.left, Math.min(w - p.right - tw - 8, cx - tw / 2 - 4));
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(cx - tw / 2 - 4, ty, tw + 8, lines.length * lh + 4);
+    ctx.fillRect(tx, ty, tw + 8, lines.length * lh + 4);
     ctx.fillStyle = '#FFF';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    lines.forEach((l, i) => ctx.fillText(l, cx - tw / 2 + 4, ty + 12 + i * lh));
+    lines.forEach((l, i) => ctx.fillText(l, tx + 4, ty + 12 + i * lh));
   },
 
   _drawFastLine(ctx, d, opts) {

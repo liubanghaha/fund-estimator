@@ -17,11 +17,13 @@ exports.main = async (event) => {
 	      fetchProfile(fundCode),
 	      fetchManager(fundCode),
 	      fetchHoldings(fundCode, curY, curM),
-	      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null })),
+	      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null, ok: false })),
 	      fetchTurnoverRate(fundCode).catch(() => []),
 	    ]);
     let holdings = holdingsData.holdings || [];
     let prevHoldings = prevHoldingsData.holdings || [];
+    // 上期数据拉取失败（而非「上期真的空」）→ 前端显示「上期数据缺失」，避免误报全部新增/退出
+    let prevDataIncomplete = prevHoldingsData.ok === false;
 
     // 根据实际季报日期判断当期数据归属哪个季度
     // 若请求 Q2 但 API 返回 Q1 数据，自动调整对比季度
@@ -33,8 +35,9 @@ exports.main = async (event) => {
       let prevTargetY = actualYear;
       if (prevTargetM <= 0) { prevTargetY = actualYear - 1; prevTargetM = 12; }
       if (prevTargetM !== prevM || prevTargetY !== prevY) {
-        const fallback = await fetchHoldings(fundCode, prevTargetY, prevTargetM).catch(() => ({ holdings: [] }));
+        const fallback = await fetchHoldings(fundCode, prevTargetY, prevTargetM).catch(() => ({ holdings: [], ok: false }));
         prevHoldings = fallback.holdings || [];
+        if (fallback.ok === false) prevDataIncomplete = true;
       }
     }
 
@@ -43,7 +46,11 @@ exports.main = async (event) => {
     prevHoldings.forEach(h => { prevMap[h.stockCode] = h; });
     holdings.forEach(h => {
       const prev = prevMap[h.stockCode];
-      if (prev && prev.navRatio) {
+      if (prevDataIncomplete) {
+        // 上期数据缺失：不推断新增/变动，避免误报
+        h.ratioChange = null;
+        h.changeType = 'unknown';
+      } else if (prev && prev.navRatio) {
         const v = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
         h.ratioChange = isNaN(v) ? null : v;
         h.changeType = v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'hold';
@@ -55,11 +62,13 @@ exports.main = async (event) => {
         h.changeType = 'new';
       }
     });
-    // 上季度有但本季度没有的 → 退出
+    // 上季度有但本季度没有的 → 退出（上期数据缺失时无法判断，不展示）
     const currCodes = new Set(holdings.map(h => h.stockCode));
-    const exited = prevHoldings.filter(h => !currCodes.has(h.stockCode)).map(h => ({
-      ...h, changeType: 'exit', ratioChange: null,
-    }));
+    const exited = !prevDataIncomplete
+      ? prevHoldings.filter(h => !currCodes.has(h.stockCode)).map(h => ({
+          ...h, changeType: 'exit', ratioChange: null,
+        }))
+      : [];
 
     // 提取前 10 持仓（排除带 * 的非固定持仓）
     const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
@@ -79,7 +88,7 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates } };
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, prevDataIncomplete } };
   } catch (e) {
     console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
@@ -156,7 +165,7 @@ function fetchHoldings(fundCode, year, month) {
       res.on("end", () => {
         try {
           const match = body.match(/content:"([^"]+)"/);
-          if (!match) { resolve({ holdings: [], reportMonth: null }); return; }
+          if (!match) { resolve({ holdings: [], reportMonth: null, ok: false }); return; }
           const html = match[1].replace(/\\"/g, '"');
           // 解析实际报告截止日期（e.g. "2025-12-31" → year=2025, month=12）
           const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
@@ -172,7 +181,9 @@ function fetchHoldings(fundCode, year, month) {
             while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
               tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
             }
-            if (tds.length >= 7) {
+            // 列结构只有 7 列或 9 列两种（9 列多出资讯列），其余视为异常行丢弃，
+            // 否则 tds[n-3] 会取错列导致「上季度数据偶发 undefined/异常」
+            if (tds.length === 7 || tds.length === 9) {
               const n = tds.length;
               rows.push({
                 rank: tds[0],
@@ -184,12 +195,12 @@ function fetchHoldings(fundCode, year, month) {
               });
             }
           }
-          resolve({ holdings: rows, reportYear, reportMonth });
-        } catch (e) { resolve({ holdings: [], reportMonth: null }); }
+          resolve({ holdings: rows, reportYear, reportMonth, ok: rows.length > 0 });
+        } catch (e) { resolve({ holdings: [], reportMonth: null, ok: false }); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve({ holdings: [], reportMonth: null }); });
-    req.on("error", () => resolve({ holdings: [], reportMonth: null }));
+    req.setTimeout(8000, () => { req.destroy(); resolve({ holdings: [], reportMonth: null, ok: false }); });
+    req.on("error", () => resolve({ holdings: [], reportMonth: null, ok: false }));
   });
 }
 

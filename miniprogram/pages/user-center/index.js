@@ -36,7 +36,7 @@ Page({
     pages.forEach(p => {
       if (p.setData) p.setData({ theme: next });
     });
-    wx.showToast({ title: "重启小程序后全部生效", icon: "none", duration: 2000 });
+    wx.showToast({ title: "主题已切换", icon: "none", duration: 2000 });
   },
 
   async onLogin() {
