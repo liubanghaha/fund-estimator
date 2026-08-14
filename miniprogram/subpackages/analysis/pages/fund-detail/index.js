@@ -114,45 +114,88 @@ Page({
     this._lastRefresh = Date.now();
     try {
       // 缓存优先：命中即先渲染；缓存新鲜则跳过重请求，仅做轻量校验
+      const cached = this._readCache();
       const fresh = this._skipCache ? false : this._restoreCache();
       this._skipCache = false;
       if (!fresh) {
-        // 概览与 follow/holding/transactions 并行，冷启动 2 RTT → 1
-        const [overviewRes] = await Promise.all([
-          api.fetchFundOverview(this.data.fundCode),
-          this.checkFollow().catch(() => {}),
-          this.checkHolding().catch(() => {}),
-          this.fetchTransactions().catch(() => {}),
-        ]);
-        if (overviewRes.result && overviewRes.result.code === 0) {
-          const d = overviewRes.result.data;
-          const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
-          const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
-          const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
-          const displayCR = calc.selectChangeRate(yesterdayNav, actNavRaw, d.estimatedChangeRate, actualCR);
-          this.setData({
-            nav: d.nav, estimatedNav: d.estimatedNav,
-            estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
-            fundName: this.data.fundName || d.fundName || "",
-            actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
-            actualChangeRate: actualCR,
-            displayChangeRate: displayCR,
-            peTemp: d.peTemp || this.data.peTemp,
-          });
-          if (d.history && d.history.length > 0) {
+        if (cached && cached.history && cached.history.length) {
+          // 已有缓存历史 → 轻量刷新：只拉估值接口（含最新净值/涨跌/温度），
+          // 用最新一天净值合并进缓存历史；不重拉 260 天历史、不拉档案/持仓（季度级静态）
+          const [estRes] = await Promise.all([
+            api.fetchFundEstimate(this.data.fundCode).catch(() => null),
+            this.checkFollow().catch(() => {}),
+            this.checkHolding().catch(() => {}),
+            this.fetchTransactions().catch(() => {}),
+          ]);
+          if (estRes && estRes.result && estRes.result.code === 0) {
+            const e = estRes.result.data;
+            const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
             this.setData({
-              navHistory: d.history,
-              displayHistory: d.history.slice(0, 10),
-              showAllHistory: false,
-              actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
-              actualDate: d.history[0].date,
-              actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
+              nav: e.nav != null ? e.nav : this.data.nav,
+              estimatedNav: e.estimatedNav != null ? e.estimatedNav : this.data.estimatedNav,
+              estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : this.data.estimatedChangeRate,
+              estimateTime: e.estimateTime || this.data.estimateTime,
+              actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
+              actualChangeRate: actualCR,
+              displayChangeRate: calc.selectChangeRate(
+                e.nav != null ? e.nav : this.data.nav,
+                e.actualNav != null ? e.actualNav : parseFloat(this.data.actualNav),
+                e.estimatedChangeRate, actualCR),
+              actualDate: e.actualDate || this.data.actualDate,
+              peTemp: e.peTemp || this.data.peTemp,
             });
-            this.calcReturns(d.history);
+            // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
+            if (e.actualDate && e.actualNav) {
+              const merged = this._mergeHistory(cached.history, [{
+                date: e.actualDate, nav: e.actualNav,
+                changeRate: e.actualChangeRate != null ? e.actualChangeRate : 0,
+              }]);
+              this.setData({
+                navHistory: merged,
+                displayHistory: merged.slice(0, 10),
+                showAllHistory: false,
+              });
+              this.calcReturns(merged);
+            }
           }
-          // 缓存保存移到 fetchAll 末尾（需等 enrichHoldingData 设置持仓数据后）
+        } else {
+          // 首次无缓存历史 → 全量概览（一次拿 260 天历史 + 估值 + 温度；档案/持仓由切 Tab 懒加载）
+          const [overviewRes] = await Promise.all([
+            api.fetchFundOverview(this.data.fundCode),
+            this.checkFollow().catch(() => {}),
+            this.checkHolding().catch(() => {}),
+            this.fetchTransactions().catch(() => {}),
+          ]);
+          if (overviewRes.result && overviewRes.result.code === 0) {
+            const d = overviewRes.result.data;
+            const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
+            const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
+            const actNavRaw = d.actualNav != null ? d.actualNav : parseFloat(this.data.actualNav);
+            const displayCR = calc.selectChangeRate(yesterdayNav, actNavRaw, d.estimatedChangeRate, actualCR);
+            this.setData({
+              nav: d.nav, estimatedNav: d.estimatedNav,
+              estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
+              fundName: this.data.fundName || d.fundName || "",
+              actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
+              actualChangeRate: actualCR,
+              displayChangeRate: displayCR,
+              peTemp: d.peTemp || this.data.peTemp,
+            });
+            if (d.history && d.history.length > 0) {
+              this.setData({
+                navHistory: d.history,
+                displayHistory: d.history.slice(0, 10),
+                showAllHistory: false,
+                actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
+                actualDate: d.history[0].date,
+                actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
+              });
+              this.calcReturns(d.history);
+            }
+            // 缓存保存移到 fetchAll 末尾（需等 enrichHoldingData 设置持仓数据后）
+          }
+          // profile 在切 Tab 时懒加载，但基础数据已就绪
         }
-        // profile 在切 Tab 时懒加载，但基础数据已就绪
       } else {
         await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
       }
@@ -171,6 +214,22 @@ Page({
   },
 
   // ============ 缓存 ============
+
+  // 读缓存（不渲染），供 fetchAll 判断是否有历史可复用
+  _readCache() {
+    try { return wx.getStorageSync(CACHE_PREFIX + this.data.fundCode) || null; }
+    catch (e) { return null; }
+  },
+
+  // 历史合并：新点覆盖旧点（含缓存已有的同日期），按日期倒序（最新在前）
+  _mergeHistory(oldHist, newHist) {
+    const map = {};
+    (oldHist || []).forEach(h => { if (h && h.date) map[h.date] = h; });
+    (newHist || []).forEach(h => {
+      if (h && h.date && h.nav != null && h.nav > 0) map[h.date] = h;
+    });
+    return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
+  },
 
   _isTradingHours() {
     const now = new Date();
