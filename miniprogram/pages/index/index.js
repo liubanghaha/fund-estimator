@@ -120,14 +120,13 @@ Page({
     this.setData({ theme });
   },
 
-  // 首次渲染完成后自动调起下拉刷新动画，让用户感知后台正在更新数据
+  // 首次渲染完成后自动刷新（静默后台拉取，缓存已渲染，不拉起下拉动画）
   onReady() {
     this._ready = true;
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
-      this._autoPull = true;
-      // 延迟等页面完全就绪（onReady 过早调用 startPullDownRefresh 无效）
-      setTimeout(() => wx.startPullDownRefresh(), 500);
+      // 延迟等页面完全就绪（onLoad 时机页面未就绪）
+      setTimeout(() => this._silentRefresh(), 500);
     }
   },
 
@@ -168,12 +167,11 @@ Page({
         : (cacheAge > ttl);
       if (needFetch) {
         this._lastFetch = now;
-        // 页面已就绪直接调起下拉刷新（二次进入 onShow 时 onReady 不会再触发，标记会白置）
+        // 页面已就绪 → 静默后台刷新（缓存已渲染，不再拉起下拉动画，避免打开页面长时间转圈）
         if (this._ready) {
-          this._autoPull = true;
-          wx.startPullDownRefresh();
+          this._silentRefresh();
         } else {
-          // 首次进入：标记待 onReady 后再调起动画（onLoad 时机页面未就绪，动画无效）
+          // 首次进入：标记待 onReady 后再刷新（onLoad 时机页面未就绪）
           this._pendingAutoRefresh = true;
         }
       }
@@ -408,19 +406,25 @@ Page({
   // 下拉刷新：绕过缓存直接拉最新数据，刷新过程有原生动画 + 导航栏 loading 感知
   onPullDownRefresh() {
     const now = Date.now();
-    // 自动触发（startPullDownRefresh）绕过防抖；仅用户连续下拉时 5s 防抖
-    const isAuto = this._autoPull;
-    this._autoPull = false;
-    if (!isAuto && this._lastFetch && now - this._lastFetch < 5000) {
+    // 用户连续下拉时 5s 防抖（自动刷新已改静默，不再走此入口）
+    if (this._lastFetch && now - this._lastFetch < 5000) {
       wx.stopPullDownRefresh();
       return;
     }
     this._lastFetch = now;
     wx.showNavigationBarLoading();
-    this.fetchPortfolio(true).then((ok) => {
+    this.fetchPortfolio(true).finally(() => {
       wx.hideNavigationBarLoading();
       wx.stopPullDownRefresh();
-      wx.showToast({ title: ok ? "已更新" : "刷新失败", icon: "none", duration: 1500 });
+    });
+  },
+
+  // 静默后台刷新：缓存已渲染，后台拉取最新数据完成后更新界面，不显示下拉动画/loading
+  _silentRefresh() {
+    if (this._silentFetching) return;
+    this._silentFetching = true;
+    Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
+      this._silentFetching = false;
     });
   },
 
