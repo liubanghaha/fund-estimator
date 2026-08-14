@@ -14,7 +14,7 @@ const ALL_INDICES = [
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
-const CACHE_TTL = 60000;  // 交易时段缓存有效期 60 秒
+const CACHE_TTL = 30000;  // 交易时段缓存有效期 30 秒（进页面缓存过期即静默后台刷新，数据更新更即时）
 const CACHE_TTL_IDLE = 30 * 60 * 1000;  // 盘外缓存有效期 30 分钟：长时间未进入也能秒开
 
 Page({
