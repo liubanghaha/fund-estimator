@@ -223,8 +223,9 @@ exports.main = async (event) => {
       });
     } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
 
-    // 查询当天收益快照
+    // 查询当天收益快照；非交易日/当天无快照时回退最近一个有快照的交易日（走势图对比完整分时）
     let intradaySnapshots = [];
+    let snapDate = today;
     let snapDebug = {};
     try {
       const snapRes = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
@@ -232,6 +233,28 @@ exports.main = async (event) => {
       if (snapRes.data && snapRes.data.length > 0) {
         intradaySnapshots = snapRes.data[0].points || [];
         snapDebug.points = intradaySnapshots.length;
+      } else {
+        // 非交易时段（周末/节假日）当天无快照 → 回退最近一个有快照的交易日（每天 1 条，limit 60 覆盖 30 天）；
+        // 交易时段缺失不回退，交由下方"快照兜底"写当天新点，避免混合两日曲线
+        const bj = new Date(Date.now() + 8 * 3600000);
+        const bjMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+        const inTradingNow = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && ((bjMin >= 570 && bjMin < 690) || (bjMin >= 780 && bjMin <= 900));
+        if (!inTradingNow) {
+          const start = fd.formatBJDate(new Date(Date.now() - 30 * 86400000));
+          const fbRes = await db.collection("profit_snapshots")
+            .where({ _openid: uid, date: _.gte(start) })
+            .field({ date: true, points: true })
+            .limit(60)
+            .get();
+          const rows = (fbRes.data || []).sort((a, b) => b.date.localeCompare(a.date));
+          const lastRow = rows[0];
+          if (lastRow && lastRow.date < today && lastRow.points && lastRow.points.length > 0) {
+            intradaySnapshots = lastRow.points;
+            snapDate = lastRow.date;
+            snapDebug.fallback = lastRow.date;
+            snapDebug.fallbackPoints = intradaySnapshots.length;
+          }
+        }
       }
     } catch (e) { snapDebug = { error: e.message }; }
 
@@ -392,6 +415,7 @@ exports.main = async (event) => {
         updateTime,
         navHistoryMap: historyDays ? navHistoryMap : undefined,
         intradaySnapshots,
+        snapDate,
         snapDebug,
         assetAllocation,
         healthScore,

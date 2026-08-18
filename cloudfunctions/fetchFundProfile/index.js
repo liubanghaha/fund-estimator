@@ -43,7 +43,7 @@ exports.main = async (event) => {
 
     // 计算持仓变动
     const prevMap = {};
-    prevHoldings.forEach(h => { prevMap[h.stockCode] = h; });
+    prevHoldings.forEach(h => { if (h.stockCode) prevMap[h.stockCode] = h; });
     holdings.forEach(h => {
       const prev = prevMap[h.stockCode];
       if (prevDataIncomplete) {
@@ -70,8 +70,8 @@ exports.main = async (event) => {
         }))
       : [];
 
-    // 提取前 10 持仓（排除带 * 的非固定持仓）
-    const top10 = holdings.filter(h => !h.rank.includes('*')).slice(0, 10);
+    // 提取前 10 持仓（排除带 * 的非固定持仓；rank 缺失时视为异常行跳过）
+    const top10 = holdings.filter(h => h.rank && !h.rank.includes('*')).slice(0, 10);
 
     // 云函数内批量拉取股票实时行情（腾讯批量接口，1 个 HTTP，避开客户端 6 连接限制）
     let stockQuotes = {};
@@ -88,7 +88,7 @@ exports.main = async (event) => {
     }));
 
     // 退出的也传回去（前端按需显示）
-    const enrichedExited = exited.filter(h => !h.rank.includes('*')).map(h => ({
+    const enrichedExited = exited.filter(h => h.rank && !h.rank.includes('*')).map(h => ({
       ...h,
       stockChangeRate: null,
       isHK: h.stockCode && h.stockCode.length === 5,
@@ -181,6 +181,18 @@ function fetchHoldings(fundCode, year, month) {
           const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
           const reportYear = dateMatch ? parseInt(dateMatch[1]) : null;
           const reportMonth = dateMatch ? parseInt(dateMatch[2]) : null;
+          // 表头定位「占净值比例」列：列数随基金类型/季度变化（实测 7/9 列，
+          // 可能 8/10 列），固定 tds[n-3] 在列数变化时会取错列；以表头列名为准
+          const ratioCol = (() => {
+            const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+            if (!thead) return -1;
+            const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
+            for (let i = 0; i < ths.length; i++) {
+              const text = ths[i].replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+              if (text.indexOf("占净值") !== -1) return i;
+            }
+            return -1;
+          })();
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
@@ -191,15 +203,17 @@ function fetchHoldings(fundCode, year, month) {
             while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
               tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
             }
-            // 列结构只有 7 列或 9 列两种（9 列多出资讯列），其余视为异常行丢弃，
-            // 否则 tds[n-3] 会取错列导致「上季度数据偶发 undefined/异常」
-            if (tds.length === 7 || tds.length === 9) {
+            // 列数 7-10 均接受；占比列优先用表头定位，找不到再回退倒数第 3 列
+            if (tds.length >= 7 && tds.length <= 10) {
               const n = tds.length;
+              const col = ratioCol >= 1 && ratioCol < n ? ratioCol : n - 3;
+              const ratioStr = tds[col];
+              const ratio = parseFloat(ratioStr);
               rows.push({
                 rank: tds[0],
                 stockCode: tds[1],
                 stockName: tds[2],
-                navRatio: tds[n - 3],
+                navRatio: isNaN(ratio) ? null : ratio,
                 shares: tds[n - 2],
                 marketValue: tds[n - 1],
               });

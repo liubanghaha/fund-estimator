@@ -57,6 +57,20 @@ function getQuarterParams(date) {
 
 // ---------------- 东方财富基金持仓 ----------------
 
+// 从表头 th 中定位「占净值比例」列索引（列数随基金类型/季度变化：
+// 实测 7 列（无最新价/涨跌幅）与 9 列（有）两种，n-3 恰好都指向占比列，
+// 但列数再变时固定下标会取错列 → 以表头列名为准，找不到时回退 n-3）
+function _findRatioColIndex(html) {
+  const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+  if (!thead) return -1;
+  const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
+  for (let i = 0; i < ths.length; i++) {
+    const text = ths[i].replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+    if (text.indexOf("占净值") !== -1) return i;
+  }
+  return -1;
+}
+
 function _parseHoldingsHtml(body, withMeta) {
   const match = body.match(/content:"([^"]+)"/);
   if (!match) {
@@ -65,6 +79,7 @@ function _parseHoldingsHtml(body, withMeta) {
   const html = match[1].replace(/\\"/g, '"');
   const nameMatch = html.match(/<a title='([^']*)'/);
   const fundName = nameMatch ? nameMatch[1] : "";
+  const ratioCol = _findRatioColIndex(html);
   const rows = [];
   const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
   let trMatch;
@@ -75,10 +90,11 @@ function _parseHoldingsHtml(body, withMeta) {
     while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
       tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
     }
-    if (tds.length >= 7 && !tds[0].includes("*")) {
+    if (tds.length >= 7 && tds.length <= 10 && !tds[0].includes("*")) {
       const n = tds.length;
-      const ratio = parseFloat(tds[n - 3]) || 0;
-      if (ratio > 0) {
+      const col = ratioCol >= 1 && ratioCol < n ? ratioCol : n - 3;
+      const ratio = parseFloat(tds[col]) || 0;
+      if (ratio > 0 && ratio <= 100) {
         rows.push({
           stockCode: tds[1],
           stockName: tds[2],
@@ -218,6 +234,8 @@ function fetchStockPricesTencent(codes, opts = {}) {
 
 /**
  * 最新净值（含昨日净值，供估算兜底）
+ * 东财 lsjz 不收录 968 互认基金（实测 TotalCount:0），空结果时自动兜底
+ * FundMNFInfo 接口（T+1 公布，仅有最新净值+涨跌幅，无昨日净值/盘中估算）
  */
 function fetchLatestNavEastMoney(fundCode, opts = {}) {
   const { pageSize = 2, timeoutMs = 8000 } = opts;
@@ -240,6 +258,47 @@ function fetchLatestNavEastMoney(fundCode, opts = {}) {
             actualDate: today.FSRQ || "",
             actualChangeRate: parseFloat(today.JZZZL) || null,
             yesterdayNav: parseFloat(yesterday.DWJZ) || null,
+          });
+        } catch (e) {
+          resolve({});
+        }
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({}); });
+    req.on("error", () => resolve({}));
+  }).then((r) => {
+    // 东财无数据（968 互认基金等）→ FundMNFInfo 兜底
+    if (r && (r.actualNav == null || r.actualNav <= 0)) {
+      return fetchLatestNavMNF(fundCode, opts);
+    }
+    return r;
+  });
+}
+
+/**
+ * 互认基金（968xxx）最新净值兜底：FundMNFInfo 接口
+ * 返回结构与 fetchLatestNavEastMoney 对齐；T+1 公布、无昨日净值/盘中估算
+ */
+function fetchLatestNavMNF(fundCode, opts = {}) {
+  const { timeoutMs = 8000 } = opts;
+  return new Promise((resolve) => {
+    const req = https.get({
+      hostname: "fundmobapi.eastmoney.com",
+      path: `/FundMNewApi/FundMNFInfo?Fcodes=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`,
+      headers: { Referer: "https://m.fund.eastmoney.com/" },
+    }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const d = (JSON.parse(body).Datas || [])[0] || {};
+          const nav = parseFloat(d.NAV) || null;
+          resolve({
+            actualNav: nav,
+            actualDate: d.PDATE || "",
+            actualChangeRate: d.NAVCHGRT != null ? parseFloat(d.NAVCHGRT) : null,
+            yesterdayNav: null,
+            isMNF: true,
           });
         } catch (e) {
           resolve({});
@@ -313,5 +372,6 @@ module.exports = {
   fetchTempHoldingsDeep,
   fetchStockPricesTencent,
   fetchLatestNavEastMoney,
+  fetchLatestNavMNF,
   fetchNAVHistory,
 };

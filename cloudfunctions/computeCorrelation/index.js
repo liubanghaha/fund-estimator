@@ -24,6 +24,17 @@ async function fetchHoldings(fundCode) {
           const match = body.match(/content:"([^"]+)"/);
           if (!match) { resolve([]); return; }
           const html = match[1].replace(/\\"/g, '"');
+          // 表头定位「占净值比例」列（列数随基金类型/季度变化，固定 n-3 会取错列）
+          const ratioCol = (() => {
+            const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+            if (!thead) return -1;
+            const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
+            for (let i = 0; i < ths.length; i++) {
+              const text = ths[i].replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+              if (text.indexOf("占净值") !== -1) return i;
+            }
+            return -1;
+          })();
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
@@ -34,12 +45,13 @@ async function fetchHoldings(fundCode) {
             while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
               tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
             }
-            if (tds.length >= 7 && !tds[0].includes("*")) {
+            if (tds.length >= 7 && tds.length <= 10 && !tds[0].includes("*")) {
               const n = tds.length;
+              const col = ratioCol >= 1 && ratioCol < n ? ratioCol : n - 3;
               rows.push({
                 stockCode: tds[1],
                 stockName: tds[2],
-                navRatio: parseFloat(tds[n - 3]) || 0,
+                navRatio: parseFloat(tds[col]) || 0,
               });
             }
           }
