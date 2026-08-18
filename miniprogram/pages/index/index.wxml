@@ -155,18 +155,16 @@
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
-                    <view class="t-val {{item.todayChangeRate > 0 ? 'up' : item.todayChangeRate < 0 ? 'down' : ''}}">{{item.todayChangeRate > 0 ? '+' : ''}}{{item.todayChangeRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}</view>
+                    <view class="t-val {{item._crCls}}">{{item._crText}}</view>
+                    <view class="t-sub {{amountVisible ? item._tpCls : ''}}">{{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'totalReturn'}}">
-                    <view class="t-val {{item.totalReturnRate > 0 ? 'up' : item.totalReturnRate < 0 ? 'down' : ''}}">{{item.totalReturnRate > 0 ? '+' : ''}}{{item.totalReturnRate}}%</view>
-                    <view class="t-sub {{amountVisible ? (item.totalReturn > 0 ? 'up' : item.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? fmt.money(item.totalReturn, true) : '****'}}</view>
+                    <view class="t-val {{item._trrCls}}">{{item._trrText}}</view>
+                    <view class="t-sub {{amountVisible ? item._trCls : ''}}">{{amountVisible ? fmt.money(item.totalReturn, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
-                    <view wx:if="{{item.peTemp}}" class="t-val {{item.peTemp.signal === 'low' ? 't-low' : item.peTemp.signal === 'high' ? 't-high' : item.peTemp.signal === 'nodata' ? 't-nodata' : 't-mid'}}">{{item.peTemp.signal === 'low' ? '🟢低估' : item.peTemp.signal === 'high' ? '🔴高估' : item.peTemp.signal === 'nodata' ? '--' : '🟡正常'}}</view>
-                    <view wx:elif="{{item.position != null}}" class="t-val {{item.currentNav < 0.75 ? 't-low' : item.position <= 37 ? 't-low' : item.position >= 63 ? 't-high' : 't-mid'}}">{{item.currentNav < 0.75 ? '🟢低估' : item.position <= 37 ? '🟢低估' : item.position >= 63 ? '🔴高估' : '🟡正常'}}</view>
-                    <view wx:else class="t-val">--</view>
-                    <view wx:if="{{item.peTemp && item.peTemp.signal !== 'nodata'}}" class="t-sub">{{item.peTemp.normPE}}</view>
+                    <view class="t-val {{item._valCls}}">{{item._valText}}</view>
+                    <view wx:if="{{item._peSub}}" class="t-sub">{{item._peSub}}</view>
                   </block>
                 </view>
               </view>

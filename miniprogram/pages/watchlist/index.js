@@ -667,9 +667,49 @@ Page({
         const e = estData[c];
         return (e && e.estimateTime) || best;
       }, "") || this._nowStr();
-      this.setData({ watchlist, updateTime }, () => {
-        this.applyGroupFilter();
-        this.updateGroupCounts();
+      // 合并渲染：displayList + counts 一次算好，一次 setData（原 3 次）
+      const { activeGroup, holdingCodes, checkedMap, sortField, sortOrder, searchKeyword, pinnedCodes } = this.data;
+      let list;
+      if (activeGroup === "all") list = watchlist;
+      else if (activeGroup === "holding") list = watchlist.filter(w => holdingCodes.includes(w.fundCode));
+      else if (activeGroup === "ungrouped") list = watchlist.filter(w => !w.group && !holdingCodes.includes(w.fundCode));
+      else list = watchlist.filter(w => w.group === activeGroup);
+      const kw = searchKeyword.trim().toLowerCase();
+      if (kw) {
+        list = list.filter(w => w.fundName.toLowerCase().includes(kw) || w.fundCode.includes(kw));
+      }
+      if (sortField === "change") {
+        list = [...list].sort((a, b) => {
+          const va = a.displayChangeRate != null ? a.displayChangeRate : -999;
+          const vb = b.displayChangeRate != null ? b.displayChangeRate : -999;
+          return sortOrder === "asc" ? va - vb : vb - va;
+        });
+      } else if (sortField === "name") {
+        list = [...list].sort((a, b) => a.fundName.localeCompare(b.fundName, "zh"));
+      }
+      if (pinnedCodes.length) {
+        const pinned = list.filter(w => pinnedCodes.includes(w.fundCode));
+        const rest = list.filter(w => !pinnedCodes.includes(w.fundCode));
+        list = [...pinned, ...rest];
+      }
+      list = list.map(w => ({ ...w, _checked: !!checkedMap[w.fundCode], _isPinned: pinnedCodes.includes(w.fundCode) }));
+      const counts = { all: watchlist.length, holding: 0, ungrouped: 0 };
+      let up = 0, down = 0, sum = 0, valid = 0;
+      for (const w of watchlist) {
+        if (holdingCodes.includes(w.fundCode)) counts.holding++;
+        if (!w.group && !holdingCodes.includes(w.fundCode)) counts.ungrouped++;
+        if (w.group) counts[w.group] = (counts[w.group] || 0) + 1;
+        if (w.displayChangeRate != null) {
+          sum += w.displayChangeRate;
+          valid++;
+          if (w.displayChangeRate > 0) up++;
+          else if (w.displayChangeRate < 0) down++;
+        }
+      }
+      this.setData({
+        watchlist, updateTime, displayList: list,
+        groupCounts: counts,
+        summary: { avg: valid ? +(sum / valid).toFixed(2) : 0, up, down, total: valid },
       });
     } catch (e) { /* 静默 */ }
   },

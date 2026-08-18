@@ -548,7 +548,13 @@ Page({
     query.select('#navCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
-      const opts = { w, h, ...this._getChartOpts(), data,
+      // 用 selector 实测宽度（canvas 在 .chart-card 内被 margin/padding 收窄，
+      // windowWidth-24 与触摸坐标系不一致会导致指示线错位）
+      const rw = res[0].width || w;
+      const rh = res[0].height || h;
+      this._realChartW = rw;
+      this._realChartH = rh;
+      const opts = { w: rw, h: rh, ...this._getChartOpts(), data,
         padding: { top: 24, right: 24, bottom: 30, left: 52 },
         isReturn: result.isReturn };
       const ctx = chart.drawLineChart(canvas, opts);
@@ -557,7 +563,7 @@ Page({
       const txMap = this.data.chartTxMap || {};
       if (Object.keys(txMap).length > 0) {
         const p = opts.padding;
-        const pw = w - p.left - p.right, ph = h - p.top - p.bottom;
+        const pw = rw - p.left - p.right, ph = rh - p.top - p.bottom;
         const vals = data.map(d => d.value);
         const min = Math.min(...vals), max = Math.max(...vals);
         const range = max - min || 0.01;

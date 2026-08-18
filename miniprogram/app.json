@@ -22,7 +22,7 @@
   "preloadRule": {
     "pages/index/index": {
       "packages": ["subpackages/analysis"],
-      "network": "wifi"
+      "network": "all"
     }
   },
   "window": {

@@ -147,7 +147,12 @@ Page({
       const filtered = ALL_INDICES.filter((idx) => savedCodes.indexOf(idx.code) !== -1);
       if (filtered.length > 0) activeIndices = filtered;
     }
-    this.setData({ activeIndices });
+    // 值没变时不重复 setData（避免 onShow 频繁触发整页重渲染）
+    const curCodes = (this.data.activeIndices || []).map(i => i.code).join(",");
+    const nextCodes = activeIndices.map(i => i.code).join(",");
+    if (curCodes !== nextCodes) {
+      this.setData({ activeIndices });
+    }
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true });
@@ -194,8 +199,23 @@ Page({
         holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
+        // 与 fetchPortfolio 一致的合并渲染：displayHoldings/counts/groups 一次算好
+        const { activeGroup, sortField, sortOrder } = this.data;
+        let displayHoldings;
+        if (activeGroup === "all") displayHoldings = [...holdings];
+        else if (activeGroup === "ungrouped") displayHoldings = holdings.filter(h => !h.group);
+        else displayHoldings = holdings.filter(h => h.group === activeGroup);
+        displayHoldings = this.sortHoldings(displayHoldings, sortField, sortOrder);
+        const counts = { all: holdings.length, ungrouped: 0 };
+        for (const h of holdings) {
+          if (!h.group) counts.ungrouped++;
+          else counts[h.group] = (counts[h.group] || 0) + 1;
+        }
+        // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
+        const groups = this._mergeGroups(cached.groups || []);
+        const groupSummary = this._computeGroupSummary(activeGroup, cached.groups || []);
         this.setData({
-          holdings,
+          holdings, displayHoldings, groupCounts: counts, groups, groupSummary,
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
           todayProfitRate: cached.todayProfitRate,
@@ -209,8 +229,6 @@ Page({
           allGroupsData: cached.groups || [],
           dataReady: true,
         });
-        this.applyGroupFilter();
-        this.updateGroupCounts();
       }
     } catch (e) { /* ignore cache read error */ }
   },
@@ -224,7 +242,7 @@ Page({
         const isTrading = this._isTradingHours();
         const ttl = isTrading ? 30000 : 300000;
         if (Date.now() - ts < ttl) {
-          this.setData({ indexCards: cached.cards, indexBarHeight: 110 });
+          this.setData({ indexCards: cached.cards }, () => this._measureIndexBar());
           return true;
         }
       }
@@ -234,7 +252,7 @@ Page({
       name: idx.name, code: idx.code,
       price: "--", change: "--", changeRate: "--", isUp: true,
     }));
-    this.setData({ indexCards: placeholders, indexBarHeight: 110 });
+    this.setData({ indexCards: placeholders }, () => this._measureIndexBar());
     return false;
   },
 
@@ -374,9 +392,26 @@ Page({
         holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
+        // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
+        // 与主数据合并成一次 setData，避免多次渲染（原 3-4 次 setData）
+        const { activeGroup, sortField, sortOrder } = this.data;
+        let displayHoldings;
+        if (activeGroup === "all") displayHoldings = [...holdings];
+        else if (activeGroup === "ungrouped") displayHoldings = holdings.filter(h => !h.group);
+        else displayHoldings = holdings.filter(h => h.group === activeGroup);
+        displayHoldings = this.sortHoldings(displayHoldings, sortField, sortOrder);
+        const counts = { all: holdings.length, ungrouped: 0 };
+        for (const h of holdings) {
+          if (!h.group) counts.ungrouped++;
+          else counts[h.group] = (counts[h.group] || 0) + 1;
+        }
+        // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
+        const groups = this._mergeGroups(d.groups || []);
+        const groupSummary = this._computeGroupSummary(activeGroup, d.groups || []);
         this.setData({
           loading: false, loadError: false, dataReady: true,
-          holdings, allUpdated,
+          holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
+          groupSummary,
           totalAmount: d.totalAmount,
           todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit,
           todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate,
@@ -389,8 +424,6 @@ Page({
           fromCache: false,
           allGroupsData: d.groups || [],
         });
-        this.applyGroupFilter();
-        this.updateGroupCounts();
         this._checkAlerts();
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
         return true;
@@ -441,11 +474,39 @@ Page({
   },
 
   formatHoldings(list) {
-    return list.map(h => ({
-      ...h,
-      navHigh: h.navHigh != null ? parseFloat(h.navHigh).toFixed(2) : null,
-      navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
-    }));
+    return list.map(h => {
+      // 预计算列表单元格展示字段（避免 WXML 里每格重复三元判断，减轻渲染压力）
+      const cr = parseFloat(h.todayChangeRate) || 0;
+      const tp = parseFloat(h.todayProfit) || 0;
+      const tr = parseFloat(h.totalReturn) || 0;
+      const trr = parseFloat(h.totalReturnRate) || 0;
+      const crCls = cr > 0 ? 'up' : cr < 0 ? 'down' : '';
+      const tpCls = tp > 0 ? 'up' : tp < 0 ? 'down' : '';
+      const trCls = tr > 0 ? 'up' : tr < 0 ? 'down' : '';
+      const trrCls = trr > 0 ? 'up' : trr < 0 ? 'down' : '';
+      // 估值列：温度信号 → 60日位置 → 无数据
+      let valCls = 't-mid', valText = '--';
+      const pe = h.peTemp;
+      if (pe && pe.signal) {
+        valCls = pe.signal === 'low' ? 't-low' : pe.signal === 'high' ? 't-high' : pe.signal === 'nodata' ? 't-nodata' : 't-mid';
+        valText = pe.signal === 'low' ? '🟢低估' : pe.signal === 'high' ? '🔴高估' : pe.signal === 'nodata' ? '--' : '🟡正常';
+      } else if (h.position != null) {
+        const low = (h.currentNav != null && parseFloat(h.currentNav) < 0.75) || h.position <= 37;
+        const high = !low && h.position >= 63;
+        valCls = low ? 't-low' : high ? 't-high' : 't-mid';
+        valText = low ? '🟢低估' : high ? '🔴高估' : '🟡正常';
+      }
+      return {
+        ...h,
+        navHigh: h.navHigh != null ? parseFloat(h.navHigh).toFixed(2) : null,
+        navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
+        _crCls: crCls, _tpCls: tpCls, _trCls: trCls, _trrCls: trrCls,
+        _crText: cr > 0 ? '+' + cr + '%' : cr + '%',
+        _trrText: trr > 0 ? '+' + trr + '%' : trr + '%',
+        _valCls: valCls, _valText: valText,
+        _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',
+      };
+    });
   },
 
   sortHoldings(list, field, order) {
@@ -534,8 +595,16 @@ Page({
     this.setData({
       indexExpanded,
       showIndexEdit: false,
-      indexBarHeight: indexExpanded ? 240 : 110,
-    });
+    }, () => this._measureIndexBar());
+  },
+
+  // 实测指数栏高度（替代硬编码 110/240/470，适配字体缩放/机型差异）
+  _measureIndexBar() {
+    wx.createSelectorQuery().select('.index-bar').boundingClientRect((rect) => {
+      if (rect && rect.height > 0) {
+        this.setData({ indexBarHeight: Math.round(rect.height / (wx.getSystemInfoSync().windowWidth / 750)) });
+      }
+    }).exec();
   },
 
   onToggleIndexEdit() {
@@ -549,8 +618,7 @@ Page({
       showIndexEdit: show,
       indexExpanded: false,
       editSelections: selections,
-      indexBarHeight: show ? 470 : 110,
-    });
+    }, () => this._measureIndexBar());
   },
 
   onToggleIndexItem(e) {
@@ -579,9 +647,8 @@ Page({
       showIndexEdit: false,
       activeIndices,
       indexCards,
-      indexBarHeight: 110,
       indexExpanded: false,
-    });
+    }, () => this._measureIndexBar());
     this.fetchIndices();
     wx.showToast({ title: "已保存", icon: "success", duration: 1200 });
   },
@@ -871,9 +938,19 @@ Page({
       list = holdings.filter(h => h.group === activeGroup);
     }
     list = this.sortHoldings(list, sortField, sortOrder);
-    this.setData({ displayHoldings: list }, () => {
-      this.updateGroupSummary();
-    });
+    const extra = this._computeGroupSummary(activeGroup);
+    this.setData({ displayHoldings: list, groupSummary: extra });
+  },
+
+  // 纯计算：当前分组的汇总（不 setData，供合并渲染用）
+  // allGroupsData 参数可显式传入新值，避免依赖 this.data 的旧值（合并 setData 场景）
+  _computeGroupSummary(activeGroup, allGroupsData) {
+    const data = allGroupsData !== undefined ? allGroupsData : this.data.allGroupsData;
+    if (activeGroup === "all" || !data || data.length === 0) {
+      return null;
+    }
+    const g = data.find(g => g.name === activeGroup);
+    return g || null;
   },
 
   updateGroupCounts() {
@@ -889,13 +966,7 @@ Page({
   },
 
   updateGroupSummary() {
-    const { activeGroup, allGroupsData } = this.data;
-    if (activeGroup === "all" || !allGroupsData || allGroupsData.length === 0) {
-      this.setData({ groupSummary: null });
-      return;
-    }
-    const g = allGroupsData.find(g => g.name === activeGroup);
-    this.setData({ groupSummary: g || null });
+    this.setData({ groupSummary: this._computeGroupSummary(this.data.activeGroup) });
   },
 
   onGroupTap(e) {
@@ -941,7 +1012,9 @@ Page({
 
   _getCachedGroups() {
     try {
-      return wx.getStorageSync(GROUPS_CACHE_KEY) || [];
+      const list = wx.getStorageSync(GROUPS_CACHE_KEY) || [];
+      // 防御：清洗历史污染（曾有 bug 把对象数组写入缓存），只保留字符串分组名
+      return Array.isArray(list) ? list.filter(g => typeof g === 'string') : [];
     } catch (e) {
       return [];
     }
@@ -961,8 +1034,10 @@ Page({
   _mergeGroups(serverGroups) {
     const cached = this._getCachedGroups();
     const merged = [...cached];
-    for (const g of serverGroups) {
-      if (!merged.includes(g)) merged.push(g);
+    // 防御：serverGroups 可能是对象数组（取 name）或字符串数组
+    for (const g of (serverGroups || [])) {
+      const name = typeof g === 'string' ? g : (g && g.name);
+      if (name && !merged.includes(name)) merged.push(name);
     }
     return merged;
   },

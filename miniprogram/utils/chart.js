@@ -236,10 +236,9 @@ const chart = {
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
     const zeroY = yp(0);
 
-    // 利润涨跌色（对齐历史走势：涨红跌绿）
+    // 利润涨跌色（按当日涨跌，而非相对开盘：正收益红色，负收益绿色）
     const lastProfitVal = [...valsA].pop();
-    const firstProfitVal = valsA[0];
-    const profitColor = lastProfitVal >= firstProfitVal ? '#E4393C' : '#2E8B57';
+    const profitColor = lastProfitVal >= 0 ? '#E4393C' : '#2E8B57';
     const indexColor = '#1976D2';
 
     // 网格
@@ -424,6 +423,7 @@ const chart = {
 
   /**
    * 当天走势快速重绘（用于触摸时覆盖底图）
+   * 样式与 drawIntradayChart 保持一致（X 轴标签/面积/颜色），避免触摸瞬间外观跳变
    */
   _drawIntradayFast(ctx) {
     const d = this._lastIntradayDraw;
@@ -434,15 +434,48 @@ const chart = {
 
     const pw = w - p.left - p.right;
 
+    // 网格（与主图一致）
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const val = d.yMax - (d.yMax - d.yMin) / 4 * i;
+      ctx.beginPath(); ctx.moveTo(p.left, yp(val)); ctx.lineTo(w - p.right, yp(val)); ctx.stroke();
+    }
+
     // 0% 基准
     const zeroY = yp(0);
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
+    ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(p.left, zeroY); ctx.lineTo(w - p.right, zeroY); ctx.stroke();
     ctx.setLineDash([]);
 
-    // 两条线（无面积填充）
+    // 面积填充（收益线，与主图一致）
+    const rateVals = data.map(d => d[fieldA]).filter(v => v != null);
+    if (rateVals.length >= 2) {
+      const gradient = ctx.createLinearGradient(0, p.top, 0, h - p.bottom);
+      const alpha = profitColor === '#E4393C' ? 'rgba(228,57,60,0.08)' : 'rgba(46,139,87,0.08)';
+      gradient.addColorStop(0, alpha);
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.beginPath();
+      let started = false;
+      data.forEach((d2, i) => {
+        if (d2[fieldA] == null) return;
+        const x = xp(i), y = yp(d2[fieldA]);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      });
+      if (started) {
+        const lastIdx = data.map((dd, i) => dd[fieldA] != null ? i : -1).filter(i => i >= 0).pop();
+        const firstIdx = data.findIndex(dd => dd[fieldA] != null);
+        ctx.lineTo(xp(lastIdx), zeroY);
+        ctx.lineTo(xp(firstIdx), zeroY);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
+
+    // 两条线
     [{ f: fieldA, c: profitColor }, { f: fieldB, c: indexColor }].forEach(cfg => {
       const vals = data.map(d => d[cfg.f]).filter(v => v != null);
       if (vals.length < 2) return;
@@ -458,8 +491,8 @@ const chart = {
       ctx.stroke();
     });
 
-    // Y 轴标签
-    ctx.fillStyle = '#CCC';
+    // Y 轴标签（#999 与主图一致）
+    ctx.fillStyle = '#999';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -468,36 +501,29 @@ const chart = {
       ctx.fillText(val.toFixed(1) + '%', p.left - 6, yp(val));
     }
 
-    // X 轴时间标签
-    ctx.fillStyle = '#CCC';
+    // X 轴时间标签（与主图 3 标签一致）
+    ctx.fillStyle = '#999';
     ctx.font = '9px sans-serif';
     ctx.textBaseline = 'top';
-    const timeLabels = [
-      { time: '09:30', pos: 0, align: 'left' },
-      { time: '10:30', pos: 0.25, align: 'center' },
-      { time: '11:30', pos: 0.5, align: 'center' },
-      { time: '13:00', pos: 0.5, align: 'center' },
-      { time: '14:00', pos: 0.75, align: 'center' },
-      { time: '15:00', pos: 1, align: 'right' },
-    ];
-    timeLabels.forEach(tl => {
-      ctx.textAlign = tl.align;
-      const x = p.left + pw * tl.pos;
-      const labelY = h - p.bottom + 6;
-      ctx.fillText(tl.time, x, tl.time === '13:00' ? labelY + 12 : labelY);
+    [
+      { t: '09:30', pos: 0, a: 'left' },
+      { t: '11:30/13:00', pos: 0.5, a: 'center' },
+      { t: '15:00', pos: 1, a: 'right' },
+    ].forEach(l => {
+      ctx.textAlign = l.a;
+      ctx.fillText(l.t, p.left + pw * l.pos, h - p.bottom + 6);
     });
 
-    // 图例
-    const rateVals = data.map(d => d[fieldA]).filter(v => v != null);
+    // 图例（#333 与主图一致）
     const idxVals = data.map(d => d[fieldB]).filter(v => v != null);
     const fmt = v => (v > 0 ? '+' : '') + (v != null ? v.toFixed(2) : '0.00') + '%';
     ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
     ctx.fillStyle = profitColor; ctx.fillRect(p.left, 8, 14, 3);
-    ctx.fillStyle = '#999'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#333'; ctx.textAlign = 'left';
     ctx.fillText((labelA || '我的收益').slice(0, 8) + ' ' + fmt(rateVals[rateVals.length - 1]), p.left + 18, 10);
     if (idxVals.length > 0) {
       ctx.fillStyle = indexColor; ctx.fillRect(p.left, 22, 14, 3);
-      ctx.fillStyle = '#999';
+      ctx.fillStyle = '#333';
       ctx.fillText((labelB || '指数').slice(0, 8) + ' ' + fmt(idxVals[idxVals.length - 1]), p.left + 18, 24);
     }
   },

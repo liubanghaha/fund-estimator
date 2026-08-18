@@ -206,7 +206,8 @@ Page({
       const lastDate = allDaily.length ? allDaily[allDaily.length - 1].date : "";
       // 用数据驱动判断：NAV 已公布到今日 + 有日内快照，两信号均为 false 才是非交易日
       // 不依赖 _isTradingNow()——它只看星期几，区分不了周五节假日
-      const hasTodaySnaps = d.intradaySnapshots && d.intradaySnapshots.length > 0;
+      // 快照可能回退到最近交易日（非交易日打开），snapDate 非今日时不算"今日快照"
+      const hasTodaySnaps = (d.snapDate || today) === today && d.intradaySnapshots && d.intradaySnapshots.length > 0;
       const isTradingDay = lastDate === today || hasTodaySnaps;
       if (!isTradingDay) {
         Object.keys(idxMap).forEach(k => { idxMap[k] = (idxMap[k] || []).filter(d => d.date !== today); });
@@ -692,8 +693,13 @@ Page({
       const rh = res[0].height || h;
       this._realW = rw;
       this._realH = rh;
+      // 末端对齐：图例/曲线末端与顶部"当天收益"一致（快照为盘中估算，顶部为确认/实时值）
+      const renderData = data && data.length ? data.map(d => ({ ...d })) : data;
+      if (renderData && renderData.length) {
+        renderData[renderData.length - 1].rate = parseFloat(this.data.todayProfitRate || 0);
+      }
       chartUtil.drawIntradayChart(res[0].node, {
-        w: rw, h: rh, data,
+        w: rw, h: rh, data: renderData,
         labelA: '我的收益', labelB: compareLabel,
       });
     });
@@ -743,24 +749,37 @@ Page({
   _cal() { try { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); } catch (e) { console.warn('[profit-detail] 日历渲染异常:', e); } },
   _calCached() {
     const a = this._allDaily, c = this._dailyChange; if (!a || !c) return null;
-    const dm = {}; a.forEach(d => { dm[d.date] = d.value; });
+    // 缓存：数据引用未变（同一次 fetch 的数据）时直接复用上次计算结果，避免切 Tab 全量重算
+    if (this._calCache && this._calCache.ref === c) return this._calCache.result;
+    const dm = this._calDm();
     const ms = [...new Set(Object.keys(dm).map(d => d.slice(0, 7)))].sort().reverse();
     const ys = [...new Set(Object.keys(dm).map(d => d.slice(0, 4)))].sort().reverse();
     const now = new Date(); const sm = ms[0] || calc.formatDate(now).slice(0, 7); const sy = ys[0] || String(now.getFullYear());
-    return { months: ms, sm, years: ys, sy, days: this._days(c, sm, dm), mons: this._mons(c, sy, dm), yrs: this._yrs(c, dm) };
+    const result = { months: ms, sm, years: ys, sy, days: this._days(c, sm, dm), mons: this._mons(c, sy, dm), yrs: this._yrs(c, dm) };
+    this._calCache = { ref: c, result };
+    return result;
   },
 
-  _days(c, month, dm) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; const empty = chg === undefined; const allKeys = Object.keys(dm).sort(); let prevMv = 0; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= ds) { if (i > 0) prevMv = dm[allKeys[i - 1]]; break; } } const rate = (prevMv > 0 && chg != null) ? +((chg / prevMv) * 100).toFixed(2) : 0; w.push({ day: d, date: ds, profit: empty ? null : chg, rate, empty }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
-  _mons(c, year, dm) { return [1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const pfx = `${year}-${String(m).padStart(2, '0')}`; let s = 0, h = false; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(pfx)) { s += chg; h = true; } } const profit = +s.toFixed(2); const keys = Object.keys(dm).filter(k => k.startsWith(pfx)).sort(); const last = keys.length ? dm[keys[keys.length - 1]] : 0; const allKeys = Object.keys(dm).sort(); let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= pfx + '-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { month: m, date: pfx, profit, rate, empty: !h }; }); },
-  _yrs(c, dm) { return [...new Set(Object.keys(c).map(d => d.slice(0, 4)))].sort().map(y => { let s = 0; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(y)) s += chg; } const profit = +s.toFixed(2); const keys = Object.keys(dm).filter(k => k.startsWith(y)).sort(); const last = keys.length ? dm[keys[keys.length - 1]] : 0; const allKeys = Object.keys(dm).sort(); let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= y + '-01-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { date: y + '-12-31', profit, rate }; }); },
+  _days(c, month, dm) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; const empty = chg === undefined; let prevMv = 0; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= ds) { if (i > 0) prevMv = dm[allKeys[i - 1]]; break; } } const rate = (prevMv > 0 && chg != null) ? +((chg / prevMv) * 100).toFixed(2) : 0; w.push({ day: d, date: ds, profit: empty ? null : chg, rate, empty }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
+  _mons(c, year, dm) { const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); return [1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const pfx = `${year}-${String(m).padStart(2, '0')}`; let s = 0, h = false; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(pfx)) { s += chg; h = true; } } const profit = +s.toFixed(2); const keys = allKeys.filter(k => k.startsWith(pfx)); const last = keys.length ? dm[keys[keys.length - 1]] : 0; let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= pfx + '-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { month: m, date: pfx, profit, rate, empty: !h }; }); },
+  _yrs(c, dm) { const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); return [...new Set(Object.keys(c).map(d => d.slice(0, 4)))].sort().map(y => { let s = 0; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(y)) s += chg; } const profit = +s.toFixed(2); const keys = allKeys.filter(k => k.startsWith(y)); const last = keys.length ? dm[keys[keys.length - 1]] : 0; let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= y + '-01-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { date: y + '-12-31', profit, rate }; }); },
 
   // ============ 事件 ============
 
   onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { this._draw(); }); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
-  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, dm) }); },
-  onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; }); this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, dm) }); },
+  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, this._calDm()) }); },
+  onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, this._calDm()) }); },
+  // 构建日期→市值映射（供 _days/_mons/_yrs 用），_allDaily 不变时缓存（含预排序 keys）
+  // 返回 map（{ date: value }），keys 由 _days/_mons/_yrs 从 _calDmCache 读取
+  _calDm() {
+    if (this._calDmCache && this._calDmCache.ref === this._allDaily) return this._calDmCache.map;
+    const dm = {}; (this._allDaily || []).forEach(d => { dm[d.date] = d.value; });
+    const sortedKeys = Object.keys(dm).sort();
+    this._calDmCache = { ref: this._allDaily, map: dm, keys: sortedKeys };
+    return dm;
+  },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
   onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(code); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
 
@@ -789,12 +808,9 @@ Page({
         if (!res || !res[0] || !res[0].node) return;
         const canvas = res[0].node;
         const dpr = wx.getSystemInfoSync().pixelRatio;
-        // 用绘制时的实测尺寸，与底图坐标系对齐
-        const rw = this._realW || this._canvasW;
-        const rh = this._realH || this._canvasH;
-        canvas.width = rw * dpr; canvas.height = rh * dpr;
+        // 不重建位图：setTransform 幂等重置变换（位图与 _lastIntradayDraw 快照尺寸一致）
         const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         chartUtil._drawIntradayFast(ctx);
         chartUtil.handleIntradayTouch(ctx, e);
       });
@@ -836,9 +852,8 @@ Page({
       const canvas = res[0].node;
       const ctx = canvas.getContext('2d');
       const dpr = wx.getSystemInfoSync().pixelRatio;
-      canvas.width = d.cw * dpr;
-      canvas.height = d.ch * dpr;
-      ctx.scale(dpr, dpr);
+      // 不重建位图：位图与 _chartDraw 快照尺寸一致，setTransform 幂等重置
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       this._touchHistory(ctx, d, e.touches[0].x);
     });

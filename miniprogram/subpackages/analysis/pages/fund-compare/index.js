@@ -312,18 +312,16 @@ Page({
     if (this._ctT && now - this._ctT < 60) return;
     this._ctT = now;
 
-    const opts = { ...(this._compareOpts || this._getCompareOpts()), data: chartData };
+    // 轻量重绘：复用上次绘制的实测尺寸快照（drawChart 已存 _compareOpts），
+    // 不重复设置 canvas.width（避免位图重建清空），直接用 _drawDualFast 覆盖
+    if (!chartUtil._lastDualDraw || !chartUtil._lastDualDraw.data || chartUtil._lastDualDraw.data.length < 2) return;
     const dpr = wx.getSystemInfoSync().pixelRatio;
-    // 使用绘制时的实测宽度/高度，保证 canvas 物理尺寸与绘制坐标系一致（触摸坐标才对齐）
-    const w = opts.w || this._realW || this._canvasW || 340;
-    const h = opts.h || this._realH || this._canvasH || 212;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
     const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+    // setTransform 幂等（scale 会累积，且不再重设 canvas.width 重置状态）
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    chartUtil.drawDualLineChart(canvas, opts);
-    chartUtil.handleDualTouch(ctx, e, opts);
+    chartUtil._drawDualFast(ctx, chartUtil._lastDualDraw);
+    chartUtil.handleDualTouch(ctx, e, chartUtil._lastDualDraw);
   },
 
   onRetry() {

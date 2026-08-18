@@ -158,13 +158,16 @@ const api = {
     return this.callFunction("fetchMarketIndex", { indexCode, days });
   },
   fetchMarketIndexClient(indexCode, days = 80) {
+    // 含港股指数映射（124.HSTECH/124.HSI），避免未识别代码静默回退返回上证错数据
     const INDEX_SECID = {
       "000001": "1.000001",
       "399001": "0.399001",
       "000300": "1.000300",
       "399006": "0.399006",
+      "HSTECH": "124.HSTECH",
+      "HSI": "124.HSI",
     };
-    const secid = INDEX_SECID[indexCode] || "1.000001";
+    const secid = INDEX_SECID[indexCode] || "";
 
     const doRequest = (url) => new Promise((resolve) => {
       wx.request({
@@ -223,8 +226,8 @@ const api = {
 
   // 获取指数当天分时数据（客户端直连，绕过云函数 https 限制）
   async fetchIndexIntradayClient(indexCode) {
-    const SECID = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006" };
-    const secid = SECID[indexCode] || "1.000001";
+    const SECID = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006", "HSTECH": "124.HSTECH", "HSI": "124.HSI" };
+    const secid = SECID[indexCode] || "";
     return new Promise((resolve) => {
       wx.request({
         url: `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=1&fqt=1&end=20500101&lmt=250`,
@@ -259,8 +262,8 @@ const api = {
 
   // 获取指数当天分时数据（腾讯分钟级 API，客户端可用）
   async fetchIndexIntradayTencent(indexCode) {
-    const S = { "000001": "sh000001", "399001": "sz399001", "000300": "sh000300", "399006": "sz399006" };
-    const code = S[indexCode] || "sh000001";
+    const S = { "000001": "sh000001", "399001": "sz399001", "000300": "sh000300", "399006": "sz399006", "HSTECH": "hkHSTECH", "HSI": "hkHSI" };
+    const code = S[indexCode] || "";
     // 今日日期 (YYYYMMDD)
     const d = new Date();
     const today = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -308,8 +311,9 @@ const api = {
   },
 
   fetchMarketIndexTencent(indexCode, days = 80) {
-    const S = { "000001": "1.000001", "399001": "0.399001", "000300": "1.000300", "399006": "0.399006" };
-    const sym = (S[indexCode] || "1.000001").split(".")[1];
+    // 腾讯代码不含前缀：A 股取 secid 后段，港股直接用 hk 前缀代码
+    const S = { "000001": "sh000001", "399001": "sz399001", "000300": "sh000300", "399006": "sz399006", "HSTECH": "hkHSTECH", "HSI": "hkHSI" };
+    const sym = S[indexCode] || "";
     return new Promise((resolve) => {
       wx.request({
         url: `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?_var=kline_dayqfq&param=${sym},day,,,${days},qfq`,
