@@ -3,7 +3,7 @@
 
 /* 滚动提示条 */
 .marquee-wrap{margin:16rpx 24rpx;overflow:hidden;white-space:nowrap;background:#FFF;border-radius:16rpx;padding:20rpx 24rpx}
-.marquee{display:inline-block;font-size:24rpx;color:#666;padding-left:100%;animation:marquee 16s linear infinite}
+.marquee{display:inline-block;font-size:30rpx;font-weight:600;color:#333;padding-left:100%;animation:marquee 16s linear infinite}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
 
 /* 空状态 */
@@ -84,3 +84,11 @@
 .picker-item{padding:24rpx 16rpx;font-size:28rpx;color:#333;border-bottom:1rpx solid #F5F5F5;text-align:center}
 .picker-new-btn{text-align:center;padding:20rpx;font-size:28rpx;color:var(--primary);border-top:1rpx solid #F5F5F5}
 .picker-close{margin-top:16rpx;text-align:center;background:#F5F5F5;color:#666;border-radius:8rpx;padding:16rpx 0;font-size:26rpx}
+.announce-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1002;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.announce-card{width:620rpx;background:#FFF;border-radius:24rpx;overflow:hidden;box-shadow:0 8rpx 40rpx rgba(0,0,0,.2)}
+.announce-banner{background:linear-gradient(135deg,#E4393C,#FF7A45);color:#FFF;font-size:40rpx;font-weight:700;text-align:center;padding:44rpx 24rpx;line-height:1.4}
+.announce-body{padding:36rpx 44rpx 8rpx}
+.announce-item{font-size:30rpx;color:#333;line-height:1.8;margin-bottom:24rpx}
+.announce-actions{padding:16rpx 44rpx 44rpx}
+.announce-btn-primary{background:var(--primary);color:#FFF;font-size:34rpx;font-weight:600;text-align:center;padding:24rpx 0;border-radius:44rpx}
+.announce-btn-link{margin-top:20rpx;text-align:center;color:#999;font-size:28rpx;padding:8rpx 0}

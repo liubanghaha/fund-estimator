@@ -6,7 +6,7 @@
 
     <!-- 滚动提示条 -->
     <view wx:if="{{isLoggedIn}}" class="marquee-wrap">
-      <view class="marquee">📢 公众号：韭菜养基宝　｜　🌐 网页版：fundleek.com</view>
+      <view class="marquee">🎉 新小程序「养基小簿」上线！我的→数据迁移，用迁移码同步数据　｜　📢 公众号：韭菜养基宝　｜　🌐 网页版：fundleek.com</view>
     </view>
 
     <!-- 空记录（含未登录：可直接浏览体验，无需登录） -->
@@ -122,6 +122,20 @@
       </scroll-view>
       <view class="picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
       <view class="picker-close" bind:tap="onCloseGroupPicker">取消</view>
+    </view>
+  </view>
+
+  <!-- 新小程序上线公告弹层 -->
+  <view wx:if="{{announce}}" class="announce-mask" bind:tap="onCloseAnnounce">
+    <view class="announce-card" catch:tap="">
+      <view class="announce-banner">{{announce.head}}</view>
+      <view class="announce-body">
+        <view wx:for="{{announce.rest}}" wx:key="*this" class="announce-item">{{item}}</view>
+      </view>
+      <view class="announce-actions">
+        <view class="announce-btn-primary" bind:tap="onGoMigrate">去迁移数据</view>
+        <view class="announce-btn-link" bind:tap="onCloseAnnounce">知道了</view>
+      </view>
     </view>
   </view>
 </view>

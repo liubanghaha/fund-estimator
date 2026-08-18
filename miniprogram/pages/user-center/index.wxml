@@ -9,7 +9,7 @@
   <!-- 公众号关注 -->
   <view class="menu-list">
     <view class="marquee-wrap">
-      <view class="marquee">📢 公众号：韭菜养基宝　｜　🌐 网页版：fundleek.com</view>
+      <view class="marquee">🎉 新小程序「养基小簿」上线！我的→数据迁移，用迁移码同步数据　｜　📢 公众号：韭菜养基宝　｜　🌐 网页版：fundleek.com</view>
     </view>
   </view>
 
@@ -50,7 +50,7 @@
   <view wx:if="{{showMigrate}}" class="migrate-panel">
     <view class="migrate-section">
       <view class="migrate-label">我的迁移码</view>
-      <view class="migrate-desc">新小程序「我的」→「数据迁移」输入此码，即可认领你的持仓、自选和交易记录</view>
+      <view class="migrate-desc">新小程序「我的」→「数据迁移」输入此码，即可同步你的持仓、自选和交易记录</view>
       <view class="migrate-code-row" bind:tap="onCopyMigrateCode">
         <text class="migrate-code">{{migrateCode || (migrateLoading ? '获取中...' : '点击获取')}}</text>
         <text class="migrate-copy">{{migrateCode ? '复制' : '获取'}}</text>

@@ -12,6 +12,15 @@ const CHANGELOG = [
       '⚡ 性能优化，加载更快体验更流畅',
       '🔧 修复若干问题，展示更合理',
     ]
+  },
+  {
+    version: '3.0.0',
+    date: '2026-08-18',
+    items: [
+      '🎉 全新小程序「养基小簿」已上线',
+      '🔁 我的 → 数据迁移，输入迁移码即可同步持仓、自选和交易记录',
+      '📖 迁移教程详见公众号推文',
+    ]
   }
 ];
 
@@ -44,9 +53,10 @@ App({
     }
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
 
-    // 版本更新检测
+    // 版本更新检测；开发环境（无版本号）始终弹最新公告，便于自测
     const lastVersion = wx.getStorageSync('appVersion') || '';
-    if (lastVersion !== APP_VERSION && CHANGELOG.length > 0) {
+    const isDev = !APP_VERSION || APP_VERSION === '0.0.0' || APP_VERSION === 'dev';
+    if ((lastVersion !== APP_VERSION || isDev) && CHANGELOG.length > 0) {
       this.globalData._pendingChangelog = CHANGELOG.find(c => c.version === APP_VERSION) || CHANGELOG[CHANGELOG.length - 1];
     }
   },

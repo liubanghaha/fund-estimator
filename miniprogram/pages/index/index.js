@@ -28,6 +28,8 @@ Page({
     // 手动盈亏
     showCalc: false,
     calcCode: "",
+    // 新小程序上线公告弹层
+    announce: null,
     calcName: "",
     calcShares: "",
     calcCost: "",
@@ -40,6 +42,12 @@ Page({
   },
 
   onShow() {
+    const app = getApp();
+    const pending = app.globalData._pendingChangelog;
+    if (pending && !this.data.announce) {
+      // 拆出头条作为弹层横幅，其余条目进正文列表
+      this.setData({ announce: { ...pending, head: pending.items[0], rest: pending.items.slice(1) } });
+    }
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     const now = Date.now();
@@ -73,6 +81,21 @@ Page({
       this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
       wx.removeStorageSync(CACHE_KEY);
     }
+  },
+
+  // 公告弹层：知道了（标记已读，不再弹）
+  onCloseAnnounce() {
+    getApp().markChangelogRead();
+    this.setData({ announce: null });
+  },
+
+  // 公告弹层：去迁移 → 用户中心并自动展开迁移面板
+  onGoMigrate() {
+    const app = getApp();
+    app.markChangelogRead();
+    this.setData({ announce: null });
+    app.globalData._autoShowMigrate = true;
+    wx.switchTab({ url: "/pages/user-center/index" });
   },
 
   // 静默登录：后台调 userLogin 拿 openid 存本地，用户无感知
