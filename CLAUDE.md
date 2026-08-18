@@ -96,6 +96,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - 当前分支：`optimize/global-cleanup`
 
 ## 待修复
-- 港股今日涨跌：白名单域名不支持，需加白名单或另寻 API
-- 较上季度数据偶发 undefined
-- profit-detail / fund-compare 折线图触摸未同步
+- 港股基金（968 互认基金）：东财不收录，已加 `FundMNFInfo` 兜底（T+1 净值），历史净值/盘中估算仍缺
+- 较上季度数据：东财 jjcc 列数不稳，已改为按表头「占净值比例」列定位（三处统一）
+- 折线图触摸：三页已统一实测宽度 + 轻量重绘（setTransform 幂等），触摸坐标与绘制坐标系对齐

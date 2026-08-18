@@ -98,6 +98,7 @@
 - 小程序上传：`miniprogram-ci upload --pp . --pkp private.*.key --appid wxb95098fe432ed765 -r 1`
 
 ### 已知问题
-- 港股今日涨跌：白名单域名不支持
-- 较上季度数据偶发 undefined
-- profit-detail / fund-compare 折线图触摸未同步
+- 港股指数（HSTECH/HSI）：走云函数 `fetchMarketIndex` 多源竞速（腾讯实时优先），客户端指数函数已补 HK 映射，无白名单问题
+- 港股基金（968 互认基金）：东财基金接口不收录，已加 `FundMNFInfo` 兜底（T+1 净值、无盘中估算、无历史净值 → 走势图/回测仍缺）
+- 较上季度数据：东财 jjcc 表格列数不稳定，解析已改为按表头「占净值比例」列定位（fetchFundProfile / _shared/fund-data.js / computeCorrelation 三处）
+- profit-detail / fund-compare / fund-detail 折线图触摸：已统一实测宽度 + 轻量重绘，触摸坐标与绘制坐标系对齐

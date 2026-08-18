@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A5C"/>
+      <stop offset="0.55" stop-color="#FF4436"/>
+      <stop offset="1" stop-color="#DE1F26"/>
+    </linearGradient>
+    <radialGradient id="coin1" cx="0.5" cy="0.38" r="0.75">
+      <stop offset="0" stop-color="#FFE9A3"/>
+      <stop offset="0.6" stop-color="#FFC83E"/>
+      <stop offset="1" stop-color="#F0A11E"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="176" fill="url(#bg1)"/>
+  <circle cx="830" cy="200" r="150" fill="#FFFFFF" opacity="0.12"/>
+  <circle cx="170" cy="850" r="110" fill="#FFFFFF" opacity="0.08"/>
+  <!-- 身体 -->
+  <circle cx="512" cy="615" r="205" fill="#FFCE3D"/>
+  <ellipse cx="452" cy="505" rx="85" ry="62" fill="#FFFFFF" opacity="0.18" transform="rotate(-22 452 505)"/>
+  <!-- 肚皮 -->
+  <ellipse cx="512" cy="688" rx="122" ry="130" fill="#FFF6DC"/>
+  <!-- 脚 -->
+  <ellipse cx="466" cy="902" rx="36" ry="19" fill="#FF9F2E"/>
+  <ellipse cx="558" cy="902" rx="36" ry="19" fill="#FF9F2E"/>
+  <!-- 头顶苗 -->
+  <path d="M 512 430 C 512 392 512 370 512 350" stroke="#45B26B" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <ellipse cx="482" cy="346" rx="44" ry="22" fill="#56C57E" transform="rotate(-32 482 346)"/>
+  <ellipse cx="542" cy="346" rx="44" ry="22" fill="#3FAE63" transform="rotate(32 542 346)"/>
+  <!-- 眼睛 / 腮红 / 嘴 -->
+  <circle cx="446" cy="506" r="24" fill="#3B2B1E"/>
+  <circle cx="578" cy="506" r="24" fill="#3B2B1E"/>
+  <circle cx="454" cy="498" r="7" fill="#FFFFFF"/>
+  <circle cx="586" cy="498" r="7" fill="#FFFFFF"/>
+  <ellipse cx="400" cy="584" rx="28" ry="16" fill="#FF9E80" opacity="0.85"/>
+  <ellipse cx="624" cy="584" rx="28" ry="16" fill="#FF9E80" opacity="0.85"/>
+  <path d="M 512 570 Q 540 576 552 598 Q 512 620 472 598 Q 484 576 512 570 Z" fill="#FF8A3C"/>
+  <path d="M 512 584 L 512 612" stroke="#E86F28" stroke-width="5" stroke-linecap="round"/>
+  <!-- 金币 -->
+  <circle cx="512" cy="750" r="140" fill="url(#coin1)" stroke="#D98A1F" stroke-width="10"/>
+  <circle cx="512" cy="750" r="114" fill="none" stroke="#E9A93F" stroke-width="5" opacity="0.7"/>
+  <path d="M 470 716 L 512 758 L 554 716" stroke="#C87B12" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 512 706 L 512 830" stroke="#C87B12" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 468 780 H 556" stroke="#C87B12" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 468 808 H 556" stroke="#C87B12" stroke-width="16" stroke-linecap="round"/>
+  <ellipse cx="452" cy="688" rx="58" ry="26" fill="#FFFFFF" opacity="0.35" transform="rotate(-24 452 688)"/>
+  <!-- 翅膀（抱住金币） -->
+  <ellipse cx="326" cy="668" rx="60" ry="86" fill="#F2B32C" stroke="#E5A421" stroke-width="4" transform="rotate(20 326 668)"/>
+  <ellipse cx="698" cy="668" rx="60" ry="86" fill="#F2B32C" stroke="#E5A421" stroke-width="4" transform="rotate(-20 698 668)"/>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7FE0A3"/>
+      <stop offset="0.55" stop-color="#37B57A"/>
+      <stop offset="1" stop-color="#1F9A62"/>
+    </linearGradient>
+    <linearGradient id="line2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF9F4A"/>
+      <stop offset="1" stop-color="#FF5E3C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="176" fill="url(#bg2)"/>
+  <circle cx="180" cy="240" r="60" fill="#FFFFFF" opacity="0.10"/>
+  <circle cx="860" cy="300" r="90" fill="#FFFFFF" opacity="0.08"/>
+  <circle cx="850" cy="860" r="70" fill="#FFFFFF" opacity="0.10"/>
+  <!-- 地面阴影 -->
+  <ellipse cx="512" cy="948" rx="330" ry="30" fill="#0E7A4A" opacity="0.25"/>
+  <!-- 账本封皮 -->
+  <path d="M 512 578 L 288 528 Q 236 535 226 588 L 226 846 Q 236 896 288 902 L 512 930 Z" fill="#F08033"/>
+  <path d="M 512 578 L 736 528 Q 788 535 798 588 L 798 846 Q 788 896 736 902 L 512 930 Z" fill="#F08033"/>
+  <!-- 中缝阴影 -->
+  <path d="M 498 586 L 498 920 L 512 928 L 512 586 Z" fill="#000000" opacity="0.06"/>
+  <!-- 书页 -->
+  <path d="M 512 592 L 302 546 Q 254 552 245 600 L 245 836 Q 254 880 302 886 L 512 912 Z" fill="#FFF8EC"/>
+  <path d="M 512 592 L 722 546 Q 770 552 779 600 L 779 836 Q 770 880 722 886 L 512 912 Z" fill="#FFFDF4"/>
+  <path d="M 512 592 L 512 912" stroke="#F0D9B0" stroke-width="4"/>
+  <!-- 左页：账本横线 -->
+  <path d="M 322 712 H 462" stroke="#EBDDBE" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 322 766 H 462" stroke="#EBDDBE" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 322 820 H 462" stroke="#EBDDBE" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="300" cy="712" r="7" fill="#E85C4A"/>
+  <circle cx="300" cy="766" r="7" fill="#E85C4A"/>
+  <circle cx="300" cy="820" r="7" fill="#E85C4A"/>
+  <!-- 左页：印章 -->
+  <circle cx="342" cy="632" r="34" fill="#E85C4A" opacity="0.92"/>
+  <path d="M 330 622 L 342 640 L 354 622 M 342 614 L 342 650 M 328 638 H 356 M 328 647 H 356" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <!-- 右页：上升折线 -->
+  <path d="M 560 800 L 640 742 L 720 672 L 788 606" stroke="url(#line2)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="560" cy="800" r="15" fill="#FF7A3C" stroke="#FFF6E8" stroke-width="6"/>
+  <circle cx="640" cy="742" r="15" fill="#FF7A3C" stroke="#FFF6E8" stroke-width="6"/>
+  <circle cx="720" cy="672" r="15" fill="#FF7A3C" stroke="#FFF6E8" stroke-width="6"/>
+  <circle cx="788" cy="606" r="15" fill="#FF7A3C" stroke="#FFF6E8" stroke-width="6"/>
+  <!-- 曲线冲出的金色小苗 -->
+  <path d="M 788 606 C 788 572 788 558 788 542" stroke="#FFC93E" stroke-width="13" stroke-linecap="round" fill="none"/>
+  <ellipse cx="762" cy="540" rx="40" ry="20" fill="#FFD54A" transform="rotate(-32 762 540)"/>
+  <ellipse cx="814" cy="540" rx="40" ry="20" fill="#FFB733" transform="rotate(32 814 540)"/>
+</svg>
