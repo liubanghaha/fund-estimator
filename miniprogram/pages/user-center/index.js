@@ -14,6 +14,12 @@ Page({
   },
 
   onShow() {
+    // 从首页公告「去迁移数据」跳转而来：自动展开迁移面板
+    const app = getApp();
+    if (app.globalData._autoShowMigrate) {
+      app.globalData._autoShowMigrate = false;
+      if (!this.data.showMigrate) this.onMigrate();
+    }
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this.setData({ isLoggedIn: true, avatarUrl: userInfo.avatarUrl || "", nickName: userInfo.nickName || "", openid: userInfo.openid || "" });
@@ -22,11 +28,15 @@ Page({
     this.setData({ theme });
   },
 
-  // ==== 数据迁移（在新小程序输入迁移码认领数据） ====
+  // ==== 数据迁移（在新小程序输入迁移码同步数据） ====
   async onMigrate() {
     const next = !this.data.showMigrate;
     this.setData({ showMigrate: next });
     if (!next || this.data.migrateCode) return;
+    this.fetchMigrateCode();
+  },
+
+  async fetchMigrateCode() {
     if (!this.data.isLoggedIn) { wx.showToast({ title: "登录后才能查看", icon: "none" }); return; }
     this.setData({ migrateLoading: true });
     try {
@@ -45,9 +55,14 @@ Page({
     }
     this.setData({ migrateLoading: false });
   },
+
   onCopyMigrateCode() {
-    if (!this.data.migrateCode) return;
-    wx.setClipboardData({ data: this.data.migrateCode, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
+    if (this.data.migrateCode) {
+      wx.setClipboardData({ data: this.data.migrateCode, success: () => { wx.showToast({ title: "已复制", icon: "success" }); } });
+    } else if (!this.data.migrateLoading) {
+      // 迁移码为空时点击 → 触发获取（原逻辑直接 return，点了没反应）
+      this.fetchMigrateCode();
+    }
   },
 
   // ==== 网页版登录（复制账户ID） ====
