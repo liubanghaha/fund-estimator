@@ -66,7 +66,7 @@
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
         <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
-          <view class="risk-label">估值温度<text class="risk-label-note">{{peTemp.normPE}}</text></view>
+          <view class="risk-label">温度<text class="risk-label-note">{{peTemp.normPE}}</text></view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
         </view>
       </view>
