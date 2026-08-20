@@ -118,6 +118,15 @@ Page({
     // 读取主题色
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 截屏时引导用分享卡片（含小程序码，可导流）
+    wx.onUserCaptureScreen &&
+      wx.onUserCaptureScreen(() => {
+        wx.showToast({
+          title: "截图分享不带小程序码，长按右上角「分享」生成收益卡片",
+          icon: "none",
+          duration: 2500,
+        });
+      });
   },
 
   // 首次渲染完成后自动刷新（静默后台拉取，缓存已渲染，不拉起下拉动画）
