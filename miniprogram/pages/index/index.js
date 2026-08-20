@@ -62,7 +62,7 @@ Page({
     colDefs: {
       todayProfit: { label: "当日收益", sortable: true },
       totalReturn: { label: "累计收益", sortable: true },
-      valuation: { label: "估值", sortable: false, isValuation: true },
+      valuation: { label: "估算", sortable: false, isValuation: true },
     },
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
@@ -106,7 +106,7 @@ Page({
 
   onShareTimeline() {
     return {
-      title: '养基小簿 · 持仓估值一目了然',
+      title: '养基小簿 · 持仓收益一目了然',
       imageUrl: '',
     };
   },

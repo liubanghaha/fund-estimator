@@ -97,7 +97,7 @@
           </view>
           <view class="action-item" bind:tap="onAdjust">
             <view class="action-icon">✏️</view>
-            <view class="action-text">加减仓</view>
+            <view class="action-text">买卖记录</view>
           </view>
           <view class="action-item" bind:tap="onCorrelation">
             <view class="action-icon">📊</view>
@@ -178,7 +178,7 @@
           <view class="empty-hint">长按持仓可移动到本分组</view>
         </view>
 
-        <view wx:if="{{updateTime}}" class="update-time">估值时间：{{updateTime}}</view>
+        <view wx:if="{{updateTime}}" class="update-time">估算时间：{{updateTime}}</view>
       </view>
     </view>
   </scroll-view>
@@ -231,7 +231,7 @@
         <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
       </view>
       <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
-      <view class="temp-tooltip-disclaimer">数据基于公开历史估值与实时行情计算，仅供参考</view>
+      <view class="temp-tooltip-disclaimer">估算数据仅供参考，不构成投资建议</view>
       <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
     </view>
   </view>
@@ -258,7 +258,7 @@
       <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
       <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
       <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
-        <text class="alert-label">PE估值变化提醒</text>
+        <text class="alert-label">PE变化提醒</text>
         <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">
           <view class="pe-switch-dot"></view>
         </view>

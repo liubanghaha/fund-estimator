@@ -388,7 +388,7 @@ Page({
       wx.showToast({ title: "请先将代码加入持仓", icon: "none" });
       return;
     }
-    const lines = matched.map((item) => `${item.fundName} ${item.type === 'buy' ? '加仓' : '减仓'} ${item.amount}元`);
+    const lines = matched.map((item) => `${item.fundName} ${item.type === 'buy' ? '买入' : '卖出'} ${item.amount}元`);
     const ok = await new Promise((r) => {
       wx.showModal({
         title: `确认全部（${matched.length}笔）`,
@@ -522,7 +522,7 @@ Page({
 
     if (addS <= 0) { this.setData({ editPreview: false, editValid: false }); return; }
     if (type === "sell" && addS >= oldS) {
-      this.setData({ editPreview: true, editNewShares: "超额", editValid: false, editError: "减仓份额不能超过当前份额" });
+      this.setData({ editPreview: true, editNewShares: "超额", editValid: false, editError: "卖出份额不能超过当前份额" });
       return;
     }
     if (type === "buy") {
@@ -545,7 +545,7 @@ Page({
 
     const ok = await new Promise((r) => {
       wx.showModal({
-        title: type === "buy" ? "确认加仓" : "确认减仓",
+        title: type === "buy" ? "确认买入" : "确认卖出",
         content: `${h.fundName}\n${this.data.editCurrentShares} → ${this.data.editNewShares} 份`,
         success: (res) => r(res.confirm),
       });
@@ -573,7 +573,7 @@ Page({
         });
 
       wx.hideLoading();
-      wx.showToast({ title: type === "buy" ? "加仓成功" : "减仓成功", icon: "success" });
+      wx.showToast({ title: type === "buy" ? "买入成功" : "卖出成功", icon: "success" });
       this.setData({ showForm: false, ocrResults: [] });
       this.loadHoldings();
     } catch (e) {
