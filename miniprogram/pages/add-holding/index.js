@@ -23,6 +23,9 @@ Page({
   },
 
   onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ theme });
     const app = getApp();
     if (app.globalData._ocrFunds && this.data.mode === "screenshot") {
       const funds = app.globalData._ocrFunds;
@@ -35,8 +38,6 @@ Page({
   },
 
   onLoad(options) {
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
     if (options.editScreenshot) {
       const app = getApp();
       const funds = app.globalData._ocrFunds || [];

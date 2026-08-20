@@ -115,9 +115,6 @@ Page({
     const { windowHeight, windowWidth } = wx.getSystemInfoSync();
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
-    // 读取主题色
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
     // 截屏时引导用分享卡片（含小程序码，可导流）
     wx.onUserCaptureScreen &&
       wx.onUserCaptureScreen(() => {
@@ -140,6 +137,9 @@ Page({
   },
 
   onShow() {
+    // 每次显示同步主题色（tab 切换/返回时立即生效）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ theme });
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });

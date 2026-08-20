@@ -25,9 +25,13 @@ Page({
     searchFocus: false,
   },
 
-  onLoad(options) {
+  onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+  },
+
+  onLoad(options) {
     const rawCode = options.fundCode || "";
     const rawName = options.fundName ? decodeURIComponent(options.fundName) : "";
     const code = (rawCode && rawCode !== "undefined") ? rawCode : "";

@@ -3,14 +3,12 @@ Page({
   data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
   onLoad(options) {
     this._loaded = true;
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
     if (options.keyword) {
       this.setData({ keyword: decodeURIComponent(options.keyword) });
       wx.nextTick(() => this.onSearch());
     }
   },
-  onShow() { if (!this._loaded) { wx.switchTab({ url: "/pages/index/index" }); return; } this.setData({ ready: true }); },
+  onShow() { if (!this._loaded) { wx.switchTab({ url: "/pages/index/index" }); return; } this.setData({ theme: wx.getStorageSync("theme") || "red", ready: true }); },
   onInput(e) { this.setData({ keyword: e.detail.value }); },
   async onSearch() {
     const { keyword } = this.data;

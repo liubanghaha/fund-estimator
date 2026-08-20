@@ -39,8 +39,6 @@ Page({
     if (!options.fundCode) return;
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
         wx.setNavigationBarTitle({ title: fundName });
     this._firstLoad = true;
     const { windowWidth } = wx.getSystemInfoSync();
@@ -73,6 +71,9 @@ Page({
   },
 
   onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ theme });
     if (this._firstLoad) { this._firstLoad = false; return; }
     const { fundCode } = this.data;
     if (!fundCode) return;

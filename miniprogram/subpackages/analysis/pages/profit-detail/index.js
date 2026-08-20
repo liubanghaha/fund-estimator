@@ -36,9 +36,7 @@ Page({
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
-    // 读取主题色（其他页面均读，此处缺失导致恒为蓝色主题）
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx, theme });
+    this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
         this._fromCache();
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
@@ -62,6 +60,9 @@ Page({
   },
 
   onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ theme });
     if (this._first) { this._first = false; }
     else {
       const now = Date.now();

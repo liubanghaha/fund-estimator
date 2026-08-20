@@ -113,8 +113,6 @@ Page({
   },
 
   onLoad() {
-    const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
     this.applyCache();
     this.setData({ pinnedCodes: this._getPinnedCodes() });
   },
@@ -130,6 +128,9 @@ Page({
   },
 
   onShow() {
+    // 每次显示同步主题色（tab 切换/返回时立即生效）
+    const theme = wx.getStorageSync("theme") || "red";
+    this.setData({ theme });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       // 30s 节流：切 Tab 频繁进出不重复全量刷新（缓存已在 onLoad 渲染）

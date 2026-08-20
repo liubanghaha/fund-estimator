@@ -12,9 +12,13 @@ Page({
     showAllIndustries: false,
   },
 
-  onLoad() {
+  onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+  },
+
+  onLoad() {
         this.fetchAll();
   },
 

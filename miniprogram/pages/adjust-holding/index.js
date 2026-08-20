@@ -20,12 +20,10 @@ Page({
     showManualHint: false,
   },
 
-  onLoad(options) {
+  onShow() {
+    // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
-  },
-
-  onShow() {
     if (this.data.holdings.length === 0) this.loadHoldings();
   },
 
