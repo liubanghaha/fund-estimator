@@ -288,7 +288,7 @@
         <text class="share-card-title">持仓分享卡片</text>
         <text class="share-card-close" bind:tap="onCloseShareCard">✕</text>
       </view>
-      <canvas type="2d" id="shareCanvas" class="share-canvas" style="width:600rpx;height:840rpx"></canvas>
+      <canvas type="2d" id="shareCanvas" class="share-canvas" style="width:600rpx;height:880rpx"></canvas>
       <view class="share-card-actions">
         <button class="share-save-btn" bind:tap="onSaveShareCard">保存到相册</button>
         <button class="share-send-btn" bind:tap="onShareToFriend">分享给好友</button>

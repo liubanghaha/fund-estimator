@@ -252,7 +252,7 @@
 .share-card-header{width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
 .share-card-title{font-size:30rpx;font-weight:600;color:#333}
 .share-card-close{font-size:32rpx;color:#CCC;padding:4rpx 8rpx}
-.share-canvas{width:600rpx;height:840rpx;border-radius:12rpx;box-shadow:0 2rpx 16rpx rgba(0,0,0,.08)}
+.share-canvas{width:600rpx;height:880rpx;border-radius:12rpx;box-shadow:0 2rpx 16rpx rgba(0,0,0,.08)}
 .share-card-actions{width:100%;margin-top:20rpx;display:flex;gap:16rpx}
 .share-save-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:42rpx;text-align:center;padding:0}
 .share-send-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:var(--primary);background:var(--primary-bg);border-radius:42rpx;text-align:center;padding:0}

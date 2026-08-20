@@ -4,7 +4,7 @@
  */
 
 const CARD_W = 600;
-const CARD_H = 840;
+const CARD_H = 880;
 
 function _init(canvas, w, h) {
   const dpr = wx.getSystemInfoSync().pixelRatio;
