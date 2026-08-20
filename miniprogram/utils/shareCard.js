@@ -161,7 +161,7 @@ function drawShareCard(canvas, opts = {}) {
   ctx.fillStyle = '#999';
   ctx.font = '15px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('微信扫码查看我的持仓', w / 2, qrY + qrSize + 32);
+  ctx.fillText('微信扫码查看持仓今日涨跌', w / 2, qrY + qrSize + 32);
 
   ctx.fillStyle = '#CCC';
   ctx.font = '12px sans-serif';
