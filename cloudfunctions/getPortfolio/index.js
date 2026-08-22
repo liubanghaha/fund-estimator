@@ -172,6 +172,7 @@ exports.main = async (event) => {
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
         estimateUpdated,
+        actualDate: eastmoney.actualDate || null,  // 最新净值日：客户端按交易日冻结缓存用
         position,
         navHigh: navHigh != null ? navHigh.toFixed(4) : null,
         navLow: navLow != null ? navLow.toFixed(4) : null,

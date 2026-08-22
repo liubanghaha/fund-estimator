@@ -1,6 +1,7 @@
 
 const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
+const marketTime = require("../../../../utils/market-time");
 
 const CACHE = "profit_detail_cache_v2";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
@@ -40,13 +41,11 @@ Page({
         this._fromCache();
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
-    const now = Date.now();
-    const ttl = this._isTradingNow() ? 30000 : 120000;
+    // 交易日时钟：盘中 30s；盘后净值发布(最新日=最近交易日)即冻结；周末/节假日免拉
     const c = wx.getStorageSync(CACHE);
     const hasCache = c && c.d && c.d.length && c.idx && c.idx.length;
-    const cacheAge = this._lastFetch ? (now - this._lastFetch) : Infinity;
-    if (hasCache && cacheAge > ttl) {
-      this._lastFetch = now;
+    if (hasCache && !marketTime.isCacheFresh(c, { estimateTtl: 30000 })) {
+      this._lastFetch = Date.now();
       this._pendingAutoRefresh = true;
     }
   },
@@ -65,12 +64,9 @@ Page({
     this.setData({ theme });
     if (this._first) { this._first = false; }
     else {
-      const now = Date.now();
-      const cacheAge = this._lastFetch ? (now - this._lastFetch) : Infinity;
-      const isTrading = this._isTradingNow();
-      const ttl = isTrading ? 30000 : 120000;
-      if (cacheAge > ttl) {
-        this._lastFetch = now;
+      // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
+      if (!marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
+        this._lastFetch = Date.now();
         // 自动调起下拉刷新动画，让用户感知数据更新
         wx.startPullDownRefresh();
       }
@@ -267,7 +263,7 @@ Page({
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
       if (hasIndex) {
         this._retryCount = 0;
-        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now() } });
+        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now(), actualDate: allDaily.length ? allDaily[allDaily.length - 1].date : "" } });
       } else {
         this._retryCount = (this._retryCount || 0) + 1;
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
@@ -989,14 +985,13 @@ Page({
   _isTradingNow() {
     // 固定北京时间（UTC+8）判断，避免设备时区偏差导致误判
     const bj = new Date(Date.now() + 8 * 3600000);
-    const day = bj.getUTCDay();
     const totalMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
 
-    // 今天是否交易日：优先用数据驱动标志（_fetch 算出，能准确识别节假日/临时休市），
-    // 尚未算出时用星期几兜底（周一~周五视作可能交易日）
+    // 今天是否交易日：优先用数据驱动标志（_fetch 算出，能准确识别临时休市），
+    // 尚未算出时用交易日历兜底（含节假日表；表外年份退化为工作日）
     if (this._isTodayTrading != null) {
       if (!this._isTodayTrading) return false;
-    } else if (!(day >= 1 && day <= 5)) {
+    } else if (!marketTime.isTradingDay(bj.toISOString().slice(0, 10))) {
       return false;
     }
 

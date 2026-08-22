@@ -1,3 +1,5 @@
+const marketTime = require("../../../../utils/market-time");
+
 Page({
   data: {
     theme: "blue",
@@ -29,14 +31,12 @@ Page({
   async fetchAll() {
     this.setData({ loading: true, loadError: false });
     try {
-      // 1. 获取持仓 + 健康分 + 资产配置（优先读首页缓存，5分钟内不重复拉）
+      // 1. 获取持仓 + 健康分 + 资产配置（优先读首页缓存；交易日时钟判新鲜度，冻结态不重复拉）
       let d;
       const portfolioCache = wx.getStorageSync("portfolio_cache");
-      if (portfolioCache && portfolioCache.holdings && portfolioCache.updateTime) {
-        const cacheAge = Date.now() - (portfolioCache.ts || 0);
-        if (cacheAge < 300000) {
-          d = portfolioCache;
-        }
+      if (portfolioCache && portfolioCache.holdings && portfolioCache.updateTime &&
+          marketTime.isCacheFresh(portfolioCache, { estimateTtl: 300000 })) {
+        d = portfolioCache;
       }
       if (!d) {
         // withNav60:false 跳过历史净值拉取（本页只需持仓列表 + 健康分），减小响应与耗时

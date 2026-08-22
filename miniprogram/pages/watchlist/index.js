@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const marketTime = require("../../utils/market-time");
 
 const CACHE_KEY = "watchlist_cache";
 const GROUPS_CACHE_KEY = "watchlist_groups_cache";
@@ -7,12 +8,8 @@ const POLL_INTERVAL = 30000;  // 盘中轮询间隔 30 秒（原 10 秒，每次
 
 // 交易时段判断
 function isTradingTime() {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const h = now.getHours(), m = now.getMinutes();
-  const t = h * 60 + m;
-  return t >= 570 && t <= 900; // 9:30-15:00
+  // 交易日时钟（含节假日表）：仅交易日 9:30~15:00 视作盘中
+  return marketTime.marketPhase() === "trading";
 }
 
 Page({
@@ -133,9 +130,10 @@ Page({
     this.setData({ theme });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      // 30s 节流：切 Tab 频繁进出不重复全量刷新（缓存已在 onLoad 渲染）
+      // 30s 节流 + 交易日时钟：盘中照常自动刷新；盘后净值发布即冻结、周末/节假日全天免拉
       const now = Date.now();
-      if (!this._lastFetch || now - this._lastFetch > 30000) {
+      const cacheFresh = marketTime.isCacheFresh(this._wlCache, { estimateTtl: 30000 });
+      if ((!this._lastFetch || now - this._lastFetch > 30000) && !cacheFresh) {
         this._lastFetch = now;
         // 自动调起下拉刷新动画，让用户感知数据更新（页面未就绪时先标记，onReady 后调起）
         if (this._ready) wx.startPullDownRefresh();
@@ -526,6 +524,7 @@ Page({
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.watchlist && cached.watchlist.length > 0) {
+        this._wlCache = cached;
         this.updateGroupCounts();
         this.setData({ watchlist: cached.watchlist, loaded: true }, () => {
           this.applyGroupFilter();
@@ -612,7 +611,13 @@ Page({
         });
 
         try {
-          wx.setStorageSync(CACHE_KEY, { watchlist, groups, time: Date.now() });
+          // ts/actualDate 供交易日时钟判新鲜度（盘后净值发布即冻结、周末免拉）
+          const maxActualDate = items.reduce((m, w) => {
+            const ad = estData[w.fundCode] && estData[w.fundCode].actualDate;
+            return ad && ad > m ? ad : m;
+          }, "");
+          this._wlCache = { watchlist, groups, time: Date.now(), ts: Date.now(), actualDate: maxActualDate || undefined };
+          wx.setStorageSync(CACHE_KEY, this._wlCache);
         } catch (e) {
           // ignore cache error
         }

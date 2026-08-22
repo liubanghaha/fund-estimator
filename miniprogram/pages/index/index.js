@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const marketTime = require("../../utils/market-time");
 
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
@@ -14,8 +15,6 @@ const ALL_INDICES = [
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
-const CACHE_TTL = 30000;  // 交易时段缓存有效期 30 秒（进页面缓存过期即静默后台刷新，数据更新更即时）
-const CACHE_TTL_IDLE = 30 * 60 * 1000;  // 盘外缓存有效期 30 分钟：长时间未进入也能秒开
 
 Page({
   data: {
@@ -269,12 +268,12 @@ Page({
         wx.removeStorageSync("portfolio_force_refresh");
         this._lastFetch = 0;
       }
-      const cacheAge = this._cacheTs ? (now - this._cacheTs) : Infinity;
-      // 盘外放宽缓存 TTL；冷启动且缓存新鲜时直接复用，避免每次进入全量刷新
-      const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
+      // 交易日时钟判缓存新鲜度：盘中 30s 短 TTL；盘后净值发布(actualDate=今天)即冻结；
+      // 周末/节假日/早盘全天免拉（数据只在交易日变化）
+      const portfolioFresh = marketTime.isCacheFresh(this._portfolioCache, { estimateTtl: 30000 });
       const needFetch = this._lastFetch
-        ? (now - this._lastFetch > 30000 || cacheAge > ttl)
-        : (cacheAge > ttl);
+        ? (now - this._lastFetch > 30000 || !portfolioFresh)
+        : !portfolioFresh;
       if (needFetch) {
         this._lastFetch = now;
         // 页面已就绪 → 静默后台刷新（缓存已渲染，不再拉起下拉动画，避免打开页面长时间转圈）
@@ -300,6 +299,7 @@ Page({
       const cached = wx.getStorageSync(CACHE_KEY);
       if (cached && cached.holdings && cached.holdings.length > 0) {
         this._cacheTs = cached.ts || 0;
+        this._portfolioCache = cached;
         let holdings = cached.holdings;
         holdings = this.formatHoldings(holdings);
         holdings = this.sortHoldings(holdings);
@@ -344,13 +344,9 @@ Page({
       const cached = wx.getStorageSync(INDEX_CACHE_KEY);
       const codes = this.data.activeIndices.map((i) => i.code).join(",");
       if (cached && cached.codes === codes && cached.cards && cached.cards.length > 0) {
-        const ts = cached.ts || 0;
-        const isTrading = this._isTradingHours();
-        const ttl = isTrading ? 30000 : 300000;
-        if (Date.now() - ts < ttl) {
-          this.setData({ indexCards: cached.cards }, () => this._measureIndexBar());
-          return true;
-        }
+        // 指数行情 15:00 收盘即定格：有缓存先渲染，收盘后写入的直接免拉
+        this.setData({ indexCards: cached.cards }, () => this._measureIndexBar());
+        return marketTime.isCacheFresh(cached, { estimateTtl: 30000, finalAtClose: true });
       }
     } catch (e) { /* ignore */ }
     // 无缓存时展示占位，让指数栏立即可见
@@ -360,14 +356,6 @@ Page({
     }));
     this.setData({ indexCards: placeholders }, () => this._measureIndexBar());
     return false;
-  },
-
-  _isTradingHours() {
-    const now = new Date();
-    const day = now.getDay();
-    if (day < 1 || day > 5) return false;
-    const total = now.getHours() * 60 + now.getMinutes();
-    return (total >= 570 && total < 690) || (total >= 780 && total < 900);
   },
 
   onToggleAmount() {
@@ -532,7 +520,13 @@ Page({
         });
         this._refreshShareToken();
         this._checkAlerts();
-        wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
+        // 组合级净值日（持仓最大 actualDate）：供 isCacheFresh 判断当晚净值发布后冻结
+        const maxActualDate = holdings.reduce((m, h) => (h.actualDate && h.actualDate > m ? h.actualDate : m), "");
+        this._portfolioCache = {
+          holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now(),
+          actualDate: maxActualDate || undefined,
+        };
+        wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
         return true;
       }
       return false;

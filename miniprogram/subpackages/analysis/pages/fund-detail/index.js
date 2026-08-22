@@ -1,10 +1,9 @@
 const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
 const chart = require("../../../../utils/chart");
+const marketTime = require("../../../../utils/market-time");
 
 const CACHE_PREFIX = "fund_detail_cache_";
-const CACHE_TTL = 60000;  // 交易时段缓存有效期 60 秒
-const CACHE_TTL_IDLE = 30 * 60 * 1000;  // 盘外缓存有效期 30 分钟：长时间未进入也能秒开
 
 Page({
   data: {
@@ -52,10 +51,9 @@ Page({
       wx.removeStorageSync("portfolio_force_refresh");
       this._skipCache = true;
     }
-    // 缓存新鲜（交易 60s / 盘外 30min）时直接复用，无需自动刷新动画
+    // 缓存新鲜度走交易日时钟（盘中短 TTL、收盘净值发布即冻结、周末/节假日全天免拉）
     const cached = wx.getStorageSync(CACHE_PREFIX + options.fundCode);
-    const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
-    const cacheFresh = cached && cached.history && cached.history.length && (Date.now() - (cached.ts || 0) < ttl);
+    const cacheFresh = cached && cached.history && cached.history.length && marketTime.isCacheFresh(cached);
     // 缓存缺失/过期时自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     this._pendingAutoRefresh = !this._skipCache && !cacheFresh;
     // 立即加载（缓存秒开 + 过期则拉新），不依赖下拉动画链路，避免页面卡加载
@@ -157,6 +155,16 @@ Page({
                 showAllHistory: false,
               });
               this.calcReturns(merged);
+              // 缓存断档（隔了多个交易日才进）→ 单点合并补不齐中间日期，后台全量补拉历史
+              const newestBefore = cached.history[0] && cached.history[0].date;
+              const dayBefore = (() => {
+                const t = new Date(e.actualDate + "T00:00:00Z");
+                t.setUTCDate(t.getUTCDate() - 1);
+                return t.toISOString().slice(0, 10);
+              })();
+              if (newestBefore && newestBefore < marketTime.lastTradingDay(dayBefore)) {
+                this.fetchHistory(300);
+              }
             }
           }
         } else {
@@ -232,24 +240,12 @@ Page({
     return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
   },
 
-  _isTradingHours() {
-    const now = new Date();
-    const day = now.getDay();
-    if (day < 1 || day > 5) return false;
-    const total = now.getHours() * 60 + now.getMinutes();
-    return (total >= 570 && total < 690) || (total >= 780 && total < 900);
-  },
-
   _restoreCache() {
     try {
       const cached = wx.getStorageSync(CACHE_PREFIX + this.data.fundCode);
       if (!cached || !cached.history || !cached.history.length) return false;
-      // 跨日缓存不秒开：净值/涨跌按日变化，展示昨天数据没有意义，直接拉新
-      // （同日缓存才渲染：新鲜时秒开，过期时渲染后后台刷新）
-      const sameDay = cached.actualDate === calc.formatDate(new Date());
-      if (!sameDay) return false;
-      const ttl = this._isTradingHours() ? CACHE_TTL : CACHE_TTL_IDLE;
-      const fresh = Date.now() - (cached.ts || 0) < ttl;
+      // 数据只在交易日变化：跨日/周末的缓存也直接渲染（旧值即最新值），不再有「加载中」空窗。
+      // 是否后台刷新由 isCacheFresh 判断：盘中短 TTL、收盘净值发布(actualDate=今天)后冻结、周末全天免拉
       this.setData({
         loading: false,
         fundName: this.data.fundName || cached.fundName || "",
@@ -273,7 +269,7 @@ Page({
         }
         this.drawChart();
       });
-      return fresh;
+      return marketTime.isCacheFresh(cached);
     } catch (e) { return false; }
   },
 
