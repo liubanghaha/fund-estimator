@@ -5,7 +5,7 @@
       <view class="avatar-placeholder" wx:else>👤</view>
     </button>
     <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
-    <view class="nickname">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
+    <view class="nickname" bind:tap="onNicknameTap">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
   </view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索添加</text><text class="arrow">></text></view>

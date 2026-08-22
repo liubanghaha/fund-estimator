@@ -50,6 +50,11 @@ Page({
     wx.showToast({ title: "主题已切换", icon: "none", duration: 2000 });
   },
 
+  // 头部「点击登录」：未登录时触发登录；已登录点击无动作
+  onNicknameTap() {
+    if (!this.data.isLoggedIn) this.onLogin();
+  },
+
   async onLogin() {
     wx.showLoading({ title: "登录中..." });
     try {
