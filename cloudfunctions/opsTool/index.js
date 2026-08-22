@@ -137,13 +137,13 @@ exports.main = async (event) => {
         else if (t.signal === "mid" && mids.length < 2) mids.push({ code: t.fundCode, name });
       });
 
-      // 生成可复制文案
+      // 生成可复制文案（措辞合规：只做数据陈述，不带定性判断词）
       const lines = [];
       lines.push(`🌡️ 今日基金温度（${date}）`);
-      lines.push(`低估 ${dist.low || 0} 只 · 合理 ${dist.mid || 0} 只 · 高估 ${dist.high || 0} 只`);
-      if (lows.length) lines.push(`低估代表：${lows.map((f) => f.name).join("、")}`);
-      if (highs.length) lines.push(`高估代表：${highs.map((f) => f.name).join("、")}`);
-      if (!lows.length && !highs.length && mids.length) lines.push(`代表基金：${mids.map((f) => f.name).join("、")}`);
+      lines.push(`温度偏低 ${dist.low || 0} 只 · 温度适中 ${dist.mid || 0} 只 · 温度偏高 ${dist.high || 0} 只`);
+      if (lows.length) lines.push(`估值温度低于 0.75：${lows.map((f) => f.name).join("、")}`);
+      if (highs.length) lines.push(`估值温度高于 1.25：${highs.map((f) => f.name).join("、")}`);
+      if (!lows.length && !highs.length && mids.length) lines.push(`估值温度 0.75~1.25 区间：${mids.map((f) => f.name).join("、")}`);
       lines.push("");
       lines.push("📱 你的持仓现在是什么温度？扫码查看 👇");
 

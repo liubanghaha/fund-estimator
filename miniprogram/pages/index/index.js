@@ -445,7 +445,7 @@ Page({
         const prev = peCache[h.fundCode];
         if (prev && prev !== h.peTemp.signal) {
           const up = (prev === 'low' && h.peTemp.signal !== 'low') || (prev === 'mid' && h.peTemp.signal === 'high');
-          const signalMap = { low: '低估', mid: '正常', high: '高估' };
+          const signalMap = { low: '温度偏低', mid: '温度适中', high: '温度偏高' };
           triggered.push({ fundCode: h.fundCode, fundName: h.fundName, rate: 0, type: up ? 'up' : 'down', peChange: `${signalMap[prev]||prev}→${signalMap[h.peTemp.signal]||h.peTemp.signal}` });
         }
         newPeCache[h.fundCode] = h.peTemp.signal;
@@ -590,12 +590,12 @@ Page({
       const pe = h.peTemp;
       if (pe && pe.signal) {
         valCls = pe.signal === 'low' ? 't-low' : pe.signal === 'high' ? 't-high' : pe.signal === 'nodata' ? 't-nodata' : 't-mid';
-        valText = pe.signal === 'low' ? '🟢低估' : pe.signal === 'high' ? '🔴高估' : pe.signal === 'nodata' ? '--' : '🟡正常';
+        valText = pe.signal === 'low' ? '🟢偏低' : pe.signal === 'high' ? '🔴偏高' : pe.signal === 'nodata' ? '--' : '🟡适中';
       } else if (h.position != null) {
         const low = (h.currentNav != null && parseFloat(h.currentNav) < 0.75) || h.position <= 37;
         const high = !low && h.position >= 63;
         valCls = low ? 't-low' : high ? 't-high' : 't-mid';
-        valText = low ? '🟢低估' : high ? '🔴高估' : '🟡正常';
+        valText = low ? '🟢偏低' : high ? '🔴偏高' : '🟡适中';
       }
       return {
         ...h,

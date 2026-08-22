@@ -28,9 +28,9 @@
         <view wx:if="{{briefing.empty}}" class="ops-tip">{{briefing.msg}}</view>
         <block wx:else>
           <view class="ops-stats">
-            <view class="ops-stat"><view class="ops-stat-num low">{{briefing.dist.low || 0}}</view><view class="ops-stat-label">低估</view></view>
-            <view class="ops-stat"><view class="ops-stat-num mid">{{briefing.dist.mid || 0}}</view><view class="ops-stat-label">合理</view></view>
-            <view class="ops-stat"><view class="ops-stat-num high">{{briefing.dist.high || 0}}</view><view class="ops-stat-label">高估</view></view>
+            <view class="ops-stat"><view class="ops-stat-num low">{{briefing.dist.low || 0}}</view><view class="ops-stat-label">温度偏低</view></view>
+            <view class="ops-stat"><view class="ops-stat-num mid">{{briefing.dist.mid || 0}}</view><view class="ops-stat-label">温度适中</view></view>
+            <view class="ops-stat"><view class="ops-stat-num high">{{briefing.dist.high || 0}}</view><view class="ops-stat-label">温度偏高</view></view>
           </view>
           <view class="ops-briefing-text">{{briefing.copy}}</view>
           <button class="ops-primary-btn" bind:tap="onCopyBriefing">复制文案</button>

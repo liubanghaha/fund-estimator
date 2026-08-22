@@ -213,7 +213,7 @@ exports.main = async (event) => {
         if (t) {
           h.peTemp = {
             signal: t.signal,
-            label: t.label,
+            label: ft.sanitizeLabel(t.label),
             normPE: t.normPE,
             weightedPE: t.weightedPE,
             coverage: t.coverage,

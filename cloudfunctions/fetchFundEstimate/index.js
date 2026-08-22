@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const fd = require("./_shared/fund-data");
+const ft = require("./_shared/fund-temperature");
 
 exports.main = async (event) => {
   const { fundCode } = event;
@@ -78,7 +79,7 @@ async function fetchTemperature(fundCode) {
       const t = res.data[0];
       return {
         signal: t.signal,
-        label: t.label,
+        label: ft.sanitizeLabel(t.label),
         normPE: t.normPE,
         weightedPE: t.weightedPE,
         coverage: t.coverage,

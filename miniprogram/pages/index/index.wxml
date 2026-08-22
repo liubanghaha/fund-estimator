@@ -50,7 +50,7 @@
 
       <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
         <text class="alert-icon">🔔</text>
-        <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
+        <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
         <text class="alert-text" wx:else>{{alertTriggered[0].fundName}} {{alertTriggered[0].type === 'up' ? '涨超' : '跌超'}}提醒<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
         <text class="alert-close" bind:tap="onDismissAlert">✕</text>
       </view>
@@ -247,7 +247,7 @@
         <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
         <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
       </view>
-      <view class="temp-tooltip-rule">{{lt}} 0.75 低估 · 0.75～1.25 正常 · {{gt}} 1.25 高估</view>
+      <view class="temp-tooltip-rule">{{lt}} 0.75 温度偏低 · 0.75～1.25 温度适中 · {{gt}} 1.25 温度偏高</view>
       <view class="temp-tooltip-disclaimer">估算数据仅供参考，不构成投资建议</view>
       <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
     </view>
@@ -268,14 +268,14 @@
     </view>
   </view>
 
-  <!-- 止盈止损设置 -->
+  <!-- 涨跌提醒设置 -->
   <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
     <view class="col-edit-card" catch:tap="noop">
-      <view class="col-edit-title">止盈止损提醒 — {{alertEditFundName}}</view>
-      <view class="alert-field"><text class="alert-label">止盈(涨超%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
-      <view class="alert-field"><text class="alert-label">止损(跌超%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
+      <view class="col-edit-title">涨跌提醒 — {{alertEditFundName}}</view>
+      <view class="alert-field"><text class="alert-label">上涨提醒线(%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
+      <view class="alert-field"><text class="alert-label">下跌提醒线(%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
       <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
-        <text class="alert-label">PE变化提醒</text>
+        <text class="alert-label">温度变化提醒</text>
         <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">
           <view class="pe-switch-dot"></view>
         </view>

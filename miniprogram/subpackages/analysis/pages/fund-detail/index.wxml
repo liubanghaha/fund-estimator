@@ -232,7 +232,7 @@
           <text class="fee-arrow {{showFee ? 'open' : ''}}">{{showFee ? '▼' : '▶'}}</text>
         </view>
         <view wx:if="{{showFee}}" class="fee-body">
-          <view class="fee-note">假设投资¥100,000，年化收益8%，费率差复利侵蚀：</view>
+          <view class="fee-note">假设本金 ¥100,000，按年化 8% 演算，费率差复利侵蚀：</view>
           <view class="fee-table">
             <view class="fee-row fee-row-head">
               <text class="fee-col-label"></text>
