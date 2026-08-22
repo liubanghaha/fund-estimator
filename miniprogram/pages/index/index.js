@@ -91,16 +91,27 @@ Page({
     // 分享卡片
     showShareCard: false,
     shareCardRendered: false,
+    // 分享落地横幅 + 渠道来源
+    shareCard: null,
+    entryChannel: "",
   },
 
   onPageScroll() {},
 
   // 启用分享到好友和朋友圈
   onShareAppMessage() {
+    // 分享令牌预生成（数据就绪后 _refreshShareToken 已缓存），带参数实现「点开看到分享者卡片」引流
+    const token = wx.getStorageSync("share_token");
+    const hasHolding = this.data.holdings && this.data.holdings.length > 0;
+    const p = parseFloat(this.data.todayProfit);
+    let title = "养基小簿 · 涨跌有数";
+    if (token && hasHolding && p !== 0) {
+      title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
+    }
     return {
-      title: '养基小簿 · 涨跌有数',
-      path: '/pages/index/index',
-      imageUrl: '',
+      title,
+      path: token && hasHolding ? `/pages/index/index?share=${token}` : "/pages/index/index",
+      imageUrl: "",
     };
   },
 
@@ -111,7 +122,7 @@ Page({
     };
   },
 
-  onLoad() {
+  onLoad(options) {
     const { windowHeight, windowWidth } = wx.getSystemInfoSync();
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
@@ -124,6 +135,91 @@ Page({
           duration: 2500,
         });
       });
+    // 分享落地 / 渠道扫码追踪
+    this._handleEntry(options || {});
+  },
+
+  // 处理进入参数：渠道码 scene 上报 + 分享令牌拉取分享者卡片
+  _handleEntry(options) {
+    // 渠道小程序码（scene = c_渠道ID）
+    if (options.scene) {
+      let ch = "";
+      try {
+        const decoded = decodeURIComponent(options.scene);
+        if (decoded.indexOf("c_") === 0) ch = decoded.slice(2);
+      } catch (e) { /* ignore */ }
+      if (ch) {
+        this.setData({ entryChannel: ch });
+        api.opsShare("trackVisit", { channelId: ch }).catch(() => {});
+      }
+    }
+    // 分享转发落地（path 带 share=令牌）
+    if (options.share) {
+      this._loadShareCard(String(options.share).slice(0, 32));
+    }
+  },
+
+  async _loadShareCard(token) {
+    try {
+      const res = await api.opsShare("getCard", { token });
+      if (res.result && res.result.code === 0) {
+        const d = res.result.data;
+        this.setData({
+          shareCard: {
+            nickName: d.nickName || "朋友",
+            todayProfit: d.todayProfit,
+            todayProfitRate: d.todayProfitRate,
+            totalReturn: d.totalReturn,
+            totalReturnRate: d.totalReturnRate,
+            fundCount: d.fundCount,
+            fundNames: d.fundNames || [],
+          },
+        });
+      }
+    } catch (e) { /* 链接失效/网络异常，静默不打扰 */ }
+  },
+
+  onCloseShareLanding() {
+    this.setData({ shareCard: null });
+  },
+
+  // 分享落地引导：未登录先登录，已登录去搜索页添加持仓
+  onAddMyHolding() {
+    if (!this.data.isLoggedIn) {
+      wx.navigateTo({ url: "/pages/login/index" });
+      return;
+    }
+    wx.navigateTo({ url: "/pages/search/index" });
+  },
+
+  // 数据就绪后预生成分享令牌（数据没变化不重复生成；登出/换号时清除，避免串号）
+  _refreshShareToken() {
+    if (!this.data.isLoggedIn) {
+      wx.removeStorageSync("share_token");
+      wx.removeStorageSync("share_token_data");
+      return;
+    }
+    const holdings = this.data.holdings;
+    if (!holdings || holdings.length === 0) return;
+    const userInfo = wx.getStorageSync("userInfo");
+    const openid = (userInfo && userInfo.openid) || "";
+    const sig = [this.data.todayProfit, this.data.todayProfitRate, this.data.totalReturn, this.data.totalReturnRate, holdings.length].join("|");
+    const cached = wx.getStorageSync("share_token_data");
+    if (cached && cached.openid === openid && cached.sig === sig && cached.expireAt > Date.now()) return;
+    api.opsShare("createToken", {
+      todayProfit: this.data.todayProfit,
+      todayProfitRate: this.data.todayProfitRate,
+      totalReturn: this.data.totalReturn,
+      totalReturnRate: this.data.totalReturnRate,
+      fundCount: holdings.length,
+      fundNames: holdings.slice(0, 20).map((h) => ({ code: h.fundCode, name: h.fundName })),
+      nickName: (userInfo && userInfo.nickName) || "",
+    }).then((res) => {
+      if (res.result && res.result.code === 0) {
+        wx.setStorageSync("share_token", res.result.data.token);
+        wx.setStorageSync("share_token_data", { openid, sig, expireAt: Date.now() + 7 * 24 * 3600 * 1000 });
+      }
+    }).catch(() => {});
   },
 
   // 首次渲染完成后自动刷新（静默后台拉取，缓存已渲染，不拉起下拉动画）
@@ -238,6 +334,7 @@ Page({
           allGroupsData: cached.groups || [],
           dataReady: true,
         });
+        this._refreshShareToken();
       }
     } catch (e) { /* ignore cache read error */ }
   },
@@ -433,6 +530,7 @@ Page({
           fromCache: false,
           allGroupsData: d.groups || [],
         });
+        this._refreshShareToken();
         this._checkAlerts();
         wx.setStorage({ key: CACHE_KEY, data: { holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now() } });
         return true;

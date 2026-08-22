@@ -1,0 +1,69 @@
+<view class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <!-- 权限校验中 -->
+  <view wx:if="{{checking}}" class="ops-empty">
+    <view class="ops-empty-icon">⏳</view>
+    <view class="ops-empty-desc">校验权限中...</view>
+  </view>
+
+  <!-- 无权限 -->
+  <view wx:elif="{{!isAdmin}}" class="ops-empty">
+    <view class="ops-empty-icon">🔒</view>
+    <view class="ops-empty-desc">该功能仅运营管理员可见</view>
+  </view>
+
+  <block wx:else>
+    <!-- Tab 切换 -->
+    <view class="ops-tabs">
+      <view class="ops-tab {{tab === 'briefing' ? 'active' : ''}}" bind:tap="onTab" data-tab="briefing">温度简报</view>
+      <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道小程序码</view>
+    </view>
+
+    <!-- ===== 温度简报 ===== -->
+    <view wx:if="{{tab === 'briefing'}}" class="ops-card">
+      <view class="ops-card-title">📊 今日温度简报</view>
+      <view class="ops-card-desc">基于当日基金估值温度数据生成，可直接复制发朋友圈 / 微信群引流。</view>
+      <button class="ops-primary-btn" bind:tap="onGenBriefing" loading="{{briefingLoading}}" disabled="{{briefingLoading}}">生成今日温度简报</button>
+
+      <block wx:if="{{briefing}}">
+        <view wx:if="{{briefing.empty}}" class="ops-tip">{{briefing.msg}}</view>
+        <block wx:else>
+          <view class="ops-stats">
+            <view class="ops-stat"><view class="ops-stat-num low">{{briefing.dist.low || 0}}</view><view class="ops-stat-label">低估</view></view>
+            <view class="ops-stat"><view class="ops-stat-num mid">{{briefing.dist.mid || 0}}</view><view class="ops-stat-label">合理</view></view>
+            <view class="ops-stat"><view class="ops-stat-num high">{{briefing.dist.high || 0}}</view><view class="ops-stat-label">高估</view></view>
+          </view>
+          <view class="ops-briefing-text">{{briefing.copy}}</view>
+          <button class="ops-primary-btn" bind:tap="onCopyBriefing">复制文案</button>
+        </block>
+      </block>
+    </view>
+
+    <!-- ===== 渠道小程序码 ===== -->
+    <view wx:if="{{tab === 'channels'}}" class="ops-card">
+      <view class="ops-card-title">🏷️ 渠道小程序码</view>
+      <view class="ops-card-desc">每个渠道一个码，扫码进入自动统计来源。两周后看哪个渠道带来的人最多。</view>
+
+      <view class="ops-add-row">
+        <input class="ops-input" value="{{channelName}}" placeholder="渠道名称，如：朋友圈 / 基金群 / 小红书" bindinput="onChannelInput" maxlength="20" />
+        <button class="ops-add-btn" bind:tap="onAddChannel" loading="{{addingChannel}}" disabled="{{addingChannel}}">添加</button>
+      </view>
+
+      <view wx:if="{{channels.length === 0}}" class="ops-tip">还没有渠道，先添加一个吧</view>
+
+      <view class="ops-channel" wx:for="{{channels}}" wx:key="channelId">
+        <view class="ops-channel-head">
+          <text class="ops-channel-name">{{item.name}}</text>
+          <text class="ops-channel-count">访问 {{item.visitCount}}</text>
+        </view>
+        <image wx:if="{{codeUrl_[item.channelId]}}" class="ops-code-img" src="{{codeUrl_[item.channelId]}}" mode="aspectFit" />
+        <view class="ops-channel-actions">
+          <button class="ops-mini-btn primary" bind:tap="onGenerateCode" data-channel-id="{{item.channelId}}" loading="{{generatingCode === item.channelId}}" disabled="{{generatingCode === item.channelId}}">
+            {{item.fileID ? '重新生成' : '生成小程序码'}}
+          </button>
+          <button class="ops-mini-btn danger" bind:tap="onRemoveChannel" data-channel-id="{{item.channelId}}">删除</button>
+        </view>
+        <view class="ops-channel-tip">scene: c_{{item.channelId}}</view>
+      </view>
+    </view>
+  </block>
+</view>

@@ -256,3 +256,14 @@
 .share-card-actions{width:100%;margin-top:20rpx;display:flex;gap:16rpx}
 .share-save-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:42rpx;text-align:center;padding:0}
 .share-send-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;font-weight:600;color:var(--primary);background:var(--primary-bg);border-radius:42rpx;text-align:center;padding:0}
+
+/* 分享落地横幅（被分享者进入看到分享者持仓） */
+.share-landing{background:#FFF;border:1rpx solid var(--primary-bg);border-radius:16rpx;padding:20rpx 24rpx;margin:0 0 12rpx;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.share-landing-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10rpx}
+.share-landing-title{font-size:30rpx;font-weight:600;color:#333}
+.share-landing-close{font-size:30rpx;color:#CCC;padding:0 8rpx}
+.share-landing-row{display:flex;flex-wrap:wrap;gap:8rpx 24rpx;margin-bottom:10rpx}
+.share-landing-item{font-size:24rpx;color:#666}
+.share-landing-funds{display:flex;flex-wrap:wrap;gap:8rpx;margin-bottom:16rpx}
+.share-landing-fund{font-size:22rpx;color:var(--primary);background:var(--primary-bg);border-radius:8rpx;padding:4rpx 12rpx;max-width:300rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.share-landing-btn{height:72rpx;line-height:72rpx;font-size:28rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:36rpx;text-align:center;padding:0;margin:0}

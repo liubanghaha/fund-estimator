@@ -12,6 +12,8 @@ Page({
     showMigrate: false,
     migrateCode: "",
     migrating: false,
+    // 运营助手（仅管理员可见）
+    isOpsAdmin: false,
   },
 
   onShow() {
@@ -25,6 +27,15 @@ Page({
     }
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 运营管理员校验（轻量，失败静默）
+    api.opsTool("checkAdmin").then((res) => {
+      const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
+      this.setData({ isOpsAdmin });
+    }).catch(() => {});
+  },
+
+  onOpenOps() {
+    wx.navigateTo({ url: "/pages/ops/index" });
   },
 
   onToggleTheme() {

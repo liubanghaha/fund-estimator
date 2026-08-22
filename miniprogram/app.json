@@ -6,7 +6,8 @@
     "pages/search/index",
     "pages/add-holding/index",
     "pages/adjust-holding/index",
-    "pages/login/index"
+    "pages/login/index",
+    "pages/ops/index"
   ],
   "subpackages": [
     {

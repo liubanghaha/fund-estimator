@@ -31,6 +31,23 @@
 
       <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
 
+      <!-- 分享落地横幅：被分享者点开看到分享者的持仓摘要，引导添加自己的持仓 -->
+      <view wx:if="{{shareCard}}" class="share-landing">
+        <view class="share-landing-top">
+          <text class="share-landing-title">📤 {{shareCard.nickName}} 的持仓</text>
+          <text class="share-landing-close" bind:tap="onCloseShareLanding">✕</text>
+        </view>
+        <view class="share-landing-row">
+          <text class="share-landing-item">今日收益 <text class="{{shareCard.todayProfit > 0 ? 'up' : shareCard.todayProfit < 0 ? 'down' : ''}}">{{fmt.money(shareCard.todayProfit, true)}}</text></text>
+          <text class="share-landing-item">持有 {{shareCard.fundCount}} 只</text>
+          <text class="share-landing-item" wx:if="{{shareCard.totalReturn}}">累计 {{fmt.money(shareCard.totalReturn, true)}}</text>
+        </view>
+        <view class="share-landing-funds" wx:if="{{shareCard.fundNames.length > 0}}">
+          <text class="share-landing-fund" wx:for="{{shareCard.fundNames}}" wx:key="code" wx:for-item="f">{{f.name}}</text>
+        </view>
+        <button class="share-landing-btn" bind:tap="onAddMyHolding">我也要算我的收益</button>
+      </view>
+
       <view wx:if="{{alertTriggered.length > 0}}" class="alert-bar">
         <text class="alert-icon">🔔</text>
         <text class="alert-text" wx:if="{{alertTriggered[0].peChange}}">{{alertTriggered[0].fundName}} PE {{alertTriggered[0].peChange}}<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>

@@ -1,0 +1,46 @@
+.container{padding:24rpx;min-height:100vh}
+
+.ops-empty{display:flex;flex-direction:column;align-items:center;padding:160rpx 0}
+.ops-empty-icon{font-size:80rpx;margin-bottom:24rpx}
+.ops-empty-desc{font-size:28rpx;color:#999}
+
+/* Tab */
+.ops-tabs{display:flex;background:#FFF;border-radius:16rpx;margin-bottom:24rpx;padding:8rpx}
+.ops-tab{flex:1;text-align:center;padding:20rpx 0;font-size:28rpx;color:#666;border-radius:12rpx}
+.ops-tab.active{color:var(--primary);background:var(--primary-bg);font-weight:600}
+
+.ops-card{background:#FFF;border-radius:16rpx;padding:28rpx 24rpx;margin-bottom:24rpx}
+.ops-card-title{font-size:32rpx;font-weight:600;color:#333;margin-bottom:10rpx}
+.ops-card-desc{font-size:24rpx;color:#999;line-height:1.6;margin-bottom:24rpx}
+
+.ops-primary-btn{height:80rpx;line-height:80rpx;font-size:28rpx;font-weight:600;color:#FFF;background:var(--primary-gradient);border-radius:40rpx;text-align:center;padding:0;margin:0 0 24rpx}
+.ops-primary-btn[disabled]{opacity:.6}
+
+.ops-tip{font-size:26rpx;color:#999;text-align:center;padding:32rpx 0}
+
+/* 简报统计 */
+.ops-stats{display:flex;gap:16rpx;margin-bottom:24rpx}
+.ops-stat{flex:1;background:#F7F7F7;border-radius:12rpx;padding:20rpx 0;text-align:center}
+.ops-stat-num{font-size:40rpx;font-weight:700}
+.ops-stat-num.low{color:#1FA84C}
+.ops-stat-num.mid{color:#E6A23C}
+.ops-stat-num.high{color:#E4393C}
+.ops-stat-label{font-size:24rpx;color:#999;margin-top:6rpx}
+
+.ops-briefing-text{background:#F7F7F7;border-radius:12rpx;padding:24rpx;font-size:26rpx;color:#444;line-height:1.8;white-space:pre-wrap;margin-bottom:24rpx}
+
+/* 渠道管理 */
+.ops-add-row{display:flex;gap:16rpx;margin-bottom:24rpx}
+.ops-input{flex:1;height:80rpx;padding:0 20rpx;font-size:28rpx;background:#F5F5F5;border-radius:12rpx;box-sizing:border-box}
+.ops-add-btn{width:140rpx;height:80rpx;line-height:80rpx;font-size:28rpx;color:#FFF;background:var(--primary);border-radius:12rpx;text-align:center;padding:0;margin:0}
+
+.ops-channel{border:1rpx solid #F0F0F0;border-radius:12rpx;padding:20rpx;margin-bottom:16rpx}
+.ops-channel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16rpx}
+.ops-channel-name{font-size:30rpx;font-weight:600;color:#333}
+.ops-channel-count{font-size:24rpx;color:#999}
+.ops-code-img{width:280rpx;height:280rpx;display:block;margin:0 auto 16rpx}
+.ops-channel-actions{display:flex;gap:16rpx}
+.ops-mini-btn{flex:1;height:64rpx;line-height:64rpx;font-size:26rpx;border-radius:32rpx;text-align:center;padding:0;margin:0}
+.ops-mini-btn.primary{color:var(--primary);background:var(--primary-bg)}
+.ops-mini-btn.danger{color:#E4393C;background:#FDECEC}
+.ops-channel-tip{font-size:20rpx;color:#CCC;text-align:center;margin-top:12rpx}

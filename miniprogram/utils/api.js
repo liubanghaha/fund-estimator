@@ -76,6 +76,14 @@ const api = {
   userLogin() {
     return this.callFunction("userLogin", {});
   },
+
+  // ===== 运营增长（推广助手） =====
+  opsShare(action, data = {}) {
+    return this.callFunction("opsShare", { action, ...data });
+  },
+  opsTool(action, data = {}) {
+    return this.callFunction("opsTool", { action, ...data });
+  },
   submitFeedback({ content, type, contact, images } = {}) {
     return this.callFunction("submitFeedback", { content, type, contact, images });
   },

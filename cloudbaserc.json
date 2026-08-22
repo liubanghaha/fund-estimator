@@ -167,6 +167,18 @@
       "timeout": 120,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "opsShare",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "opsTool",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }
