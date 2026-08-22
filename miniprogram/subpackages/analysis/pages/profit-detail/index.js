@@ -210,6 +210,8 @@ Page({
       // 快照可能回退到最近交易日（非交易日打开），snapDate 非今日时不算"今日快照"
       const hasTodaySnaps = (d.snapDate || today) === today && d.intradaySnapshots && d.intradaySnapshots.length > 0;
       const isTradingDay = lastDate === today || hasTodaySnaps;
+      // 数据驱动的"今日是否交易日"标志，供 _isTradingNow 复用（识别节假日/临时休市）
+      this._isTodayTrading = isTradingDay;
       if (!isTradingDay) {
         Object.keys(idxMap).forEach(k => { idxMap[k] = (idxMap[k] || []).filter(d => d.date !== today); });
       }
@@ -258,7 +260,8 @@ Page({
         weekProfitRate, monthProfitRate, yearProfitRate,
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => { this._draw(); this._cal(); });
-      if (this.data.activeTab === 'today') this.fetchIntraday();
+      // 指数分时：交易时段实时拉新；非交易时段数据已定格，命中当天缓存即跳过（零网络）
+      if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
 
       const cal = this._calCached();
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
@@ -578,20 +581,37 @@ Page({
       return (total >= 570 && total <= 690) || (total >= 780 && total <= 900);
     };
 
-    const timeMap = {};
-    // 快照 time 由 snapshotProfit 写入，已是北京时间（getUTCHours()+8），与指数时间同一坐标系，无需再转换
+    // 以指数分时为时间主轴（交易时段连续分钟），让「我的收益」rate 对齐到指数的时间点。
+    // 快照 rate 可能有缺口（snapshotProfit 某些分钟未写入），缺失分钟用最近一次有效快照
+    // 前值填充（ffill），使两条线时间点一致、锯齿对齐；避免红线在快照稀疏处大段直连。
+    // 快照 time 由 snapshotProfit 写入，已是北京时间（getUTCHours()+8），与指数时间同一坐标系。
+    const snapMap = {};
     profitSnaps.forEach(p => {
       if (!isTrading(p.time)) return;
-      timeMap[p.time] = timeMap[p.time] || { time: p.time };
-      timeMap[p.time].rate = p.rate;
-    });
-    idxRaw.forEach(d => {
-      if (!isTrading(d.time)) return;
-      timeMap[d.time] = timeMap[d.time] || { time: d.time };
-      timeMap[d.time].indexRate = d.changeRate;
+      // 同一分钟多快照时取最后写入的一个
+      snapMap[p.time] = p.rate;
     });
 
-    const result = Object.values(timeMap).sort((a, b) => a.time.localeCompare(b.time));
+    // 时间主轴：优先用指数分时的时间序列（连续、密集）；指数缺失时退回快照时间轴
+    let axis;
+    if (idxRaw.length) {
+      axis = idxRaw.filter(d => isTrading(d.time)).map(d => d.time);
+    } else {
+      axis = profitSnaps.filter(p => isTrading(p.time)).map(p => p.time);
+    }
+    // 去重 + 排序
+    axis = [...new Set(axis)].sort((a, b) => a.localeCompare(b));
+
+    const idxMap = {};
+    idxRaw.forEach(d => { if (isTrading(d.time)) idxMap[d.time] = d.changeRate; });
+
+    let lastRate = null;
+    const result = axis.map(t => {
+      const rate = snapMap[t] != null ? snapMap[t] : lastRate; // 缺失分钟 → 前值填充
+      if (rate != null) lastRate = rate;
+      return { time: t, rate, indexRate: idxMap[t] != null ? idxMap[t] : null };
+    });
+
     // 末端兜底：最后一条没有快照 rate 时用当前收益率补点；仅当最后快照点距末端 ≤ 20 分钟才补，
     // 避免快照稀疏时（全天只有几个点）末端补点造成悬崖式跳变
     const last = result[result.length - 1];
@@ -687,7 +707,17 @@ Page({
   _renderToday(w, h, data, compareLabel) {
     const query = wx.createSelectorQuery();
     query.select('#profitCanvas').fields({ node: true, size: true }).exec((res) => {
-      if (!res || !res[0] || !res[0].node) return;
+      if (!res || !res[0] || !res[0].node) {
+        // canvas 节点首帧未挂载：数据已就绪，但查询不到节点。延后重画而非丢弃，
+        // 避免非交易时段首屏空白（此前静默 return 导致图被丢弃，要等下一次请求才补画）
+        if (this._todayRenderRetry == null) this._todayRenderRetry = 0;
+        if (this._todayRenderRetry < 5) {
+          this._todayRenderRetry++;
+          setTimeout(() => this._drawToday(), 120);
+        }
+        return;
+      }
+      this._todayRenderRetry = 0;
       // 用 selector 实测宽度（canvas 在 .chart-card 内被 margin/padding 收窄，
       // 沿用 windowWidth-24 会导致触摸坐标偏移约 10%）
       const rw = res[0].width || w;
@@ -726,6 +756,23 @@ Page({
       }
     } catch (e) {}
     return null;
+  },
+
+  // 是否需要重新拉取指数分时：
+  // 交易时段 → 数据在变，必须实时拉新。
+  // 非交易时段 → 分时数据已定格，只要当天分时缓存（内存或 storage）已存在就无需重拉；
+  //              缓存 miss 才拉一次补缓存，之后即可秒开。这样避免了非交易时段白等一次网络往返。
+  _shouldRefetchIntraday() {
+    if (this._isTradingNow()) return true;
+    const code = this.data.compareIndex || '000001';
+    this._todayCaches = this._todayCaches || {};
+    const mem = this._todayCaches[code];
+    if (mem && mem.data && mem.data.length) return false;
+    try {
+      const cached = wx.getStorageSync(INTRADAY_CACHE_PREFIX + code);
+      if (cached && cached.date === calc.formatDate(new Date()) && cached.data && cached.data.length) return false;
+    } catch (e) {}
+    return true;
   },
 
   async fetchIntraday(indexCode) {
@@ -940,16 +987,23 @@ Page({
   // ============ 收益轮询 ============
 
   _isTradingNow() {
-    const now = new Date();
-    const day = now.getDay();
-    const hour = now.getHours();
-    const min = now.getMinutes();
-    const afterOpen = hour > 9 || (hour === 9 && min >= 30);
-    const beforeClose = hour < 15 || (hour === 15 && min === 0);
-    // 跳过午休 11:30-13:00
-    const totalMin = hour * 60 + min;
-    const isLunch = totalMin > 690 && totalMin < 780;
-    return day >= 1 && day <= 5 && afterOpen && beforeClose && !isLunch;
+    // 固定北京时间（UTC+8）判断，避免设备时区偏差导致误判
+    const bj = new Date(Date.now() + 8 * 3600000);
+    const day = bj.getUTCDay();
+    const totalMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+
+    // 今天是否交易日：优先用数据驱动标志（_fetch 算出，能准确识别节假日/临时休市），
+    // 尚未算出时用星期几兜底（周一~周五视作可能交易日）
+    if (this._isTodayTrading != null) {
+      if (!this._isTodayTrading) return false;
+    } else if (!(day >= 1 && day <= 5)) {
+      return false;
+    }
+
+    const afterOpen = totalMin >= 570;        // 9:30
+    const beforeClose = totalMin <= 900;      // 15:00
+    const isLunch = totalMin > 690 && totalMin < 780; // 11:31-12:59 午休
+    return afterOpen && beforeClose && !isLunch;
   },
 
   _startPolling() {

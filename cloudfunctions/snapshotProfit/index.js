@@ -37,13 +37,14 @@ exports.main = async (event) => {
     console.log(`[snapshotProfit] rates=${Object.keys(fundRateMap).length}/${fundCodes.length} navs=${Object.keys(navMap).length} stocks=${stockCount} t=${el()}ms`);
 
     // 3. 逐用户聚合写快照（纯算术 + DB 写，预算保护避免超时被杀）
+    // 优化：先纯内存算出所有用户的 rate（无 DB 等待），再分批并发写库（Promise.all），
+    // 避免"逐用户串行 await 一读一写"的累积延迟——用户多时串行会累加到超时被截断，
+    // 导致后面的用户整分钟没点（缺口）。并发写能显著提升单位时间内写全的用户数。
     let written = 0;
     const sample = [];
+    const pending = [];
+    // 聚合（纯内存，快）：算出每位用户的加权收益率
     for (const [openid, userHoldings] of Object.entries(userMap)) {
-      if (el() > 105000) {
-        console.log(`[snapshotProfit] 时间预算用尽，本轮已写 ${written} 个用户`);
-        break;
-      }
       let totalWeightedRate = 0, totalBase = 0;
       for (const h of userHoldings) {
         const fr = fundRateMap[h.fundCode];
@@ -58,23 +59,20 @@ exports.main = async (event) => {
       if (totalBase <= 0) continue; // 无有效数据不写假 0 点
       const rate = +((totalWeightedRate / totalBase)).toFixed(2);
       if (sample.length < 5) sample.push({ openid: openid.slice(0, 8) + "…", funds: userHoldings.length, rate });
-      if (force) { written++; continue; }
+      if (force) { written++; continue; } // dry-run 只算不写
+      pending.push({ openid, rate });
+    }
 
-      // upsert：当天文档存在则 push（内存去重防同分钟重复），不存在则创建
-      const doc = await db.collection("profit_snapshots")
-        .where({ _openid: openid, date: today }).get();
-      if (doc.data && doc.data.length > 0) {
-        const exists = (doc.data[0].points || []).some(p => p.time === time);
-        if (exists) continue;
-        await db.collection("profit_snapshots").doc(doc.data[0]._id).update({
-          data: { points: db.command.push({ time, rate }) }
-        });
-      } else {
-        await db.collection("profit_snapshots").add({
-          data: { _openid: openid, date: today, points: [{ time, rate }] }
-        });
-      }
-      written++;
+    // 分批并发写：每批 CONCURRENT 个用户并行 upsert，预算在批间判断以尽量写全一批
+    const CONCURRENT = 8;
+    const WRITE_BUDGET_MS = 112000; // 留 ~8s 给函数收尾（timeout 120s）
+    for (let i = 0; i < pending.length && el() < WRITE_BUDGET_MS; i += CONCURRENT) {
+      const batch = pending.slice(i, i + CONCURRENT);
+      const results = await Promise.all(batch.map(p => writePoints(p.openid, today, time, p.rate)));
+      results.forEach(ok => { if (ok) written++; });
+    }
+    if (el() >= WRITE_BUDGET_MS && written < pending.length) {
+      console.log(`[snapshotProfit] 时间预算用尽，已写 ${written}/${pending.length} 个用户`);
     }
 
     return {
@@ -102,6 +100,31 @@ async function readAllHoldings() {
     lastId = res.data[res.data.length - 1]._id;
   }
   return all;
+}
+
+// 将单个用户当天的快照点写入 profit_snapshots（upsert + 同分钟去重）。
+// 与原子写点的语义一致：当天文档存在则 push 新点（同分钟已存在则跳过），否则新建文档。
+// 返回 true 表示本分钟这一点已写入（供调用方计数）。
+async function writePoints(openid, today, time, rate) {
+  try {
+    const doc = await db.collection("profit_snapshots")
+      .where({ _openid: openid, date: today }).get();
+    if (doc.data && doc.data.length > 0) {
+      const exists = (doc.data[0].points || []).some(p => p.time === time);
+      if (exists) return true; // 同分钟已存在，视为写入成功（避免并发重写报错）
+      await db.collection("profit_snapshots").doc(doc.data[0]._id).update({
+        data: { points: db.command.push({ time, rate }) }
+      });
+    } else {
+      await db.collection("profit_snapshots").add({
+        data: { _openid: openid, date: today, points: [{ time, rate }] }
+      });
+    }
+    return true;
+  } catch (e) {
+    console.warn("[snapshotProfit] 写快照失败:", openid, e.message);
+    return false;
+  }
 }
 
 // ---- 全局基金估算涨跌（每只基金只算一次，跨用户共享） ----
