@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="78%">
+      <stop offset="0%" stop-color="#FF5F52"/>
+      <stop offset="100%" stop-color="#D41F12"/>
+    </radialGradient>
+    <linearGradient id="blade" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#16A34A"/>
+      <stop offset="100%" stop-color="#4ADE80"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE794"/>
+      <stop offset="100%" stop-color="#F0A700"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- 金币（叶柄底部） -->
+  <circle cx="152" cy="438" r="30" fill="url(#gold)" stroke="#C77F00" stroke-width="5"/>
+  <ellipse cx="142" cy="428" rx="8" ry="5" fill="#FFF7D6" opacity="0.95" transform="rotate(-20 142 428)"/>
+
+  <!-- 韭菜叶（上升走势） -->
+  <path d="M 148 416 C 196 384, 302 252, 386 116 C 330 268, 232 416, 148 416 Z" fill="url(#blade)"/>
+  <!-- 叶脉 -->
+  <path d="M 156 408 C 244 322, 322 202, 380 124" fill="none" stroke="#0E9F4A" stroke-width="8" opacity="0.55" stroke-linecap="round"/>
+
+  <!-- 走势白点 -->
+  <circle cx="400" cy="102" r="15" fill="#FFFFFF"/>
+</svg>

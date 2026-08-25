@@ -1,6 +1,5 @@
 {
   "rules": [
-    { "action": "allow", "page": "*" },
-    { "action": "disallow", "page": "pages/ops/index" }
+    { "action": "allow", "page": "*" }
   ]
 }

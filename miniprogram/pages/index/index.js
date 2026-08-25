@@ -103,7 +103,7 @@ Page({
     const token = wx.getStorageSync("share_token");
     const hasHolding = this.data.holdings && this.data.holdings.length > 0;
     const p = parseFloat(this.data.todayProfit);
-    let title = "养基小簿 · 涨跌有数";
+    let title = "韭菜估值宝 · 涨跌有数";
     if (token && hasHolding && p !== 0) {
       title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
     }
@@ -116,7 +116,7 @@ Page({
 
   onShareTimeline() {
     return {
-      title: '养基小簿 · 持仓收益一目了然',
+      title: '韭菜估值宝 · 持仓收益一目了然',
       imageUrl: '',
     };
   },
@@ -617,7 +617,8 @@ Page({
     if (f === 'todayProfit') {
       return list.sort((a, b) => {
         if (a.estimateUpdated !== b.estimateUpdated) return a.estimateUpdated ? -1 : 1;
-        return dir * (parseFloat(a.todayProfit) - parseFloat(b.todayProfit));
+        // 当日收益列按收益率排序（列名不变）
+        return dir * ((parseFloat(a.todayProfitRate) || 0) - (parseFloat(b.todayProfitRate) || 0));
       });
     }
     return list.sort((a, b) => dir * (parseFloat(a.totalReturn) - parseFloat(b.totalReturn)));

@@ -142,6 +142,8 @@ exports.main = async (event) => {
       const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;
       const totalReturn = marketValue - costValue;
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
+      // 单只基金当日收益率：今日收益 / 昨日市值（客户端当日收益列按此排序）
+      const todayProfitRate = shares > 0 && yesterdayNav > 0 ? ((todayProfitAmount / (yesterdayNav * shares)) * 100) : 0;
 
       totalCost += costValue;
       totalMarket += marketValue;
@@ -169,6 +171,7 @@ exports.main = async (event) => {
         marketValue: marketValue.toFixed(2),
         todayChangeRate: todayChangeRate.toFixed(2),
         todayProfit: todayProfitAmount.toFixed(2),
+        todayProfitRate: todayProfitRate.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
         estimateUpdated,

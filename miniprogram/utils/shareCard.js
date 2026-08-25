@@ -62,7 +62,7 @@ function drawShareCard(canvas, opts = {}) {
   ctx.fillStyle = '#1A1A1A';
   ctx.font = 'bold 28px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('🌿 养基小簿', 40, headY);
+  ctx.fillText('🌿 韭菜估值宝', 40, headY);
 
   ctx.fillStyle = '#999';
   ctx.font = '16px sans-serif';
@@ -173,7 +173,7 @@ function drawShareCard(canvas, opts = {}) {
   ctx.fillStyle = '#BBB';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('养基小簿 · 涨跌有数', w / 2, h - 14);
+  ctx.fillText('韭菜估值宝 · 涨跌有数', w / 2, h - 14);
 
   // === 加载并绘制二维码 ===
   return new Promise((resolve) => {

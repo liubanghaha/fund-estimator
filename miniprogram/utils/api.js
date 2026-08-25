@@ -81,9 +81,10 @@ const api = {
   opsShare(action, data = {}) {
     return this.callFunction("opsShare", { action, ...data });
   },
-  opsTool(action, data = {}) {
-    return this.callFunction("opsTool", { action, ...data });
-  },
+  // 运营助手（功能下线，保留代码待恢复）
+  // opsTool(action, data = {}) {
+  //   return this.callFunction("opsTool", { action, ...data });
+  // },
   submitFeedback({ content, type, contact, images } = {}) {
     return this.callFunction("submitFeedback", { content, type, contact, images });
   },

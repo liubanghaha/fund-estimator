@@ -6,8 +6,7 @@
     "pages/search/index",
     "pages/add-holding/index",
     "pages/adjust-holding/index",
-    "pages/login/index",
-    "pages/ops/index"
+    "pages/login/index"
   ],
   "subpackages": [
     {
@@ -30,7 +29,7 @@
     "backgroundColor": "#F5F5F5",
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTitleText": "养基小簿·我的持仓",
+    "navigationBarTitleText": "韭菜估值宝·我的持仓",
     "navigationBarTextStyle": "black"
   },
   "tabBar": {

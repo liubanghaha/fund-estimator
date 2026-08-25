@@ -2,6 +2,10 @@
   "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
   "envId": "cloud1-d7gu9zv3i796839b8",
   "functionRoot": "cloudfunctions",
+  "functionDefaultConfig": {
+    "installDependency": true,
+    "isWaitInstall": true
+  },
   "functions": [
     {
       "name": "createCollection",

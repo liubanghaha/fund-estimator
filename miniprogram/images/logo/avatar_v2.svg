@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="78%">
+      <stop offset="0%" stop-color="#FF5F52"/>
+      <stop offset="100%" stop-color="#D41F12"/>
+    </radialGradient>
+    <linearGradient id="mercury" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#0E9F4A"/>
+      <stop offset="100%" stop-color="#3ADB7C"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE794"/>
+      <stop offset="100%" stop-color="#F0A700"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#16A34A"/>
+      <stop offset="100%" stop-color="#4ADE80"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- 管后出芽的韭菜叶 -->
+  <path d="M 312 84 C 324 44, 296 20, 260 24 C 290 32, 306 54, 312 84 Z" fill="url(#leaf)"/>
+
+  <!-- 管身 -->
+  <rect x="200" y="70" width="112" height="280" rx="56" fill="#FFFFFF"/>
+
+  <!-- 叶形水银柱 -->
+  <path d="M 220 316 C 220 356, 240 362, 256 362 C 272 362, 292 356, 292 316 C 292 244, 278 198, 258 152 C 240 198, 220 244, 220 316 Z" fill="url(#mercury)"/>
+
+  <!-- 刻度 -->
+  <g stroke="#F0A39E" stroke-width="7" stroke-linecap="round">
+    <line x1="206" y1="132" x2="216" y2="132"/>
+    <line x1="206" y1="184" x2="216" y2="184"/>
+    <line x1="206" y1="236" x2="216" y2="236"/>
+  </g>
+
+  <!-- 金币球泡 -->
+  <circle cx="256" cy="400" r="56" fill="url(#gold)" stroke="#C77F00" stroke-width="5"/>
+  <ellipse cx="232" cy="378" rx="15" ry="8" fill="#FFF7D6" opacity="0.95" transform="rotate(-18 232 378)"/>
+</svg>

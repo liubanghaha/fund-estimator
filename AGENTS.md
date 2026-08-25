@@ -48,9 +48,9 @@
 
 ---
 
-## fund-estimator（养基小簿）架构
+## fund-estimator（韭菜估值宝）架构
 
-小程序名：养基小簿 | AppID：wxb95098fe432ed765 | 云环境：cloud1-d7gu9zv3i796839b8
+小程序名：韭菜估值宝 | AppID：wxb95098fe432ed765 | 云环境：cloud1-d7gu9zv3i796839b8
 
 ### 页面结构
 - `pages/index/index` — 首页，展示持仓基金实时估值列表
@@ -94,7 +94,8 @@
 `api.fund.eastmoney.com`, `fundf10.eastmoney.com`, `fundmobapi.eastmoney.com`, `push2his.eastmoney.com`, `web.ifzq.gtimg.cn`。客户端 `wx.request` 只能访问白名单域名；不在白名单里的接口走云函数（云函数无域名限制）。
 
 ### 部署
-- 云函数：`cloudbase fn deploy --all --force`
+- 云函数：`cloudbase fn deploy --all --force --install-dependency true`（云端按 package.json 装依赖；cloudbaserc.json 的 `functionDefaultConfig` 已固化 `installDependency`/`isWaitInstall`）
+- ⚠️ 云函数本地目录没有 node_modules，禁止用微信开发者工具「上传并部署：所有文件」（会传裸包，线上报 `Cannot find module 'wx-server-sdk'`）；用开发者工具部署时必须选「云端安装依赖（不上传 node_modules）」
 - 小程序上传：`miniprogram-ci upload --pp . --pkp private.*.key --appid wxb95098fe432ed765 -r 1`
 
 ### 已知问题

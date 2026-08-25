@@ -173,13 +173,13 @@ function calcSignal(fundCode, holdings, stockMap) {
   const weightedPE = totalRatio > 0 ? +(totalWeightedPE / totalRatio).toFixed(2) : 0;
 
   let signal = "mid";
-  let label = "正常";
+  let label = "温度适中";
   if (normPE < 0.75) {
     signal = "low";
-    label = "低估";
+    label = "温度偏低";
   } else if (normPE > 1.25) {
     signal = "high";
-    label = "高估";
+    label = "温度偏高";
   }
   if (warnings.length > 0) label += "⚠️";
 
@@ -379,4 +379,12 @@ module.exports = {
   calcSignal,
   fetchStockLiveBatch,
   fetchStockHistBatch,
+  // 兼容 DB 旧数据：把历史版本写入的定性词映射为测量词（合规整改）
+  sanitizeLabel(label) {
+    if (!label) return label;
+    return String(label)
+      .replace(/低估/g, "温度偏低")
+      .replace(/高估/g, "温度偏高")
+      .replace(/正常/g, "温度适中");
+  },
 };
