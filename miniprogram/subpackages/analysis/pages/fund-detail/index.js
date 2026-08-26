@@ -408,6 +408,10 @@ Page({
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),
           });
           this.calcReturns(history);
+          // 补拉（缓存断档场景）完成后：重绘图表（此前只 setData 不重绘，
+          // 断档数据按等间距 x 映射会把旧日期买入点压到图尾）+ 回写缓存避免下次再补
+          if (this.data.activeTab === 'trend') this.drawChart();
+          this._saveCache();
         }
       }
     } catch (e) { console.error("获取历史净值失败:", e); }
@@ -560,7 +564,9 @@ Page({
       const txMap = this.data.chartTxMap || {};
       if (Object.keys(txMap).length > 0) {
         const p = opts.padding;
-        const pw = rw - p.left - p.right, ph = rh - p.top - p.bottom;
+        // 必须与 drawLineChart 同一坐标系（opts.w/opts.h = 画布绘制尺寸）：
+        // 用 rw/rh（节点实测=CSS×dpr）会在手机上放大 2-3 倍，买卖点画出画布不可见
+        const pw = opts.w - p.left - p.right, ph = opts.h - p.top - p.bottom;
         const vals = data.map(d => d.value);
         const min = Math.min(...vals), max = Math.max(...vals);
         const range = max - min || 0.01;
@@ -571,17 +577,24 @@ Page({
           const tx = txMap[d.date];
           if (!tx) return;
           const x = xp(i), y = yp(d.value);
+          // 白色描边：买卖点画在红色曲线上也清晰可见（密集周期视图不融线）
+          const dot = (r, fill) => {
+            ctx.beginPath(); ctx.arc(x, y, r + 1, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FFFFFF'; ctx.fill();
+            ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = fill; ctx.fill();
+          };
           if (tx.buys > 0 && tx.sells > 0) {
-            ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI);
-            ctx.strokeStyle = '#2E8B57'; ctx.lineWidth = 1; ctx.stroke();
             ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FFFFFF'; ctx.fill();
+            ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#2E8B57'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.beginPath(); ctx.arc(x, y, 2, 0, 2 * Math.PI);
             ctx.fillStyle = '#E4393C'; ctx.fill();
           } else if (tx.buys > 0) {
-            ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = '#E4393C'; ctx.fill();
+            dot(2, '#E4393C');
           } else if (tx.sells > 0) {
-            ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = '#2E8B57'; ctx.fill();
+            dot(2, '#2E8B57');
           }
         });
       }

@@ -97,9 +97,7 @@ Page({
         this._lastFetch = c.ts || 0;
         this._allDaily = c.d;
         this._dailyChange = c.dc;
-        // 缓存的当日条目可能是非交易日残留，先移除；_fetch() 验证后加回
-        const cachedToday = calc.formatDate(new Date());
-        if (this._dailyChange[cachedToday]) delete this._dailyChange[cachedToday];
+        // 当日条目只可能在真实交易日注入成功后才存在，属合法数据，留待 _fetch() 刷新验证
         this._indexDaily = c.idx;
         this._idxMap = c.im || {};
         this._totalCost = c.tc;
@@ -205,8 +203,9 @@ Page({
       // 不依赖 _isTradingNow()——它只看星期几，区分不了周五节假日
       // 快照可能回退到最近交易日（非交易日打开），snapDate 非今日时不算"今日快照"
       const hasTodaySnaps = (d.snapDate || today) === today && d.intradaySnapshots && d.intradaySnapshots.length > 0;
-      const isTradingDay = lastDate === today || hasTodaySnaps;
-      // 数据驱动的"今日是否交易日"标志，供 _isTradingNow 复用（识别节假日/临时休市）
+      // 数据驱动的"今日是否交易日"标志，供 _isTradingNow 复用（识别节假日/临时休市）；
+      // 追加节假日表兜底：快照文档缺失时，真实交易日（周末/节假日由表排除）仍注入当日收益
+      const isTradingDay = lastDate === today || hasTodaySnaps || marketTime.isTradingDay(today);
       this._isTodayTrading = isTradingDay;
       if (!isTradingDay) {
         Object.keys(idxMap).forEach(k => { idxMap[k] = (idxMap[k] || []).filter(d => d.date !== today); });
@@ -569,7 +568,6 @@ Page({
     try {
     const profitSnaps = this._profitSnapshots || [];
     const idxRaw = this._intradayRaw || [];
-    const fundRate = parseFloat(this.data.todayProfitRate || 0);
 
     const isTrading = (chinaTime) => {
       const [hh, mm] = chinaTime.split(':').map(Number);
@@ -608,13 +606,12 @@ Page({
       return { time: t, rate, indexRate: idxMap[t] != null ? idxMap[t] : null };
     });
 
-    // 末端兜底：最后一条没有快照 rate 时用当前收益率补点；仅当最后快照点距末端 ≤ 20 分钟才补，
-    // 避免快照稀疏时（全天只有几个点）末端补点造成悬崖式跳变
+    // 曲线以最后一个真实快照点结束（末端不再补"当前收益率"点，避免与快照值不一致的人造悬崖）
     const last = result[result.length - 1];
     if (last && last.rate == null) {
       const lastSnap = [...result].reverse().find(d => d.rate != null);
-      if (lastSnap && this._toMin(last.time) - this._toMin(lastSnap.time) <= 20) {
-        last.rate = fundRate;
+      if (lastSnap && lastSnap !== last) {
+        result.splice(lastSnap + 1);
       }
     }
 
@@ -631,10 +628,11 @@ Page({
     }
   },
 
-  // 居中移动平均平滑（窗口 9 点）：首尾点保留原始值（首点是开盘基准，末点是当前真实收益率）。
+  // 居中移动平均平滑（窗口 3 点）：首尾点保留原始值（首点是开盘基准，末点是最后一个真实快照）。
+  // 快照率已是分钟粒度（组合内多基金加权），窗口过大（9 点）会抹平分钟起伏，过小则单点噪声显现。
   // 仅在时间连续的区段内平滑：相邻点时间差 > 30 分钟（午休/断点）即断开，避免跨时段混合。
   _smoothRate(result) {
-    const WINDOW = 9, half = Math.floor(WINDOW / 2);
+    const WINDOW = 3, half = Math.floor(WINDOW / 2);
     const runs = [];
     let run = [];
     for (let i = 0; i < result.length; i++) {
@@ -673,16 +671,7 @@ Page({
     const memCache = this._todayCaches[indexCode];
     if (memCache && memCache.data && memCache.data.length > 0) {
       if (this._isTradingNow()) {
-        const data = [...memCache.data];
-        // 仅当缓存最后一条没有 rate 且最后快照点接近末端时用最新收益率兜底，避免悬崖跳变
-        const last = data[data.length - 1];
-        if (last && last.rate == null) {
-          const lastSnap = [...data].reverse().find(d => d.rate != null);
-          if (lastSnap && this._toMin(last.time) - this._toMin(lastSnap.time) <= 20) {
-            last.rate = parseFloat(this.data.todayProfitRate || 0);
-          }
-        }
-        this._renderToday(w, h, data, compareLabel);
+        this._renderToday(w, h, memCache.data, compareLabel);
         return;
       }
       this._renderToday(w, h, memCache.data, compareLabel);
@@ -720,13 +709,8 @@ Page({
       const rh = res[0].height || h;
       this._realW = rw;
       this._realH = rh;
-      // 末端对齐：图例/曲线末端与顶部"当天收益"一致（快照为盘中估算，顶部为确认/实时值）
-      const renderData = data && data.length ? data.map(d => ({ ...d })) : data;
-      if (renderData && renderData.length) {
-        renderData[renderData.length - 1].rate = parseFloat(this.data.todayProfitRate || 0);
-      }
       chartUtil.drawIntradayChart(res[0].node, {
-        w: rw, h: rh, data: renderData,
+        w: rw, h: rh, data,
         labelA: '我的收益', labelB: compareLabel,
       });
     });
@@ -804,7 +788,7 @@ Page({
     return result;
   },
 
-  _days(c, month, dm) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; const empty = chg === undefined; let prevMv = 0; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= ds) { if (i > 0) prevMv = dm[allKeys[i - 1]]; break; } } const rate = (prevMv > 0 && chg != null) ? +((chg / prevMv) * 100).toFixed(2) : 0; w.push({ day: d, date: ds, profit: empty ? null : chg, rate, empty }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
+  _days(c, month, dm) { const [y, m] = month.split('-').map(Number); const fd = new Date(y, m - 1, 1).getDay(); const dim = new Date(y, m, 0).getDate(); const wks = []; let w = []; for (let i = 0; i < fd; i++) w.push({ day: '', empty: true }); const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); for (let d = 1; d <= dim; d++) { const ds = `${month}-${String(d).padStart(2, '0')}`; const chg = c[ds]; const empty = chg === undefined; let prevMv = 0; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= ds) { if (i > 0) prevMv = dm[allKeys[i - 1]]; break; } if (i === allKeys.length - 1) prevMv = dm[allKeys[i]]; } const rate = (prevMv > 0 && chg != null) ? +((chg / prevMv) * 100).toFixed(2) : 0; w.push({ day: d, date: ds, profit: empty ? null : chg, rate, empty }); if (w.length === 7) { wks.push(w); w = []; } } while (w.length > 0 && w.length < 7) w.push({ day: '', empty: true }); if (w.length === 7) wks.push(w); return wks; },
   _mons(c, year, dm) { const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); return [1,2,3,4,5,6,7,8,9,10,11,12].map(m => { const pfx = `${year}-${String(m).padStart(2, '0')}`; let s = 0, h = false; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(pfx)) { s += chg; h = true; } } const profit = +s.toFixed(2); const keys = allKeys.filter(k => k.startsWith(pfx)); const last = keys.length ? dm[keys[keys.length - 1]] : 0; let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= pfx + '-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { month: m, date: pfx, profit, rate, empty: !h }; }); },
   _yrs(c, dm) { const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort(); return [...new Set(Object.keys(c).map(d => d.slice(0, 4)))].sort().map(y => { let s = 0; for (const [d, chg] of Object.entries(c)) { if (d.startsWith(y)) s += chg; } const profit = +s.toFixed(2); const keys = allKeys.filter(k => k.startsWith(y)); const last = keys.length ? dm[keys[keys.length - 1]] : 0; let first = last; for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= y + '-01-01') { if (i > 0) first = dm[allKeys[i - 1]]; break; } } const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0; return { date: y + '-12-31', profit, rate }; }); },
 

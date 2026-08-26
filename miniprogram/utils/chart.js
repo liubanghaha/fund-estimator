@@ -301,15 +301,6 @@ const chart = {
       ctx.strokeStyle = cfg.color;
       ctx.lineWidth = 1;
       ctx.stroke();
-
-      // 末端点
-      const lastPt = [...data].reverse().find(d => d[cfg.field] != null);
-      if (lastPt) {
-        const li = data.lastIndexOf(lastPt);
-        ctx.beginPath(); ctx.arc(xp(li), yp(lastPt[cfg.field]), 3, 0, 2 * Math.PI);
-        ctx.fillStyle = cfg.color; ctx.fill();
-        ctx.strokeStyle = '#FFF'; ctx.lineWidth = 1; ctx.stroke();
-      }
     });
 
     // 图例（对齐历史走势）

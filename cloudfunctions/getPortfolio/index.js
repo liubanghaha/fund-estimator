@@ -372,7 +372,7 @@ exports.main = async (event) => {
     });
 
     // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----
-    // 仅在交易时段补（与定时任务语义一致），距上一点 >= 5 分钟才写，避免高频请求刷库
+    // 仅在交易时段补（与定时任务语义一致），距上一点 >= 1 分钟才写（快照已分钟粒度，与新定时同步）
     try {
       const _bj = new Date(Date.now() + 8 * 3600000);
       const _day = _bj.getUTCDay();
@@ -381,7 +381,7 @@ exports.main = async (event) => {
       if (_inTrading) {
         const _last = intradaySnapshots[intradaySnapshots.length - 1];
         const _lastMin = _last ? parseInt(_last.time.slice(0, 2)) * 60 + parseInt(_last.time.slice(3, 5)) : -Infinity;
-        if (_min - _lastMin >= 5) {
+        if (_min - _lastMin >= 1) {
           const _time = `${String(_bj.getUTCHours()).padStart(2, "0")}:${String(_bj.getUTCMinutes()).padStart(2, "0")}`;
           const _rate = +todayProfitRate.toFixed(2);
           const _doc = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
