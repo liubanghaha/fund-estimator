@@ -1,0 +1,14 @@
+{
+  "runtime": "Nodejs20.19",
+  "timeout": 120,
+  "permissions": {
+    "openapi": ["subscribeMessage.send"]
+  },
+  "triggers": [
+    {
+      "name": "closingBriefTimer",
+      "type": "timer",
+      "config": "0 30 15 * * 1-5 *"
+    }
+  ]
+}

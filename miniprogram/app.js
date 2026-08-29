@@ -28,6 +28,23 @@ App({
       }
     }
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
+    this._trackLaunch();
+  },
+
+  // 启动埋点：直连写库不经云函数（不增加冷启动耗时），fire-and-forget 失败静默
+  _trackLaunch: function () {
+    try {
+      const mt = require("./utils/market-time.js");
+      wx.cloud.database().collection("analytics_launches").add({
+        data: {
+          ts: Date.now(),
+          date: mt.bjDateStr(),
+          phase: mt.marketPhase(),
+          isTradingDay: mt.isTradingDay(mt.bjDateStr()),
+          version: APP_VERSION
+        }
+      }).catch(() => {});
+    } catch (e) { /* 埋点失败不提示 */ }
   },
 
   getVersion: function () {

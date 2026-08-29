@@ -1,0 +1,9 @@
+{
+  "name": "dailyBriefing",
+  "version": "1.0.0",
+  "description": "订阅消息收盘播报（定时触发）+ 订阅授权记录 + 打开追踪",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
