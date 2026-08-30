@@ -42,21 +42,28 @@ async function handleAlertGet() {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: -1, msg: "无用户身份" };
   const r = await db.collection("alert_settings").where({ _openid: OPENID }).get();
-  return { code: 0, data: (r.data[0] && r.data[0].settings) || {} };
+  const doc = r.data[0];
+  // data=settings 保持向后兼容，globalOn 顶层返回（全局涨跌提醒开关）
+  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn) };
 }
 
-async function handleAlertSet({ settings }) {
+async function handleAlertSet({ settings, globalOn }) {
   const { OPENID } = cloud.getWXContext();
-  if (!OPENID || !settings || typeof settings !== "object") return { code: -1, msg: "参数错误" };
+  if (!OPENID) return { code: -1, msg: "无用户身份" };
+  const hasSettings = settings && typeof settings === "object";
+  if (!hasSettings && typeof globalOn !== "boolean") {
+    return { code: -1, msg: `参数错误 settings=${typeof settings} globalOn=${typeof globalOn} keys=${Object.keys(arguments[0] || {}).join("|")}` };
+  }
   const found = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const now = Date.now();
   if (found.data.length > 0) {
-    await db.collection("alert_settings").doc(found.data[0]._id).update({
-      data: { settings, updatedAt: now }
-    });
+    const patch = { updatedAt: now };
+    if (hasSettings) patch.settings = settings;
+    if (typeof globalOn === "boolean") patch.globalOn = globalOn;
+    await db.collection("alert_settings").doc(found.data[0]._id).update({ data: patch });
   } else {
     await db.collection("alert_settings").add({
-      data: { _openid: OPENID, settings, peCache: {}, createdAt: now, updatedAt: now }
+      data: { _openid: OPENID, settings: hasSettings ? settings : {}, globalOn: !!globalOn, peCache: {}, createdAt: now, updatedAt: now }
     });
   }
   return { code: 0 };

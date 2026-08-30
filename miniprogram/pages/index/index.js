@@ -49,6 +49,7 @@ Page({
     sortField: "todayProfit",
     sortOrder: "desc",
     batchMode: false,
+    alertGlobalOn: false,
     selectedCount: 0,
     allSelected: false,
     loadError: false,
@@ -413,7 +414,8 @@ Page({
       name: "dailyBriefing",
       data: { action: "alertGet" },
     }).then((r) => {
-      const d = r.result && r.result.data;
+      const res = r.result;
+      const d = res && res.data;
       if (!d || typeof d !== "object") return;
       if (Object.keys(d).length > 0) {
         // 云端有设置：以云端为准
@@ -427,6 +429,11 @@ Page({
             data: { action: "alertSet", settings: local },
           }).catch(() => {});
         }
+      }
+      // 全局提醒开关同步（本地缓存 + 页面显示）
+      if (res && typeof res.globalOn === "boolean") {
+        wx.setStorageSync("alertGlobalOn", res.globalOn);
+        this.setData({ alertGlobalOn: res.globalOn });
       }
       if (this._checkAlerts) this._checkAlerts();
     }).catch(() => {});
@@ -845,7 +852,28 @@ Page({
   onToggleBatch() {
     const enter = !this.data.batchMode;
     const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));
-    this.setData({ batchMode: enter, displayHoldings: list, selectedCount: 0, allSelected: false });
+    // 进入批量模式时同步全局提醒开关的本地显示
+    const patch = { batchMode: enter, displayHoldings: list, selectedCount: 0, allSelected: false };
+    if (enter) patch.alertGlobalOn = !!wx.getStorageSync("alertGlobalOn");
+    this.setData(patch);
+  },
+
+  // 全局涨跌提醒开关：开启后全部持仓按默认 ±3% 提醒（云端检测端兜底，新持仓自动纳入）
+  onToggleGlobalAlert() {
+    const next = !this.data.alertGlobalOn;
+    this.setData({ alertGlobalOn: next });
+    wx.setStorageSync("alertGlobalOn", next);
+    wx.cloud.callFunction({
+      name: "dailyBriefing",
+      data: { action: "alertSet", globalOn: next },
+    }).then(() => {
+      wx.showToast({ title: next ? "已开启全局提醒" : "已关闭全局提醒", icon: "none", duration: 1500 });
+    }).catch(() => {
+      // 失败回滚本地（云端为准）
+      this.setData({ alertGlobalOn: !next });
+      wx.setStorageSync("alertGlobalOn", !next);
+      wx.showToast({ title: "设置失败，请重试", icon: "none" });
+    });
   },
 
   onToggleBatchSelect(e) {
