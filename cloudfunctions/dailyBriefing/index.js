@@ -24,9 +24,10 @@ const SIGNAL_ORDER = { low: 0, mid: 1, high: 2 };
 
 exports.main = async (event = {}) => {
   try {
-    // 定时触发器分流：两个 timer 共用本函数
+    // 定时触发器分流：三个 timer 共用本函数
     if (event.Type === "Timer") {
       if (event.TriggerName === "navBriefTimer") return await runNavBrief(false);
+      if (event.TriggerName === "weeklyBriefTimer") return await runWeeklyBrief(false);
       return await runBriefing(false, false);
     }
     if (event.action === "auth") return await handleAuth(event);
@@ -35,6 +36,7 @@ exports.main = async (event = {}) => {
     if (event.action === "alertSet") return await handleAlertSet(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
+    if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);
     return await runBriefing(!!event.dryRun, !!event.force);
   } catch (e) {
     console.error("[dailyBriefing] 失败:", e.message);
@@ -376,6 +378,113 @@ async function runNavBrief(force, dryRun) {
   }
   console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
   return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
+}
+
+// ---- 周度小结（周六 10:00）：本周收益（五日复利）+ 操作笔数，每周一条 ----
+// 周收益率 = Π(1+当日rate/100) - 1（每日快照最后一点复利）；金额按当前市值反推周初基数近似。
+// 已知近似：周内加减仓会让收益率口径失真（与日历口径同源问题，XIRR/TWR 改造时统一解决）。
+async function runWeeklyBrief(force, dryRun) {
+  const today = td.bjDateStr();
+  if (!dryRun && !force && new Date(today + "T00:00:00Z").getUTCDay() !== 6) {
+    return { code: 0, msg: "非周六跳过" };
+  }
+  // 本周交易日：从今天往前收集 5 个（周六跑 → 周一~周五）
+  const days = [];
+  let d = today;
+  while (days.length < 5) {
+    if (td.isTradingDay(d)) days.unshift(d);
+    d = addDays(d, -1);
+  }
+
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid"]);
+  if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
+
+  const holdings = await readAll("holdings", {}, ["_openid", "marketValue"]);
+  const marketMap = {};
+  holdings.forEach(h => {
+    if (!h._openid) return;
+    marketMap[h._openid] = (marketMap[h._openid] || 0) + (h.marketValue || 0);
+  });
+  const targets = subs.filter(s => marketMap[s._openid] > 0);
+  if (targets.length === 0) return { code: 0, msg: "无目标用户" };
+
+  // 每用户每日最后 rate → 五日复利
+  const rows = await readAll("profit_snapshots", { date: _.in(days) }, ["_openid", "date", "points"]);
+  const dayRate = {};
+  rows.forEach(r => {
+    if (r.points && r.points.length > 0) {
+      dayRate[r._openid] = dayRate[r._openid] || {};
+      dayRate[r._openid][r.date] = r.points[r.points.length - 1].rate;
+    }
+  });
+
+  // 本周操作笔数
+  const txRows = await readAll("transactions", {}, ["_openid", "date"]);
+  const weekStart = days[0];
+  const opCount = {};
+  txRows.forEach(t => {
+    if (t._openid && t.date && t.date >= weekStart) {
+      opCount[t._openid] = (opCount[t._openid] || 0) + 1;
+    }
+  });
+
+  const sentLogs = await readAll("push_logs", { scene: "weekly_brief", date: today, status: "sent" }, ["_openid"]);
+  const sentSet = new Set(sentLogs.map(l => l._openid));
+
+  const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
+  let accessToken = null;
+  if (!dryRun) accessToken = await getAccessToken();
+  let sent = 0, failed = 0, skipped = 0;
+  for (const sub of runList) {
+    if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
+    const rates = dayRate[sub._openid];
+    if (!rates) { skipped++; continue; } // 本周无快照（新用户/无持仓日）不发
+    let mult = 1;
+    days.forEach(day => {
+      const r = rates[day];
+      if (r != null) mult *= 1 + r / 100;
+    });
+    const weekRate = (mult - 1) * 100;
+    const mv = marketMap[sub._openid];
+    // 金额 ≈ 周初市值 × 周收益率 = 当前市值/(1+r) × r
+    const weekProfit = mv / (1 + weekRate / 100) * (weekRate / 100);
+    let text = `本周${weekRate >= 0 ? "+" : ""}${weekRate.toFixed(1)}%(${weekProfit >= 0 ? "+" : ""}${weekProfit.toFixed(0)}元)`;
+    if (opCount[sub._openid]) text += ` ${opCount[sub._openid]}笔`;
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: "本周小结".slice(0, 20) },
+      thing3: { value: text.slice(0, 20) },
+      time4: { value: _bjTimeStr() },
+    };
+    if (dryRun) {
+      await db.collection("push_logs").add({
+        data: { _openid: sub._openid, scene: "weekly_brief", date: today, status: "dry_run", content: brief, sentAt: Date.now(), openedAt: null }
+      });
+      sent++;
+      continue;
+    }
+    const logId = await createLog(sub._openid, today, "weekly_brief");
+    try {
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await db.collection("subscriptions").doc(sub._id).update({
+        data: { quota: _.inc(-1), updatedAt: Date.now() }
+      });
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) {
+        await db.collection("subscriptions").doc(sub._id).update({
+          data: { quota: 0, updatedAt: Date.now() }
+        });
+      }
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      failed++;
+    }
+  }
+  console.log(`[dailyBriefing][weeklyBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} dryRun=${dryRun}`);
+  return { code: 0, msg: `周度小结：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // PE 温度变化提醒：peAlert 用户的持仓基金 signal 相对云端基线变化 → 每日一条。
