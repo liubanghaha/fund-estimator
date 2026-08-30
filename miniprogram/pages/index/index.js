@@ -463,6 +463,9 @@ Page({
       name: "dailyBriefing",
       data: { action: "alertSet", settings },
     }).catch(() => {});
+    // 保存提醒 = 用户明确要提醒，此刻请求推送授权（全漏斗转化率最高点）：
+    // 未授权用户弹授权窗；已授权勾「总是保持」的静默 +1 额度
+    subscribe.requestAuth();
   },
   onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
   onDismissAlert() {
