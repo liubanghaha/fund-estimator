@@ -223,11 +223,18 @@ exports.main = async (event) => {
             stocksWith52w: t.stocksWith52w,
             totalStocks: t.totalStocks,
           };
-          // 单基金主打行业（detailPEs 占比最高）：列表行业标签用；分类不出（其他）不标
+          // 单基金主打行业：detailPEs 按大类聚合后取占比最高（单只股票的行业不代表基金，
+          // 且细分粒度（军工电子Ⅱ）易错，归一到七大类更稳健）
           if (t.detailPEs && t.detailPEs.length) {
-            const top = t.detailPEs.reduce((a, b) => ((b.ratio || 0) > (a.ratio || 0) ? b : a));
-            const topLabel = top && top.industry ? ft.classifyIndustryLabel(top.industry, top.name) : "";
-            if (topLabel && topLabel !== "其他") h.peTemp.topIndustry = topLabel;
+            const agg = {};
+            t.detailPEs.forEach(pe => {
+              const cat = ft.classifyMajorIndustry(pe.industry, pe.name);
+              agg[cat] = (agg[cat] || 0) + (pe.ratio || 0);
+            });
+            const topCat = Object.entries(agg)
+              .filter(([k]) => k !== "其他")
+              .sort((a, b) => b[1] - a[1])[0];
+            if (topCat) h.peTemp.topIndustry = topCat[0];
           }
         }
       });

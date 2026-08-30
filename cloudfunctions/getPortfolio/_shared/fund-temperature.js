@@ -34,13 +34,8 @@ function classifyIndustryCode(industry) {
   return "other";
 }
 
-/**
- * 行业 → 中文展示标签（资产配置用），「其他」时用股票名关键词兜底
- */
-function classifyIndustryLabel(industry, stockName) {
-  if (industry && industry !== "其他" && industry !== "其它") return industry;
-  const labels = { tech: "科技", biomed: "医药", consume: "消费", finance: "金融", cycle: "周期", utility: "公用事业", mfg: "制造" };
-  const map = {
+// 七大类关键词词典（classifyIndustryLabel / classifyMajorIndustry 共用）
+const MAJOR_INDUSTRY_MAP = {
     tech: ["半导体", "芯片", "软件", "计算机", "通信", "电子", "光模块", "互联网", "游戏", "传媒", "元件", "IT", "信息", "数据", "智能", "科技"],
     biomed: ["医药", "生物", "医疗", "中药", "化学制药", "器械", "医"],
     consume: ["白酒", "食品", "饮料", "家电", "汽车", "服装", "旅游", "零售", "免税", "调味品", "乳业", "养殖", "消费", "农业", "牧原", "酒店", "餐饮", "美妆", "纺织"],
@@ -48,7 +43,28 @@ function classifyIndustryLabel(industry, stockName) {
     cycle: ["煤炭", "钢铁", "有色", "石油", "化工", "稀土", "黄金", "铜", "铝", "海运", "造船", "矿石", "建材", "水泥", "玻璃", "金属", "纸", "化纤", "塑料", "橡胶", "化学"],
     utility: ["电力", "水务", "高速", "公路", "港口", "铁路", "燃气", "环保", "新能源发电", "电网", "核电", "水"],
     mfg: ["机械", "电气", "新能源", "电池", "军工", "航天", "船舶", "仪器仪表", "电力设备", "航空", "光伏", "风电", "通用设备", "专用设备", "电源", "装备", "重工", "锅炉", "电机", "自动化", "机器人", "电器"],
-  };
+};
+const MAJOR_INDUSTRY_LABEL = { tech: "科技", biomed: "医药", consume: "消费", finance: "金融", cycle: "周期", utility: "公用事业", mfg: "制造" };
+
+// 细分行业/股票名 → 七大类（科技/医药/消费/金融/周期/公用事业/制造）；归不进为「其他」。
+// 与 classifyIndustryLabel 的区别：不透传细分行业原名，强制归一大类（基金主打行业标签用）
+function classifyMajorIndustry(industry, stockName) {
+  const s = `${industry || ''}|${stockName || ''}`;
+  for (const [cat, kws] of Object.entries(MAJOR_INDUSTRY_MAP)) {
+    for (const kw of kws) {
+      if (s.includes(kw)) return MAJOR_INDUSTRY_LABEL[cat];
+    }
+  }
+  return "其他";
+}
+
+/**
+ * 行业 → 中文展示标签（资产配置用），「其他」时用股票名关键词兜底
+ */
+function classifyIndustryLabel(industry, stockName) {
+  if (industry && industry !== "其他" && industry !== "其它") return industry;
+  const labels = MAJOR_INDUSTRY_LABEL;
+  const map = MAJOR_INDUSTRY_MAP;
   if (stockName) {
     for (const [cat, keywords] of Object.entries(map)) {
       for (const kw of keywords) {
@@ -373,6 +389,7 @@ async function fetchStockHistBatch(codes, opts = {}) {
 module.exports = {
   classifyIndustryCode,
   classifyIndustryLabel,
+  classifyMajorIndustry,
   isETFByName,
   computePEPercentile,
   getStockScore,
