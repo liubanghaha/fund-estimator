@@ -5,6 +5,7 @@ const marketTime = require("../../../../utils/market-time");
 
 const CACHE = "profit_detail_cache_v2";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
+const IDX_HIST_CACHE = "idx_hist_cache";
 const chartUtil = require("../../../../utils/chart");
 const subscribe = require("../../../../utils/subscribe");
 
@@ -1094,7 +1095,16 @@ Page({
   },
 
   _mon(d) { const c = new Date(d); c.setDate(c.getDate() - (c.getDay() === 0 ? 6 : c.getDay() - 1)); return calc.formatDate(c); },
+  // 指数历史缓存：日频 K 线不付分钟级网络成本（盘中 5 分钟 TTL，收盘定格后冻结免拉）
   async _idx(code, days) {
+    try {
+      const all = wx.getStorageSync(IDX_HIST_CACHE) || {};
+      const c = all[code];
+      if (c && c.rows && c.rows.length >= days * 0.85 &&
+          marketTime.isCacheFresh(c, { estimateTtl: 300000, finalAtClose: true })) {
+        return c.rows;
+      }
+    } catch (e) { /* ignore */ }
     const tryAll = async () => {
       const results = await Promise.allSettled([
         api.fetchMarketIndex(code, days),
@@ -1114,7 +1124,14 @@ Page({
       return null;
     };
     const r1 = await tryAll();
-    if (r1) return r1;
-    return (await tryAll()) || [];
+    const rows = r1 || (await tryAll()) || [];
+    if (rows.length) {
+      try {
+        const all = wx.getStorageSync(IDX_HIST_CACHE) || {};
+        all[code] = { rows, ts: Date.now() };
+        wx.setStorageSync(IDX_HIST_CACHE, all);
+      } catch (e) { /* ignore */ }
+    }
+    return rows;
   },
 });
