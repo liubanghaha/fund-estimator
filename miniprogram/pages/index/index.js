@@ -59,10 +59,12 @@ Page({
     assetAllocation: null,
     showAssetAlloc: false,
     showColEdit: false,
-    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "valuation"],
+    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "ratio", "drawdown", "valuation"],
     colDefs: {
       todayProfit: { label: "当日收益", sortable: true },
       totalReturn: { label: "累计收益", sortable: true },
+      ratio: { label: "占比", sortable: true },
+      drawdown: { label: "距高点", sortable: true },
       valuation: { label: "估算", sortable: false, isValuation: true },
     },
     alertTriggered: [], showAlertEdit: false,
@@ -124,6 +126,18 @@ Page({
   },
 
   onLoad(options) {
+    // 列迁移：新增列（占比/距高点）追加到老用户已存的 colOrder 尾部（尊重既有排序）
+    try {
+      const saved = wx.getStorageSync("colOrder");
+      if (saved && saved.length) {
+        const missing = Object.keys(this.data.colDefs).filter(k => saved.indexOf(k) === -1);
+        if (missing.length) {
+          const merged = [...saved, ...missing];
+          this.setData({ colOrder: merged });
+          wx.setStorageSync("colOrder", merged);
+        }
+      }
+    } catch (e) { /* ignore */ }
     const { windowHeight, windowWidth } = wx.getSystemInfoSync();
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
@@ -308,7 +322,7 @@ Page({
         this._cacheTs = cached.ts || 0;
         this._portfolioCache = cached;
         let holdings = cached.holdings;
-        holdings = this.formatHoldings(holdings);
+        holdings = this.formatHoldings(holdings, cached.totalAmount);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 与 fetchPortfolio 一致的合并渲染：displayHoldings/counts/groups 一次算好
@@ -328,6 +342,8 @@ Page({
         const groupSummary = this._computeGroupSummary(activeGroup, cached.groups || []);
         this.setData({
           holdings, displayHoldings, groupCounts: counts, groups, groupSummary,
+          comboSummary: this._comboSummary(holdings),
+          healthText: this._healthText(cached.healthScore ? cached.healthScore.score : null),
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
           todayProfitRate: cached.todayProfitRate,
@@ -400,6 +416,31 @@ Page({
   },
   onCloseColEdit() {
     this.setData({ showColEdit: false });
+  },
+
+  // 组合当日结构：涨跌家数 + 最大贡献/拖累（总览摘要条）
+  _comboSummary(holdings) {
+    let up = 0, down = 0, topGain = null, topLoss = null;
+    holdings.forEach(h => {
+      const tp = parseFloat(h.todayProfit) || 0;
+      if (tp > 0) up++; else if (tp < 0) down++;
+      if (!topGain || tp > topGain.amount) topGain = { name: (h.fundName || '').slice(0, 4), amount: +tp.toFixed(0) };
+      if (!topLoss || tp < topLoss.amount) topLoss = { name: (h.fundName || '').slice(0, 4), amount: +tp.toFixed(0) };
+    });
+    return {
+      up, down,
+      topGain: topGain && topGain.amount > 0 ? topGain : null,
+      topLoss: topLoss && topLoss.amount < 0 ? topLoss : null,
+    };
+  },
+
+  _healthText(score) {
+    if (score == null) return '';
+    return score >= 80 ? '优秀' : score >= 60 ? '良好' : score >= 40 ? '一般' : '较差';
+  },
+
+  onGoAssetAnalysis() {
+    wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
   },
 
   // ---- 止盈止损提醒 ----
@@ -535,7 +576,7 @@ Page({
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
         let holdings = (d.holdings || []);
-        holdings = this.formatHoldings(holdings);
+        holdings = this.formatHoldings(holdings, d ? d.totalAmount : cached.totalAmount);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
@@ -558,6 +599,8 @@ Page({
           loading: false, loadError: false, dataReady: true,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
           groupSummary,
+          comboSummary: this._comboSummary(holdings),
+          healthText: this._healthText(d.healthScore ? d.healthScore.score : null),
           totalAmount: d.totalAmount,
           todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit,
           todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate,
@@ -626,13 +669,17 @@ Page({
     this.setData({ sortField: nextField, sortOrder: nextOrder, displayHoldings: sorted });
   },
 
-  formatHoldings(list) {
+  formatHoldings(list, totalAmount) {
+    const total = parseFloat(totalAmount) || 0;
     return list.map(h => {
       // 预计算列表单元格展示字段（避免 WXML 里每格重复三元判断，减轻渲染压力）
       const cr = parseFloat(h.todayChangeRate) || 0;
       const tp = parseFloat(h.todayProfit) || 0;
       const tr = parseFloat(h.totalReturn) || 0;
       const trr = parseFloat(h.totalReturnRate) || 0;
+      const mv = parseFloat(h.marketValue) || 0;
+      const cn = parseFloat(h.currentNav) || 0;
+      const hi = h.navHigh != null ? parseFloat(h.navHigh) : 0;
       const crCls = cr > 0 ? 'up' : cr < 0 ? 'down' : '';
       const tpCls = tp > 0 ? 'up' : tp < 0 ? 'down' : '';
       const trCls = tr > 0 ? 'up' : tr < 0 ? 'down' : '';
@@ -658,6 +705,9 @@ Page({
         _trrText: trr > 0 ? '+' + trr + '%' : trr + '%',
         _valCls: valCls, _valText: valText,
         _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',
+        // 占比/距一年高点（新列预计算）
+        _ratioText: total > 0 && mv > 0 ? (mv / total * 100).toFixed(1) + '%' : '--',
+        _ddText: (hi > 0 && cn > 0) ? ((cn - hi) / hi * 100).toFixed(1) + '%' : '--',
       };
     });
   },

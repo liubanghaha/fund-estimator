@@ -92,6 +92,13 @@
           </view>
         </view>
 
+        <view wx:if="{{comboSummary && displayHoldings.length}}" class="combo-summary">
+          <text class="cs-up">涨{{comboSummary.up}}</text>
+          <text class="cs-down">跌{{comboSummary.down}}</text>
+          <text wx:if="{{comboSummary.topGain}}" class="cs-item">贡献 {{comboSummary.topGain.name}}{{amountVisible ? ' +' + comboSummary.topGain.amount : ''}}</text>
+          <text wx:if="{{comboSummary.topLoss}}" class="cs-item">拖累 {{comboSummary.topLoss.name}}{{amountVisible ? ' ' + comboSummary.topLoss.amount : ''}}</text>
+          <view wx:if="{{healthScore}}" class="health-badge" bind:tap="onGoAssetAnalysis">健康 {{healthScore.score}}·{{healthText}}</view>
+        </view>
         <view wx:if="{{batchMode}}" class="batch-top-bar">
           <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
           <text class="batch-top-title">已选 {{selectedCount}} 项</text>
@@ -172,6 +179,7 @@
                   <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
                   <view class="name-text">
                     <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
+                    <text wx:if="{{item.peTemp && item.peTemp.topIndustry}}" class="group-tag industry-tag">{{item.peTemp.topIndustry}}</text>
                     {{item.fundName}}
                   </view>
                   <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view>
@@ -184,6 +192,12 @@
                   <block wx:elif="{{col === 'totalReturn'}}">
                     <view class="t-val {{item._trrCls}}">{{item._trrText}}</view>
                     <view class="t-sub {{amountVisible ? item._trCls : ''}}">{{amountVisible ? fmt.money(item.totalReturn, true) : '****'}}</view>
+                  </block>
+                  <block wx:elif="{{col === 'ratio'}}">
+                    <view class="t-sub">{{item._ratioText}}</view>
+                  </block>
+                  <block wx:elif="{{col === 'drawdown'}}">
+                    <view class="t-sub dd-text">{{item._ddText}}</view>
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
                     <view class="t-val {{item._valCls}}">{{item._valText}}</view>

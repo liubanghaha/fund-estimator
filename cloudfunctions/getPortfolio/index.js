@@ -223,6 +223,12 @@ exports.main = async (event) => {
             stocksWith52w: t.stocksWith52w,
             totalStocks: t.totalStocks,
           };
+          // 单基金主打行业（detailPEs 占比最高）：列表行业标签用；分类不出（其他）不标
+          if (t.detailPEs && t.detailPEs.length) {
+            const top = t.detailPEs.reduce((a, b) => ((b.ratio || 0) > (a.ratio || 0) ? b : a));
+            const topLabel = top && top.industry ? ft.classifyIndustryLabel(top.industry, top.name) : "";
+            if (topLabel && topLabel !== "其他") h.peTemp.topIndustry = topLabel;
+          }
         }
       });
     } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
