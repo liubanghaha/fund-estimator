@@ -324,4 +324,18 @@
       </view>
     </view>
   </view>
+
+  <!-- 新版本功能提示 -->
+  <view wx:if="{{showUpdateLog}}" class="ver-mask">
+    <view class="ver-card">
+      <view class="ver-title">韭菜估值宝</view>
+      <view class="ver-version">版本 {{updateVersion}} 更新</view>
+      <view class="ver-body">
+        <block wx:for="{{updateItems}}" wx:key="*this">
+          <view class="ver-item">• {{item}}</view>
+        </block>
+      </view>
+      <view class="ver-close" bind:tap="onCloseUpdateLog">知道了</view>
+    </view>
+  </view>
 </view>

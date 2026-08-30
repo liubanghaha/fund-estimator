@@ -258,6 +258,7 @@ Page({
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     this._syncAlertSettingsDaily();
+    this._maybeShowUpdateLog();
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
@@ -416,6 +417,24 @@ Page({
   },
   onCloseColEdit() {
     this.setData({ showColEdit: false });
+  },
+
+  // 新版本功能提示：升级后首次启动弹一次（全新用户不弹，避免打扰）
+  _maybeShowUpdateLog() {
+    try {
+      const cur = getApp().getVersion();
+      const seen = wx.getStorageSync("update_seen_version");
+      const isReturning = !!wx.getStorageSync(CACHE_KEY); // 有持仓缓存 = 老用户
+      if ((isReturning || seen) && seen !== cur) {
+        const log = (getApp().getChangelog() || []).find(c => c.version === cur) || (getApp().getChangelog() || [])[0];
+        if (log) this.setData({ showUpdateLog: true, updateVersion: log.version, updateItems: log.items });
+      }
+      wx.setStorageSync("update_seen_version", cur);
+    } catch (e) { /* ignore */ }
+  },
+
+  onCloseUpdateLog() {
+    this.setData({ showUpdateLog: false });
   },
 
   // ---- 止盈止损提醒 ----

@@ -279,3 +279,12 @@
 .cs-item{color:#888}
 .health-badge{margin-left:auto;padding:6rpx 18rpx;background:#FDECEC;color:#E4393C;border-radius:999rpx;font-size:22rpx;font-weight:500}
 .industry-tag{background:#EEF3FB;color:#4A6FA5}
+
+/* 新版本功能提示弹窗（与我的页版本日志同款） */
+.ver-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+.ver-card{width:580rpx;max-height:75vh;background:#FFF;border-radius:20rpx;display:flex;flex-direction:column;overflow:hidden}
+.ver-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;padding:36rpx 24rpx 4rpx;flex-shrink:0}
+.ver-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:16rpx;flex-shrink:0}
+.ver-body{flex:1;padding:0 32rpx;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
+.ver-item{font-size:26rpx;color:#555;line-height:2;padding-left:4rpx}
+.ver-close{margin:16rpx 32rpx 28rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx;flex-shrink:0}
