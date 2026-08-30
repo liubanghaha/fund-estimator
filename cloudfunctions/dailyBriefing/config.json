@@ -9,6 +9,11 @@
       "name": "closingBriefTimer",
       "type": "timer",
       "config": "0 30 15 * * 1-5 *"
+    },
+    {
+      "name": "navBriefTimer",
+      "type": "timer",
+      "config": "0 30 21 * * 1-5 *"
     }
   ]
 }

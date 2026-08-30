@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
 const td = require("./_shared/trading-day");
+const fd = require("./_shared/fund-data");
 
 // 云调用（cloud.openapi）在本环境返回 -501001（INVALID_WX_ACCESS_TOKEN，云调用权限链路历史遗留），
 // 发送改走 HTTP API：stable_token 免 IP 白名单校验，SECRET 放云函数环境变量 WX_APP_SECRET（不入库）。
@@ -23,11 +24,17 @@ const SIGNAL_ORDER = { low: 0, mid: 1, high: 2 };
 
 exports.main = async (event = {}) => {
   try {
+    // 定时触发器分流：两个 timer 共用本函数
+    if (event.Type === "Timer") {
+      if (event.TriggerName === "navBriefTimer") return await runNavBrief(false);
+      return await runBriefing(false, false);
+    }
     if (event.action === "auth") return await handleAuth(event);
     if (event.action === "trackOpen") return await handleTrackOpen(event.logId);
     if (event.action === "alertGet") return await handleAlertGet();
     if (event.action === "alertSet") return await handleAlertSet(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
+    if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
     return await runBriefing(!!event.dryRun, !!event.force);
   } catch (e) {
     console.error("[dailyBriefing] 失败:", e.message);
@@ -242,6 +249,133 @@ async function runBriefing(dryRun, force) {
   }
 
   return { code: 0, msg: `发送 ${sent}，失败 ${failed}，跳过 ${skipped}，PE提醒 ${peSent}${dryRun ? "（dryRun）" : ""}` };
+}
+
+// ---- 净值播报（交易日 21:30）：官方净值发布后的当日真实收益 ----
+// 收益口径：已发布基金按官方涨幅 × 份额基准（前日净值×份额）真实计算，
+// 未发布基金按组合估算率兜底并近似；偏差对比 15:30 收盘小结的估算口径。
+async function runNavBrief(force, dryRun) {
+  const today = td.bjDateStr();
+  if (!dryRun && !force && !td.isTradingDay(today)) {
+    return { code: 0, msg: `非交易日 ${today} 跳过` };
+  }
+  const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
+
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid"]);
+  if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
+
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "shares"]);
+  const byUser = {};
+  holdings.forEach(h => {
+    if (!h._openid || !h.fundCode) return;
+    (byUser[h._openid] = byUser[h._openid] || []).push(h);
+  });
+  const targets = subs.filter(s => byUser[s._openid]);
+  if (targets.length === 0) return { code: 0, msg: "无目标用户" };
+
+  // 目标用户持仓基金去重，逐基金拉官方净值（actualDate=dataDay 即当日已发布）
+  const codeSet = new Set();
+  targets.forEach(t => (byUser[t._openid] || []).forEach(h => codeSet.add(h.fundCode)));
+  const codes = [...codeSet];
+  const navStart = Date.now();
+  const navInfo = {};
+  const CONCURRENT = 16;
+  for (let i = 0; i < codes.length && Date.now() - navStart < 90000; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    const results = await Promise.all(batch.map(async (code) => {
+      try {
+        return { code, r: await fd.fetchLatestNavEastMoney(code) };
+      } catch (e) { return { code, r: {} }; }
+    }));
+    results.forEach(({ code, r }) => {
+      if (r && r.actualDate === dataDay && r.actualChangeRate != null) {
+        navInfo[code] = { published: true, changeRate: r.actualChangeRate };
+      }
+    });
+  }
+  console.log(`[dailyBriefing][navBrief] codes=${codes.length} published=${Object.keys(navInfo).length} t=${Date.now() - navStart}ms`);
+
+  // 前日净值基准：fund_navs 的 dataDay 记录即前日净值（snapshotProfit 盘中写入）
+  const prevNav = {};
+  const prevRows = await readAll("fund_navs", { date: dataDay }, ["fundCode", "yesterdayNav"]);
+  prevRows.forEach(r => { if (r.yesterdayNav > 0) prevNav[r.fundCode] = r.yesterdayNav; });
+
+  // 组合估算率（未发布部分兜底 + 偏差对比，与收盘小结同口径）
+  const rateMap = {};
+  const snaps = await readAll("profit_snapshots", { date: dataDay }, ["_openid", "points"]);
+  snaps.forEach(s => {
+    if (s.points && s.points.length > 0) rateMap[s._openid] = s.points[s.points.length - 1].rate;
+  });
+
+  const sentLogs = await readAll("push_logs", { scene: "nav_brief", date: dataDay, status: "sent" }, ["_openid"]);
+  const sentSet = new Set(sentLogs.map(l => l._openid));
+
+  const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
+  let accessToken = null;
+  if (!dryRun) accessToken = await getAccessToken();
+  let sent = 0, failed = 0, skipped = 0;
+  for (const sub of runList) {
+    if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
+    const list = byUser[sub._openid] || [];
+    let totalBase = 0, pubBase = 0, real = 0, pubCount = 0;
+    list.forEach(h => {
+      const prev = prevNav[h.fundCode];
+      const shares = parseFloat(h.shares);
+      if (!prev || !(shares > 0)) return;
+      const fundBase = shares * prev; // 该基金昨日市值
+      totalBase += fundBase;
+      const info = navInfo[h.fundCode];
+      if (info && info.published) {
+        pubBase += fundBase;
+        real += fundBase * info.changeRate / 100;
+        pubCount++;
+      }
+    });
+    if (totalBase <= 0) { skipped++; continue; }
+    const estRate = rateMap[sub._openid];
+    // 最终收益 = 已发布真实 + 未发布部分按组合估算兜底
+    const finalProfit = real + (estRate != null ? (totalBase - pubBase) * estRate / 100 : 0);
+    if (isNaN(finalProfit)) { skipped++; continue; }
+    let text = `最终${finalProfit >= 0 ? "+" : ""}${finalProfit.toFixed(0)}元`;
+    if (estRate != null) {
+      const estProfit = totalBase * estRate / 100;
+      text += `(估${estProfit >= 0 ? "+" : ""}${estProfit.toFixed(0)})`;
+    }
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: `我的持仓(${list.length}只)`.slice(0, 20) },
+      thing3: { value: text.slice(0, 20) },
+      time4: { value: _bjTimeStr() },
+    };
+    if (dryRun) {
+      await db.collection("push_logs").add({
+        data: { _openid: sub._openid, scene: "nav_brief", date: dataDay, status: "dry_run", content: brief, sentAt: Date.now(), openedAt: null }
+      });
+      sent++;
+      continue;
+    }
+    const logId = await createLog(sub._openid, dataDay, "nav_brief");
+    try {
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await db.collection("subscriptions").doc(sub._id).update({
+        data: { quota: _.inc(-1), updatedAt: Date.now() }
+      });
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) {
+        await db.collection("subscriptions").doc(sub._id).update({
+          data: { quota: 0, updatedAt: Date.now() }
+        });
+      }
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      failed++;
+    }
+  }
+  console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
+  return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // PE 温度变化提醒：peAlert 用户的持仓基金 signal 相对云端基线变化 → 每日一条。
