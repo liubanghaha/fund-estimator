@@ -15,7 +15,8 @@ const WX_APPID = "wxb95098fe432ed765";
 // thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
 const SCENE = "closing_brief";          // 场景标识：收盘小结（subscriptions 按多场景设计，后续净值播报/定投提醒共用本集合）
-const PAGE_BASE = "pages/index/index";  // 推送落地页；lid 参数由前端上报打开
+const PAGE_PORTFOLIO = "subpackages/analysis/pages/profit-detail/index"; // 收益类推送落地：收益走势页
+const PAGE_FUND = "subpackages/analysis/pages/fund-detail/index";        // 单基金提醒落地：基金详情页
 const MINI_STATE = "formal";            // formal | trial | developer，开发验证期改 trial
 const BATCH_SIZE = 50;                  // 分批发送，规避 subscribeMessage 接口频控
 const DRY_RUN_LIMIT = 5;                // dryRun 只跑前 5 人，够验证文案即可
@@ -100,7 +101,7 @@ async function handleAlertPush({ pushes }) {
     };
     const logId = await createLog(p.openid, today, p.scene || "rate_alert", p.fundCode, p.kind);
     try {
-      const errcode = await sendSubscribe(token, p.openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE }).update({
@@ -220,7 +221,7 @@ async function runBriefing(dryRun, force) {
       }
       const logId = await createLog(sub._openid, dataDay);
       try {
-        const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+        const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
         if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
         await finishLog(logId, "sent", "");
         await db.collection("subscriptions").doc(sub._id).update({
@@ -358,7 +359,7 @@ async function runNavBrief(force, dryRun) {
     }
     const logId = await createLog(sub._openid, dataDay, "nav_brief");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await db.collection("subscriptions").doc(sub._id).update({
@@ -465,7 +466,7 @@ async function runWeeklyBrief(force, dryRun) {
     }
     const logId = await createLog(sub._openid, today, "weekly_brief");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await db.collection("subscriptions").doc(sub._id).update({
@@ -552,7 +553,7 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
     };
     const logId = await createLog(sub._openid, dataDay, "pe_alert", first.fundCode, first.up ? "up" : "down");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await db.collection("subscriptions").doc(sub._id).update({

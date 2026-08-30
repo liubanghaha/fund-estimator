@@ -158,7 +158,7 @@ Page({
     if (options.share) {
       this._loadShareCard(String(options.share).slice(0, 32));
     }
-    // 推送落地（page 带 src=push&lid=推送日志ID）：补 openedAt 供打开率统计
+    // 推送落地追踪已上移 app.js（收益页/详情页落地也能追踪），此处仅保留首页直落场景
     if (options.src === "push" && options.lid) {
       subscribe.bindTrackOpen(options.lid);
     }

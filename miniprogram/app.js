@@ -16,7 +16,7 @@ const CHANGELOG = [
 ];
 
 App({
-  onLaunch: function () {
+  onLaunch: function (options) {
     if (wx.cloud) {
       try {
         wx.cloud.init({
@@ -28,7 +28,22 @@ App({
       }
     }
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
+    this._handlePushEntry(options);
     this._trackLaunch();
+  },
+
+  onShow: function (options) {
+    // 推送热启动落地（冷启动走 onLaunch）
+    this._handlePushEntry(options);
+  },
+
+  // 推送落地追踪：所有推送 page 带 src=push&lid=日志ID，补 openedAt 供打开率统计
+  _handlePushEntry: function (options) {
+    try {
+      if (options && options.src === "push" && options.lid) {
+        require("./utils/subscribe.js").bindTrackOpen(options.lid);
+      }
+    } catch (e) { /* ignore */ }
   },
 
   // 启动埋点：直连写库不经云函数（不增加冷启动耗时），fire-and-forget 失败静默
