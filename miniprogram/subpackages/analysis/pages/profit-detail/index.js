@@ -839,7 +839,7 @@ Page({
       for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= w.ws) break; first = dm[allKeys[i]]; }
       for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] > w.we) break; last = dm[allKeys[i]]; }
       const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0;
-      return { ws: w.ws, range: `${w.ws.slice(5)}~${w.we.slice(5)}`, profit: +w.sum.toFixed(2), rate, empty: !w.has };
+      return { ws: w.ws, range: `${+w.ws.slice(5, 7)}.${+w.ws.slice(8)}-${+w.we.slice(8)}`, profit: +w.sum.toFixed(2), rate, empty: !w.has };
     });
   },
   // 构建日期→市值映射（供 _days/_mons/_yrs 用），_allDaily 不变时缓存（含预排序 keys）

@@ -122,15 +122,15 @@
       </view>
     </view>
 
-    <!-- 周视图 -->
+    <!-- 周视图（与月视图同款网格） -->
     <view wx:if="{{calendarView === 'week'}}" class="calendar-card">
-      <view class="year-list">
-        <view wx:for="{{weekCalendar}}" wx:key="ws" class="year-row">
-          <view class="year-label">{{item.range}}</view>
-          <view wx:if="{{!item.empty}}" class="year-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+      <view class="month-grid">
+        <view wx:for="{{weekCalendar}}" wx:key="ws" class="month-cell {{item.empty ? 'empty' : (item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : '')}}">
+          <view class="month-name">{{item.range}}</view>
+          <view wx:if="{{!item.empty && item.profit !== null}}" class="month-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
             {{profitMode === 'rate' ? (item.rate > 0 ? '+' : '') + item.rate + '%' : (item.profit > 0 ? '+' : '') + item.profit}}
           </view>
-          <view wx:else class="year-profit">--</view>
+          <view wx:else class="month-profit empty-text">--</view>
         </view>
       </view>
     </view>
