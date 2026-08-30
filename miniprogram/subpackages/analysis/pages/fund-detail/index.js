@@ -259,6 +259,10 @@ Page({
         showAllHistory: false,
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cached.holdingData || null,
+        // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
+        holdings: cached.holdings || [], exited: cached.exited || [],
+        quarterLabel: cached.quarterLabel || '', prevDataIncomplete: !!cached.prevDataIncomplete,
+        turnoverRates: cached.turnoverRates || [], profile: cached.profile || null, manager: cached.manager || null,
       }, () => {
         this.calcReturns(cached.history);
         this.updateDisplay();
@@ -267,8 +271,25 @@ Page({
           this._rawHolding = cached.rawHolding;
           this.enrichHoldingData();
         }
+        // 重仓股实时涨跌静默补拉（缓存里的行情是上次保存时刻的旧值，盘中在变）
+        if (cached.holdings && cached.holdings.length) {
+          const stockCodes = cached.holdings.map(h => h.stockCode).filter(Boolean);
+          if (stockCodes.length) {
+            this._fetchStockQuotes(stockCodes).then(quotes => {
+              if (!Object.keys(quotes).length) return;
+              const updated = cached.holdings.map(h => ({
+                ...h,
+                stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
+                isHK: h.stockCode && h.stockCode.length === 5,
+              }));
+              this.setData({ holdings: updated });
+            }).catch(() => {});
+          }
+        }
         this.drawChart();
       });
+      // 持仓/档案缓存超过 7 天视为陈旧：切 tab 时后台静默刷新 fetchProfile（旧值先显不转圈）
+      this._profileStale = !cached.ts || (Date.now() - cached.ts > 7 * 86400000);
       return marketTime.isCacheFresh(cached);
     } catch (e) { return false; }
   },
@@ -285,6 +306,10 @@ Page({
         history: this.data.navHistory,
         holdingData: this.data.holdingData,
         rawHolding: this._rawHolding || this._lastRawHolding,
+        // 持仓/档案季频静态数据入缓存：切持仓/档案 tab 秒出，不用每次懒加载打网络
+        holdings: this.data.holdings, exited: this.data.exited,
+        quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
+        turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
         ts: Date.now(),
       });
     } catch (e) { /* ignore */ }
@@ -431,6 +456,8 @@ Page({
         // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
         const exited = res.result.data.exited || [];
         this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
+        // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
+        this._saveCache();
 
         // 后台拉取股票行情（仅补云函数未返回的），不阻塞渲染
         const missingQuotes = holdings.filter(h => h.stockChangeRate == null);
@@ -443,6 +470,7 @@ Page({
               isHK: h.stockCode && h.stockCode.length === 5,
             }));
             this.setData({ holdings: updated });
+            this._saveCache(); // 行情补拉后更新缓存，下次秒出的就是带实时涨跌的版本
           });
         }
       }
@@ -840,7 +868,8 @@ Page({
     this.setData({ activeTab: tab }, () => {
       if (tab === 'trend') this.drawChart();
     });
-    if ((tab === 'holdings' || tab === 'profile') && !this.data.profile && !this.data.profileLoading) {
+    if ((tab === 'holdings' || tab === 'profile') && (!this.data.profile || this._profileStale) && !this.data.profileLoading) {
+      this._profileStale = false;
       this.setData({ profileLoading: true });
       await this.fetchProfile();
       this.setData({ profileLoading: false, profileLoaded: true });
