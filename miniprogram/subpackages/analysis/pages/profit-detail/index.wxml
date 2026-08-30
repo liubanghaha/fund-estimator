@@ -90,9 +90,10 @@
     </view>
     <view class="tab-bar">
         <view class="tab-item {{calendarView === 'day' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="day">日</view>
+        <view class="tab-item {{calendarView === 'week' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="week">周</view>
         <view class="tab-item {{calendarView === 'month' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="month">月</view>
         <view class="tab-item {{calendarView === 'year' ? 'active' : ''}}" bind:tap="onCalendarTab" data-tab="year">年</view>
-        <view wx:if="{{calendarView === 'day'}}" class="tab-picker">
+        <view wx:if="{{calendarView === 'day' || calendarView === 'week'}}" class="tab-picker">
           <picker mode="selector" range="{{availableMonths}}" bindchange="onMonthChange">
             <view class="picker-label">{{selectedMonth}} ▼</view>
           </picker>
@@ -118,6 +119,19 @@
             </view>
           </view>
         </block>
+      </view>
+    </view>
+
+    <!-- 周视图 -->
+    <view wx:if="{{calendarView === 'week'}}" class="calendar-card">
+      <view class="year-list">
+        <view wx:for="{{weekCalendar}}" wx:key="ws" class="year-row">
+          <view class="year-label">{{item.range}}</view>
+          <view wx:if="{{!item.empty}}" class="year-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
+            {{profitMode === 'rate' ? (item.rate > 0 ? '+' : '') + item.rate + '%' : (item.profit > 0 ? '+' : '') + item.profit}}
+          </view>
+          <view wx:else class="year-profit">--</view>
+        </view>
       </view>
     </view>
 

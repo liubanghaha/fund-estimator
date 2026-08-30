@@ -30,7 +30,7 @@ Page({
     canvasHRpx: 0,
     earliestDate: "",
     calendarView: "day",
-    selectedMonth: "", availableMonths: [], dayCalendar: [],
+    selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
     selectedYear: "", availableYears: [], monthCalendar: [], yearData: [],
   },
 
@@ -790,7 +790,7 @@ Page({
 
   // ============ 日历 ============
 
-  _cal() { try { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, monthCalendar: s.mons, yearData: s.yrs }); } catch (e) { console.warn('[profit-detail] 日历渲染异常:', e); } },
+  _cal() { try { const s = this._calCached(); if (s) this.setData({ availableMonths: s.months, selectedMonth: s.sm, availableYears: s.years, selectedYear: s.sy, dayCalendar: s.days, weekCalendar: s.weeks, monthCalendar: s.mons, yearData: s.yrs }); } catch (e) { console.warn('[profit-detail] 日历渲染异常:', e); } },
   _calCached() {
     const a = this._allDaily, c = this._dailyChange; if (!a || !c) return null;
     // 缓存：数据引用未变（同一次 fetch 的数据）时直接复用上次计算结果，避免切 Tab 全量重算
@@ -799,7 +799,7 @@ Page({
     const ms = [...new Set(Object.keys(dm).map(d => d.slice(0, 7)))].sort().reverse();
     const ys = [...new Set(Object.keys(dm).map(d => d.slice(0, 4)))].sort().reverse();
     const now = new Date(); const sm = ms[0] || calc.formatDate(now).slice(0, 7); const sy = ys[0] || String(now.getFullYear());
-    const result = { months: ms, sm, years: ys, sy, days: this._days(c, sm, dm), mons: this._mons(c, sy, dm), yrs: this._yrs(c, dm) };
+    const result = { months: ms, sm, years: ys, sy, days: this._days(c, sm, dm), weeks: this._weeks(c, sm, dm), mons: this._mons(c, sy, dm), yrs: this._yrs(c, dm) };
     this._calCache = { ref: c, result };
     return result;
   },
@@ -813,8 +813,35 @@ Page({
   onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { this._draw(); }); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
-  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, this._calDm()) }); },
+  onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, this._calDm()), weekCalendar: this._weeks(this._dailyChange, m, this._calDm()) }); },
   onYearChange(e) { const y = this.data.availableYears[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedYear: y, monthCalendar: this._mons(this._dailyChange, y, this._calDm()) }); },
+  // 周视图：选中月按自然周（周一开头）聚合。profit=周内每日盈亏相加；rate=周初（上周五收盘）→周末市值变化，与 _mons 口径一致
+  _weeks(c, month, dm) {
+    const allKeys = (this._calDmCache && this._calDmCache.keys) || Object.keys(dm).sort();
+    const [y, m] = month.split('-').map(Number);
+    const dim = new Date(y, m, 0).getDate();
+    const segs = [];
+    let ws = null, we = null, sum = 0, has = false;
+    for (let d = 1; d <= dim; d++) {
+      const ds = `${month}-${String(d).padStart(2, '0')}`;
+      const dow = new Date(y, m - 1, d).getDay();
+      if (dow === 1 || ws === null) {
+        if (ws !== null) segs.push({ ws, we, sum, has });
+        ws = ds; sum = 0; has = false;
+      }
+      we = ds;
+      const chg = c[ds];
+      if (chg !== undefined) { sum += chg; has = true; }
+    }
+    if (ws !== null) segs.push({ ws, we, sum, has });
+    return segs.map(w => {
+      let first = 0, last = 0;
+      for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] >= w.ws) break; first = dm[allKeys[i]]; }
+      for (let i = 0; i < allKeys.length; i++) { if (allKeys[i] > w.we) break; last = dm[allKeys[i]]; }
+      const rate = first > 0 ? +((last / first - 1) * 100).toFixed(2) : 0;
+      return { ws: w.ws, range: `${w.ws.slice(5)}~${w.we.slice(5)}`, profit: +w.sum.toFixed(2), rate, empty: !w.has };
+    });
+  },
   // 构建日期→市值映射（供 _days/_mons/_yrs 用），_allDaily 不变时缓存（含预排序 keys）
   // 返回 map（{ date: value }），keys 由 _days/_mons/_yrs 从 _calDmCache 读取
   _calDm() {
