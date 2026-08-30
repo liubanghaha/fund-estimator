@@ -272,8 +272,8 @@
   <view wx:if="{{showAlertEdit}}" class="col-edit-mask" bind:tap="onCloseAlertEdit">
     <view class="col-edit-card" catch:tap="noop">
       <view class="col-edit-title">涨跌提醒 — {{alertEditFundName}}</view>
-      <view class="alert-field"><text class="alert-label">上涨提醒线(%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如15"/></view>
-      <view class="alert-field"><text class="alert-label">下跌提醒线(%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-10"/></view>
+      <view class="alert-field"><text class="alert-label">上涨提醒线(%)</text><input class="alert-input" value="{{alertEditUpper}}" bindinput="onAlertUpper" type="digit" placeholder="例如3"/></view>
+      <view class="alert-field"><text class="alert-label">下跌提醒线(%)</text><input class="alert-input" value="{{alertEditLower}}" bindinput="onAlertLower" type="digit" placeholder="例如-3"/></view>
       <view class="alert-field alert-switch-row" catch:tap="onAlertPeToggle">
         <text class="alert-label">温度变化提醒</text>
         <view class="pe-switch {{alertEditPeAlert ? 'on' : ''}}">

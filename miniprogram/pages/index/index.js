@@ -1030,7 +1030,7 @@ Page({
         } else if (res.tapIndex === 1) {
           self.setData({ showAlertEdit: true, alertEditFundCode: h.fundCode, alertEditFundName: h.fundName });
           const settings = wx.getStorageSync('alertSettings') || {};
-          const s = settings[h.fundCode] || { upper: 15, lower: -10 };
+          const s = settings[h.fundCode] || { upper: 3, lower: -3 };
           self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || ''), alertEditPeAlert: !!s.peAlert });
         } else if (res.tapIndex === 2) {
           self.moveHoldingToGroup([h.fundCode], h.fundName);
