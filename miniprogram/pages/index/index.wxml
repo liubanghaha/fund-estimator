@@ -186,10 +186,12 @@
                     <view class="t-sub {{amountVisible ? item._trCls : ''}}">{{amountVisible ? fmt.money(item.totalReturn, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'ratio'}}">
-                    <view class="t-sub">{{item._ratioText}}</view>
+                    <view class="t-val">{{item._ratioText}}</view>
+                    <view class="t-sub">{{amountVisible ? fmt.money(item.marketValue, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'drawdown'}}">
-                    <view class="t-sub dd-text">{{item._ddText}}</view>
+                    <view class="t-val">{{item._ddText}}</view>
+                    <view class="t-sub">高点 {{item.navHigh || '--'}}</view>
                   </block>
                   <block wx:elif="{{col === 'valuation'}}">
                     <view class="t-val {{item._valCls}}">{{item._valText}}</view>
