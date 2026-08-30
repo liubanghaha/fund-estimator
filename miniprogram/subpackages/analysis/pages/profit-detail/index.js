@@ -136,13 +136,34 @@ Page({
       }
     } catch (e) { /* ignore */ }
     this._first = true;
+    if (!this._cacheApplied) this._quickFirstPaint(); // 无缓存首屏：轻量接口先画当天图
     this._fetch();
+  },
+
+  // 无缓存首屏快速通道：portfolioLight（轻量，含分钟快照+当日收益+市值）先行渲染当天图，
+  // 全年历史（日历/周月年）由 _fetch 后台补齐。此前当天图要等 getPortfolio 全年聚合完成
+  // 后才拉指数分时，两跳串行网络导致首屏动辄数秒
+  _quickFirstPaint() {
+    api.portfolioLight().then((r) => {
+      const d = r.result && r.result.data;
+      if (!d) return;
+      if (d.intradaySnapshots && d.intradaySnapshots.length) {
+        this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
+      }
+      this._totalMarket = parseFloat(d.totalAmount) || 0;
+      const rate = parseFloat(d.todayProfitRate || 0);
+      const ym = this._totalMarket > 0 ? this._totalMarket / (1 + rate / 100) : 0;
+      this.setData({ loading: false, todayProfitRate: rate, todayProfit: (ym * rate / 100).toFixed(2) });
+      this._draw();
+    }).catch(() => {});
   },
 
   async _fetch() {
     if (this._fetching) return; // 防重入：下拉刷新/onShow 并发时只跑一个
     this._fetching = true;
     try {
+      // 指数分时与全量聚合并行：此前等 getPortfolio 完成后才拉分时，当天图首屏多等一整轮网络
+      if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
       const now = new Date();
       const yearStart = new Date(now.getFullYear(), 0, 1);
       const calendarDays = Math.ceil((now - yearStart) / 86400000);
@@ -1048,6 +1069,8 @@ Page({
       const d = res.result.data;
       const rate = parseFloat(d.todayProfitRate || 0);
       // 今日收益 = 当前市值 - 昨日市值（_totalMarket 在 _fetch 时保存）
+      // _fetch 未完成时市值基准未就绪，跳过本轮——否则金额被算成 0.00 而收益率有值（开盘瞬间进页面的错位显示）
+      if (!(this._totalMarket > 0)) return;
       const totalMarket = this._totalMarket || 0;
       const yesterdayMarket = totalMarket > 0 ? totalMarket / (1 + rate / 100) : 0;
       const tp = (yesterdayMarket * rate / 100).toFixed(2);
