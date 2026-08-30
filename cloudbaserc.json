@@ -195,7 +195,12 @@
           "type": "timer",
           "config": "0 30 15 * * 1-5 *"
         }
-      ]
+      ],
+      "permissions": {
+        "openapi": [
+          "subscribeMessage.send"
+        ]
+      }
     }
   ]
 }

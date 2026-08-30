@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
+const subscribe = require("../../utils/subscribe");
 
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
@@ -155,6 +156,10 @@ Page({
     // 分享转发落地（path 带 share=令牌）
     if (options.share) {
       this._loadShareCard(String(options.share).slice(0, 32));
+    }
+    // 推送落地（page 带 src=push&lid=推送日志ID）：补 openedAt 供打开率统计
+    if (options.src === "push" && options.lid) {
+      subscribe.bindTrackOpen(options.lid);
     }
   },
 
@@ -470,6 +475,7 @@ Page({
       return;
     }
     this._lastFetch = now;
+    subscribe.silentDailyAuth(); // 用户手势时机：已授权用户每天静默补一次推送额度
     this.setData({ refresherTriggered: true });
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });

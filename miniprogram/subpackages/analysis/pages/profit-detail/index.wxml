@@ -1,5 +1,10 @@
 <view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
+  <view wx:if="{{showBriefBanner}}" class="brief-banner">
+    <text class="brief-banner-text">收盘播报已就绪 · 每天 15:30 通知你</text>
+    <view class="brief-banner-btn" bind:tap="onBriefAuth">订阅</view>
+    <view class="brief-banner-close" bind:tap="onBriefClose">×</view>
+  </view>
   <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{loadError}}" class="empty-wrap">
     <view class="empty-icon">😵</view>

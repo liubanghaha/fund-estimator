@@ -1,8 +1,10 @@
 const api = require("../../utils/api");
+const subscribe = require("../../utils/subscribe");
 
 Page({
   data: {
     isLoggedIn: false, avatarUrl: "", nickName: "",
+    showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
     feedbackType: "suggestion",
     feedbackText: "",
@@ -26,7 +28,7 @@ Page({
       });
     }
     const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme });
+    this.setData({ theme, briefAuthed: subscribe.hasAuthed() });
     // 运营助手（功能下线，保留代码待恢复）
     // api.opsTool("checkAdmin").then((res) => {
     //   const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
@@ -38,6 +40,17 @@ Page({
   // onOpenOps() {
   //   wx.navigateTo({ url: "/pages/ops/index" });
   // },
+
+  onBriefing() {
+    this.setData({ showBrief: !this.data.showBrief });
+  },
+
+  async onBriefingAuth() {
+    this.setData({ briefSubmitting: true });
+    const r = await subscribe.requestAuth();
+    this.setData({ briefSubmitting: false, briefAuthed: subscribe.hasAuthed() });
+    if (r.ok) wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
+  },
 
   onToggleTheme() {
     const next = this.data.theme === "red" ? "blue" : "red";

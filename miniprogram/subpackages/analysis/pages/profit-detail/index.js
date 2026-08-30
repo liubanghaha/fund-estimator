@@ -6,6 +6,7 @@ const marketTime = require("../../../../utils/market-time");
 const CACHE = "profit_detail_cache_v2";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
 const chartUtil = require("../../../../utils/chart");
+const subscribe = require("../../../../utils/subscribe");
 
 Page({
   data: {
@@ -14,6 +15,7 @@ Page({
     loading: true,
     loadError: false,
     empty: false,
+    showBriefBanner: false,
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
     weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
@@ -32,7 +34,21 @@ Page({
     selectedYear: "", availableYears: [], monthCalendar: [], yearData: [],
   },
 
+  async onBriefAuth() {
+    const r = await subscribe.requestAuth();
+    if (r.ok) {
+      this.setData({ showBriefBanner: false });
+      wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
+    }
+  },
+
+  onBriefClose() {
+    this.setData({ showBriefBanner: false });
+    subscribe.dismissPrompt(); // 手动关闭按拒绝处理，7 天内不再展示
+  },
+
   onLoad() {
+    this.setData({ showBriefBanner: subscribe.canPrompt() && !subscribe.hasAuthed() });
     const { windowWidth } = wx.getSystemInfoSync();
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);
