@@ -344,8 +344,6 @@ Page({
         const groupSummary = this._computeGroupSummary(activeGroup, cached.groups || []);
         this.setData({
           holdings, displayHoldings, groupCounts: counts, groups, groupSummary,
-          comboSummary: this._comboSummary(holdings),
-          healthText: this._healthText(cached.healthScore ? cached.healthScore.score : null),
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
           todayProfitRate: cached.todayProfitRate,
@@ -418,25 +416,6 @@ Page({
   },
   onCloseColEdit() {
     this.setData({ showColEdit: false });
-  },
-
-  // 组合当日结构：涨跌家数（总览摘要条）
-  _comboSummary(holdings) {
-    let up = 0, down = 0;
-    holdings.forEach(h => {
-      const tp = parseFloat(h.todayProfit) || 0;
-      if (tp > 0) up++; else if (tp < 0) down++;
-    });
-    return { up, down };
-  },
-
-  _healthText(score) {
-    if (score == null) return '';
-    return score >= 80 ? '优秀' : score >= 60 ? '良好' : score >= 40 ? '一般' : '较差';
-  },
-
-  onGoAssetAnalysis() {
-    wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
   },
 
   // ---- 止盈止损提醒 ----
@@ -595,8 +574,6 @@ Page({
           loading: false, loadError: false, dataReady: true,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
           groupSummary,
-          comboSummary: this._comboSummary(holdings),
-          healthText: this._healthText(d.healthScore ? d.healthScore.score : null),
           totalAmount: d.totalAmount,
           todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit,
           todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate,

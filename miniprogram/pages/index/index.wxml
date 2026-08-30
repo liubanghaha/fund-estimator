@@ -92,11 +92,6 @@
           </view>
         </view>
 
-        <view wx:if="{{comboSummary && displayHoldings.length}}" class="combo-summary">
-          <text class="cs-up">涨{{comboSummary.up}}</text>
-          <text class="cs-down">跌{{comboSummary.down}}</text>
-          <view wx:if="{{healthScore}}" class="health-badge" bind:tap="onGoAssetAnalysis">健康 {{healthScore.score}}·{{healthText}}</view>
-        </view>
         <view wx:if="{{batchMode}}" class="batch-top-bar">
           <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
           <text class="batch-top-title">已选 {{selectedCount}} 项</text>
