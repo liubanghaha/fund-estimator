@@ -414,10 +414,21 @@ Page({
       data: { action: "alertGet" },
     }).then((r) => {
       const d = r.result && r.result.data;
-      if (d && typeof d === "object") {
+      if (!d || typeof d !== "object") return;
+      if (Object.keys(d).length > 0) {
+        // 云端有设置：以云端为准
         wx.setStorageSync("alertSettings", d);
-        if (this._checkAlerts) this._checkAlerts();
+      } else {
+        // 云端为空但本地有（升级用户首次打开）：反向初始化，防清空
+        const local = wx.getStorageSync("alertSettings");
+        if (local && Object.keys(local).length > 0) {
+          wx.cloud.callFunction({
+            name: "dailyBriefing",
+            data: { action: "alertSet", settings: local },
+          }).catch(() => {});
+        }
       }
+      if (this._checkAlerts) this._checkAlerts();
     }).catch(() => {});
   },
 

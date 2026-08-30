@@ -66,6 +66,10 @@ async function handleAlertSet({ settings }) {
 // snapshotProfit 盘中检测命中后批量委托发送（发送逻辑单点在本函数：额度/日志/43101 归零）
 // pushes: [{ openid, scene, fundCode, kind, fundName, text }]
 async function handleAlertPush({ pushes }) {
+  // 安全：仅允许服务端调用（snapshotProfit 检测后委托）。客户端调用带 OPENID，直接拒绝，
+  // 防止伪造 openid 给任意用户发送推送/消耗其额度
+  const { OPENID } = cloud.getWXContext();
+  if (OPENID) return { code: -1, msg: "拒绝客户端调用" };
   if (!Array.isArray(pushes) || pushes.length === 0) return { code: 0, msg: "空" };
   if (!TEMPLATE_ID) return { code: -1, msg: "TEMPLATE_ID 未配置" };
   const token = await getAccessToken();
@@ -225,7 +229,7 @@ async function runBriefing(dryRun, force) {
   // 6. PE 温度变化提醒（单基金粒度，每日一次；与收盘小结共用 token，dryRun 只记日志不发送）
   let peSent = 0;
   try {
-    peSent = await checkPeAlerts(targets, byUser, todaySigs, prevSigs, dataDay, accessToken, dryRun);
+    peSent = await checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, dryRun);
   } catch (e) {
     console.warn("[dailyBriefing] PE 提醒检测失败:", e.message);
   }
@@ -235,7 +239,7 @@ async function runBriefing(dryRun, force) {
 
 // PE 温度变化提醒：peAlert 用户的持仓基金 signal 相对云端基线变化 → 每日一条。
 // 基线存 alert_settings.peCache：首次只记基线不推送（避免启用当天误报）。
-async function checkPeAlerts(targets, byUser, todaySigs, prevSigs, dataDay, accessToken, dryRun) {
+async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, dryRun) {
   const firedLogs = await readAll("push_logs", { scene: "pe_alert", date: dataDay, status: "sent" }, ["_openid"]);
   const firedSet = new Set(firedLogs.map(l => l._openid));
   const alertDocs = await readAll("alert_settings", {}, ["_openid", "settings", "peCache"]);
@@ -273,7 +277,6 @@ async function checkPeAlerts(targets, byUser, todaySigs, prevSigs, dataDay, acce
         peCache[h.fundCode] = cur;
         cacheChanged = true;
       }
-      void prevSigs;
     });
     if (cacheChanged) {
       await db.collection("alert_settings").doc(doc._id).update({

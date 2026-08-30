@@ -95,7 +95,8 @@ exports.main = async (event) => {
   }
 };
 
-// 盘中涨跌提醒：读 alert_settings 比对单基金估算涨跌阈值，命中（每日每基金一次）
+// 盘中涨跌提醒：读 alert_settings 比对单基金估算涨跌阈值，命中（每日每用户一次，
+// 多只同时命中取绝对涨幅最大的一条，防推送轰炸与额度烧穿）
 // 后委托 dailyBriefing.alertPush 批量发送——发送/额度/日志单点在 dailyBriefing 维护
 async function checkRateAlerts(userMap, fundRateMap, today, el) {
   const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true });
@@ -103,34 +104,43 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
   const alertMap = {};
   alertDocs.forEach(d => { alertMap[d._openid] = d.settings; });
 
-  // 当天已发送的提醒查重（openid|fundCode 粒度）
-  const fired = await readAllSimple("push_logs", { scene: "rate_alert", date: today, status: "sent" }, { _openid: true, fundCode: true });
-  const firedSet = new Set(fired.map(l => `${l._openid}|${l.fundCode}`));
+  // 当天已发送提醒的用户查重（openid 粒度：每用户每日一条）
+  const fired = await readAllSimple("push_logs", { scene: "rate_alert", date: today, status: "sent" }, { _openid: true });
+  const firedSet = new Set(fired.map(l => l._openid));
 
-  const pushes = [];
+  // 每用户只保留 |rate| 最大的一条命中
+  const best = {};
   for (const [openid, userHoldings] of Object.entries(userMap)) {
+    if (firedSet.has(openid)) continue;
     const settings = alertMap[openid];
     if (!settings) continue;
     for (const h of userHoldings) {
       const s = settings[h.fundCode];
       if (!s) continue;
-      if (firedSet.has(`${openid}|${h.fundCode}`)) continue;
       const fr = fundRateMap[h.fundCode];
       if (!fr || typeof fr.rate !== "number") continue;
       let kind = "";
       if (s.upper > 0 && fr.rate >= s.upper) kind = "up";
       else if (s.lower < 0 && fr.rate <= s.lower) kind = "down";
       if (!kind) continue;
-      pushes.push({
+      const cand = {
         openid,
         scene: "rate_alert",
         fundCode: h.fundCode,
         kind,
         fundName: h.fundName || h.fundCode,
         text: `估算${fr.rate >= 0 ? "+" : ""}${fr.rate.toFixed(2)}%，触及提醒线`,
-      });
+      };
+      if (!best[openid] || Math.abs(fr.rate) > Math.abs(best[openid]._rate)) {
+        cand._rate = fr.rate;
+        best[openid] = cand;
+      }
     }
   }
+  const pushes = Object.values(best).map(p => {
+    const { _rate, ...rest } = p;
+    return rest;
+  });
   if (pushes.length === 0) return 0;
   console.log(`[snapshotProfit] 涨跌提醒命中 ${pushes.length} 条 t=${el()}ms`);
   // 截断 200（=handleAlertPush 单次上限），溢出的下一分钟触发周期自然补上（查重后不再重发已发的）
