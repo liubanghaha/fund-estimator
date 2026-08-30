@@ -70,7 +70,8 @@ Page({
   onReady() {
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
-      setTimeout(() => wx.startPullDownRefresh(), 500);
+      // 静默刷新（与首页标准一致）：缓存已渲染，不拉起下拉动画——实时性由 15s 轮询兜底
+      setTimeout(() => this._fetch(), 500);
     }
   },
 
@@ -81,10 +82,10 @@ Page({
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
+      // 过期改静默刷新（转圈动画仅保留用户手动下拉）——15s 轮询兜实时性，转圈属多余等待感
       if (!marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
         this._lastFetch = Date.now();
-        // 自动调起下拉刷新动画，让用户感知数据更新
-        wx.startPullDownRefresh();
+        this._fetch();
       }
     }
     // 交易时段启动收益轮询

@@ -119,8 +119,8 @@ Page({
     this._ready = true;
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
-      // 延迟等页面完全就绪（过早调用 startPullDownRefresh 无效）
-      setTimeout(() => wx.startPullDownRefresh(), 500);
+      // 静默刷新（与首页标准一致）：缓存已渲染，不拉起下拉动画——盘中 30s 轮询兜实时性
+      setTimeout(() => this.fetchWatchlist(), 500);
     }
   },
 
@@ -131,13 +131,12 @@ Page({
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       // 30s 节流 + 交易日时钟：盘中照常自动刷新；盘后净值发布即冻结、周末/节假日全天免拉
+      // 过期改静默刷新（转圈动画仅保留用户手动下拉）——30s 轮询已兜实时性
       const now = Date.now();
       const cacheFresh = marketTime.isCacheFresh(this._wlCache, { estimateTtl: 30000 });
       if ((!this._lastFetch || now - this._lastFetch > 30000) && !cacheFresh) {
         this._lastFetch = now;
-        // 自动调起下拉刷新动画，让用户感知数据更新（页面未就绪时先标记，onReady 后调起）
-        if (this._ready) wx.startPullDownRefresh();
-        else this._pendingAutoRefresh = true;
+        this.fetchWatchlist();
       }
       this._startPolling();
     } else {
