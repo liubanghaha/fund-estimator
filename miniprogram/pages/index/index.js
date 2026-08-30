@@ -59,11 +59,10 @@ Page({
     assetAllocation: null,
     showAssetAlloc: false,
     showColEdit: false,
-    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "industry", "ratio", "drawdown", "valuation"],
+    colOrder: wx.getStorageSync("colOrder") || ["todayProfit", "totalReturn", "ratio", "drawdown", "valuation"],
     colDefs: {
       todayProfit: { label: "当日收益", sortable: true },
       totalReturn: { label: "累计收益", sortable: true },
-      industry: { label: "行业", sortable: false },
       ratio: { label: "占比", sortable: true },
       drawdown: { label: "距高点", sortable: true },
       valuation: { label: "估算", sortable: false, isValuation: true },
@@ -127,13 +126,15 @@ Page({
   },
 
   onLoad(options) {
-    // 列迁移：新增列（占比/距高点）追加到老用户已存的 colOrder 尾部（尊重既有排序）
+    // 列清洗与迁移：过滤 colDefs 已不存在的残留 key（防表头渲染 undefined），新列追加到尾部
     try {
       const saved = wx.getStorageSync("colOrder");
       if (saved && saved.length) {
-        const missing = Object.keys(this.data.colDefs).filter(k => saved.indexOf(k) === -1);
-        if (missing.length) {
-          const merged = [...saved, ...missing];
+        const keys = Object.keys(this.data.colDefs);
+        const cleaned = saved.filter(k => keys.indexOf(k) !== -1);
+        const missing = keys.filter(k => cleaned.indexOf(k) === -1);
+        const merged = [...cleaned, ...missing];
+        if (merged.join(',') !== saved.join(',')) {
           this.setData({ colOrder: merged });
           wx.setStorageSync("colOrder", merged);
         }
@@ -700,10 +701,9 @@ Page({
         _trrText: trr > 0 ? '+' + trr + '%' : trr + '%',
         _valCls: valCls, _valText: valText,
         _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',
-        // 占比/距一年高点/行业（新列预计算）
+        // 占比/距一年高点（新列预计算）
         _ratioText: total > 0 && mv > 0 ? (mv / total * 100).toFixed(1) + '%' : '--',
         _ddText: (hi > 0 && cn > 0) ? ((cn - hi) / hi * 100).toFixed(1) + '%' : '--',
-        _indText: pe && pe.topIndustry ? pe.topIndustry : '--',
       };
     });
   },
