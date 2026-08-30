@@ -75,10 +75,19 @@ exports.main = async (event) => {
       console.log(`[snapshotProfit] 时间预算用尽，已写 ${written}/${pending.length} 个用户`);
     }
 
+    // 4. 盘中涨跌提醒：读提醒设置比对单基金估算涨跌，命中后委托 dailyBriefing 发送
+    //    （每日每基金一次由 push_logs 查重保证；提醒独立于快照写入，预算外仍执行）
+    let alertSent = 0;
+    try {
+      alertSent = await checkRateAlerts(userMap, fundRateMap, today, el);
+    } catch (e) {
+      console.warn("[snapshotProfit] 涨跌提醒检测失败:", e.message);
+    }
+
     return {
       code: 0, msg: "ok", time, dryRun: !!force,
       users: Object.keys(userMap).length, written, funds: fundCodes.length, stocks: stockCount,
-      sample, costMs: el(),
+      alertSent, sample, costMs: el(),
     };
   } catch (e) {
     console.error("snapshotProfit 失败:", e.message);
@@ -86,10 +95,72 @@ exports.main = async (event) => {
   }
 };
 
+// 盘中涨跌提醒：读 alert_settings 比对单基金估算涨跌阈值，命中（每日每基金一次）
+// 后委托 dailyBriefing.alertPush 批量发送——发送/额度/日志单点在 dailyBriefing 维护
+async function checkRateAlerts(userMap, fundRateMap, today, el) {
+  const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true });
+  if (alertDocs.length === 0) return 0;
+  const alertMap = {};
+  alertDocs.forEach(d => { alertMap[d._openid] = d.settings; });
+
+  // 当天已发送的提醒查重（openid|fundCode 粒度）
+  const fired = await readAllSimple("push_logs", { scene: "rate_alert", date: today, status: "sent" }, { _openid: true, fundCode: true });
+  const firedSet = new Set(fired.map(l => `${l._openid}|${l.fundCode}`));
+
+  const pushes = [];
+  for (const [openid, userHoldings] of Object.entries(userMap)) {
+    const settings = alertMap[openid];
+    if (!settings) continue;
+    for (const h of userHoldings) {
+      const s = settings[h.fundCode];
+      if (!s) continue;
+      if (firedSet.has(`${openid}|${h.fundCode}`)) continue;
+      const fr = fundRateMap[h.fundCode];
+      if (!fr || typeof fr.rate !== "number") continue;
+      let kind = "";
+      if (s.upper > 0 && fr.rate >= s.upper) kind = "up";
+      else if (s.lower < 0 && fr.rate <= s.lower) kind = "down";
+      if (!kind) continue;
+      pushes.push({
+        openid,
+        scene: "rate_alert",
+        fundCode: h.fundCode,
+        kind,
+        fundName: h.fundName || h.fundCode,
+        text: `估算${fr.rate >= 0 ? "+" : ""}${fr.rate.toFixed(2)}%，触及提醒线`,
+      });
+    }
+  }
+  if (pushes.length === 0) return 0;
+  console.log(`[snapshotProfit] 涨跌提醒命中 ${pushes.length} 条 t=${el()}ms`);
+  // 截断 200（=handleAlertPush 单次上限），溢出的下一分钟触发周期自然补上（查重后不再重发已发的）
+  const r = await cloud.callFunction({
+    name: "dailyBriefing",
+    data: { action: "alertPush", pushes: pushes.slice(0, 200) },
+  });
+  const sent = (r.result && r.result.sent) || 0;
+  console.log(`[snapshotProfit] alertPush sent=${sent} t=${el()}ms`);
+  return sent;
+}
+
+// skip 分页读全量（提醒相关集合量级在千级，够用且实现简单）
+async function readAllSimple(col, where, field) {
+  const out = [];
+  for (let skip = 0; skip < 20000; skip += 1000) {
+    let q = db.collection(col);
+    if (where && Object.keys(where).length > 0) q = q.where(where);
+    if (field) q = q.field(field);
+    const res = await q.skip(skip).limit(1000).get();
+    out.push(...(res.data || []));
+    if ((res.data || []).length < 1000) break;
+  }
+  return out;
+}
+
 // 分页读取全部持仓（只取聚合所需字段，1000 条/页 + _id 游标，避免 skip 深分页）
 async function readAllHoldings() {
   const MAX_LIMIT = 1000;
-  const FIELD = { _openid: true, fundCode: true, shares: true, amount: true, buyPrice: true, nav: true };
+  const FIELD = { _openid: true, fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true };
   const all = [];
   let lastId = "";
   while (true) {

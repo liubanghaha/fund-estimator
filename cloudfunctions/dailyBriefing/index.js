@@ -25,12 +25,81 @@ exports.main = async (event = {}) => {
   try {
     if (event.action === "auth") return await handleAuth(event);
     if (event.action === "trackOpen") return await handleTrackOpen(event.logId);
+    if (event.action === "alertGet") return await handleAlertGet();
+    if (event.action === "alertSet") return await handleAlertSet(event);
+    if (event.action === "alertPush") return await handleAlertPush(event);
     return await runBriefing(!!event.dryRun, !!event.force);
   } catch (e) {
     console.error("[dailyBriefing] 失败:", e.message);
     return { code: -1, msg: e.message };
   }
 };
+
+// ---- action: alertGet / alertSet ----
+// 提醒设置上云（换设备同步）。settings 结构同客户端 storage.alertSettings：
+// { [fundCode]: { upper, lower, peAlert } }，peCache 为云端 PE 提醒基线（服务端维护）
+async function handleAlertGet() {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: -1, msg: "无用户身份" };
+  const r = await db.collection("alert_settings").where({ _openid: OPENID }).get();
+  return { code: 0, data: (r.data[0] && r.data[0].settings) || {} };
+}
+
+async function handleAlertSet({ settings }) {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID || !settings || typeof settings !== "object") return { code: -1, msg: "参数错误" };
+  const found = await db.collection("alert_settings").where({ _openid: OPENID }).get();
+  const now = Date.now();
+  if (found.data.length > 0) {
+    await db.collection("alert_settings").doc(found.data[0]._id).update({
+      data: { settings, updatedAt: now }
+    });
+  } else {
+    await db.collection("alert_settings").add({
+      data: { _openid: OPENID, settings, peCache: {}, createdAt: now, updatedAt: now }
+    });
+  }
+  return { code: 0 };
+}
+
+// ---- action: alertPush ----
+// snapshotProfit 盘中检测命中后批量委托发送（发送逻辑单点在本函数：额度/日志/43101 归零）
+// pushes: [{ openid, scene, fundCode, kind, fundName, text }]
+async function handleAlertPush({ pushes }) {
+  if (!Array.isArray(pushes) || pushes.length === 0) return { code: 0, msg: "空" };
+  if (!TEMPLATE_ID) return { code: -1, msg: "TEMPLATE_ID 未配置" };
+  const token = await getAccessToken();
+  const today = td.bjDateStr();
+  let sent = 0, failed = 0;
+  for (const p of pushes.slice(0, 200)) {
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: String(p.fundName || "持仓基金").slice(0, 20) },
+      thing3: { value: String(p.text || "").slice(0, 20) },
+      time4: { value: _bjTimeStr() },
+    };
+    const logId = await createLog(p.openid, today, p.scene || "rate_alert", p.fundCode, p.kind);
+    try {
+      const errcode = await sendSubscribe(token, p.openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE }).update({
+        data: { quota: _.inc(-1), updatedAt: Date.now() }
+      });
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) {
+        await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE }).update({
+          data: { quota: 0, updatedAt: Date.now() }
+        });
+      }
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      failed++;
+    }
+  }
+  return { code: 0, sent, failed };
+}
 
 // 基于日期串的纯日期偏移（UTC 计算，北京日期串无时区歧义）
 function addDays(dateStr, n) {
@@ -83,12 +152,12 @@ async function runBriefing(dryRun, force) {
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
   const prevDay = td.lastTradingDay(addDays(dataDay, -1));
 
-  // 1. 有效订阅读者（quota>0）
-  const subs = await readAll("subscriptions", { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  // 1. 订阅读者（quota>0；dryRun 不发送不扣额度，不过滤额度便于文案验证）
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
   // 2. 全量持仓按 openid 分组（同 snapshotProfit 模式：一次读全量，内存分组）
-  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "marketValue"]);
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue"]);
   const byUser = {};
   const totalMarket = {};
   holdings.forEach(h => {
@@ -152,7 +221,102 @@ async function runBriefing(dryRun, force) {
     }
   }
   console.log(`[dailyBriefing] subs=${subs.length} targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} dryRun=${dryRun}`);
-  return { code: 0, msg: `发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
+
+  // 6. PE 温度变化提醒（单基金粒度，每日一次；与收盘小结共用 token，dryRun 只记日志不发送）
+  let peSent = 0;
+  try {
+    peSent = await checkPeAlerts(targets, byUser, todaySigs, prevSigs, dataDay, accessToken, dryRun);
+  } catch (e) {
+    console.warn("[dailyBriefing] PE 提醒检测失败:", e.message);
+  }
+
+  return { code: 0, msg: `发送 ${sent}，失败 ${failed}，跳过 ${skipped}，PE提醒 ${peSent}${dryRun ? "（dryRun）" : ""}` };
+}
+
+// PE 温度变化提醒：peAlert 用户的持仓基金 signal 相对云端基线变化 → 每日一条。
+// 基线存 alert_settings.peCache：首次只记基线不推送（避免启用当天误报）。
+async function checkPeAlerts(targets, byUser, todaySigs, prevSigs, dataDay, accessToken, dryRun) {
+  const firedLogs = await readAll("push_logs", { scene: "pe_alert", date: dataDay, status: "sent" }, ["_openid"]);
+  const firedSet = new Set(firedLogs.map(l => l._openid));
+  const alertDocs = await readAll("alert_settings", {}, ["_openid", "settings", "peCache"]);
+  const alertMap = {};
+  alertDocs.forEach(d => { alertMap[d._openid] = d; });
+
+  let sent = 0;
+  for (const sub of targets) {
+    if (firedSet.has(sub._openid)) continue;
+    const doc = alertMap[sub._openid];
+    if (!doc || !doc.settings) continue;
+    const settings = doc.settings;
+    const peCache = doc.peCache || {};
+    let cacheChanged = false;
+    const hits = [];
+    (byUser[sub._openid] || []).forEach(h => {
+      const s = settings[h.fundCode];
+      if (!s || !s.peAlert) return;
+      const cur = todaySigs.get(h.fundCode);
+      if (!cur || cur === "nodata") return;
+      const base = peCache[h.fundCode];
+      if (!base) {
+        peCache[h.fundCode] = cur;
+        cacheChanged = true;
+        return; // 首日只记基线
+      }
+      if (base !== cur) {
+        const up = (base === "low" && cur !== "low") || (base === "mid" && cur === "high");
+        hits.push({
+          fundCode: h.fundCode,
+          fundName: h.fundName || h.fundCode,
+          text: `温度${SIGNAL_CN[base] || base}→${SIGNAL_CN[cur] || cur}`,
+          up,
+        });
+        peCache[h.fundCode] = cur;
+        cacheChanged = true;
+      }
+      void prevSigs;
+    });
+    if (cacheChanged) {
+      await db.collection("alert_settings").doc(doc._id).update({
+        data: { peCache, updatedAt: Date.now() }
+      }).catch(() => {});
+    }
+    if (hits.length === 0) continue;
+    const first = hits[0];
+    const text = hits.length > 1 ? `${first.text} 等${hits.length}只` : first.text;
+    if (dryRun) {
+      await db.collection("push_logs").add({
+        data: { _openid: sub._openid, scene: "pe_alert", date: dataDay, status: "dry_run", content: { fundName: first.fundName, text }, sentAt: Date.now(), openedAt: null }
+      });
+      sent++;
+      continue;
+    }
+    if (!accessToken) continue;
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: String(first.fundName).slice(0, 20) },
+      thing3: { value: text.slice(0, 20) },
+      time4: { value: _bjTimeStr() },
+    };
+    const logId = await createLog(sub._openid, dataDay, "pe_alert", first.fundCode, first.up ? "up" : "down");
+    try {
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_BASE}?src=push&lid=${logId}`, brief);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await db.collection("subscriptions").doc(sub._id).update({
+        data: { quota: _.inc(-1), updatedAt: Date.now() }
+      });
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) {
+        await db.collection("subscriptions").doc(sub._id).update({
+          data: { quota: 0, updatedAt: Date.now() }
+        });
+      }
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+    }
+  }
+  return sent;
 }
 
 // ---- 文案装配 ----
@@ -188,15 +352,11 @@ function buildBrief(openid, funds, marketValue, rate, todaySigs, prevSigs) {
       downs > 0 ? `${downs}只转偏低` : ""
     ].filter(Boolean).join(",");
   }
-  // time4：北京时间 YYYY年M月D日 HH:mm（与模板示例格式一致）
-  const bj = new Date(Date.now() + 8 * 3600000);
-  const p2 = n => String(n).padStart(2, "0");
-  const timeStr = `${bj.getUTCFullYear()}年${bj.getUTCMonth() + 1}月${bj.getUTCDate()}日 ${p2(bj.getUTCHours())}:${p2(bj.getUTCMinutes())}`;
   return {
     thing1: { value: "韭菜估值宝" },
     thing2: { value: `我的持仓(${funds.length}只)`.slice(0, 20) },
     thing3: { value: data.slice(0, 20) },
-    time4: { value: timeStr },
+    time4: { value: _bjTimeStr() },
   };
 }
 
@@ -208,9 +368,9 @@ function loadSignals(date) {
   });
 }
 
-async function createLog(openid, date) {
+async function createLog(openid, date, scene = SCENE, fundCode = "", kind = "") {
   const r = await db.collection("push_logs").add({
-    data: { _openid: openid, scene: SCENE, date, status: "sending", errMsg: "", sentAt: Date.now(), openedAt: null }
+    data: { _openid: openid, scene, date, status: "sending", errMsg: "", sentAt: Date.now(), openedAt: null, fundCode: fundCode || "", kind: kind || "" }
   });
   return r._id;
 }
@@ -277,6 +437,13 @@ async function sendSubscribe(token, touser, page, data) {
     data,
   });
   return r.errcode || 0;
+}
+
+// 北京时间 YYYY年M月D日 HH:mm（time 字段格式与模板示例一致）
+function _bjTimeStr() {
+  const bj = new Date(Date.now() + 8 * 3600000);
+  const p2 = n => String(n).padStart(2, "0");
+  return `${bj.getUTCFullYear()}年${bj.getUTCMonth() + 1}月${bj.getUTCDate()}日 ${p2(bj.getUTCHours())}:${p2(bj.getUTCMinutes())}`;
 }
 
 // 游标分页读全量（云数据库单次 get 上限 100 条）

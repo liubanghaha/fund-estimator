@@ -240,6 +240,7 @@ Page({
     // 每次显示同步主题色（tab 切换/返回时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    this._syncAlertSettingsDaily();
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
@@ -401,6 +402,25 @@ Page({
   },
 
   // ---- 止盈止损提醒 ----
+  // 每日一次从云端同步提醒设置（换设备/多端以云端为准；失败静默保持本地）
+  _syncAlertSettingsDaily() {
+    try {
+      const today = marketTime.bjDateStr();
+      if (wx.getStorageSync("alertSyncDay") === today) return;
+      wx.setStorageSync("alertSyncDay", today);
+    } catch (e) { return; }
+    wx.cloud.callFunction({
+      name: "dailyBriefing",
+      data: { action: "alertGet" },
+    }).then((r) => {
+      const d = r.result && r.result.data;
+      if (d && typeof d === "object") {
+        wx.setStorageSync("alertSettings", d);
+        if (this._checkAlerts) this._checkAlerts();
+      }
+    }).catch(() => {});
+  },
+
   onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
   onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
   onAlertPeToggle(e) { this.setData({ alertEditPeAlert: !this.data.alertEditPeAlert }); },
@@ -420,6 +440,11 @@ Page({
     }
     this.setData({ showAlertEdit: false });
     wx.showToast({ title: '已设置提醒', icon: 'success' });
+    // 设置上云（换设备同步；失败静默，本地仍生效）
+    wx.cloud.callFunction({
+      name: "dailyBriefing",
+      data: { action: "alertSet", settings },
+    }).catch(() => {});
   },
   onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
   onDismissAlert() {
