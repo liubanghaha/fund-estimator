@@ -400,11 +400,14 @@ async function runWeeklyBrief(force, dryRun) {
   const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid"]);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
-  const holdings = await readAll("holdings", {}, ["_openid", "marketValue"]);
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "marketValue"]);
   const marketMap = {};
+  const fundCount = {};
   holdings.forEach(h => {
     if (!h._openid) return;
     marketMap[h._openid] = (marketMap[h._openid] || 0) + (h.marketValue || 0);
+    fundCount[h._openid] = (fundCount[h._openid] || 0);
+    if (h.fundCode) fundCount[h._openid]++;
   });
   const targets = subs.filter(s => marketMap[s._openid] > 0);
   if (targets.length === 0) return { code: 0, msg: "无目标用户" };
@@ -453,7 +456,7 @@ async function runWeeklyBrief(force, dryRun) {
     if (opCount[sub._openid]) text += ` ${opCount[sub._openid]}笔`;
     const brief = {
       thing1: { value: "韭菜估值宝" },
-      thing2: { value: "本周小结".slice(0, 20) },
+      thing2: { value: `我的持仓(${fundCount[sub._openid] || 0}只)`.slice(0, 20) },
       thing3: { value: text.slice(0, 20) },
       time4: { value: _bjTimeStr() },
     };
