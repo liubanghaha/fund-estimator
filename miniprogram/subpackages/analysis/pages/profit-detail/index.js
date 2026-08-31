@@ -191,9 +191,14 @@ Page({
       }
       const d = pfRes.result.data;
 
-      this._profitSnapshots = (d.intradaySnapshots && d.intradaySnapshots.length)
+      // getPortfolio 的日内快照为空（当天快照上游尚未写入）时不清空已有数据——
+      // 避免与 _quickFirstPaint 竞态把已就绪的今日快照打回空；有数据时取更长的一份（更新）
+      const newSnaps = (d.intradaySnapshots && d.intradaySnapshots.length)
         ? d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time))
         : [];
+      if (newSnaps.length >= (this._profitSnapshots || []).length) {
+        this._profitSnapshots = newSnaps;
+      }
 
       const hs = d.holdings || [];
       if (!hs.length) { this.setData({ empty: true, loading: false }); return; }
@@ -705,6 +710,23 @@ Page({
     const w = this._canvasW || 340, h = this._canvasH || 200;
     const compareLabel = this.data.compareLabel || '上证指数';
     const indexCode = this.data.compareIndex || '000001';
+
+    // 盘中快照尚未产出（snapshotProfit 早盘首次跑需先补拉前日净值）：指数已就位但我的收益无数据。
+    // 轻拉一次快照（20 秒节流），绿线尽快出现——不等 15s 轮询兜底
+    if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length > 0 && this._isTradingNow()) {
+      const now = Date.now();
+      if (!this._snapRetryTs || now - this._snapRetryTs > 20000) {
+        this._snapRetryTs = now;
+        api.portfolioLight().then((r) => {
+          const d = r.result && r.result.data;
+          if (!d || !d.intradaySnapshots || !d.intradaySnapshots.length) return;
+          this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
+          this._todayCaches = {};
+          try { wx.removeStorageSync(INTRADAY_CACHE_PREFIX + indexCode); } catch (e) {}
+          this._draw();
+        }).catch(() => {});
+      }
+    }
 
     this._todayCaches = this._todayCaches || {};
     const memCache = this._todayCaches[indexCode];

@@ -303,9 +303,9 @@ const chart = {
       ctx.stroke();
     });
 
-    // 图例（对齐历史走势）
+    // 图例（对齐历史走势）；无数据时显示 --（不误导为 0.00%）
     ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
-    const fmt = v => (v > 0 ? '+' : '') + (v != null ? v.toFixed(2) : '0.00') + '%';
+    const fmt = v => (v != null ? ((v > 0 ? '+' : '') + v.toFixed(2) + '%') : '--');
     ctx.fillStyle = profitColor; ctx.fillRect(p.left, 8, 14, 3);
     ctx.fillStyle = '#333'; ctx.textAlign = 'left';
     ctx.fillText((labelA || '我的收益').slice(0, 8) + ' ' + fmt(lastProfitVal), p.left + 18, 10);
