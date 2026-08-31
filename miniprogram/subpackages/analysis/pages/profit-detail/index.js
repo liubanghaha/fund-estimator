@@ -666,10 +666,27 @@ Page({
     const hasIdx = result.filter(d => d.indexRate != null).length;
     if (hasRate > 20 && hasIdx > 20) this._saveTodayCache(result);
 
+    // 盘后口径对齐：快照是盘中估算（0.62%），摘要卡净值公布后切官方（0.55%），
+    // 两者差异会让图例与顶部卡对不上。盘后把末端快照点替换为组合当前口径值
+    this._alignEndWithOfficial(result);
+
     return result;
     } catch(e) {
       return [];
     }
+  },
+
+  // 盘后（非交易时段）且组合当前收益率可取得时，将曲线最后一个点替换为最新口径值，
+  // 使图例与顶部摘要一致；盘中不替换（估算曲线保持原生走势）
+  _alignEndWithOfficial(result) {
+    if (this._isTradingNow()) return;
+    const rate = parseFloat(this.data.todayProfitRate);
+    if (!(rate > -100 && rate < 100)) return;
+    const pts = result.filter(p => p.rate != null);
+    if (!pts.length) return;
+    const last = pts[pts.length - 1];
+    if (Math.abs(last.rate - rate) < 0.02) return;
+    last.rate = rate;
   },
 
   // 居中移动平均平滑（窗口 3 点）：首尾点保留原始值（首点是开盘基准，末点是最后一个真实快照）。
