@@ -768,6 +768,9 @@ Page({
   },
 
   _renderToday(w, h, data, compareLabel) {
+    // 统一入口：无论数据来自内存缓存/存储缓存/_buildIntradayData，盘后都做末端口径对齐
+    // （缓存里可能是盘中保存的估算末端 0.62%，不对齐则图例永远与摘要卡 0.55% 差 7bp）
+    this._alignEndWithOfficial(data);
     const query = wx.createSelectorQuery();
     query.select('#profitCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) {
