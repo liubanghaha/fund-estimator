@@ -729,7 +729,16 @@ Page({
     const A_CODES = ["000001", "399001", "000300", "399006"];
     const fetchOne = async (idx) => {
       const isHK = !A_CODES.includes(idx.code);
-      if (A_CODES.includes(idx.code)) {
+      // 全站统一腾讯口径（收益页当天图同源）：腾讯日K优先，东财兜底
+      // （原东财优先导致同一指数两处数值不一致：首页 0.74 vs 收益页 0.86）
+      const tRes = await Promise.race([
+        api.fetchMarketIndexTencent(idx.code, 2).catch(() => null),
+        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+      ]);
+      if (tRes && tRes.code === 0 && tRes.data && tRes.data.length > 0) {
+        return tRes.data;
+      }
+      if (!isHK) {
         const clientRes = await Promise.race([
           api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
           new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),

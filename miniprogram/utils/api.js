@@ -333,9 +333,14 @@ const api = {
             const json = JSON.parse(str);
             const list = (json.data && json.data[sym] && json.data[sym].day) || json.data || [];
             if (!Array.isArray(list) || !list.length) { resolve({ code: 500 }); return; }
+            // 涨跌幅用 close 差分计算：腾讯 kline 数组不含东财式涨跌幅字段，保证与分时接口同口径
+            let prevClose = 0;
             const data = list.map(item => {
               const parts = Array.isArray(item) ? item : typeof item === 'string' ? item.split(",") : [];
-              return { date: parts[0] || "", close: +parts[2] || 0 };
+              const close = +parts[2] || 0;
+              const changeRate = prevClose > 0 ? +(((close - prevClose) / prevClose) * 100).toFixed(2) : 0;
+              prevClose = close;
+              return { date: parts[0] || "", close, changeRate };
             });
             resolve({ code: 0, data });
           } catch (e) { resolve({ code: 500 }); }
