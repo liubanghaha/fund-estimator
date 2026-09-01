@@ -192,14 +192,26 @@ exports.main = async (event) => {
     enriched.sort((a, b) => parseFloat(b.todayProfit) - parseFloat(a.todayProfit));
 
     // 读取 PE 温度缓存（由 computeFundTemperature 凌晨定时写入）
+    // 当前日期无记录时回退最近一个有温度的日期（凌晨任务偶发失败/未跑到时，
+    // 两页仍读到同一份温度——此前列表页 position 兜底与详情页温度口径分裂致对不上）
     let tempMap = {};
+    const tempDebug = {};
     try {
       const tempCodes = enriched.map(h => h.fundCode);
-      const tempRes = await db.collection("fund_temperatures")
-        .where({ fundCode: _.in(tempCodes), date: today })
-        .field({ fundCode: true, signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWith52w: true, totalStocks: true, detailPEs: true })
-        .get();
-      (tempRes.data || []).forEach(t => { tempMap[t.fundCode] = t; });
+      // 逐基金取各自最新温度（并发 12 次单查，成本可控）：凌晨任务可能只跑完部分基金，
+      // 每基金独立按 date desc 取最新——列表页永远与详情页（fetchFundEstimate 同逻辑）同源
+      const tempRows = await Promise.all(tempCodes.map(async (c) => {
+        try {
+          const res = await db.collection("fund_temperatures")
+            .where({ fundCode: c })
+            .orderBy("date", "desc").limit(1)
+            .field({ fundCode: true, date: true, signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWith52w: true, totalStocks: true, detailPEs: true })
+            .get();
+          return (res.data && res.data[0]) || null;
+        } catch (e) { return null; }
+      }));
+      tempRows.forEach(t => { if (t) tempMap[t.fundCode] = t; });
+      tempDebug.found = tempRows.filter(Boolean).length;
       // 缺失温度的基金不在请求内重计算（每只持仓股一个 HTTP，会拖垮用户请求）：
       // 首页有 position 兜底展示，凌晨定时任务会补全缺失温度
 
@@ -439,6 +451,7 @@ exports.main = async (event) => {
         intradaySnapshots,
         snapDate,
         snapDebug,
+        tempDebug,
         assetAllocation,
         healthScore,
         groups,

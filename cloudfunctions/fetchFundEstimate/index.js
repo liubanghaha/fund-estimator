@@ -69,11 +69,12 @@ async function fetchSelfEstimate(fundCode) {
 
 async function fetchTemperature(fundCode) {
   try {
-    const today = fd.formatBJDate();
+    // 逐基金取最新记录：定时任务可能只写完部分基金（超时截断），
+    // 直接按 date 降序取本基金最新温度——永远与列表页 getPortfolio 同源
     const res = await db.collection("fund_temperatures")
-      .where({ fundCode, date: today })
+      .where({ fundCode })
+      .orderBy("date", "desc").limit(1)
       .field({ signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWithData: true, totalStocks: true, warnings: true, isETF: true })
-      .limit(1)
       .get();
     if (res.data && res.data.length > 0) {
       const t = res.data[0];
