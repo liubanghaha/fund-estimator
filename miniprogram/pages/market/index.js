@@ -33,8 +33,10 @@ Page({
     shAmountText: "",
     szAmountText: "",
     upPct: 50, downPct: 50,
-    // 行业板块（持仓行业置顶）
+    // 行业板块（持仓行业置顶；默认展示 6 个，可展开全部）
     sectors: [],
+    displaySectors: [],
+    sectorsExpanded: false,
     mineCount: 0,
     // 核心指数
     indexCards: [],
@@ -63,12 +65,20 @@ Page({
     this.setData({ loading: !cached, emptyData: false, loadError: false });
     return Promise.all([this._fetchOverview(), this._fetchIndices()]).then(([overviewRes, indexCards]) => {
       const now = Date.now();
+      const flows = overviewRes ? (overviewRes.flows || {}) : (cached && cached.flows) || {};
+      // 核心指数卡并入主力资金流（仅 A 股指数有此数据，港美指无）
+      const cardsWithFlow = indexCards.map((c) => {
+        const f = flows[c.code];
+        if (!f || f.main == null) return c;
+        return { ...c, flowText: this._fmtFlow(f.main), isFlowUp: f.main >= 0 };
+      });
       const cache = {
         ts: now,
         overview: overviewRes ? overviewRes.overview : (cached && cached.overview) || null,
         sectors: overviewRes ? overviewRes.sectors : (cached && cached.sectors) || [],
         mineCount: overviewRes ? overviewRes.mineCount : (cached && cached.mineCount) || 0,
-        indexCards,
+        flows,
+        indexCards: cardsWithFlow,
         empty: !!(overviewRes && overviewRes.empty) && !indexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
@@ -92,6 +102,9 @@ Page({
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
     };
+    // 行业默认展示 6 个，可展开全部
+    const all = data.sectors;
+    data.displaySectors = this.data.sectorsExpanded ? all : all.slice(0, 6);
     if (ov && (ov.up || ov.down)) {
       const total = ov.up + ov.down + ov.flat;
       data.upPct = total ? Math.round((ov.up / total) * 100) : 50;
@@ -113,6 +126,19 @@ Page({
     return yi.toFixed(0) + "亿";
   },
 
+  // 行业展开/收起
+  onToggleSectors() {
+    const expanded = !this.data.sectorsExpanded;
+    this.setData({ sectorsExpanded: expanded, displaySectors: expanded ? this.data.sectors : this.data.sectors.slice(0, 6) });
+  },
+
+  // 主力净额 → 数据陈述文案（合规红线 #5：只陈述不带引导词）
+  _fmtFlow(main) {
+    const yi = Math.abs(main) / 1e8;
+    const amt = yi >= 10000 ? (yi / 10000).toFixed(2) + "万亿" : yi.toFixed(1) + "亿";
+    return "主力净" + (main >= 0 ? "流入" : "流出") + " " + amt;
+  },
+
   // 概览+行业板块（单云调用）；失败返回 null 由缓存兜底
   _fetchOverview() {
     return api.fetchMarketOverview().then((res) => {
@@ -126,7 +152,7 @@ Page({
           weightText: s.weight != null ? "占仓 " + s.weight + "%" : "",
           leaderText: s.leader ? "领涨 " + s.leader + (s.leaderRate != null ? " " + (s.leaderRate > 0 ? "+" : "") + s.leaderRate + "%" : "") : "",
         }));
-        return { overview: d.overview, sectors, mineCount: d.mineCount || 0, empty: !!d.empty };
+        return { overview: d.overview, sectors, mineCount: d.mineCount || 0, flows: d.flows || {}, empty: !!d.empty };
       }
       return null;
     }).catch(() => null);

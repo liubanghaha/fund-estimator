@@ -15,14 +15,15 @@ const ft = require("./_shared/fund-temperature");
 exports.main = async (event = {}) => {
   try {
     const { OPENID } = cloud.getWXContext();
-    const [overview, sectors, mine] = await Promise.all([
+    const [overview, sectors, mine, flows] = await Promise.all([
       fetchOverview(),
       fetchSectors(),
       OPENID ? fetchUserIndustries(OPENID) : Promise.resolve([]),
+      fetchIndexFlows(),
     ]);
     if (!overview && sectors.length === 0) {
       // 双源均失败（东财偶发限流）：返回空标记由客户端兜底展示缓存，而非硬错误
-      return { code: 0, data: { overview: null, sectors: [], mineCount: 0, empty: true } };
+      return { code: 0, data: { overview: null, sectors: [], mineCount: 0, flows: {}, empty: true } };
     }
     // 持仓行业置顶（带权重标记），其余板块按涨跌幅降序
     const norm = (s) => String(s || "").replace(/\s+/g, "").replace(/[ⅠⅡⅢ]+$/, "");
@@ -41,7 +42,7 @@ exports.main = async (event = {}) => {
     const others = sectors
       .filter((s) => !usedCodes.has(s.code))
       .sort((a, b) => (b.changeRate != null ? b.changeRate : -999) - (a.changeRate != null ? a.changeRate : -999));
-    return { code: 0, data: { overview, sectors: mineCards.concat(others), mineCount: mineCards.length } };
+    return { code: 0, data: { overview, sectors: mineCards.concat(others), mineCount: mineCards.length, flows } };
   } catch (e) {
     console.error("[fetchMarketOverview] 失败:", e.message || e);
     return { code: 500, msg: "行情数据获取失败" };
@@ -62,6 +63,31 @@ function httpGet(url, timeout = 8000) {
   });
   // 东财对高频 IP 偶发限流：失败/空响应 600ms 后重试一次
   return once().then((body) => (body ? body : new Promise((r) => setTimeout(r, 600)).then(once))).catch(() => new Promise((r) => setTimeout(r, 600)).then(once));
+}
+
+// 核心指数主力资金流（A股指数才有此数据）：f62=主力净流入额(元) f184=主力净占比(%)
+// 合规红线 #5：仅做"主力净流入/流出 N 亿"数据陈述，不带任何引导性表述
+async function fetchIndexFlows() {
+  const url = "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f12,f62,f184&secids=1.000001,0.399001,1.000300,0.399006&ut=bd1d9ddb04089700cf9c27f6f7426281";
+  try {
+    let body = await httpGet(url);
+    if (!body || body === "null") {
+      body = await httpGet("https://push2delay.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f12,f62,f184&secids=1.000001,0.399001,1.000300,0.399006&ut=bd1d9ddb04089700cf9c27f6f7426281");
+    }
+    const root = JSON.parse(body);
+    const d = (root && root.data) || {};
+    const arr = Array.isArray(d.diff) ? d.diff : Object.values(d.diff || {});
+    const flows = {};
+    arr.forEach((r) => {
+      if (r.f12 && r.f62 != null && r.f62 !== "-") {
+        flows[r.f12] = { main: +r.f62, pct: r.f184 === "-" || r.f184 == null ? null : +r.f184 };
+      }
+    });
+    return flows;
+  } catch (e) {
+    console.error("[fetchMarketOverview] 指数资金流失败:", e.message);
+    return {};
+  }
 }
 
 // 两市概览：成交额 + 涨跌家数（任一子项失败以 null 呈现，不互相拖垮）

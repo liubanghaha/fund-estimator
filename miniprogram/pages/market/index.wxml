@@ -37,14 +37,15 @@
     <!-- 行业板块：登录用户持仓行业置顶 -->
     <view wx:if="{{sectors.length}}" class="mk-card">
       <view class="mk-sec-title">{{mineCount ? '你的持仓行业今日表现' : '行业板块表现'}}<text class="mk-sec-note">数据陈述，仅供参考</text></view>
-      <scroll-view scroll-x class="sec-scroll" enable-flex>
-        <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{sectors}}" wx:key="code">
+      <view class="sec-grid">
+        <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{displaySectors}}" wx:key="code">
           <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
           <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
           <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
           <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
         </view>
-      </scroll-view>
+      </view>
+      <view wx:if="{{sectors.length > 6}}" class="sec-toggle" bind:tap="onToggleSectors">{{sectorsExpanded ? '收起' : '展开全部 ' + sectors.length + ' 个'}}</view>
     </view>
 
     <!-- 核心指数 -->
@@ -55,6 +56,7 @@
           <view class="idx-name">{{item.name}}</view>
           <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
           <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
+          <view wx:if="{{item.flowText}}" class="idx-flow {{item.isFlowUp ? 'up' : 'down'}}">{{item.flowText}}</view>
         </view>
       </scroll-view>
       <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
