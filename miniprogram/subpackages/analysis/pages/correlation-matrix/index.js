@@ -63,8 +63,8 @@ Page({
       if (fundCodes.length >= 2) {
         const codeKey = [...fundCodes].sort().join(',');
         const cache = wx.getStorageSync('asset_analysis_cache') || {};
-        // v2：重合度算法修复（季度表选择+去重）后旧缓存数据虚高，按版本号失效
-        if (cache.codeKey === codeKey && cache.v === 2 && cache.ts && (Date.now() - cache.ts < 2592000000)) {
+        // v3：重合度算法修复（季度表选择+去重+剔除打新零星持仓）后旧缓存数据不可信，按版本号失效
+        if (cache.codeKey === codeKey && cache.v === 3 && cache.ts && (Date.now() - cache.ts < 2592000000)) {
           // 缓存命中：直接恢复
           this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [] });
         } else {
@@ -94,7 +94,7 @@ Page({
             }
             // 写缓存
             wx.setStorageSync('asset_analysis_cache', {
-              v: 2, codeKey, ts: Date.now(),
+              v: 3, codeKey, ts: Date.now(),
               sharedStocks: (sharedStocks || []).map(enrichStock),
               pairs: enrichedPairs,
             });
