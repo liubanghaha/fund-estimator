@@ -1,7 +1,7 @@
 /* 行情中心 V1：市场概览 + 持仓行业高亮 + 核心指数 */
-.page{min-height:100vh;background:#F6F6F6;padding:16rpx 24rpx 40rpx;box-sizing:border-box}
+.page{min-height:100vh;background:#F5F5F5;padding:16rpx 24rpx 40rpx;box-sizing:border-box}
 .disclaimer{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 0 4rpx}
-.mk-card{background:#FFF;border-radius:20rpx;padding:28rpx 24rpx;margin-bottom:20rpx}
+.mk-card{background:#FFF;border-radius:var(--radius-card);padding:28rpx 24rpx;margin-bottom:20rpx;box-shadow:var(--shadow-card);}
 .mk-sec-title{font-size:28rpx;font-weight:700;color:#333;margin-bottom:20rpx}
 .mk-sec-note{font-size:20rpx;color:#BBB;font-weight:400;margin-left:12rpx}
 .mk-loading{padding:120rpx 0;text-align:center}
@@ -35,7 +35,7 @@
 .sec-dot{width:30rpx;height:30rpx;display:flex;align-items:center;justify-content:center}
 .sec-dot::before{content:'';width:14rpx;height:14rpx;border-radius:50%;background:rgba(0,0,0,.15)}
 .sec-dot.active::before{background:var(--primary,#E4393C)}
-.sec-card{width:calc((100% - 14rpx)/2);margin-bottom:14rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8;min-height:170rpx}
+.sec-card{width:calc((100% - 14rpx)/2);margin-bottom:14rpx;border-radius:12rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8;min-height:170rpx}
 .sec-card.up-bg{background:rgba(228,57,60,.07)}
 .sec-card.down-bg{background:rgba(46,139,87,.08)}
 .sec-card.mine{border:2rpx solid var(--primary, #E4393C)}

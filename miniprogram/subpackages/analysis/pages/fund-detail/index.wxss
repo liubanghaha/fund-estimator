@@ -22,7 +22,7 @@
 .follow-btn{flex-shrink:0;padding:10rpx 24rpx;font-size:26rpx;color:var(--primary);border:1rpx solid var(--primary);border-radius:32rpx;margin-top:4rpx}
 .follow-btn.followed{color:#999;border-color:#CCC}
 
-.nav-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
+.nav-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:var(--radius-card);padding:32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
 .nav-card.primary{border-left:6rpx solid var(--primary)}
 .nav-top-row{display:flex;justify-content:space-between;align-items:flex-start}
 .nav-main{flex:1}
@@ -42,13 +42,13 @@
 .nav-badge{display:inline-block;font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:4rpx 12rpx;border-radius:8rpx;margin-top:8rpx}
 
 /* 暂无持仓 */
-.no-holding-card{text-align:center;padding:48rpx 32rpx;margin:24rpx;background:#FFF;border-radius:14rpx}
+.no-holding-card{text-align:center;padding:48rpx 32rpx;margin:24rpx;background:#FFF;border-radius:var(--radius-card)}
 .nh-title{font-size:30rpx;font-weight:600;color:#333;margin-bottom:12rpx}
 .nh-desc{font-size:24rpx;color:#999;margin-bottom:28rpx}
 .nh-import-btn{width:360rpx;height:80rpx;line-height:80rpx;font-size:28rpx;color:#FFF;background:var(--primary-gradient);border-radius:40rpx;text-align:center;padding:0}
 
 /* 我的持仓 */
-.my-holding-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:20rpx;padding:28rpx 32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
+.my-holding-card{background:#FFF;margin:0 24rpx 16rpx;border-radius:var(--radius-card);padding:28rpx 32rpx;box-shadow:var(--shadow-card);}
 .mh-title{font-size:26rpx;font-weight:600;color:#333;margin-bottom:20rpx}
 .mh-grid{display:flex;flex-wrap:wrap}
 .mh-item{width:50%;margin-bottom:24rpx}
@@ -67,7 +67,7 @@
 .period-item.active{color:#FFF;background:var(--primary)}
 .nav-canvas{width:680rpx;height:360rpx;display:block;margin:0 auto}
 
-.info-card{background:#FFF;margin:16rpx 24rpx;border-radius:20rpx;padding:28rpx 32rpx;box-shadow:0 4rpx 20rpx rgba(0,0,0,.04)}
+.info-card{background:#FFF;margin:16rpx 24rpx;border-radius:var(--radius-card);padding:28rpx 32rpx;box-shadow:var(--shadow-card);}
 .section-title{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:20rpx}
 
 .metrics-grid{display:flex;flex-wrap:wrap}
@@ -144,7 +144,7 @@
 .temp-high{color:#E4393C}.temp-high::before{background:#E4393C}
 .risk-sub{font-size:20rpx;color:#BBB;margin-top:4rpx}
 
-.fee-card{margin:16rpx 24rpx;background:#FFF;border-radius:12rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.fee-card{margin:16rpx 24rpx;background:#FFF;border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card);}
 .fee-header{display:flex;justify-content:space-between;align-items:center;padding:20rpx 24rpx;border-bottom:1rpx solid #F5F5F5}
 .fee-title{font-size:26rpx;font-weight:500;color:#333}
 .fee-subtitle{display:block;font-size:20rpx;color:#BBB;margin-top:4rpx}
@@ -180,7 +180,7 @@
 .btn-txn{background:#FFF;color:var(--primary);border:2rpx solid var(--primary);font-weight:500}
 .bottom-safe{height:24rpx;flex-shrink:0}
 /* 交易记录 */
-.tx-list-card{background:#FFF;border-radius:14rpx;padding:24rpx;margin:20rpx 24rpx}
+.tx-list-card{background:#FFF;border-radius:var(--radius-card);padding:24rpx;margin:20rpx 24rpx}
 .tx-row{display:flex;align-items:center;padding:18rpx 0;border-bottom:1rpx solid #F5F5F5;font-size:24rpx}
 .tx-row:last-child{border-bottom:none}
 .tx-header{border-bottom:2rpx solid #E5E5E5;padding-bottom:14rpx}
@@ -196,7 +196,7 @@
 .tx-note-row{font-size:22rpx;color:#999;padding:0 0 14rpx 80rpx;line-height:1.5}
 
 /* 定投回测 */
-.dca-section{margin:16rpx 24rpx;background:#FFF;border-radius:12rpx;overflow:hidden;box-shadow:0 2rpx 12rpx rgba(0,0,0,.04)}
+.dca-section{margin:16rpx 24rpx;background:#FFF;border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card);}
 .dca-header{display:flex;justify-content:space-between;align-items:center;padding:20rpx 24rpx;border-bottom:1rpx solid #F5F5F5}
 .dca-title{font-size:26rpx;font-weight:500;color:#333}
 .dca-subtitle{display:block;font-size:20rpx;color:#BBB;margin-top:4rpx}

@@ -4,6 +4,16 @@ page {
   --color-text: #333333;
   --color-text-light: #999999;
   --color-border: #EEEEEE;
+  /* 设计 tokens：涨跌语义色（不随主题）/ 卡片规范 / 字号档位 */
+  --up: #E4393C;
+  --down: #2E8B57;
+  --radius-card: 16rpx;
+  --shadow-card: 0 2rpx 12rpx rgba(0,0,0,.05);
+  --fs-xs: 20rpx;
+  --fs-sm: 24rpx;
+  --fs-md: 26rpx;
+  --fs-lg: 30rpx;
+  --fs-xl: 36rpx;
 
   background-color: var(--color-bg);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;

@@ -38,7 +38,7 @@
 .summary-item.active .summary-rate.up{color:#E4393C}
 .summary-item.active .summary-rate.down{color:#2E8B57}
 
-.chart-card{background:#FFF;margin:16rpx 24rpx;border-radius:20rpx;padding:24rpx 16rpx 16rpx}
+.chart-card{background:#FFF;margin:16rpx 24rpx;border-radius:var(--radius-card);padding:24rpx 16rpx 16rpx}
 .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12rpx;padding-left:8rpx}
 .chart-title{font-size:26rpx;font-weight:600;color:#1A1A1A}
 .compare-picker{font-size:24rpx;color:var(--primary);padding:8rpx 16rpx;background:rgba(25,118,210,0.06);border-radius:8rpx}

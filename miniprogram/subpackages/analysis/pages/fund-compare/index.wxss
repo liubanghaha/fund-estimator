@@ -38,7 +38,7 @@
 .sr-code{font-size:24rpx;color:#999}
 
 /* Watchlist */
-.watchlist-section{background:#FFF;margin:16rpx 24rpx;border-radius:16rpx;padding:24rpx 28rpx}
+.watchlist-section{background:#FFF;margin:16rpx 24rpx;border-radius:var(--radius-card);padding:24rpx 28rpx}
 .watchlist-section .section-title{font-size:28rpx;font-weight:600;color:#1A1A1A;margin-bottom:16rpx}
 .wl-item{display:flex;align-items:center;justify-content:space-between;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
 .wl-item:last-child{border-bottom:none}

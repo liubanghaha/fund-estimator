@@ -23,8 +23,8 @@
 /* 仪表盘 */
 .dashboard{padding:0 24rpx}
 .asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 32rpx 32rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
-.amount-toggle{position:absolute;right:24rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:20rpx;z-index:1}
-.share-toggle{position:absolute;left:20rpx;top:18rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 18rpx;border-radius:20rpx;z-index:1;color:#FFF}
+.amount-toggle{position:absolute;right:24rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
+.share-toggle{position:absolute;left:20rpx;top:18rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 18rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
 .share-toggle-icon{font-size:20rpx;margin-right:4rpx}
 .asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
@@ -96,7 +96,7 @@
 .table-inner{display:inline-block;min-width:100%}
 .t-row{display:flex;align-items:stretch;border-bottom:1rpx solid #EFEFEF;background:#FFF}
 .t-head{border-radius:0}
-.t-row:last-child{border-bottom:none;border-radius:0 0 12rpx 12rpx}
+.t-row:last-child{border-bottom:none;border-radius:0 0 var(--radius-card) var(--radius-card)}
 .t-row.selected{outline:3rpx solid #E4393C;outline-offset:-3rpx}
 .t-cell{padding:18rpx 16rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
 .t-head .t-cell{font-size:22rpx;color:#BBB;justify-content:center;align-items:flex-end;flex-direction:row;gap:4rpx;white-space:nowrap}
@@ -132,7 +132,7 @@
   position:relative;
   width:660rpx;margin-top:200rpx;
   background:#3A3F4B;
-  border-radius:20rpx;
+  border-radius:var(--radius-card);
   padding:32rpx 36rpx;
   box-shadow:0 12rpx 48rpx rgba(0,0,0,.3);
   animation:tempPopIn .25s cubic-bezier(.34,1.56,.64,1);
@@ -239,7 +239,7 @@
 
 /* 版本更新日志 */
 .changelog-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1002;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
-.changelog-card{width:560rpx;max-height:70vh;background:#FFF;border-radius:20rpx;padding:40rpx 32rpx 32rpx;display:flex;flex-direction:column;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
+.changelog-card{width:560rpx;max-height:70vh;background:#FFF;border-radius:var(--radius-card);padding:40rpx 32rpx 32rpx;display:flex;flex-direction:column;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
 .changelog-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;margin-bottom:4rpx}
 .changelog-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:24rpx}
 .changelog-list{flex:1;overflow-y:auto;margin-bottom:24rpx}
@@ -248,7 +248,7 @@
 
 /* 分享卡片 */
 .share-card-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1003;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
-.share-card-panel{width:640rpx;background:#FFF;border-radius:20rpx;padding:28rpx 20rpx 24rpx;display:flex;flex-direction:column;align-items:center;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
+.share-card-panel{width:640rpx;background:#FFF;border-radius:var(--radius-card);padding:28rpx 20rpx 24rpx;display:flex;flex-direction:column;align-items:center;animation:tempPopIn .3s cubic-bezier(.34,1.56,.64,1)}
 .share-card-header{width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
 .share-card-title{font-size:30rpx;font-weight:600;color:#333}
 .share-card-close{font-size:32rpx;color:#CCC;padding:4rpx 8rpx}
@@ -282,7 +282,7 @@
 
 /* 新版本功能提示弹窗（与我的页版本日志同款） */
 .ver-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
-.ver-card{width:580rpx;max-height:75vh;background:#FFF;border-radius:20rpx;display:flex;flex-direction:column;overflow:hidden}
+.ver-card{width:580rpx;max-height:75vh;background:#FFF;border-radius:var(--radius-card);display:flex;flex-direction:column;overflow:hidden}
 .ver-title{font-size:34rpx;font-weight:700;color:#333;text-align:center;padding:36rpx 24rpx 4rpx;flex-shrink:0}
 .ver-version{font-size:24rpx;color:#BBB;text-align:center;margin-bottom:16rpx;flex-shrink:0}
 .ver-body{flex:1;padding:0 32rpx;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch}
