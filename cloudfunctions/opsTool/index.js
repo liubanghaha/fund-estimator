@@ -99,6 +99,57 @@ exports.main = async (event) => {
       return { code: 0 };
     }
 
+    // ===== 埋点周报（P0-0 验证门禁：事件入库可查，先出 app_launch 时段占比）=====
+    if (action === "trackReport") {
+      if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
+      const days = Math.min(Math.max(parseInt(event.days) || 7, 1), 90);
+      const since = Date.now() - days * 86400000;
+      const _ = db.command;
+
+      // 启动时段占比（analytics_launches 存量直连，phase 三态口径同 _trackLaunch）
+      const [phTrading, phAfter, phClosed] = await Promise.all([
+        db.collection("analytics_launches").where({ ts: _.gte(since), phase: "trading" }).count(),
+        db.collection("analytics_launches").where({ ts: _.gte(since), phase: "afterClose" }).count(),
+        db.collection("analytics_launches").where({ ts: _.gte(since), phase: "closed" }).count(),
+      ]);
+      const launchTotal = phTrading.total + phAfter.total + phClosed.total;
+      const pct = (n) => (launchTotal ? +((n / launchTotal) * 100).toFixed(1) : null);
+      const launch = {
+        total: launchTotal,
+        trading: phTrading.total, afterClose: phAfter.total, closed: phClosed.total,
+        tradingPct: pct(phTrading.total),
+        afterClosePct: pct(phAfter.total),
+        closedPct: pct(phClosed.total),
+        nonTradingPct: pct(phAfter.total + phClosed.total), // 核心假设指标：非交易时段打开占比（3 个月 ≥15%）
+      };
+
+      // events 集合：各事件近 N 天计数 + 关键下钻
+      await ensureCollection("events");
+      const cnt = (q) => db.collection("events").where(Object.assign({ ts: _.gte(since) }, q)).count();
+      const [rt, subA, subR, subF, subD, sh, sf, sfHit, sfMiss] = await Promise.all([
+        cnt({ event: "record_trade" }),
+        cnt({ event: "sub_authorize", result: "accept" }),
+        cnt({ event: "sub_authorize", result: "reject" }),
+        cnt({ event: "sub_authorize", result: "fail" }),
+        cnt({ event: "sub_authorize", result: "dismiss_banner" }),
+        cnt({ event: "share" }),
+        cnt({ event: "search_fund" }),
+        cnt({ event: "search_fund", hit: true }),
+        cnt({ event: "search_fund", hit: false }),
+      ]);
+      const searchTotal = sfHit.total + sfMiss.total;
+      return { code: 0, data: {
+        days,
+        launch,
+        events: {
+          record_trade: rt.total,
+          sub_authorize: { accept: subA.total, reject: subR.total, fail: subF.total, dismiss: subD.total },
+          share: sh.total,
+          search_fund: { total: searchTotal, hit: sfHit.total, miss: sfMiss.total, hitRate: searchTotal ? +((sfHit.total / searchTotal) * 100).toFixed(1) : null },
+        },
+      } };
+    }
+
     // ===== 温度简报 =====
     if (action === "briefing") {
       await ensureCollection("fund_temperatures");

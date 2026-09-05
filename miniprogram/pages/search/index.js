@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const track = require("../../utils/track");
 Page({
   data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false },
   onLoad(options) {
@@ -17,12 +18,17 @@ Page({
     try {
       const res = await api.searchFund(keyword.trim());
       if (res.result && res.result.code === 0) {
-        this.setData({ fundList: res.result.data, isLoading: false });
+        const list = res.result.data || [];
+        this.setData({ fundList: list, isLoading: false });
+        // 搜索质量埋点：命中数 / 无结果是搜索功能质量的核心口径
+        track.searchFund({ kw: keyword.trim().slice(0, 20), hit: list.length > 0, n: list.length });
       } else {
         this.setData({ errorMsg: (res.result && res.result.msg) || "搜索失败", isLoading: false });
+        track.searchFund({ kw: keyword.trim().slice(0, 20), hit: null, n: 0, err: "api" });
       }
     } catch (e) {
       this.setData({ errorMsg: "网络错误，请重试", isLoading: false });
+      track.searchFund({ kw: keyword.trim().slice(0, 20), hit: null, n: 0, err: "network" });
     }
   },
   onTapFund(e) {

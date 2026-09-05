@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const track = require("../../utils/track");
 Page({
   data: {
     mode: "",
@@ -486,6 +487,7 @@ Page({
           type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
           note: this.data.adjustNote.trim() || '',
         });
+        track.recordTrade({ source: "add_submit", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: fundCode.trim() });
 
         shares = ns;
         buyPrice = np;
@@ -610,6 +612,7 @@ Page({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
       });
+      track.recordTrade({ source: "add_adjust", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 
       let ns, np, newMV;
       if (type === 'buy') {

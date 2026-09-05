@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
+const track = require("../../utils/track");
 
 Page({
   data: {
@@ -332,6 +333,7 @@ Page({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
       });
+      track.recordTrade({ source: "ocr_manual", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 
       let ns, np, newMV;
       if (type === 'buy') {
@@ -448,6 +450,7 @@ Page({
       type, shares: s, price, amount,
       date: item.date || today,
     });
+    track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode });
 
     let ns, np;
     const oldMV = parseFloat(h.marketValue) || 0;
@@ -559,6 +562,7 @@ Page({
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
       });
+      track.recordTrade({ source: "ocr_edit", direction: type, amount: amt, amountBand: track.amountBand(amt), fundCode: h.fundCode });
 
       let ns, np;
       if (type === "buy") { ns = oldS + s; np = (oldP * oldS + p * s) / ns; }

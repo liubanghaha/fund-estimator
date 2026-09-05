@@ -16,6 +16,7 @@
     <view class="ops-tabs">
       <view class="ops-tab {{tab === 'briefing' ? 'active' : ''}}" bind:tap="onTab" data-tab="briefing">温度简报</view>
       <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道小程序码</view>
+      <view class="ops-tab {{tab === 'track' ? 'active' : ''}}" bind:tap="onTab" data-tab="track">埋点周报</view>
     </view>
 
     <!-- ===== 温度简报 ===== -->
@@ -64,6 +65,41 @@
         </view>
         <view class="ops-channel-tip">scene: c_{{item.channelId}}</view>
       </view>
+    </view>
+
+    <!-- ===== 埋点周报 ===== -->
+    <view wx:if="{{tab === 'track'}}" class="ops-card">
+      <view class="ops-card-title">📈 埋点周报</view>
+      <view class="ops-card-desc">启动时段占比 + 各事件计数。核心假设：非交易时段打开占比 3 个月 ≥15%。</view>
+      <view class="ops-add-row">
+        <picker mode="selector" range="{{[7, 14, 30, 90]}}" value="{{trackDaysIdx}}" bindchange="onTrackDaysChange">
+          <button class="ops-mini-btn primary">近 {{trackDays}} 天 ▾</button>
+        </picker>
+        <button class="ops-add-btn" bind:tap="onGenTrackReport" loading="{{trackLoading}}" disabled="{{trackLoading}}">生成报表</button>
+      </view>
+
+      <block wx:if="{{trackReport}}">
+        <!-- 启动时段占比 -->
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">🚀 启动时段占比（analytics_launches）</text>
+        </view>
+        <view class="ops-stats">
+          <view class="ops-stat"><view class="ops-stat-num mid">{{trackReport.launch.tradingPct == null ? '--' : trackReport.launch.tradingPct + '%'}}</view><view class="ops-stat-label">盘中 ({{trackReport.launch.trading}})</view></view>
+          <view class="ops-stat"><view class="ops-stat-num high">{{trackReport.launch.afterClosePct}}</view><view class="ops-stat-label">盘后 ({{trackReport.launch.afterClose}})</view></view>
+          <view class="ops-stat"><view class="ops-stat-num low">{{trackReport.launch.closedPct}}</view><view class="ops-stat-label">休市 ({{trackReport.launch.closed}})</view></view>
+        </view>
+        <view class="ops-tip" wx:if="{{trackReport.launch.total}}">非交易时段打开占比 {{trackReport.launch.nonTradingPct}}%（共 {{trackReport.launch.total}} 次启动）</view>
+        <view class="ops-tip" wx:else>窗口期内暂无启动数据</view>
+
+        <!-- 事件计数 -->
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">📋 事件计数（events 集合）</text>
+        </view>
+        <view class="ops-channel-tip">记一笔 {{trackReport.events.record_trade}} 条 · 分享确认 {{trackReport.events.share}} 次</view>
+        <view class="ops-channel-tip">订阅授权：接受 {{trackReport.events.sub_authorize.accept}} / 拒绝 {{trackReport.events.sub_authorize.reject}} / 失败 {{trackReport.events.sub_authorize.fail}} / 关闭引导 {{trackReport.events.sub_authorize.dismiss}}</view>
+        <view class="ops-channel-tip">搜索：{{trackReport.events.search_fund.total}} 次，命中 {{trackReport.events.search_fund.hit}} 次（命中率 {{trackReport.events.search_fund.hitRate == null ? '--' : trackReport.events.search_fund.hitRate + '%'}}）</view>
+        <view class="ops-tip" wx:if="{{!trackReport.events.record_trade && !trackReport.events.share && !trackReport.events.search_fund.total && !trackReport.events.sub_authorize.accept}}">窗口期内 events 无数据（新埋点需发版后才开始收集）</view>
+      </block>
     </view>
   </block>
 </view>

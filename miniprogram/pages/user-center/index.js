@@ -47,7 +47,7 @@ Page({
 
   async onBriefingAuth() {
     this.setData({ briefSubmitting: true });
-    const r = await subscribe.requestAuth();
+    const r = await subscribe.requestAuth("user_center");
     this.setData({ briefSubmitting: false, briefAuthed: subscribe.hasAuthed() });
     if (r.ok) wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
   },

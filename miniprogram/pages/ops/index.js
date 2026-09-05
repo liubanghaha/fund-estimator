@@ -13,6 +13,11 @@ Page({
     channelName: "",
     addingChannel: false,
     generatingCode: "", // 正在生成码的 channelId
+    // 埋点周报
+    trackDaysIdx: 0,
+    trackDays: 7,
+    trackLoading: false,
+    trackReport: null,
   },
 
   onShow() {
@@ -64,6 +69,28 @@ Page({
       data: copy,
       success: () => wx.showToast({ title: "已复制，去发朋友圈吧", icon: "success" }),
     });
+  },
+
+  // ===== 埋点周报 =====
+  onTrackDaysChange(e) {
+    const idx = +e.detail.value;
+    this.setData({ trackDaysIdx: idx, trackDays: [7, 14, 30, 90][idx] || 7, trackReport: null });
+  },
+
+  async onGenTrackReport() {
+    this.setData({ trackLoading: true });
+    try {
+      const res = await api.opsTool("trackReport", { days: this.data.trackDays });
+      if (res.result && res.result.code === 0) {
+        this.setData({ trackReport: res.result.data });
+      } else {
+        wx.showToast({ title: (res.result && res.result.msg) || "生成失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "生成失败", icon: "none" });
+    } finally {
+      this.setData({ trackLoading: false });
+    }
   },
 
   // ===== 渠道管理 =====

@@ -36,7 +36,7 @@ Page({
   },
 
   async onBriefAuth() {
-    const r = await subscribe.requestAuth();
+    const r = await subscribe.requestAuth("profit_calendar");
     if (r.ok) {
       this.setData({ showBriefBanner: false });
       wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
@@ -45,7 +45,7 @@ Page({
 
   onBriefClose() {
     this.setData({ showBriefBanner: false });
-    subscribe.dismissPrompt(); // 手动关闭按拒绝处理，7 天内不再展示
+    subscribe.dismissPrompt("profit_calendar"); // 手动关闭按拒绝处理，7 天内不再展示
   },
 
   onLoad() {

@@ -3,6 +3,8 @@ const APP_VERSION = (() => {
   catch (e) { return '0.0.0'; }
 })();
 
+const track = require("./utils/track.js");
+
 const CHANGELOG = [
   {
     version: '1.0.5',
@@ -41,6 +43,13 @@ App({
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
     this._handlePushEntry(options);
     this._trackLaunch();
+    // 统一埋点（P0-0）：建会话 + 接回未发完队列，2s 后补发避开冷启动关键路径
+    track.init();
+  },
+
+  onHide: function () {
+    // 退后台立刻落库，避免进程被杀丢批
+    track.flush();
   },
 
   onShow: function (options) {

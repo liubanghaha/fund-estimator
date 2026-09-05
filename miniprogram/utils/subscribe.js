@@ -10,6 +10,7 @@ const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
 const KEY_SILENT_DAY = "brief_silent_day"; // 最近一次静默授权日期（每天最多一次）
 const DECLINE_COOLDOWN = 7 * 24 * 3600 * 1000;
+const track = require("./track.js"); // P0-0 sub_authorize 事件
 
 function canPrompt() {
   try {
@@ -35,13 +36,16 @@ function _markDeclined() {
 }
 
 // 引导条被手动关闭：按拒绝处理走 7 天频控
-function dismissPrompt() {
+function dismissPrompt(src) {
   _markDeclined();
+  // 关闭引导条 = 明确拒绝信号（区别于弹窗 reject），单独立项供引导位效果分析
+  try { track.subAuthorize({ src: src || "", mode: "prompt", result: "dismiss_banner" }); } catch (e) { /* ignore */ }
 }
 
 // 拉起授权弹窗：accept → 云函数 auth 记额度；reject/关闭 → 记 7 天频控。
 // 须在用户点击回调中调用（微信限制 requestSubscribeMessage 的触发时机）。
-function requestAuth() {
+// src：授权来源（index_pull|user_center|profit_calendar|scene_alert），供 sub_authorize 归因
+function requestAuth(src) {
   return new Promise((resolve) => {
     wx.requestSubscribeMessage({
       tmplIds: [TEMPLATE_ID],
@@ -55,15 +59,18 @@ function requestAuth() {
             name: "dailyBriefing",
             data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
           }).catch(() => {});
+          try { track.subAuthorize({ src: src || "", mode: "prompt", result: "accept" }); } catch (e) { /* ignore */ }
           resolve({ ok: true });
         } else {
           _markDeclined();
+          try { track.subAuthorize({ src: src || "", mode: "prompt", result: "reject" }); } catch (e) { /* ignore */ }
           resolve({ ok: false, reason: "reject" });
         }
       },
       fail(err) {
         const msg = (err && err.errMsg) || "";
         if (msg.indexOf("cancel") !== -1) _markDeclined();
+        try { track.subAuthorize({ src: src || "", mode: "prompt", result: "fail" }); } catch (e) { /* ignore */ }
         resolve({ ok: false, reason: msg || "fail" });
       },
     });
@@ -73,7 +80,7 @@ function requestAuth() {
 // 已授权用户的静默攒额度：每天最多一次，必须挂在用户手势回调中
 // （如首页下拉刷新 onScrollRefresh）。勾了「总是保持以上选择」的用户无感 accept；
 // 未勾的用户会再弹一次授权弹窗，失败静默无副作用。
-function silentDailyAuth() {
+function silentDailyAuth(src) {
   if (!hasAuthed()) return;
   try {
     const today = new Date().toDateString();
@@ -90,9 +97,12 @@ function silentDailyAuth() {
           name: "dailyBriefing",
           data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
         }).catch(() => {});
+        try { track.subAuthorize({ src: src || "", mode: "silent", result: "accept" }); } catch (e) { /* ignore */ }
       }
     },
-    fail() { /* 静默失败无副作用 */ },
+    fail() {
+      try { track.subAuthorize({ src: src || "", mode: "silent", result: "fail" }); } catch (e) { /* ignore */ }
+    },
   });
 }
 

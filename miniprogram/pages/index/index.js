@@ -1,6 +1,7 @@
 const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
 const subscribe = require("../../utils/subscribe");
+const track = require("../../utils/track");
 
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
@@ -111,6 +112,8 @@ Page({
     if (token && hasHolding && p !== 0) {
       title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
     }
+    // 分享确认埋点：onShareAppMessage 触发即用户已确认转发；带 token 与否是渠道归因的关键分叉
+    track.share({ sharePage: "index", hasToken: !!(token && hasHolding), hasProfit: p !== 0 });
     return {
       title,
       path: token && hasHolding ? `/pages/index/index?share=${token}` : "/pages/index/index",
@@ -500,7 +503,7 @@ Page({
     }).catch(() => {});
     // 保存提醒 = 用户明确要提醒，此刻请求推送授权（全漏斗转化率最高点）：
     // 未授权用户弹授权窗；已授权勾「总是保持」的静默 +1 额度
-    subscribe.requestAuth();
+    subscribe.requestAuth("scene_alert");
   },
   onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
   onDismissAlert() {
@@ -556,7 +559,7 @@ Page({
       return;
     }
     this._lastFetch = now;
-    subscribe.silentDailyAuth(); // 用户手势时机：已授权用户每天静默补一次推送额度
+    subscribe.silentDailyAuth("index_pull"); // 用户手势时机：已授权用户每天静默补一次推送额度
     this.setData({ refresherTriggered: true });
     Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
