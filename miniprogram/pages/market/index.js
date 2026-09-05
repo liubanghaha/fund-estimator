@@ -114,10 +114,13 @@ Page({
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
     };
-    // 行业两列网格分页：每页 6 个（2×3），swiper 左右翻页
-    const sectorPages = [];
-    for (let i = 0; i < data.sectors.length; i += 6) sectorPages.push(data.sectors.slice(i, i + 6));
-    data.sectorPages = sectorPages;
+    // 持仓行业独立模块置顶（mine 卡），全市场板块紧随其后；各自两列网格分页（每页 6 个）
+    const all = cache.sectors || [];
+    const mineSectors = all.filter((s) => s.mine);
+    const marketSectors = all.filter((s) => !s.mine);
+    const chunk6 = (arr) => { const ps = []; for (let i = 0; i < arr.length; i += 6) ps.push(arr.slice(i, i + 6)); return ps; };
+    data.minePages = chunk6(mineSectors);
+    data.marketPages = chunk6(marketSectors);
     // 指数按 A/港/美/亚太 分组，展示当前选中组
     const grouped = { a: [], hk: [], us: [], ap: [] };
     (cache.indexCards || []).forEach((c) => {
