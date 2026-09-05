@@ -76,32 +76,13 @@ async function fetchJin10() {
   }
 }
 
-// 东财要闻（column=350 要闻；title+summary+来源，不做正文跳转）
-async function fetchHeadlines() {
-  try {
-    const url = `https://np-listapi.eastmoney.com/comm/web/getNewsByColumns?client=web&biz=web_news_col&column=350&order=1&needInteractData=0&page_index=1&page_size=20&req_trace=${Date.now()}`;
-    const d = JSON.parse(await httpGet(url, { Referer: "https://news.eastmoney.com/" }));
-    const items = ((d.data || {}).list || []).map((it) => ({
-      id: "em_" + it.code,
-      title: it.title || "",
-      summary: it.summary || "",
-      media: it.mediaName || "东方财富",
-      time: it.showTime || "",
-    })).filter((it) => it.title);
-    return items;
-  } catch (e) {
-    console.error("[fetchNews] 要闻失败:", e.message);
-    return [];
-  }
-}
 
 exports.main = async (event = {}) => {
   try {
     const sortEnd = String(event.sortEnd || "");
-    const [em, jin10, headlines] = await Promise.all([
+    const [em, jin10] = await Promise.all([
       fetchEMFlash(sortEnd),
       sortEnd ? Promise.resolve([]) : fetchJin10(), // 翻页只走东财游标；金十仅首页补强
-      sortEnd ? Promise.resolve([]) : fetchHeadlines(),
     ]);
 
     // 双源按时间归并 + 前 18 字指纹去重（同一事件两源都发）
@@ -116,7 +97,7 @@ exports.main = async (event = {}) => {
         flash.push(Object.assign({}, it, { category: classify((it.title || "") + " " + it.content) }));
       });
 
-    return { code: 0, data: { flash: { items: flash, sortEnd: em.sortEnd }, headlines: { items: headlines } } };
+    return { code: 0, data: { flash: { items: flash, sortEnd: em.sortEnd } } };
   } catch (e) {
     console.error("[fetchNews] 失败:", e.message || e);
     return { code: 500, msg: "资讯获取失败" };
