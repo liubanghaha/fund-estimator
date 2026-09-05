@@ -8,6 +8,7 @@
     </view>
 
     <view class="news-list">
+      <view wx:if="{{item.showDay}}" class="news-day">{{item.dayLabel}}</view>
       <view class="news-item" wx:for="{{displayItems}}" wx:key="id">
         <view class="news-left">
           <view class="news-time">{{item.timeShort}}</view>

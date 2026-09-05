@@ -6,6 +6,7 @@
 .avatar-placeholder{width:120rpx;height:120rpx;line-height:120rpx;text-align:center;font-size:80rpx;border-radius:50%;background:#F0F0F0}
 .nickname-tip{font-size:24rpx;color:#999;margin-bottom:8rpx}
 .nickname{font-size:32rpx;color:#333}
+.menu-group-title{font-size:22rpx;color:#BBB;margin:0 32rpx 10rpx;padding-left:8rpx}
 .menu-list{background:#FFF;border-radius:var(--radius-card);margin-bottom:24rpx;box-shadow:var(--shadow-card);}
 .menu-item{display:flex;justify-content:space-between;align-items:center;padding:32rpx;font-size:30rpx;border-bottom:1rpx solid #F0F0F0}
 .menu-item:last-child{border-bottom:none}

@@ -7,14 +7,19 @@
     <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
     <view class="nickname" bind:tap="onNicknameTap">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
   </view>
+  <view class="menu-group-title">持仓管理</view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索添加</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onAddHolding"><text>添加持仓</text><text class="arrow">></text></view>
   </view>
+  <view class="menu-group-title">通知与数据</view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onBriefing"><text>📈 收盘播报</text><text class="arrow">{{showBrief ? '∨' : (briefAuthed ? '已开启' : '>')}}</text></view>
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
     <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
+  </view>
+  <view class="menu-group-title">通用</view>
+  <view class="menu-list">
     <view class="menu-item" wx:if="{{isOpsAdmin}}" bind:tap="onOpenOps"><text>运营助手</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onToggleTheme"><text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text></view>

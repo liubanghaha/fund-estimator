@@ -95,6 +95,16 @@ Page({
   _applyFilter() {
     let items = this.data.flashItems;
     if (this.data.importantOnly) items = items.filter((i) => i.important);
+    const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+    const yest = new Date(Date.now() + 8 * 3600000 - 86400000).toISOString().slice(0, 10);
+    let prev = "";
+    items = items.map((i) => {
+      const day = (i.time || "").slice(0, 10);
+      const showDay = day !== prev;
+      prev = day;
+      const dayLabel = day === today ? "今天" : day === yest ? "昨天" : day.slice(5).replace("-", "月") + "日";
+      return { ...i, showDay, dayLabel };
+    });
     this.setData({ displayItems: items });
   },
   onImportantToggle() {

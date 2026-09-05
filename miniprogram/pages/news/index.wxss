@@ -7,6 +7,7 @@
 .filter-chip.imp{color:#B8860B;background:#FFF8E1}
 .filter-chip.imp.active{color:#FFF;background:#E6A23C}
 .news-list{background:#FFF;border-radius:var(--radius-card);padding:8rpx 24rpx;box-shadow:var(--shadow-card);}
+.news-day{font-size:22rpx;color:#999;font-weight:600;padding:20rpx 0 4rpx}
 .news-item{display:flex;padding:22rpx 0;border-bottom:1rpx solid #F2F2F2}
 .news-item:last-child{border-bottom:none}
 .news-left{width:90rpx;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-start;gap:12rpx}

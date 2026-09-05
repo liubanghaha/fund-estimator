@@ -23,13 +23,10 @@
   </view>
 
   <!-- 搜索栏 + 排序 -->
-  <view wx:if="{{loaded && !loadError && watchlist.length > 5}}" class="search-bar">
+  <view wx:if="{{loaded && !loadError && watchlist.length > 0}}" class="search-bar">
     <input class="search-input" value="{{searchKeyword}}" placeholder="搜索基金" bind:input="onSearchInput"/>
     <text wx:if="{{searchKeyword}}" class="search-clear" bind:tap="onClearSearch">✕</text>
     <text class="search-sort-btn" bind:tap="onSortTap">{{sortField === 'change' ? (sortOrder === 'asc' ? '涨跌↑' : '涨跌↓') : sortField === 'name' ? '名称' : '排序'}}</text>
-  </view>
-  <view wx:elif="{{loaded && !loadError && watchlist.length > 0 && watchlist.length <= 5}}" class="search-bar">
-    <text class="search-sort-btn-only" bind:tap="onSortTap">{{sortField === 'change' ? (sortOrder === 'asc' ? '涨跌↑' : '涨跌↓') : sortField === 'name' ? '名称' : '排序'}}</text>
   </view>
 
   <!-- 涨跌汇总条 -->
