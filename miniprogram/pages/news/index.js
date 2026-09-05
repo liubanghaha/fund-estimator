@@ -6,6 +6,7 @@ const SOURCE_TEXT = { em: "东财快讯", jin10: "金十快讯" };
 Page({
   data: {
     theme: "red",
+    dateLabel: "",
     importantOnly: false,
     flashItems: [],
     displayItems: [],
@@ -18,6 +19,10 @@ Page({
 
   onLoad() {
     this.setData({ theme: wx.getStorageSync("theme") || "red" });
+    // 当天日期（北京时间）
+    const d = new Date(Date.now() + 8 * 3600000);
+    const week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][d.getUTCDay()];
+    this.setData({ dateLabel: `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${week}` });
     this.fetchFirst();
   },
   onShow() {
