@@ -304,7 +304,12 @@ exports.main = async (event) => {
       for (const h of enriched) {
         if (!h.peTemp || !h.peTemp.totalStocks) continue;
         enrichedCount++;
-        const fundValue = (parseFloat(h.shares) || 0) * (parseFloat(h.currentNav) || 0);
+        // 权重兜底链：实时估值缺失（周末/接口抖动）时回退持仓档案净值/市值，
+        // 否则单次请求里估值缺失的基金被整体剔除，穿透塌缩成个别基金的行业
+        const sharesN = parseFloat(h.shares) || 0;
+        const navN = parseFloat(h.currentNav) || parseFloat(h.nav) || 0;
+        let fundValue = sharesN * navN;
+        if (fundValue <= 0) fundValue = parseFloat(h.marketValue) || 0;
         if (fundValue <= 0) continue;
         totalHoldingsValue += fundValue;
         withTempCount++;

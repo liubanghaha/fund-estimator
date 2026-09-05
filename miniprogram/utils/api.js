@@ -58,8 +58,10 @@ const api = {
   fetchFundEstimate(fundCode) {
     return this.callFunction("fetchFundEstimate", { fundCode });
   },
-  getPortfolio(historyDays) {
-    return this.callFunction("getPortfolio", historyDays ? { historyDays } : {});
+  getPortfolio(historyDays, opts = {}) {
+    const data = { ...opts };
+    if (historyDays) data.historyDays = historyDays;
+    return this.callFunction("getPortfolio", data);
   },
   portfolioLight() {
     return this.callFunction("portfolioLight", {});
