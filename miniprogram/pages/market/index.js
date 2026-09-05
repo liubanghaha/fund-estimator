@@ -67,7 +67,10 @@ Page({
 
   refresh(force) {
     const cached = wx.getStorageSync(CACHE_KEY);
-    if (!force && cached && marketTime.isCacheFresh(cached, { estimateTtl: 60 * 1000, finalAtClose: true })) {
+    // 坏缓存检测：指数卡大半为 "--"（如一次性超时）时视为无效，冻结逻辑不适用，强制重拉
+    const cachedCards = (cached && cached.indexCards) || [];
+    const cachedOk = cachedCards.filter((c) => c.price !== "--").length >= 6;
+    if (!force && cached && cachedOk && marketTime.isCacheFresh(cached, { estimateTtl: 60 * 1000, finalAtClose: true })) {
       this._render(cached);
       return Promise.resolve();
     }
