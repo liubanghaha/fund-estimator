@@ -223,6 +223,163 @@ exports.main = async (event) => {
       } };
     }
 
+    // ===== P0-1 老用户召回 =====
+    // 目标筛选 → 50/50 send/control 分组落库 recall_state → 委托 dailyBriefing.recallPush 发送
+    if (action === "recallSend") {
+      if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
+      const bucket = ["7d", "14d", "30d"].indexOf(event.bucket) !== -1 ? event.bucket : "7d";
+      const limit = Math.min(Math.max(parseInt(event.limit) || 100, 10), 500);
+      const dryRun = !!event.dryRun;
+      const minDays = parseInt(bucket);
+      const now = Date.now();
+      const _ = db.command;
+
+      // 1) 额度池：有额度 + 未退订召回（额度与双条同池，发送窗口须避开 15:30/21:30 扣费点）
+      const subs = await readAll("subscriptions", 5000);
+      const pool = subs.filter((s) => (!s.scene || s.scene === "closing_brief") && (s.quota || 0) > 0 && !s.recallOptOut);
+
+      // 2) 最近启动时间（近 60 天启动记录；窗口外/无记录视为深度沉默，计入任何档位）
+      const launches = [];
+      {
+        const PAGE = 100;
+        let skip = 0;
+        while (skip < 40000) {
+          const res = await db.collection("analytics_launches").where({ ts: _.gte(now - 60 * 86400000) }).skip(skip).limit(PAGE).get();
+          launches.push(...(res.data || []));
+          if ((res.data || []).length < PAGE) break;
+          skip += PAGE;
+        }
+      }
+      const lastTs = {};
+      for (const l of launches) {
+        if (!l._openid || !l.ts) continue;
+        if (!lastTs[l._openid] || l.ts > lastTs[l._openid]) lastTs[l._openid] = l.ts;
+      }
+      let targets = pool.map((s) => s._openid).filter((id) => {
+        const lt = lastTs[id];
+        return !lt || now - lt >= minDays * 86400000;
+      });
+
+      // 3) 频控：7 天内已发过召回的排除
+      if (targets.length > 0) {
+        const recentLogs = [];
+        {
+          const PAGE = 100;
+          let skip = 0;
+          while (skip < 5000) {
+            const res = await db.collection("push_logs").where({
+              kind: _.in(["recall_7d", "recall_14d", "recall_30d"]),
+              sentAt: _.gte(now - 7 * 86400000),
+            }).skip(skip).limit(PAGE).get();
+            recentLogs.push(...(res.data || []));
+            if ((res.data || []).length < PAGE) break;
+            skip += PAGE;
+          }
+        }
+        const recent = new Set(recentLogs.map((l) => l._openid));
+        targets = targets.filter((id) => !recent.has(id));
+      }
+
+      // 4) 随机抽样 + 对半分组（send / control 对照实验）
+      for (let i = targets.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [targets[i], targets[j]] = [targets[j], targets[i]];
+      }
+      const selected = targets.slice(0, limit);
+      const half = Math.ceil(selected.length / 2);
+      const sendList = selected.slice(0, half).map((id) => ({ openid: id, bucket }));
+      const controlList = selected.slice(half);
+
+      if (dryRun) {
+        return { code: 0, data: {
+          dryRun: true, bucket, pool: pool.length, eligible: targets.length,
+          sendCount: sendList.length, controlCount: controlList.length,
+          sample: targets.slice(0, 5),
+          briefPreview: { thing1: "韭菜估值宝", thing2: "你的持仓组合", thing3: "持仓温度有更新，来看看最新数据" },
+        } };
+      }
+
+      if (sendList.length === 0) return { code: 0, data: { bucket, selected: 0, msg: "无符合条件用户" } };
+
+      // 5) 分组落库 recall_state（send+control 都记，对照组不发只记录，报表对比用）
+      await ensureCollection("recall_state");
+      const batchTs = now;
+      const docs = sendList.map((t) => ({ openid: t.openid, cohort: "send", bucket, batchTs, ts: batchTs }))
+        .concat(controlList.map((id) => ({ openid: id, cohort: "control", bucket, batchTs, ts: batchTs })));
+      for (let i = 0; i < docs.length; i += 20) {
+        await Promise.all(docs.slice(i, i + 20).map((d) => db.collection("recall_state").add({ data: d }).catch(() => {})));
+      }
+
+      // 6) 委托 dailyBriefing 发送（跨函数调用无 OPENID，符合其"仅服务端"校验）
+      const sendRes = await cloud.callFunction({
+        name: "dailyBriefing",
+        data: { action: "recallPush", targets: sendList },
+      });
+      const r = sendRes.result || {};
+      return { code: 0, data: { bucket, selected: selected.length, sendCount: sendList.length, controlCount: controlList.length, sent: r.sent || 0, failed: r.failed || 0, batchTs } };
+    }
+
+    // 召回对照报表：send vs control 的 7 日回访率（回访 = 批次后 7 日内 analytics_launches 有记录）
+    if (action === "recallReport") {
+      if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
+      const _ = db.command;
+      const states = await readAll("recall_state", 5000);
+      if (states.length === 0) return { code: 0, data: { batches: [] } };
+      const batches = {};
+      for (const s of states) {
+        const key = String(s.batchTs);
+        batches[key] = batches[key] || { batchTs: s.batchTs, bucket: s.bucket, send: [], control: [] };
+        batches[key][s.cohort === "control" ? "control" : "send"].push(s.openid);
+      }
+      const out = [];
+      for (const key of Object.keys(batches).sort((a, b) => Number(b) - Number(a))) {
+        const b = batches[key];
+        // 批次后 7 日内的启动 openid 集合
+        const revisitSet = new Set();
+        {
+          const PAGE = 100;
+          let skip = 0;
+          while (skip < 20000) {
+            const res = await db.collection("analytics_launches").where({
+              ts: _.gte(b.batchTs).and(_.lt(b.batchTs + 7 * 86400000)),
+            }).skip(skip).limit(PAGE).get();
+            (res.data || []).forEach((l) => { if (l._openid) revisitSet.add(l._openid); });
+            if ((res.data || []).length < PAGE) break;
+            skip += PAGE;
+          }
+        }
+        // 发送组分母剔除发送失败用户（43101/失败）
+        const sendIds = [...new Set(b.send)];
+        const sentIds = new Set();
+        if (sendIds.length) {
+          const logs = [];
+          {
+            const PAGE = 100;
+            let skip = 0;
+            while (skip < 5000) {
+              const res = await db.collection("push_logs").where({
+                _openid: _.in(sendIds),
+                kind: _.in(["recall_7d", "recall_14d", "recall_30d"]),
+                sentAt: _.gte(b.batchTs),
+              }).skip(skip).limit(PAGE).get();
+              logs.push(...(res.data || []));
+              if ((res.data || []).length < PAGE) break;
+              skip += PAGE;
+            }
+          }
+          logs.forEach((l) => { if (l.status === "sent") sentIds.add(l._openid); });
+        }
+        const rate = (ids) => {
+          const uniq = [...new Set(ids)];
+          if (!uniq.length) return null;
+          const hit = uniq.filter((id) => revisitSet.has(id)).length;
+          return { n: uniq.length, revisit: hit, rate: +((hit / uniq.length) * 100).toFixed(1) };
+        };
+        out.push({ batchTs: b.batchTs, bucket: b.bucket, send: rate([...sentIds]), control: rate(b.control) });
+      }
+      return { code: 0, data: { batches: out } };
+    }
+
     // ===== 温度简报 =====
     if (action === "briefing") {
       await ensureCollection("fund_temperatures");

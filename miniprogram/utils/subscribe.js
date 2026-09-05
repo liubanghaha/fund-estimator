@@ -115,4 +115,26 @@ function bindTrackOpen(lid) {
   }).catch(() => {});
 }
 
-module.exports = { TEMPLATE_ID, requestAuth, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen };
+// 查推送日志类型（召回落地判定用；服务端带 _openid 校验只返回本人日志）
+function getPushKind(lid) {
+  if (!lid) return Promise.resolve("");
+  return new Promise((resolve) => {
+    wx.cloud.callFunction({
+      name: "dailyBriefing",
+      data: { action: "logInfo", logId: String(lid).slice(0, 40) },
+    }).then((res) => {
+      const d = res.result && res.result.data;
+      resolve((d && d.kind) || "");
+    }).catch(() => resolve(""));
+  });
+}
+
+// 一键退订召回（只停召回，收盘小结/净值播报双条照常）
+function optOutRecall() {
+  return wx.cloud.callFunction({
+    name: "dailyBriefing",
+    data: { action: "recallOptOut" },
+  }).catch(() => {});
+}
+
+module.exports = { TEMPLATE_ID, requestAuth, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };

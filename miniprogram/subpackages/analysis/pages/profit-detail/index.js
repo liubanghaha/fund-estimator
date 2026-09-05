@@ -48,8 +48,24 @@ Page({
     subscribe.dismissPrompt("profit_calendar"); // 手动关闭按拒绝处理，7 天内不再展示
   },
 
-  onLoad() {
+  // 召回退订横幅：一键关闭召回（双条照常），× 仅收起本次横幅
+  onRecallOptOut() {
+    subscribe.optOutRecall();
+    this.setData({ showRecallOptOut: false });
+    wx.showToast({ title: "已关闭，不再收到此类提醒", icon: "none" });
+  },
+  onRecallOptOutClose() {
+    this.setData({ showRecallOptOut: false });
+  },
+
+  onLoad(options) {
     this.setData({ showBriefBanner: subscribe.canPrompt() && !subscribe.hasAuthed() });
+    // 召回推送落地：查推送类型，召回类显示一键退订横幅（双条播报不受影响）
+    if (options && options.src === "push" && options.lid) {
+      subscribe.getPushKind(options.lid).then((kind) => {
+        if (kind && kind.indexOf("recall_") === 0) this.setData({ showRecallOptOut: true });
+      }).catch(() => {});
+    }
     const { windowWidth } = wx.getSystemInfoSync();
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);

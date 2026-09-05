@@ -5,6 +5,11 @@
     <view class="brief-banner-btn" bind:tap="onBriefAuth">订阅</view>
     <view class="brief-banner-close" bind:tap="onBriefClose">×</view>
   </view>
+  <view wx:if="{{showRecallOptOut}}" class="brief-banner">
+    <text class="brief-banner-text">不想再收到此类持仓提醒？</text>
+    <view class="brief-banner-btn" bind:tap="onRecallOptOut">关闭</view>
+    <view class="brief-banner-close" bind:tap="onRecallOptOutClose">×</view>
+  </view>
   <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{loadError}}" class="empty-wrap">
     <view class="empty-icon">😵</view>

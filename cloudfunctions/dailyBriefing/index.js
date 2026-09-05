@@ -33,6 +33,9 @@ exports.main = async (event = {}) => {
     }
     if (event.action === "auth") return await handleAuth(event);
     if (event.action === "trackOpen") return await handleTrackOpen(event.logId);
+    if (event.action === "recallPush") return await handleRecallPush(event);
+    if (event.action === "recallOptOut") return await handleRecallOptOut();
+    if (event.action === "logInfo") return await handleLogInfo(event.logId);
     if (event.action === "alertGet") return await handleAlertGet();
     if (event.action === "alertSet") return await handleAlertSet(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
@@ -158,6 +161,70 @@ async function handleTrackOpen(logId) {
     data: { openedAt: Date.now() }
   });
   return { code: 0, updated: r.stats.updated };
+}
+
+// ---- action: recallPush ----
+// P0-1 老用户召回发送：opsTool.recallSend（管理员校验）服务端委托，同 alertPush 安全模型。
+// targets: [{ openid, bucket }]，bucket ∈ 7d|14d|30d（决定 push_logs kind=recall_{bucket} 供频控与报表）
+// 文案走模板「温度数据通知」，纯数据陈述（合规红线 #2/#6：不含投资/收益/建议字样）
+async function handleRecallPush({ targets }) {
+  const { OPENID } = cloud.getWXContext();
+  if (OPENID) return { code: -1, msg: "拒绝客户端调用" };
+  if (!Array.isArray(targets) || targets.length === 0) return { code: 0, sent: 0, failed: 0 };
+  const token = await getAccessToken();
+  const today = td.bjDateStr();
+  let sent = 0, failed = 0;
+  for (const t of targets.slice(0, 200)) {
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: "你的持仓组合" },
+      thing3: { value: "持仓温度有更新，来看看最新数据" },
+      time4: { value: _bjTimeStr() },
+    };
+    const kind = "recall_" + (["7d", "14d", "30d"].indexOf(t.bucket) !== -1 ? t.bucket : "7d");
+    const logId = await createLog(t.openid, today, SCENE, "", kind);
+    try {
+      const errcode = await sendSubscribe(token, t.openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE }).update({
+        data: { quota: _.inc(-1), updatedAt: Date.now() }
+      });
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) {
+        await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE }).update({
+          data: { quota: 0, updatedAt: Date.now() }
+        });
+      }
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      failed++;
+    }
+  }
+  return { code: 0, sent, failed };
+}
+
+// ---- action: recallOptOut ----
+// 一键退订召回（召回落地页横幅入口）：只停召回，收盘小结/净值播报双条照常
+async function handleRecallOptOut() {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: -1, msg: "无用户身份" };
+  const r = await db.collection("subscriptions").where({ _openid: OPENID, scene: SCENE }).update({
+    data: { recallOptOut: true, updatedAt: Date.now() }
+  });
+  return { code: 0, updated: r.stats.updated };
+}
+
+// ---- action: logInfo ----
+// 落地页按 lid 查推送类型（召回落地显示退订横幅的判定依据），带 _openid 校验只暴露自己的日志
+async function handleLogInfo(logId) {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID || !logId) return { code: -1, msg: "缺参数" };
+  const r = await db.collection("push_logs").where({ _id: String(logId).slice(0, 40), _openid: OPENID }).get();
+  const log = r.data[0];
+  if (!log) return { code: 0, data: null };
+  return { code: 0, data: { kind: log.kind || "", scene: log.scene || "" } };
 }
 
 // ---- 定时主流程：收盘小结 ----

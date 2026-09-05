@@ -18,6 +18,7 @@
       <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道小程序码</view>
       <view class="ops-tab {{tab === 'track' ? 'active' : ''}}" bind:tap="onTab" data-tab="track">埋点周报</view>
       <view class="ops-tab {{tab === 'push' ? 'active' : ''}}" bind:tap="onTab" data-tab="push">推送灰度</view>
+      <view class="ops-tab {{tab === 'recall' ? 'active' : ''}}" bind:tap="onTab" data-tab="recall">老用户召回</view>
     </view>
 
     <!-- ===== 温度简报 ===== -->
@@ -143,6 +144,40 @@
           <text class="ops-channel-name">🚫 取消订阅（43101）</text>
         </view>
         <view class="ops-tip">窗口内 {{pushReport.unsub.users}} 人取消（占收到推送用户 {{pushReport.unsub.rate == null ? '--' : pushReport.unsub.rate + '%'}}）{{pushReport.unsub.rate != null && pushReport.unsub.rate > 5 ? ' · ⚠️ 退订率偏高，先减不增' : ''}}</view>
+      </block>
+    </view>
+
+    <!-- ===== 老用户召回 ===== -->
+    <view wx:if="{{tab === 'recall'}}" class="ops-card">
+      <view class="ops-card-title">📣 老用户召回</view>
+      <view class="ops-card-desc">向「有额度且 N 天未打开」的用户发召回（纯数据陈述文案）。额度与双条同池，发送窗口选工作日上午，避开 15:30/21:30。试水先发 100（发送 50 / 对照 50）。</view>
+
+      <view class="ops-add-row">
+        <picker mode="selector" range="{{['7天未打开', '14天未打开', '30天未打开']}}" value="{{recallBucketIdx}}" bindchange="onRecallBucketChange">
+          <button class="ops-mini-btn primary">{{recallBuckets[recallBucketIdx]}} ▾</button>
+        </picker>
+        <button class="ops-mini-btn primary" bind:tap="onRecallPreview" loading="{{recallSending}}" disabled="{{recallSending}}">预览目标</button>
+        <button class="ops-mini-btn danger" bind:tap="onRecallSend" loading="{{recallSending}}" disabled="{{recallSending}}">试水发送 100</button>
+      </view>
+
+      <block wx:if="{{recallPreview}}">
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">🎯 目标预览（{{recallPreview.bucket}}，未发送）</text>
+        </view>
+        <view class="ops-channel-tip">额度池 {{recallPreview.pool}} 人 · 符合条件 {{recallPreview.eligible}} 人 · 本次：发送 {{recallPreview.sendCount}} / 对照 {{recallPreview.controlCount}}</view>
+        <view class="ops-channel-tip">文案：{{recallPreview.briefPreview.thing2}}——{{recallPreview.briefPreview.thing3}}</view>
+        <view class="ops-channel-tip" wx:if="{{recallPreview.sample.length}}">样例 openid：{{recallPreview.sample[0]}} 等</view>
+      </block>
+
+      <view class="ops-channel-head" style="margin-top:24rpx">
+        <text class="ops-channel-name">📊 对照报表（7 日回访率）</text>
+      </view>
+      <button class="ops-mini-btn primary" bind:tap="onRecallReport" loading="{{recallReportLoading}}" disabled="{{recallReportLoading}}">生成对照报表</button>
+      <block wx:if="{{recallReport}}">
+        <view class="ops-channel-tip" wx:if="{{recallReport.length === 0}}">还没有召回批次记录</view>
+        <view class="ops-channel-tip" wx:for="{{recallReport}}" wx:key="batchTs">
+          {{item.dateStr}}（{{item.bucket}}）：发送组 {{item.send ? item.send.revisit + '/' + item.send.n + '（' + item.send.rate + '%）' : '--'}} vs 对照组 {{item.control ? item.control.revisit + '/' + item.control.n + '（' + item.control.rate + '%）' : '--'}}
+        </view>
       </block>
     </view>
   </block>
