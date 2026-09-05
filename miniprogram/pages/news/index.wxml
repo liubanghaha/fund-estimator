@@ -3,21 +3,21 @@
 
   <!-- 快讯 7×24 -->
   <view class="filter-row">
-      <view class="filter-chips">
-        <text class="filter-chip {{filter === item.key ? 'active' : ''}}" wx:for="{{filters}}" wx:key="key" data-key="{{item.key}}" bind:tap="onFilterTap">{{item.label}}</text>
-      </view>
+      <text class="date-label">{{dateLabel}}</text>
       <text class="filter-chip imp {{importantOnly ? 'active' : ''}}" bind:tap="onImportantToggle">重要</text>
     </view>
 
     <view class="news-list">
       <view class="news-item" wx:for="{{displayItems}}" wx:key="id">
-        <view class="news-time">{{item.timeShort}}</view>
+        <view class="news-left">
+          <view class="news-time">{{item.timeShort}}</view>
+          <view wx:if="{{item.long}}" class="news-toggle {{item._open ? 'open' : ''}}" data-index="{{index}}" bind:tap="onToggleText">▾</view>
+        </view>
         <view class="news-body {{item.important ? 'important' : ''}}">
           <view class="news-text {{item.long && !item._open ? 'clamp' : ''}}">
             <text wx:if="{{item.important}}" class="news-important-tag">重要</text>
             {{item.content}}
           </view>
-          <view wx:if="{{item.long}}" class="news-toggle {{item._open ? 'open' : ''}}" data-index="{{index}}" bind:tap="onToggleText">▾</view>
           <view class="news-meta">
             <text class="news-source">{{item.sourceText}}</text>
             <text class="news-cat">{{item.categoryText}}</text>

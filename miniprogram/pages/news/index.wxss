@@ -9,14 +9,16 @@
 .news-list{background:#FFF;border-radius:20rpx;padding:8rpx 24rpx}
 .news-item{display:flex;padding:22rpx 0;border-bottom:1rpx solid #F2F2F2}
 .news-item:last-child{border-bottom:none}
-.news-time{width:90rpx;font-size:22rpx;color:#BBB;flex-shrink:0;padding-top:4rpx}
+.news-left{width:90rpx;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-start;gap:12rpx}
+.news-time{font-size:22rpx;color:#BBB;padding-top:4rpx}
 .news-body{flex:1;min-width:0}
 .news-text{font-size:27rpx;color:#333;line-height:1.6}
 .news-body.important .news-text{font-weight:600}
 .news-important-tag{display:inline-block;font-size:18rpx;color:#FFF;background:#E4393C;border-radius:6rpx;padding:2rpx 10rpx;margin-right:10rpx;vertical-align:2rpx}
 .news-text.clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
-.news-toggle{font-size:26rpx;color:#BBB;text-align:center;line-height:1;padding:10rpx 20rpx 0;transition:transform .2s;transform:rotate(0)}
+.news-toggle{font-size:36rpx;color:#BBB;line-height:1;transition:transform .2s;transform:rotate(0)}
 .news-toggle.open{transform:rotate(180deg)}
+.date-label{font-size:24rpx;color:#666;font-weight:600}
 .news-meta{display:flex;gap:16rpx;margin-top:10rpx;font-size:20rpx;color:#BBB}
 .news-tip{font-size:24rpx;color:#BBB;text-align:center;padding:24rpx 0}
 .news-loading{padding:40rpx 0}
