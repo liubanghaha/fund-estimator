@@ -10,6 +10,10 @@ const KW_FUND = ["基金", "公募", "私募", "ETF", "申赎", "赎回", "基�
 const KW_STOCK = ["A股", "沪指", "深证", "创业板", "港股", "美股", "纳指", "道指", "标普", "收盘", "开盘", "涨停", "跌停", "板块", "两市", "券商", "IPO", "个股", "股价", "市值", "股市", "上市"];
 const KW_MACRO = ["央行", "美联储", "利率", "CPI", "PMI", "GDP", "汇率", "国债", "通胀", "降准", "降息", "LPR", "财政部", "统计局", "关税", "外汇", "人民币", "原油"];
 
+function stripHtml(text) {
+  return String(text || "").replace(/<[^>]+>/g, "").trim();
+}
+
 function classify(text) {
   const t = String(text || "");
   if (KW_FUND.some((k) => t.includes(k))) return "fund";
@@ -62,8 +66,8 @@ async function fetchJin10() {
       const dd = it.data || {};
       return {
         id: "jin10_" + it.id,
-        title: dd.title || "",
-        content: dd.content || dd.title || "",
+        title: stripHtml(dd.title),
+        content: stripHtml(dd.content || dd.title || ""),
         time: it.time || "",
         important: it.important == 1 || it.type == 2,
         source: "jin10",
