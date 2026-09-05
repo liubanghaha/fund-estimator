@@ -128,6 +128,18 @@ function share(props) { track("share", props); }
 // 搜索。props: { kw, hit, n, err }
 function searchFund(props) { track("search_fund", props); }
 
+// 分享/渠道落地（漏斗第一环：分享卡 → 横幅 → 记一笔）。props: { src, token?, channelId? }
+//   src: share_token（分享卡 ?share= 落地）| promo_channel（渠道码 scene 落地，服务端 trackVisit 保留，此条补客户端上下文）
+//   卡片拉取失败补埋一条同事件 { src, token, err: "card_fail" }：到达口径=不带 err 的 count，失败率=带 err / 不带 err
+function shareLanding(props) { track("share_landing", props); }
+
+// 落地转化（漏斗第二环）：分享落地横幅 CTA 点击。props: { cta, isLoggedIn }
+function landingConvert(props) { track("landing_convert", props); }
+
+// 推送落地上下文（push_open 客户端补埋；服务端 push_logs.openedAt 仍是打开率权威口径，勿双算）。
+// props: { lid, entry: cold|warm, path } —— 用于召回实验"召回批 7 日回访"的落地归因
+function pushOpen(props) { track("push_open", props); }
+
 // 金额档位（record_trade 用）：统一口径单点维护
 function amountBand(amount) {
   const n = Math.abs(parseFloat(amount) || 0);
@@ -137,4 +149,4 @@ function amountBand(amount) {
   return "<1k";
 }
 
-module.exports = { init, track, flush, recordTrade, subAuthorize, share, searchFund, amountBand };
+module.exports = { init, track, flush, recordTrade, subAuthorize, share, searchFund, shareLanding, landingConvert, pushOpen, amountBand };

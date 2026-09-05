@@ -41,7 +41,7 @@ App({
       }
     }
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
-    this._handlePushEntry(options);
+    this._handlePushEntry(options, "cold");
     this._trackLaunch();
     // 统一埋点（P0-0）：建会话 + 接回未发完队列，2s 后补发避开冷启动关键路径
     track.init();
@@ -54,14 +54,22 @@ App({
 
   onShow: function (options) {
     // 推送热启动落地（冷启动走 onLaunch）
-    this._handlePushEntry(options);
+    this._handlePushEntry(options, "warm");
   },
 
   // 推送落地追踪：所有推送 page 带 src=push&lid=日志ID，补 openedAt 供打开率统计
-  _handlePushEntry: function (options) {
+  // （服务端 openedAt 是打开率权威口径；客户端 push_open 只补落地上下文，供召回实验归因）
+  _handlePushEntry: function (options, entry) {
     try {
       if (options && options.src === "push" && options.lid) {
         require("./utils/subscribe.js").bindTrackOpen(options.lid);
+        try {
+          track.pushOpen({
+            lid: String(options.lid).slice(0, 40),
+            entry: entry || "cold",
+            path: (options && options.path) || "",
+          });
+        } catch (e) { /* 埋点失败不提示 */ }
       }
     } catch (e) { /* ignore */ }
   },

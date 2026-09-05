@@ -124,9 +124,10 @@ exports.main = async (event) => {
       };
 
       // events 集合：各事件近 N 天计数 + 关键下钻
+      // （push_open 不在此列：打开率以服务端 push_logs.openedAt 为权威口径，避免双算）
       await ensureCollection("events");
       const cnt = (q) => db.collection("events").where(Object.assign({ ts: _.gte(since) }, q)).count();
-      const [rt, subA, subR, subF, subD, sh, sf, sfHit, sfMiss] = await Promise.all([
+      const [rt, subA, subR, subF, subD, sh, sf, sfHit, sfMiss, sl, slFail, lc] = await Promise.all([
         cnt({ event: "record_trade" }),
         cnt({ event: "sub_authorize", result: "accept" }),
         cnt({ event: "sub_authorize", result: "reject" }),
@@ -136,6 +137,9 @@ exports.main = async (event) => {
         cnt({ event: "search_fund" }),
         cnt({ event: "search_fund", hit: true }),
         cnt({ event: "search_fund", hit: false }),
+        cnt({ event: "share_landing" }),
+        cnt({ event: "share_landing", err: "card_fail" }),
+        cnt({ event: "landing_convert" }),
       ]);
       const searchTotal = sfHit.total + sfMiss.total;
       return { code: 0, data: {
@@ -146,6 +150,7 @@ exports.main = async (event) => {
           sub_authorize: { accept: subA.total, reject: subR.total, fail: subF.total, dismiss: subD.total },
           share: sh.total,
           search_fund: { total: searchTotal, hit: sfHit.total, miss: sfMiss.total, hitRate: searchTotal ? +((sfHit.total / searchTotal) * 100).toFixed(1) : null },
+          share_landing: { total: sl.total, cardFail: slFail.total, arrived: Math.max(sl.total - slFail.total, 0), convert: lc.total },
         },
       } };
     }

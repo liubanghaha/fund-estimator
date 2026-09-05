@@ -171,11 +171,16 @@ Page({
       if (ch) {
         this.setData({ entryChannel: ch });
         api.opsShare("trackVisit", { channelId: ch }).catch(() => {});
+        // 渠道落地埋点：服务端 trackVisit 计数保留，此条补客户端上下文（时段/会话/场景值）
+        track.shareLanding({ src: "promo_channel", channelId: ch });
       }
     }
     // 分享转发落地（path 带 share=令牌）
     if (options.share) {
-      this._loadShareCard(String(options.share).slice(0, 32));
+      const shareToken = String(options.share).slice(0, 32);
+      this._loadShareCard(shareToken);
+      // 分享卡落地（漏斗第一环）：到达口径，卡片加载结果异步补埋 err=card_fail
+      track.shareLanding({ src: "share_token", token: shareToken });
     }
     // 推送落地追踪已上移 app.js（收益页/详情页落地也能追踪），此处仅保留首页直落场景
     if (options.src === "push" && options.lid) {
@@ -199,8 +204,13 @@ Page({
             fundNames: d.fundNames || [],
           },
         });
+      } else {
+        // 令牌失效等业务失败：横幅不出现，漏斗上必流失，单独标记供失败率统计
+        track.shareLanding({ src: "share_token", token, err: "card_fail" });
       }
-    } catch (e) { /* 链接失效/网络异常，静默不打扰 */ }
+    } catch (e) {
+      track.shareLanding({ src: "share_token", token, err: "card_fail" }); // 链接失效/网络异常
+    }
   },
 
   onCloseShareLanding() {
@@ -209,6 +219,8 @@ Page({
 
   // 分享落地引导：未登录先登录，已登录去搜索页添加持仓
   onAddMyHolding() {
+    // 落地转化（漏斗第二环）：isLoggedIn 区分"去登录"与"去搜索"两条转化路径
+    track.landingConvert({ cta: "add_holding", isLoggedIn: !!this.data.isLoggedIn });
     if (!this.data.isLoggedIn) {
       wx.navigateTo({ url: "/pages/login/index" });
       return;

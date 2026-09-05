@@ -96,6 +96,7 @@
           <text class="ops-channel-name">📋 事件计数（events 集合）</text>
         </view>
         <view class="ops-channel-tip">记一笔 {{trackReport.events.record_trade}} 条 · 分享确认 {{trackReport.events.share}} 次</view>
+        <view class="ops-channel-tip">落地漏斗：分享卡/渠道码到达 {{trackReport.events.share_landing.arrived}} 次（卡片失败 {{trackReport.events.share_landing.cardFail}}）· 横幅转化 {{trackReport.events.share_landing.convert}} 次</view>
         <view class="ops-channel-tip">订阅授权：接受 {{trackReport.events.sub_authorize.accept}} / 拒绝 {{trackReport.events.sub_authorize.reject}} / 失败 {{trackReport.events.sub_authorize.fail}} / 关闭引导 {{trackReport.events.sub_authorize.dismiss}}</view>
         <view class="ops-channel-tip">搜索：{{trackReport.events.search_fund.total}} 次，命中 {{trackReport.events.search_fund.hit}} 次（命中率 {{trackReport.events.search_fund.hitRate == null ? '--' : trackReport.events.search_fund.hitRate + '%'}}）</view>
         <view class="ops-tip" wx:if="{{!trackReport.events.record_trade && !trackReport.events.share && !trackReport.events.search_fund.total && !trackReport.events.sub_authorize.accept}}">窗口期内 events 无数据（新埋点需发版后才开始收集）</view>
