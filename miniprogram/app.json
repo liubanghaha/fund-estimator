@@ -34,7 +34,7 @@
     "backgroundColor": "#F5F5F5",
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTitleText": "韭菜估值宝·我的持仓",
+    "navigationBarTitleText": "韭菜估值宝·持仓",
     "navigationBarTextStyle": "black"
   },
   "tabBar": {
@@ -44,7 +44,7 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "我的持仓"
+        "text": "持仓"
       },
       {
         "pagePath": "pages/market/index",
