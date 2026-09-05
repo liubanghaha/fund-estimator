@@ -7,7 +7,8 @@
     "pages/add-holding/index",
     "pages/adjust-holding/index",
     "pages/login/index",
-    "pages/ops/index"
+    "pages/ops/index",
+    "pages/market/index"
   ],
   "subpackages": [
     {
@@ -43,6 +44,10 @@
       {
         "pagePath": "pages/index/index",
         "text": "我的持仓"
+      },
+      {
+        "pagePath": "pages/market/index",
+        "text": "行情"
       },
       {
         "pagePath": "pages/watchlist/index",

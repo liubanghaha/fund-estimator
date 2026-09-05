@@ -1,0 +1,44 @@
+/* 行情中心 V1：市场概览 + 持仓行业高亮 + 核心指数 */
+.page{min-height:100vh;background:#F6F6F6;padding:20rpx 24rpx 40rpx;box-sizing:border-box}
+.mk-card{background:#FFF;border-radius:20rpx;padding:28rpx 24rpx;margin-bottom:20rpx}
+.mk-sec-title{font-size:28rpx;font-weight:700;color:#333;margin-bottom:20rpx}
+.mk-sec-note{font-size:20rpx;color:#BBB;font-weight:400;margin-left:12rpx}
+.mk-loading{padding:120rpx 0;text-align:center}
+.mk-loading-text{font-size:26rpx;color:#BBB}
+.mk-updated{font-size:20rpx;color:#CCC;text-align:center;padding-top:16rpx}
+
+/* 涨跌色（A 股惯例：红涨绿跌，与全站一致） */
+.up{color:#E4393C}
+.down{color:#2E8B57}
+.dim{color:#BBB}
+
+/* ===== 市场概览 ===== */
+.ov-amount-row{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24rpx}
+.ov-amount-num{font-size:52rpx;font-weight:700;color:#333;line-height:1.2}
+.ov-amount-label{font-size:22rpx;color:#BBB;margin-top:4rpx}
+.ov-split{display:flex;gap:28rpx}
+.ov-split-item{display:flex;flex-direction:column;align-items:flex-end}
+.ov-split-label{font-size:20rpx;color:#BBB}
+.ov-split-val{font-size:26rpx;color:#555;font-weight:600}
+.ov-breadth-nums{display:flex;justify-content:space-between;font-size:24rpx;margin-bottom:12rpx}
+.ov-bar{display:flex;height:16rpx;border-radius:8rpx;overflow:hidden;background:#EEE}
+.ov-bar-up{background:#E4393C;transition:width .4s}
+.ov-bar-down{background:#2E8B57;transition:width .4s}
+
+/* ===== 行业板块横滑 ===== */
+.sec-scroll{white-space:nowrap}
+.sec-card{display:inline-block;vertical-align:top;width:240rpx;margin-right:16rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8}
+.sec-card.up-bg{background:rgba(228,57,60,.07)}
+.sec-card.down-bg{background:rgba(46,139,87,.08)}
+.sec-card.mine{border:2rpx solid var(--primary, #E4393C)}
+.sec-name{font-size:26rpx;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec-mine-tag{display:inline-block;margin-left:8rpx;font-size:18rpx;color:#FFF;background:var(--primary, #E4393C);border-radius:6rpx;padding:2rpx 8rpx;vertical-align:2rpx}
+.sec-rate{font-size:34rpx;font-weight:700;margin-top:10rpx}
+.sec-sub{font-size:20rpx;color:#999;margin-top:8rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== 核心指数横滑 ===== */
+.idx-scroll{white-space:nowrap}
+.idx-card{display:inline-block;vertical-align:top;min-width:200rpx;margin-right:16rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8}
+.idx-name{font-size:24rpx;color:#666}
+.idx-price{font-size:34rpx;font-weight:700;margin-top:8rpx}
+.idx-rate{font-size:24rpx;margin-top:4rpx}

@@ -1,0 +1,66 @@
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="mk-loading"><text class="mk-loading-text">加载中...</text></view>
+
+  <!-- 加载失败 -->
+  <view wx:elif="{{loadError}}" class="mk-loading">
+    <text class="mk-loading-text">行情加载失败，下拉重试</text>
+  </view>
+
+  <block wx:else>
+    <!-- 市场概览：两市成交额 + 涨跌家数（数据陈述） -->
+    <view class="mk-card">
+      <view class="mk-sec-title">市场概览</view>
+      <view class="ov-amount-row">
+        <view class="ov-amount">
+          <view class="ov-amount-num">{{amountText}}</view>
+          <view class="ov-amount-label">两市成交额</view>
+        </view>
+        <view class="ov-split">
+          <view class="ov-split-item"><text class="ov-split-label">沪市</text><text class="ov-split-val">{{shAmountText}}</text></view>
+          <view class="ov-split-item"><text class="ov-split-label">深市</text><text class="ov-split-val">{{szAmountText}}</text></view>
+        </view>
+      </view>
+      <view class="ov-breadth">
+        <view class="ov-breadth-nums">
+          <text class="up">上涨 {{overview.up || 0}}</text>
+          <text class="dim">平 {{overview.flat || 0}}</text>
+          <text class="down">下跌 {{overview.down || 0}}</text>
+        </view>
+        <view class="ov-bar">
+          <view class="ov-bar-up" style="width:{{upPct}}%"></view>
+          <view class="ov-bar-down" style="width:{{downPct}}%"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 行业板块：登录用户持仓行业置顶 -->
+    <view wx:if="{{sectors.length}}" class="mk-card">
+      <view class="mk-sec-title">{{mineCount ? '你的持仓行业今日表现' : '行业板块表现'}}<text class="mk-sec-note">数据陈述，仅供参考</text></view>
+      <scroll-view scroll-x class="sec-scroll" enable-flex>
+        <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{sectors}}" wx:key="code">
+          <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
+          <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
+          <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
+          <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 核心指数 -->
+    <view class="mk-card">
+      <view class="mk-sec-title">核心指数</view>
+      <scroll-view scroll-x class="idx-scroll" enable-flex>
+        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code">
+          <view class="idx-name">{{item.name}}</view>
+          <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
+          <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
+        </view>
+      </scroll-view>
+      <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+    </view>
+
+    <!-- 空数据 -->
+    <view wx:if="{{emptyData}}" class="mk-loading"><text class="mk-loading-text">行情数据暂不可用，请稍后再试</text></view>
+  </block>
+</view>
