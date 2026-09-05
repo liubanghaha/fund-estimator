@@ -24,7 +24,7 @@
 .ops-stat-num{font-size:40rpx;font-weight:700}
 .ops-stat-num.low{color:#1FA84C}
 .ops-stat-num.mid{color:#E6A23C}
-.ops-stat-num.high{color:#E4393C}
+.ops-stat-num.high{color:var(--up)}
 .ops-stat-label{font-size:24rpx;color:#999;margin-top:6rpx}
 
 .ops-briefing-text{background:#F7F7F7;border-radius:12rpx;padding:24rpx;font-size:26rpx;color:#444;line-height:1.8;white-space:pre-wrap;margin-bottom:24rpx}
@@ -42,5 +42,5 @@
 .ops-channel-actions{display:flex;gap:16rpx}
 .ops-mini-btn{flex:1;height:64rpx;line-height:64rpx;font-size:26rpx;border-radius:32rpx;text-align:center;padding:0;margin:0}
 .ops-mini-btn.primary{color:var(--primary);background:var(--primary-bg)}
-.ops-mini-btn.danger{color:#E4393C;background:#FDECEC}
+.ops-mini-btn.danger{color:var(--up);background:#FDECEC}
 .ops-channel-tip{font-size:20rpx;color:#CCC;text-align:center;margin-top:12rpx}

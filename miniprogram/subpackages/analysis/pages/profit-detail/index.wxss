@@ -25,17 +25,17 @@
 .summary-item.active{background:rgba(25,118,210,.08)}
 .summary-item.active .summary-label{color:var(--primary);font-weight:600}
 .summary-item.active .summary-value{color:#333}
-.summary-item.active .summary-value.up{color:#E4393C}
+.summary-item.active .summary-value.up{color:var(--up)}
 .summary-item.active .summary-value.down{color:#2E8B57}
 .summary-label{font-size:20rpx;color:#999;margin-bottom:4rpx}
 .summary-value{font-size:28rpx;font-weight:600;color:#333}
-.summary-value.up{color:#E4393C}
+.summary-value.up{color:var(--up)}
 .summary-value.down{color:#2E8B57}
 .summary-rate{font-size:18rpx;color:#999;margin-top:2rpx}
-.summary-rate.up{color:#E4393C}
+.summary-rate.up{color:var(--up)}
 .summary-rate.down{color:#2E8B57}
 .summary-item.active .summary-rate{color:var(--primary)}
-.summary-item.active .summary-rate.up{color:#E4393C}
+.summary-item.active .summary-rate.up{color:var(--up)}
 .summary-item.active .summary-rate.down{color:#2E8B57}
 
 .chart-card{background:#FFF;margin:16rpx 24rpx;border-radius:var(--radius-card);padding:24rpx 16rpx 16rpx}
@@ -70,7 +70,7 @@
 .day-cell.empty .day-num{font-size:20rpx;color:#CCC}
 .day-cell.up .day-num,.day-cell.down .day-num{font-size:26rpx;color:#333;font-weight:500}
 .day-num{font-size:20rpx;color:#CCC;margin-bottom:2rpx}
-.day-profit.up{color:#E4393C}
+.day-profit.up{color:var(--up)}
 .day-profit.down{color:#2E8B57}
 
 /* 月网格 */
@@ -79,7 +79,7 @@
 .month-cell.empty{opacity:.25}
 .month-name{font-size:26rpx;color:#333;margin-bottom:8rpx}
 .month-profit{font-size:24rpx;font-weight:500}
-.month-profit.up{color:#E4393C}
+.month-profit.up{color:var(--up)}
 .month-profit.down{color:#2E8B57}
 .empty-text{font-size:24rpx;color:#CCC}
 
@@ -89,11 +89,11 @@
 .year-row:last-child{border-bottom:none}
 .year-label{font-size:30rpx;font-weight:500;color:#333}
 .year-profit{font-size:30rpx;font-weight:600}
-.year-profit.up{color:#E4393C}
+.year-profit.up{color:var(--up)}
 .year-profit.down{color:#2E8B57}
 
 /* 收盘播报订阅引导条 */
 .brief-banner{display:flex;align-items:center;margin:16rpx 24rpx 0;padding:16rpx 20rpx;background:#FFF7E6;border-radius:12rpx}
 .brief-banner-text{flex:1;font-size:24rpx;color:#8A6116}
-.brief-banner-btn{margin:0 16rpx;padding:8rpx 26rpx;background:#E4393C;color:#fff;font-size:24rpx;border-radius:999rpx}
+.brief-banner-btn{margin:0 16rpx;padding:8rpx 26rpx;background:var(--primary);color:#fff;font-size:24rpx;border-radius:999rpx}
 .brief-banner-close{padding:0 8rpx;color:#C8A96A;font-size:34rpx;line-height:1}

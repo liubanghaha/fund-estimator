@@ -29,12 +29,12 @@
 .rc-del{position:absolute;top:0;right:20rpx;font-size:28rpx;color:#CCC;padding:8rpx;z-index:1}
 .rc-main{display:flex;align-items:center;gap:16rpx}
 .rc-sign{font-size:44rpx;font-weight:700;width:48rpx;text-align:center;flex-shrink:0}
-.rc-sign.up{color:#E4393C}
+.rc-sign.up{color:var(--up)}
 .rc-sign.down{color:#2E8B57}
 .rc-info{flex:1;min-width:0}
 .rc-name-row{display:flex;align-items:center;gap:12rpx;margin-bottom:6rpx}
 .rc-name{font-size:28rpx;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rc-no-match{font-size:20rpx;color:#E4393C;background:rgba(228,57,60,.08);padding:2rpx 10rpx;border-radius:6rpx;flex-shrink:0}
+.rc-no-match{font-size:20rpx;color:var(--up);background:rgba(228,57,60,.08);padding:2rpx 10rpx;border-radius:6rpx;flex-shrink:0}
 .rc-date{font-size:22rpx;color:#AAA}
 .rc-amount{font-size:30rpx;font-weight:700;color:#333;flex-shrink:0}
 .rc-amount-input{font-size:24rpx;color:#333;background:#F5F5F5;border-radius:8rpx;padding:6rpx 12rpx;width:160rpx;text-align:right;flex-shrink:0}

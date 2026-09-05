@@ -15,7 +15,7 @@
 .health-right{flex:1;padding-left:24rpx}
 .health-grade{font-size:28rpx;font-weight:600;color:#333;margin-bottom:6rpx}
 .health-grade.up{color:#2E8B57}
-.health-grade.down{color:#E4393C}
+.health-grade.down{color:var(--up)}
 .health-detail{font-size:24rpx;color:#666;margin-bottom:12rpx}
 .health-bars{}
 .health-bar-item{display:flex;align-items:center;margin-top:8rpx}
@@ -44,7 +44,7 @@
 .shared-name{font-size:26rpx;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shared-arrow{font-size:18rpx;color:#CCC;margin-left:8rpx;flex-shrink:0;transition:transform .2s}
 .shared-arrow.open{transform:rotate(180deg)}
-.shared-count{font-size:22rpx;color:#E4393C;background:#FFF0F0;padding:4rpx 12rpx;border-radius:8rpx;flex-shrink:0;margin-left:12rpx}
+.shared-count{font-size:22rpx;color:var(--up);background:#FFF0F0;padding:4rpx 12rpx;border-radius:8rpx;flex-shrink:0;margin-left:12rpx}
 .shared-funds{margin:0 0 12rpx 8rpx;padding:8rpx 16rpx;background:#FAFAFA;border-radius:8rpx}
 .shared-fund-item{display:flex;justify-content:space-between;padding:8rpx 0;border-bottom:1rpx solid #F0F0F0}
 .shared-fund-item:last-child{border-bottom:none}
@@ -60,17 +60,17 @@
 .corr-right{flex:1;display:flex;align-items:center;margin-left:12rpx}
 .corr-bar-track{flex:1;height:8rpx;background:#F0F0F0;border-radius:4rpx;overflow:hidden;margin-right:12rpx}
 .corr-bar-fill{height:100%;border-radius:4rpx}
-.corr-bar-fill.high{background:#E4393C}
+.corr-bar-fill.high{background:var(--up)}
 .corr-bar-fill.mid{background:#FF9800}
 .corr-bar-fill.low{background:#4CAF50}
 .corr-val{font-size:28rpx;font-weight:700;width:72rpx;text-align:right;flex-shrink:0}
-.corr-val.high{color:#E4393C}
+.corr-val.high{color:var(--up)}
 .corr-val.mid{color:#FF9800}
 .corr-val.low{color:#4CAF50}
-.corr-tag{flex-shrink:0;margin-left:8rpx;padding:2rpx 10rpx;font-size:20rpx;background:#FFF0F0;color:#E4393C;border-radius:6rpx}
+.corr-tag{flex-shrink:0;margin-left:8rpx;padding:2rpx 10rpx;font-size:20rpx;background:#FFF0F0;color:var(--up);border-radius:6rpx}
 .legend{display:flex;justify-content:center;gap:20rpx;margin-top:16rpx;padding-top:12rpx;border-top:1rpx solid #F5F5F5}
 .legend-item{display:flex;align-items:center;gap:6rpx;font-size:20rpx;color:#999}
 .legend-dot{width:14rpx;height:14rpx;border-radius:3rpx}
-.legend-dot.high{background:#E4393C}
+.legend-dot.high{background:var(--up)}
 .legend-dot.mid{background:#FF9800}
 .legend-dot.low{background:#4CAF50}

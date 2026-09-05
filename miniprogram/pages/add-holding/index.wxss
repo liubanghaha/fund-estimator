@@ -15,7 +15,7 @@
 .preview-img{width:100%;display:block}
 .preview-actions{display:flex;justify-content:space-between;align-items:center;padding:20rpx 28rpx}
 .preview-tip{font-size:24rpx;color:#999}
-.preview-remove{font-size:24rpx;color:#E4393C}
+.preview-remove{font-size:24rpx;color:var(--up)}
 
 /* ========== 基金卡片列表 ========== */
 .cards-header{margin-bottom:16rpx}
@@ -29,7 +29,7 @@
 .card-name{font-size:28rpx;font-weight:600;color:#1A1A1A;margin:4rpx 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-nums{display:flex;gap:20rpx;margin-top:6rpx}
 .card-mv{font-size:22rpx;color:#666}
-.card-hr{font-size:22rpx;color:#E4393C}
+.card-hr{font-size:22rpx;color:var(--up)}
 
 .card-right{flex-shrink:0;margin-left:16rpx;display:flex;flex-direction:column;gap:10rpx;align-items:flex-end}
 .card-save{font-size:22rpx;color:#FFF;background:var(--primary);padding:8rpx 24rpx;border-radius:28rpx}
@@ -62,5 +62,5 @@
 .action-btn{flex:1;height:84rpx;line-height:84rpx;font-size:28rpx;border-radius:42rpx;text-align:center;padding:0}
 .sync-buy,.sync-sell{background:#FFF;color:#333;border:2rpx solid #E5E5E5}
 .update-btn{background:var(--primary);color:#FFF}
-.delete-btn{background:#E4393C;color:#FFF}
+.delete-btn{background:var(--up);color:#FFF}
 .adjust-btn{background:#2E8B57;color:#FFF}

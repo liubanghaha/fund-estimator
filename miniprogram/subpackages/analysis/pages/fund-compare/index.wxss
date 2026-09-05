@@ -16,7 +16,7 @@
 .fund-code{font-size:24rpx;color:#999;margin-bottom:10rpx}
 .fund-nav{font-size:26rpx;color:#333;margin-bottom:4rpx}
 .fund-rate{font-size:32rpx;font-weight:600;color:#999}
-.fund-rate.up{color:#E4393C}
+.fund-rate.up{color:var(--up)}
 .fund-rate.down{color:#2E8B57}
 .vs-divider{font-size:28rpx;font-weight:700;color:#BBB;padding:0 16rpx}
 .fund-col-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2rpx dashed #DDD;border-radius:16rpx;padding:32rpx 0;min-height:160rpx}
@@ -61,7 +61,7 @@
 .cmp-header-row .cmp-val{font-size:24rpx;color:#999;font-weight:500}
 .cmp-label{flex:1;font-size:26rpx;color:#666}
 .cmp-val{flex:1;text-align:center;font-size:26rpx;color:#333;font-weight:500}
-.cmp-val.up{color:#E4393C}
+.cmp-val.up{color:var(--up)}
 .cmp-val.down{color:#2E8B57}
 
 .chart-card{background:#FFF;padding:12rpx 0}

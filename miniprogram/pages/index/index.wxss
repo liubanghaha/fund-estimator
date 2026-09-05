@@ -40,7 +40,7 @@
 .batch-top-title{font-size:28rpx;font-weight:600;color:#333}
 .batch-top-right{display:flex;gap:24rpx}
 .batch-top-link{font-size:26rpx;color:var(--primary)}
-.batch-top-delete{font-size:26rpx;color:#E4393C}
+.batch-top-delete{font-size:26rpx;color:var(--up)}
 
 /* 快捷操作 */
 .quick-actions{display:flex;justify-content:space-around;padding:22rpx 0;background:#FFF;border-radius:12rpx 12rpx 0 0;margin:0 4rpx;border-bottom:1rpx solid #F5F5F5}
@@ -70,7 +70,7 @@
 .health-label{font-size:18rpx;color:#BBB}
 .health-grade{font-size:26rpx;font-weight:600;color:#333;margin-top:8rpx}
 .health-grade.up{color:#2E8B57}
-.health-grade.down{color:#E4393C}
+.health-grade.down{color:var(--up)}
 .health-detail{flex:1;padding-left:24rpx}
 .health-detail-text{font-size:24rpx;color:#666;line-height:1.6}
 
@@ -97,7 +97,7 @@
 .t-row{display:flex;align-items:stretch;border-bottom:1rpx solid #EFEFEF;background:#FFF}
 .t-head{border-radius:0}
 .t-row:last-child{border-bottom:none;border-radius:0 0 var(--radius-card) var(--radius-card)}
-.t-row.selected{outline:3rpx solid #E4393C;outline-offset:-3rpx}
+.t-row.selected{outline:3rpx solid var(--primary);outline-offset:-3rpx}
 .t-cell{padding:18rpx 16rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
 .t-head .t-cell{font-size:22rpx;color:#BBB;justify-content:center;align-items:flex-end;flex-direction:row;gap:4rpx;white-space:nowrap}
 .t-name{width:300rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1;box-shadow:2rpx 0 4rpx rgba(0,0,0,.06)}
@@ -110,11 +110,11 @@
 .t-sub{font-size:24rpx;color:#999;margin-top:6rpx}
 .t-cell.active{color:var(--primary);font-weight:500}
 .sort-arrow{margin-left:4rpx;font-size:20rpx}
-.up{color:#E4393C}
+.up{color:var(--up)}
 .down{color:#2E8B57}
 .t-low{color:#2E8B57}
 .t-mid{color:#F59E0B}
-.t-high{color:#E4393C}
+.t-high{color:var(--up)}
 .t-nodata{color:#BBB}
 
 /* 估值表头 */
@@ -274,10 +274,10 @@
 
 /* 组合摘要条：涨跌家数 + 归因 + 健康分 */
 .combo-summary{display:flex;align-items:center;flex-wrap:wrap;gap:12rpx;margin:12rpx 24rpx 0;padding:12rpx 20rpx;background:#FFF7F0;border-radius:12rpx;font-size:22rpx;color:#666}
-.cs-up{color:#E4393C;font-weight:500}
+.cs-up{color:var(--up);font-weight:500}
 .cs-down{color:#2E8B57;font-weight:500}
 .cs-item{color:#888}
-.health-badge{margin-left:auto;padding:6rpx 18rpx;background:#FDECEC;color:#E4393C;border-radius:999rpx;font-size:22rpx;font-weight:500}
+.health-badge{margin-left:auto;padding:6rpx 18rpx;background:#FDECEC;color:var(--up);border-radius:999rpx;font-size:22rpx;font-weight:500}
 .industry-tag{background:#EEF3FB;color:#4A6FA5}
 
 /* 新版本功能提示弹窗（与我的页版本日志同款） */

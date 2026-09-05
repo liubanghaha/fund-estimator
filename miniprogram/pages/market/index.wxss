@@ -9,7 +9,7 @@
 .mk-updated{font-size:20rpx;color:#CCC;text-align:center;padding-top:16rpx}
 
 /* 涨跌色（A 股惯例：红涨绿跌，与全站一致） */
-.up{color:#E4393C}
+.up{color:var(--up)}
 .down{color:#2E8B57}
 .dim{color:#BBB}
 
@@ -23,7 +23,7 @@
 .ov-split-val{font-size:26rpx;color:#555;font-weight:600}
 .ov-breadth-nums{display:flex;justify-content:space-between;font-size:24rpx;margin-bottom:12rpx}
 .ov-bar{display:flex;height:16rpx;border-radius:8rpx;overflow:hidden;background:#EEE}
-.ov-bar-up{background:#E4393C;transition:width .4s}
+.ov-bar-up{background:var(--up);transition:width .4s}
 .ov-bar-down{background:#2E8B57;transition:width .4s}
 
 /* ===== 行业板块：两列网格，每页 6 个，左右翻页 ===== */
@@ -34,13 +34,13 @@
 .sec-dots{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;align-items:center;z-index:5}
 .sec-dot{width:30rpx;height:30rpx;display:flex;align-items:center;justify-content:center}
 .sec-dot::before{content:'';width:14rpx;height:14rpx;border-radius:50%;background:rgba(0,0,0,.15)}
-.sec-dot.active::before{background:var(--primary,#E4393C)}
+.sec-dot.active::before{background:var(--primary,var(--up))}
 .sec-card{width:calc((100% - 14rpx)/2);margin-bottom:14rpx;border-radius:12rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8;min-height:170rpx}
 .sec-card.up-bg{background:rgba(228,57,60,.07)}
 .sec-card.down-bg{background:rgba(46,139,87,.08)}
-.sec-card.mine{border:2rpx solid var(--primary, #E4393C)}
+.sec-card.mine{border:2rpx solid var(--primary, var(--up))}
 .sec-name{font-size:26rpx;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sec-mine-tag{display:inline-block;margin-left:8rpx;font-size:18rpx;color:#FFF;background:var(--primary, #E4393C);border-radius:6rpx;padding:2rpx 8rpx;vertical-align:2rpx}
+.sec-mine-tag{display:inline-block;margin-left:8rpx;font-size:18rpx;color:#FFF;background:var(--primary, var(--up));border-radius:6rpx;padding:2rpx 8rpx;vertical-align:2rpx}
 .sec-rate{font-size:34rpx;font-weight:700;margin-top:10rpx}
 .sec-sub{font-size:20rpx;color:#999;margin-top:8rpx;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -56,10 +56,10 @@
 .mk-sec-title-row .mk-sec-title{margin-bottom:0}
 .sort-chips{display:flex;gap:10rpx}
 .sort-chip{font-size:20rpx;color:#888;background:#F2F2F2;border-radius:20rpx;padding:6rpx 18rpx}
-.sort-chip.active{color:#FFF;background:var(--primary,#E4393C);font-weight:600}
+.sort-chip.active{color:#FFF;background:var(--primary,var(--up));font-weight:600}
 
 /* 指数分类切换（A/港/美/亚太） */
 .idx-tabs{display:flex;gap:14rpx;margin-bottom:18rpx}
 .idx-tab{font-size:24rpx;color:#666;background:#F2F2F2;border-radius:26rpx;padding:8rpx 26rpx}
-.idx-tab.active{color:#FFF;background:var(--primary,#E4393C);font-weight:600}
+.idx-tab.active{color:#FFF;background:var(--primary,var(--up));font-weight:600}
 .idx-flow{font-size:20rpx;margin-top:6rpx;color:#999;white-space:nowrap}
