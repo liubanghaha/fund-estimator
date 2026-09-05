@@ -76,7 +76,14 @@ Page({
       timeShort: (it.time || "").slice(11, 16),
       sourceText: SOURCE_TEXT[it.source] || "快讯",
       categoryText: CAT_TEXT[it.category] || "综合",
+      // 超过约 4 行长度（正文字号 27rpx、每行约 20 字）的条目提供展开/收起
+      long: (it.content || "").length > 75,
+      _open: false,
     }));
+  },
+  onToggleText(e) {
+    const idx = e.currentTarget.dataset.index;
+    this.setData({ [`displayItems[${idx}]._open`]: !this.data.displayItems[idx]._open });
   },
   // 只看重要
   _applyFilter() {

@@ -13,10 +13,11 @@
       <view class="news-item" wx:for="{{displayItems}}" wx:key="id">
         <view class="news-time">{{item.timeShort}}</view>
         <view class="news-body {{item.important ? 'important' : ''}}">
-          <view class="news-text">
+          <view class="news-text {{item.long && !item._open ? 'clamp' : ''}}">
             <text wx:if="{{item.important}}" class="news-important-tag">重要</text>
             {{item.content}}
           </view>
+          <view wx:if="{{item.long}}" class="news-toggle" data-index="{{index}}" bind:tap="onToggleText">{{item._open ? '收起 ▴' : '展开 ▾'}}</view>
           <view class="news-meta">
             <text class="news-source">{{item.sourceText}}</text>
             <text class="news-cat">{{item.categoryText}}</text>
