@@ -18,6 +18,11 @@ Page({
     trackDays: 7,
     trackLoading: false,
     trackReport: null,
+    // 推送灰度看板
+    pushDaysIdx: 0,
+    pushDays: 7,
+    pushLoading: false,
+    pushReport: null,
   },
 
   onShow() {
@@ -90,6 +95,28 @@ Page({
       wx.showToast({ title: "生成失败", icon: "none" });
     } finally {
       this.setData({ trackLoading: false });
+    }
+  },
+
+  // ===== 推送灰度看板 =====
+  onPushDaysChange(e) {
+    const idx = +e.detail.value;
+    this.setData({ pushDaysIdx: idx, pushDays: [7, 14, 30, 90][idx] || 7, pushReport: null });
+  },
+
+  async onGenPushReport() {
+    this.setData({ pushLoading: true });
+    try {
+      const res = await api.opsTool("pushReport", { days: this.data.pushDays });
+      if (res.result && res.result.code === 0) {
+        this.setData({ pushReport: res.result.data });
+      } else {
+        wx.showToast({ title: (res.result && res.result.msg) || "生成失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "生成失败", icon: "none" });
+    } finally {
+      this.setData({ pushLoading: false });
     }
   },
 

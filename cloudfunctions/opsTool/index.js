@@ -155,6 +155,74 @@ exports.main = async (event) => {
       } };
     }
 
+    // ===== 推送灰度看板（P0-2：额度结余 / 打开率 / 取消订阅率）=====
+    if (action === "pushReport") {
+      if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
+      const days = Math.min(Math.max(parseInt(event.days) || 7, 1), 90);
+      const since = Date.now() - days * 86400000;
+      const _ = db.command;
+
+      // 1) 额度池快照：subscriptions（一次授权=+1，发送-1，43101 归零；收盘小结/净值播报/提醒共用一池）
+      const subs = await readAll("subscriptions", 5000);
+      const pool = subs.filter((s) => !s.scene || s.scene === "closing_brief");
+      const quotaSum = pool.reduce((a, s) => a + (s.quota || 0), 0);
+
+      // 2) 窗口内 push_logs 分场景聚合（scene: closing_brief/nav_brief/weekly_brief/pe_alert/rate_alert）
+      const logs = [];
+      {
+        const PAGE = 100;
+        let skip = 0;
+        while (skip < 20000) {
+          const res = await db.collection("push_logs").where({ sentAt: _.gte(since) }).skip(skip).limit(PAGE).get();
+          logs.push(...(res.data || []));
+          if ((res.data || []).length < PAGE) break;
+          skip += PAGE;
+        }
+      }
+      const byScene = {};
+      const sentUsers = new Set(), unsubUsers = new Set();
+      for (const log of logs) {
+        const sc = log.scene || "closing_brief";
+        const g = byScene[sc] || (byScene[sc] = { sent: 0, failed: 0, opened: 0, unsub: 0 });
+        if (log.status === "sent") { g.sent++; sentUsers.add(log._openid); }
+        else if (log.status === "failed") {
+          g.failed++;
+          // 43101 = 用户已取消订阅（发送失败，本地额度已同步归零）
+          if (String(log.errMsg || "").indexOf("43101") !== -1) { g.unsub++; unsubUsers.add(log._openid); }
+        }
+        if (log.openedAt) g.opened++;
+      }
+      const scenes = Object.keys(byScene).map((k) => ({
+        scene: k,
+        sent: byScene[k].sent,
+        opened: byScene[k].opened,
+        openRate: byScene[k].sent ? +((byScene[k].opened / byScene[k].sent) * 100).toFixed(1) : null,
+        unsub: byScene[k].unsub,
+      })).sort((a, b) => b.sent - a.sent);
+      const sentTotal = scenes.reduce((a, s) => a + s.sent, 0);
+      const openedTotal = scenes.reduce((a, s) => a + s.opened, 0);
+
+      return { code: 0, data: {
+        days,
+        quota: {
+          usersTotal: pool.length,
+          usersWithQuota: pool.filter((s) => (s.quota || 0) > 0).length,
+          quotaSum, // 额度结余（灰度门禁：结余为正）
+          avgPerUser: pool.length ? +(quotaSum / pool.length).toFixed(2) : 0,
+        },
+        opens: {
+          sent: sentTotal,
+          opened: openedTotal,
+          openRate: sentTotal ? +((openedTotal / sentTotal) * 100).toFixed(1) : null, // 灰度门禁：≥15%
+          scenes,
+        },
+        unsub: {
+          users: unsubUsers.size, // 窗口内 43101 去重用户数
+          rate: sentUsers.size ? +((unsubUsers.size / sentUsers.size) * 100).toFixed(1) : null,
+        },
+      } };
+    }
+
     // ===== 温度简报 =====
     if (action === "briefing") {
       await ensureCollection("fund_temperatures");

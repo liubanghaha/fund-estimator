@@ -17,6 +17,7 @@
       <view class="ops-tab {{tab === 'briefing' ? 'active' : ''}}" bind:tap="onTab" data-tab="briefing">温度简报</view>
       <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道小程序码</view>
       <view class="ops-tab {{tab === 'track' ? 'active' : ''}}" bind:tap="onTab" data-tab="track">埋点周报</view>
+      <view class="ops-tab {{tab === 'push' ? 'active' : ''}}" bind:tap="onTab" data-tab="push">推送灰度</view>
     </view>
 
     <!-- ===== 温度简报 ===== -->
@@ -100,6 +101,48 @@
         <view class="ops-channel-tip">订阅授权：接受 {{trackReport.events.sub_authorize.accept}} / 拒绝 {{trackReport.events.sub_authorize.reject}} / 失败 {{trackReport.events.sub_authorize.fail}} / 关闭引导 {{trackReport.events.sub_authorize.dismiss}}</view>
         <view class="ops-channel-tip">搜索：{{trackReport.events.search_fund.total}} 次，命中 {{trackReport.events.search_fund.hit}} 次（命中率 {{trackReport.events.search_fund.hitRate == null ? '--' : trackReport.events.search_fund.hitRate + '%'}}）</view>
         <view class="ops-tip" wx:if="{{!trackReport.events.record_trade && !trackReport.events.share && !trackReport.events.search_fund.total && !trackReport.events.sub_authorize.accept}}">窗口期内 events 无数据（新埋点需发版后才开始收集）</view>
+      </block>
+    </view>
+
+    <!-- ===== 推送灰度看板 ===== -->
+    <view wx:if="{{tab === 'push'}}" class="ops-card">
+      <view class="ops-card-title">📨 推送灰度看板</view>
+      <view class="ops-card-desc">灰度三指标：额度结余为正 / 打开率 ≥15% / 取消订阅率。双条现状维持不增条。</view>
+      <view class="ops-add-row">
+        <picker mode="selector" range="{{[7, 14, 30, 90]}}" value="{{pushDaysIdx}}" bindchange="onPushDaysChange">
+          <button class="ops-mini-btn primary">近 {{pushDays}} 天 ▾</button>
+        </picker>
+        <button class="ops-add-btn" bind:tap="onGenPushReport" loading="{{pushLoading}}" disabled="{{pushLoading}}">生成看板</button>
+      </view>
+
+      <block wx:if="{{pushReport}}">
+        <!-- 额度池 -->
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">💳 额度池（一次授权 = 一条额度）</text>
+        </view>
+        <view class="ops-stats">
+          <view class="ops-stat"><view class="ops-stat-num {{pushReport.quota.quotaSum > 0 ? 'mid' : 'low'}}">{{pushReport.quota.quotaSum}}</view><view class="ops-stat-label">结余总条数</view></view>
+          <view class="ops-stat"><view class="ops-stat-num mid">{{pushReport.quota.usersWithQuota}}</view><view class="ops-stat-label">有额度用户</view></view>
+          <view class="ops-stat"><view class="ops-stat-num low">{{pushReport.quota.avgPerUser}}</view><view class="ops-stat-label">人均条数</view></view>
+        </view>
+        <view class="ops-tip">订阅用户共 {{pushReport.quota.usersTotal}} 人 · {{pushReport.quota.quotaSum > 0 ? '结余为正 ✓' : '⚠️ 结余为 0，先补额度引导'}}</view>
+
+        <!-- 打开率 -->
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">👁 打开率（push_logs 按场景）</text>
+        </view>
+        <view class="ops-stats">
+          <view class="ops-stat"><view class="ops-stat-num {{pushReport.opens.openRate >= 15 ? 'mid' : 'low'}}">{{pushReport.opens.openRate == null ? '--' : pushReport.opens.openRate + '%'}}</view><view class="ops-stat-label">整体打开率</view></view>
+          <view class="ops-stat"><view class="ops-stat-num mid">{{pushReport.opens.sent}}</view><view class="ops-stat-label">发送 {{pushReport.opens.sent}} 条</view></view>
+          <view class="ops-stat"><view class="ops-stat-num low">{{pushReport.opens.opened}}</view><view class="ops-stat-label">打开 {{pushReport.opens.opened}} 次</view></view>
+        </view>
+        <view class="ops-channel-tip" wx:for="{{pushReport.opens.scenes}}" wx:key="scene">{{item.scene}}：发 {{item.sent}} · 开 {{item.opened}}（{{item.openRate == null ? '--' : item.openRate + '%'}}）{{item.unsub ? ' · 取消 ' + item.unsub : ''}}</view>
+
+        <!-- 取消订阅 -->
+        <view class="ops-channel-head" style="margin-top:24rpx">
+          <text class="ops-channel-name">🚫 取消订阅（43101）</text>
+        </view>
+        <view class="ops-tip">窗口内 {{pushReport.unsub.users}} 人取消（占收到推送用户 {{pushReport.unsub.rate == null ? '--' : pushReport.unsub.rate + '%'}}）{{pushReport.unsub.rate != null && pushReport.unsub.rate > 5 ? ' · ⚠️ 退订率偏高，先减不增' : ''}}</view>
       </block>
     </view>
   </block>
