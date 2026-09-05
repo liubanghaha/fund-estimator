@@ -729,8 +729,10 @@ Page({
     const indexCode = this.data.compareIndex || '000001';
 
     // 盘中快照尚未产出（snapshotProfit 早盘首次跑需先补拉前日净值）：指数已就位但我的收益无数据。
-    // 轻拉一次快照（20 秒节流），绿线尽快出现——不等 15s 轮询兜底
-    if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length > 0 && this._isTradingNow()) {
+    // 只要"指数已就绪但快照为空"就轻拉一次快照（20 秒节流），让绿线尽快出现，不等 15s 轮询兜底。
+    // 注：原条件限于 _isTradingNow()，非盘中/缓存快照晚到时会先画出一条孤零零的指数蓝线，
+    //     与我的收益绿线错开 1~2 秒；放宽后两条线接近同步出现。
+    if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length > 0) {
       const now = Date.now();
       if (!this._snapRetryTs || now - this._snapRetryTs > 20000) {
         this._snapRetryTs = now;
@@ -762,7 +764,16 @@ Page({
       return;
     }
 
-    if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length === 0) return;
+    // 彻底同步：当天图首次渲染必须"快照(我的收益)+指数"都就绪，避免指数先到画出只有蓝线、
+    // 快照后到再补绿线的错开。未就绪时挂起等待（两路任一更新会再走 _draw）。
+    const hasSnap = (this._profitSnapshots || []).length > 0;
+    const hasIdx = (this._intradayRaw || []).length > 0;
+    if (!hasSnap || !hasIdx) {
+      // 兜底：挂起超过 3s 仍未双就绪 → 用已就绪的单一数据源渲染，避免空白（如非交易日无快照）
+      if (!this._todayRenderDeadline) this._todayRenderDeadline = Date.now() + 3000;
+      if (Date.now() < this._todayRenderDeadline) return;
+    }
+    this._todayRenderDeadline = 0;
     const data = this._buildIntradayData();
     this._renderToday(w, h, data, compareLabel);
   },
