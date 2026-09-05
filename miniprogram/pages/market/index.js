@@ -75,7 +75,7 @@ Page({
       return Promise.resolve();
     }
     this.setData({ loading: !cached, emptyData: false, loadError: false });
-    return Promise.all([this._fetchOverview(), this._fetchIndices(), this._fetchAllocation()]).then(([overviewRes, indexCards, allocation]) => {
+    return Promise.all([this._fetchOverview(), this._fetchIndices()]).then(([overviewRes, indexCards]) => {
       const now = Date.now();
       const flows = overviewRes ? (overviewRes.flows || {}) : (cached && cached.flows) || {};
       // 核心指数卡并入主力资金流（仅 A 股指数有此数据，港美指无）
@@ -88,7 +88,7 @@ Page({
         ts: now,
         overview: overviewRes ? overviewRes.overview : (cached && cached.overview) || null,
         sectors: overviewRes ? overviewRes.sectors : (cached && cached.sectors) || [],
-        allocation: allocation || (cached && cached.allocation) || null,
+        mineCount: overviewRes ? overviewRes.mineCount : (cached && cached.mineCount) || 0,
         flows,
         indexCards: cardsWithFlow,
         empty: !!(overviewRes && overviewRes.empty) && !indexCards.some((c) => c.price !== "--"),
@@ -103,15 +103,13 @@ Page({
 
   _render(cache) {
     const ov = cache.overview;
-    // 持仓行业单一数据源：getPortfolio 的 assetAllocation（资产分析页同源）匹配板块行情
-    const pinned = this._pinSectors(cache.sectors || [], cache.allocation);
     const data = {
       loading: false,
       loadError: false,
       emptyData: !!cache.empty,
       overview: ov,
-      sectors: pinned.sectors,
-      mineCount: pinned.mineCount,
+      sectors: cache.sectors || [],
+      mineCount: cache.mineCount || 0,
       indexCards: [],
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
@@ -180,42 +178,6 @@ Page({
       }
       return null;
     }).catch(() => null);
-  },
-
-  // 持仓行业来源：getPortfolio 轻量调用（资产分析页同参数同源），只取 assetAllocation
-  _fetchAllocation() {
-    return api.getPortfolio(0, { historyDays: 0, withNav60: false, withAnalysis: true }).then((res) => {
-      if (res && res.result && res.result.code === 0 && res.result.data) {
-        return res.result.data.assetAllocation || null;
-      }
-      return null;
-    }).catch(() => null);
-  },
-
-  // assetAllocation.items ↔ 东财板块名匹配（归一化剥 Ⅱ 后缀 + 前后缀容错），命中的置顶
-  _pinSectors(sectors, allocation) {
-    const items = ((allocation && allocation.items) || []).filter((i) => i.industry !== "其他");
-    if (!items.length || !sectors.length) return { sectors, mineCount: 0 };
-    const norm = (s) => String(s || "").replace(/\s+/g, "").replace(/[ⅠⅡⅢ]+$/, "");
-    const byNorm = {};
-    sectors.forEach((s) => { const k = norm(s.name); if (byNorm[k] == null) byNorm[k] = s; });
-    const mine = [];
-    const used = new Set();
-    items.forEach((it) => {
-      const k = norm(it.industry);
-      const hit = byNorm[k]
-        || sectors.find((x) => k.length >= 2 && norm(x.name).indexOf(k) === 0)
-        || sectors.find((x) => norm(x.name).length >= 2 && k.indexOf(norm(x.name)) === 0);
-      if (hit && !used.has(hit.code)) {
-        used.add(hit.code);
-        mine.push({ ...hit, name: it.industry, mine: true, weight: it.percent });
-      }
-    });
-    const rest = sectors
-      .filter((s) => !used.has(s.code))
-      .sort((a, b) => (b.changeRate != null ? b.changeRate : -999) - (a.changeRate != null ? a.changeRate : -999));
-    const displayRest = rest.length > 45 ? rest.slice(0, 30).concat(rest.slice(-15)) : rest;
-    return { sectors: mine.concat(displayRest), mineCount: mine.length };
   },
 
   // 核心指数：与首页 fetchIndices 同源同口径（腾讯日K → 东财客户端 → 云函数）
