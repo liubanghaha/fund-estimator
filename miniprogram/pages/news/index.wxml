@@ -14,7 +14,7 @@
           <view wx:if="{{item.long}}" class="news-toggle {{item._open ? 'open' : ''}}" data-index="{{index}}" bind:tap="onToggleText">▾</view>
         </view>
         <view class="news-body {{item.important ? 'important' : ''}}">
-          <view class="news-text {{item.long && !item._open ? 'clamp' : ''}}">
+          <view class="news-text {{item.long && !item._open ? 'clamp' : ''}}" data-index="{{index}}" bind:tap="onToggleText">
             <text wx:if="{{item.important}}" class="news-important-tag">重要</text>
             {{item.content}}
           </view>

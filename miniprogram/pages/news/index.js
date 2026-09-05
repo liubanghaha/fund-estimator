@@ -88,6 +88,7 @@ Page({
   },
   onToggleText(e) {
     const idx = e.currentTarget.dataset.index;
+    if (!this.data.displayItems[idx] || !this.data.displayItems[idx].long) return; // 短文本无展开态
     this.setData({ [`displayItems[${idx}]._open`]: !this.data.displayItems[idx]._open });
   },
   // 只看重要
