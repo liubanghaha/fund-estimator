@@ -8,22 +8,6 @@
   </view>
 
   <block wx:else>
-    <!-- 你的持仓行业（置顶模块，未登录/无匹配时不展示） -->
-    <view wx:if="{{minePages.length}}" class="mk-card">
-      <view class="mk-sec-title">你的持仓行业今日表现<text class="mk-sec-note">数据陈述，仅供参考</text></view>
-      <swiper class="sec-swiper" indicator-dots="{{minePages.length > 1}}" indicator-color="rgba(0,0,0,.12)" indicator-active-color="var(--primary,#E4393C)">
-        <swiper-item wx:for="{{minePages}}" wx:key="index" wx:for-item="page">
-          <view class="sec-grid">
-            <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} mine" wx:for="{{page}}" wx:key="code">
-              <view class="sec-name">{{item.name}}</view>
-              <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
-              <view class="sec-sub">{{item.weightText}}</view>
-            </view>
-          </view>
-        </swiper-item>
-      </swiper>
-    </view>
-
     <!-- 市场概览：两市成交额 + 涨跌家数（数据陈述） -->
     <view class="mk-card">
       <view class="mk-sec-title">市场概览</view>
@@ -50,16 +34,17 @@
       </view>
     </view>
 
-    <!-- 行业板块 -->
-    <view wx:if="{{marketPages.length}}" class="mk-card">
-      <view class="mk-sec-title">行业板块表现<text class="mk-sec-note">数据陈述，仅供参考</text></view>
-      <swiper class="sec-swiper" indicator-dots="{{marketPages.length > 1}}" indicator-color="rgba(0,0,0,.12)" indicator-active-color="var(--primary,#E4393C)">
-        <swiper-item wx:for="{{marketPages}}" wx:key="index" wx:for-item="page">
+    <!-- 行业板块：登录用户持仓行业置顶 -->
+    <view wx:if="{{sectors.length}}" class="mk-card">
+      <view class="mk-sec-title">{{mineCount ? '你的持仓行业今日表现' : '行业板块表现'}}<text class="mk-sec-note">数据陈述，仅供参考</text></view>
+      <swiper class="sec-swiper" indicator-dots="{{sectorPages.length > 1}}" indicator-color="rgba(0,0,0,.12)" indicator-active-color="var(--primary,#E4393C)">
+        <swiper-item wx:for="{{sectorPages}}" wx:key="index" wx:for-item="page">
           <view class="sec-grid">
-            <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}}" wx:for="{{page}}" wx:key="code">
-              <view class="sec-name">{{item.name}}</view>
+            <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{page}}" wx:key="code">
+              <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
               <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
-              <view wx:if="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
+              <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
+              <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
             </view>
           </view>
         </swiper-item>
