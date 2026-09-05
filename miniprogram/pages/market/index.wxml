@@ -37,7 +37,7 @@
     <!-- 行业板块：登录用户持仓行业置顶 -->
     <view wx:if="{{sectors.length}}" class="mk-card">
       <view class="mk-sec-title-row">
-        <view class="mk-sec-title">{{mineCount ? '你的持仓行业今日表现' : '行业板块表现'}}</view>
+        <view class="mk-sec-title">{{mineCount ? '持仓行业表现' : '行业板块表现'}}</view>
         <view wx:if="{{mineCount}}" class="sort-chips">
           <text class="sort-chip {{sectorSort === 'weight' ? 'active' : ''}}" data-key="weight" bind:tap="onSectorSort">持仓</text>
           <text class="sort-chip {{sectorSort === 'gain' ? 'active' : ''}}" data-key="gain" bind:tap="onSectorSort">涨幅</text>
