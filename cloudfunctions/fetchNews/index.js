@@ -10,6 +10,15 @@ const KW_FUND = ["基金", "公募", "私募", "ETF", "申赎", "赎回", "基�
 const KW_STOCK = ["A股", "沪指", "深证", "创业板", "港股", "美股", "纳指", "道指", "标普", "收盘", "开盘", "涨停", "跌停", "板块", "两市", "券商", "IPO", "个股", "股价", "市值", "股市", "上市"];
 const KW_MACRO = ["央行", "美联储", "利率", "CPI", "PMI", "GDP", "汇率", "国债", "通胀", "降准", "降息", "LPR", "财政部", "统计局", "关税", "外汇", "人民币", "原油"];
 
+// 时政/军事/地缘类黑名单：财经数据工具不分发时政内容（合规——时政新闻需新闻信息服务资质）。
+// 关键词取具体冲突/外交实体词，避免误伤含"军工""地缘风险"等字样的财经内容
+const KW_POLITICS = ["军事", "军队", "美军", "导弹", "袭击", "战争", "停火", "普京", "乌克兰", "俄罗斯", "伊朗", "以色列", "巴勒斯坦", "哈马斯", "白宫", "总统", "外交部", "使馆", "大选", "选举", "移民", "难民", "枪击", "恐袭", "坠机", "克里姆林宫", "基辅", "加沙", "革命卫队", "征兵", "中央司令部"];
+
+function isPolitics(text) {
+  const t = String(text || "");
+  return KW_POLITICS.some((k) => t.includes(k));
+}
+
 function stripHtml(text) {
   return String(text || "").replace(/<[^>]+>/g, "").trim();
 }
@@ -89,10 +98,11 @@ exports.main = async (event = {}) => {
       sortEnd ? Promise.resolve([]) : fetchJin10(), // 翻页只走东财游标；金十仅首页补强
     ]);
 
-    // 双源按时间归并 + 前 18 字指纹去重（同一事件两源都发）
+    // 双源按时间归并 + 前 18 字指纹去重（同一事件两源都发）；时政类条目整条剔除
     const seen = new Set();
     const flash = [];
     [...em.items, ...jin10]
+      .filter((it) => !isPolitics((it.title || "") + " " + (it.content || "")))
       .sort((a, b) => (a.time < b.time ? 1 : -1))
       .forEach((it) => {
         const key = String(it.content || "").replace(/\s+/g, "").slice(0, 18);
