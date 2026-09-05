@@ -94,13 +94,13 @@
 /* 表格 */
 .table-scroll{width:100%;background:#FFF}
 .table-inner{display:inline-block;min-width:100%}
-.t-row{display:flex;align-items:stretch;border-bottom:1rpx solid #F5F5F5;background:#FFF}
+.t-row{display:flex;align-items:stretch;border-bottom:1rpx solid #EFEFEF;background:#FFF}
 .t-head{border-radius:0}
 .t-row:last-child{border-bottom:none;border-radius:0 0 12rpx 12rpx}
 .t-row.selected{outline:3rpx solid #E4393C;outline-offset:-3rpx}
-.t-cell{padding:14rpx 16rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
+.t-cell{padding:18rpx 16rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
 .t-head .t-cell{font-size:22rpx;color:#BBB;justify-content:center;align-items:flex-end;flex-direction:row;gap:4rpx;white-space:nowrap}
-.t-name{width:260rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1;box-shadow:2rpx 0 4rpx rgba(0,0,0,.06)}
+.t-name{width:300rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1;box-shadow:2rpx 0 4rpx rgba(0,0,0,.06)}
 .t-head .t-name{flex-direction:row;justify-content:flex-start;align-items:center}
 .t-hint{margin-left:6rpx;font-size:16rpx;color:#CCC;font-weight:400}
 .t-cell:not(.t-name){width:220rpx;align-items:flex-end}
