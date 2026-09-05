@@ -48,7 +48,10 @@ Page({
         return;
       }
 
+      // 先收起 loading 再渲染数据：健康分圆环是 canvas，处于 loading 的 wx:else 分支之外，
+      // 若先 setData 数据后收 loading，绘制时 canvas 节点尚未挂载 → 圆环空白
       this.setData({
+        loading: false,
         healthScore: d.healthScore || null,
         assetAllocation: d.assetAllocation || null,
       }, () => {
@@ -109,14 +112,19 @@ Page({
     }
   },
 
-  _drawHealthRing(score) {
+  _drawHealthRing(score, attempt = 0) {
     const query = wx.createSelectorQuery();
     query.select('#healthCanvas').fields({ node: true, size: true }).exec((res) => {
-      if (!res || !res[0] || !res[0].node) return;
-      const canvas = res[0].node;
+      const node = res && res[0] && res[0].node;
+      const w = res && res[0] && res[0].width;
+      const h = res && res[0] && res[0].height;
+      // canvas 刚插入页面时节点/布局可能未就绪（node 缺失或尺寸为 0）：120ms 后重试，最多 5 次
+      if (!node || !w || !h) {
+        if (attempt < 5) setTimeout(() => this._drawHealthRing(score, attempt + 1), 120);
+        return;
+      }
+      const canvas = node;
       const dpr = wx.getSystemInfoSync().pixelRatio;
-      const w = res[0].width;
-      const h = res[0].height;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       const ctx = canvas.getContext('2d');
