@@ -17,43 +17,62 @@ exports.main = async (event) => {
   if (!OPENID) return { code: 401, msg: "请先登录" };
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
-
+  const t0 = Date.now();
   const debug = {};
-  let text = null, method = "none";
 
-  // 1. 百度 OCR
-  console.log('[ocrTx] trying baidu...');
+  // 主链路：百度 OCR（带词坐标）→ 流水布局解析
   const baidu = await doBaiduOCR(fileID);
   debug.baidu = { ok: !!baidu.text, err: baidu.err, len: baidu.text ? baidu.text.length : 0 };
-  console.log('[ocrTx] baidu result:', JSON.stringify(debug.baidu));
-  if (baidu.text && baidu.text.length > 10) { text = baidu.text; method = "baidu"; }
+  if (baidu.words && baidu.words.length >= 3) {
+    const txs = txParseWords(baidu.words);
+    for (const t of txs) applyConfirmRollover(t);
+    console.log('[ocrTx] layout transactions:', txs.length, 'ms:', Date.now() - t0);
+    if (txs.length > 0) {
+      debug.txCount = txs.length;
+      return { code: 0, data: { raw: baidu.text, method: "baidu-layout", transactions: txs, debug, ...(txs[0] || {}) } };
+    }
+    // 坐标解析空：再试一次百度文本的旧口径解析（兼容未适配格式）
+    const legacy = parseTransactions(baidu.text || "");
+    if (legacy.length > 0) {
+      console.log('[ocrTx] legacy text parse:', legacy.length);
+      debug.txCount = legacy.length;
+      return { code: 0, data: { raw: baidu.text, method: "baidu", transactions: legacy, debug, ...(legacy[0] || {}) } };
+    }
+    // 页面不含可识别交易（或非流水页）：返回空，不再用低质量文本瞎猜
+    return { code: 0, data: { raw: baidu.text, method: "baidu-layout", transactions: [], debug, } };
+  }
 
-  // 2. 微信兜底
+  // 百度不可用 → 微信/OCR.space 文本兜底
+  let text = null, method = "none";
   if (!text) {
     console.log('[ocrTx] falling back to wechat...');
     const wxText = await doWechatOCR(fileID);
     debug.wx = { ok: !!wxText, len: wxText ? wxText.length : 0 };
-    console.log('[ocrTx] wechat result:', JSON.stringify(debug.wx));
     if (wxText) { text = wxText; method = "wechat"; }
   }
-
-  // 3. OCR.space 兜底
   if (!text) {
     console.log('[ocrTx] falling back to ocr.space...');
     const sp = await doSpaceOCR(fileID);
     debug.space = { ok: !!sp, len: sp ? sp.length : 0 };
-    console.log('[ocrTx] space result:', JSON.stringify(debug.space));
     if (sp) { text = sp; method = "space"; }
   }
-
   if (!text) { console.log('[ocrTx] all engines failed'); return { code: 500, msg: "OCR识别失败", debug }; }
-
-  console.log('[ocrTx] raw text (' + text.length + ' chars):', text.slice(0, 500));
   const transactions = parseTransactions(text);
   console.log('[ocrTx] parsed transactions:', transactions.length);
   debug.txCount = transactions.length;
   return { code: 0, data: { raw: text, method, transactions, debug, ...(transactions[0] || {}) } };
 };
+
+function applyConfirmRollover(tx) {
+  if (!tx.date) return;
+  const hour = tx.time ? parseInt(tx.time.split(":")[0], 10) : NaN;
+  if (!(hour >= 15)) return;
+  const d = new Date(tx.date);
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const pad = (n) => String(n).padStart(2, "0");
+  tx.date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 // ========== OCR 引擎 ==========
 
@@ -100,32 +119,172 @@ async function doBaiduOCR(fileID) {
   try {
     const r = await cloud.getTempFileURL({ fileList: [fileID] });
     const url = r.fileList[0] && r.fileList[0].tempFileURL;
-    if (!url) return { text: null, err: "no url" };
+    if (!url) return { text: null, words: null, err: "no url" };
     const https = require("https"), http = require("http");
     const imgBase64 = await new Promise((resolve) => {
       const mod = url.startsWith("https") ? https : http;
       const chunks = [];
       mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
-    if (!imgBase64) return { text: null, err: "download fail" };
+    if (!imgBase64) return { text: null, words: null, err: "download fail" };
     const tokenRes = await new Promise((resolve) => {
       https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => {
-        let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch(e) { resolve(null); } });
+        let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
       }).on("error", () => resolve(null));
     });
-    if (!tokenRes) return { text: null, err: "token fail" };
+    if (!tokenRes) return { text: null, words: null, err: "token fail" };
     const body = `image=${encodeURIComponent(imgBase64)}&language_type=CHN_ENG`;
-    const text = await new Promise((resolve, reject) => {
+    // accurate 接口返回每个词的坐标 location，供布局解析器使用
+    const json = await new Promise((resolve, reject) => {
       const req = https.request({
-        hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate_basic?access_token=${tokenRes}`,
+        hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate?access_token=${tokenRes}`,
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve((j.words_result || []).map(w => w.words).join("\n")); } catch(e) { reject(e); } }); });
+      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
       req.write(body); req.end();
       req.setTimeout(15000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", (e) => reject(e));
     });
-    return { text, err: null };
-  } catch(e) { return { text: null, err: e.message }; }
+    const words = json.words_result || [];
+    const text = words.map(w => w.words).join("\n");
+    return { text, words, err: null };
+  } catch (e) {
+    return { text: null, words: null, err: e.message };
+  }
+}
+
+// ========== 坐标布局解析器（交易流水格式） ==========
+
+const TX_UI_WORDS = /^(买入|卖出|赎回|基金|持有|代码|金额|收益|份额|净值|成本|我的|全部|自选|黄金|详情|名称|资产|截图|添加|更多|产品|去市场|客服|转换|定投|讨论|理财师|投资指南|投资计划|收益明细|交易记录|累计盈亏|业绩走势|返回|清仓|分析|复盘|历史|持仓|现金|红利|再投资|待确认|中高|风险|昨日|日涨幅|基金净值|持仓成本价|持有份额|持有金额|持有收益|累计收益|收益率|日涨|市场|解读|公司|电台|基金市场|机会|看|偏股|偏债|指数|全部持有|明细|搜索|持有收益率|金额\/昨日|单位|资产详情|交易进行中|确认中|已完成)$/;
+const TX_FUND_KW = /混合|股票|指数|债券|货币|ETF|LOF|QDII|FOF|联接|稳健|优选|精选|灵活|配置|成长|价值|蓝筹|红利|医疗|医药|消费|科技|资源|创新|前沿|多元|策略|增强|驱动|领航|纳斯达克|标普|恒生|全球|海外|黄金/;
+const TX_MONEY_RE = /^[¥￥]?([\d,]+)(\.\d{1,2})?$/;
+const TX_DATE_RE = /^(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?$/;
+
+function txRows(words) {
+  const toks = (words || []).map((w) => ({
+    text: w.words, x: (w.location || {}).left || 0, y: (w.location || {}).top || 0,
+    w: (w.location || {}).width || 0, h: (w.location || {}).height || 0,
+  }));
+  const rows = [];
+  for (const t of toks) {
+    const c = t.y + t.h / 2;
+    let row = null;
+    for (const r of rows) {
+      const rc = r.y + r.h / 2;
+      if (Math.abs(rc - c) < Math.max(r.h, t.h) * 0.75) { row = r; break; }
+    }
+    if (!row) { rows.push({ toks: [], y: t.y, h: t.h }); row = rows[rows.length - 1]; }
+    row.toks.push(t);
+    row.y = Math.min(row.y, t.y);
+    row.h = Math.max(row.h, t.h);
+  }
+  return rows
+    .map((r) => {
+      r.toks.sort((a, b) => a.x - b.x);
+      r.x0 = r.toks[0].x;
+      r.text = r.toks.map((t) => t.text).join(" ");
+      return r;
+    })
+    .sort((a, b) => a.y - b.y);
+}
+
+function txIsMoney(t) {
+  const m = t.match(TX_MONEY_RE);
+  if (!m) return null;
+  return parseFloat(m[1].replace(/,/g, "") + (m[2] || ""));
+}
+function txIsNameish(t) {
+  if (!t || t.length < 2) return false;
+  if (TX_UI_WORDS.test(t) && t.length <= 8) return false;
+  if (TX_FUND_KW.test(t)) return true;
+  return /^[一-鿿]{3,}$/.test(t);
+}
+function txIsNameTail(t) {
+  return /^[一-鿿]{0,3}[ABC]$/.test(t) || /^[一-鿿（）()A-Za-z]{1,8}?(?:混合|股票|指数|债券|联接|ETF|LOF|货币|稳健)[AC]?$/.test(t);
+}
+
+// 流水页布局解析：以"金额"为交易锚点，名称/动作在同行或相邻行（跨行配对）。
+// 兼容多种布局：动作+名称+金额同行 / 动作+金额在上、名称在下 / 名称+金额同行 等（支付宝/天天/理财通通用）。
+// 通用化：名称与金额互相独立、与左右顺序无关；清洗交易动作前缀（组合买入/定投买入等），避免污染基金名。
+function txNormalize(txt) {
+  // 去交易动作前缀：组合买入/定投买入/分批买入/部分卖出 等
+  return txt.replace(/^(组合|定投|分批|部分)?\s*(买入|卖出|赎回)\s*/, "");
+}
+function txParseWords(words) {
+  const rows = txRows(words);
+  // 第一遍：每行提取 name / amount（任一可独立存在；金额为交易锚点）
+  const filled = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    let name = "", amount = "";
+    for (const t of r.toks) {
+      const norm = txNormalize(t.text);
+      if (norm === "") continue; // 纯动作词
+      const am = norm.match(/^([\d,]+\.?\d{0,2})元$/);
+      if (am) { if (!amount) amount = am[1].replace(/,/g, ""); continue; }
+      const v = txIsMoney(norm);
+      if (v !== null && v >= 1) { if (!amount) amount = String(v); continue; }
+      if (txIsNameish(norm) || /^[一-鿿]{3,}$/.test(norm)) name += norm;
+    }
+    filled.push({ i, r, name, amount });
+  }
+  const out = [];
+  // 第二遍：以含金额的行为交易锚点；名称从本行或相邻行补全（跨行配对）
+  for (let idx = 0; idx < filled.length; idx++) {
+    const { r, name, amount } = filled[idx];
+    if (!amount) continue; // 必须有金额（交易锚点）
+    // 名称：本行优先；否则向下/向上找最近的非日期名行。
+    // 兼容"状态行(交易进行中)插入金额与名称之间"的布局：向下多扫几行，跳过日期/状态/标签行，
+    // 取第一个"完整基金名"作为名称；向上只配紧邻行，避免跨交易误配。
+    let fullName = name;
+    if (!fullName) {
+      // 向下扫描多行（y 差 <300，覆盖一行状态行+名称行）
+      for (let j = idx + 1; j < filled.length && j < idx + 5; j++) {
+        const cand = filled[j];
+        if (!cand) continue;
+        const candName = cand.name;
+        if (!candName) continue; // 该行无名称（日期/状态/标签行）
+        if (Math.abs(cand.r.y - r.y) > 300) break; // 太远，不再找
+        // 名称应为完整基金名（避免误配到日期/标签行）
+        if (/[ABC]$/.test(candName) || /(?:混合|股票|指数|债券|货币|联接|ETF|LOF|QDII|FOF|稳健)$/.test(candName)) {
+          fullName = candName; break;
+        }
+      }
+      // 向下找不到 → 向上找紧邻行（名称可能在金额上方一行）
+      if (!fullName) {
+        const up = filled[idx - 1];
+        if (up && up.name && Math.abs(up.r.y - r.y) < 160 && !TX_DATE_RE.test(up.r.text)) {
+          if (/[ABC]$/.test(up.name) || /(?:混合|股票|指数|债券|货币|联接|ETF|LOF|QDII|FOF|稳健)$/.test(up.name)) {
+            fullName = up.name;
+          }
+        }
+      }
+    }
+    if (!fullName) continue; // 有金额但找不到名称，跳过
+    // 名称结尾不完整 → 拼相邻行首词
+    const nameEndsWell = /[ABC]$/.test(fullName) || /(?:混合|股票|指数|债券|货币|联接|ETF|LOF|QDII|FOF|稳健)$/.test(fullName);
+    if (!nameEndsWell) {
+      const nx = rows[idx + 1];
+      if (nx && nx.y - r.y < 160 && !TX_DATE_RE.test(nx.text) && nx.toks.length && txIsNameTail(nx.toks[0].text)) {
+        fullName += nx.toks[0].text;
+      }
+    }
+    // 方向：本行或相邻行找动作词
+    let type = "buy";
+    for (const candText of [r.text, (rows[idx - 1] || {}).text || "", (rows[idx + 1] || {}).text || ""]) {
+      if (/(卖出|赎回)/.test(candText)) { type = "sell"; break; }
+    }
+    // 日期：金额行后 1~3 行内
+    let date = "", time = "";
+    for (const nx of rows.slice(idx + 1, idx + 4)) {
+      if (nx.y - r.y > 300) break;
+      const m = nx.text.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/);
+      if (m) { date = m[1].replace(/[./]/g, "-"); time = m[2] || ""; break; }
+    }
+    if (!out.some((t) => t.fundName === fullName && t.amount === amount && t.date === date)) {
+      out.push({ type, fundName: fullName, amount, date, time });
+    }
+  }
+  return out;
 }
 
 // ========== 交易解析 ==========
@@ -180,18 +339,9 @@ function parseBlock(block) {
 
   const dtm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/);
   if (dtm) {
-    const rawDate = dtm[1].replace(/[./]/g, "-").substring(0, 10);
-    const hour = parseInt(dtm[2].split(":")[0], 10);
-    if (hour >= 15) {
-      const d = new Date(rawDate);
-      d.setDate(d.getDate() + 1);
-      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-      const pad = (n) => String(n).padStart(2, "0");
-      tx.date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    } else {
-      tx.date = rawDate;
-    }
+    tx.date = dtm[1].replace(/[./]/g, "-").substring(0, 10);
     tx.time = dtm[2];
+    applyConfirmRollover(tx);
   } else {
     const dm = block.match(/(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/);
     if (dm) tx.date = dm[1].replace(/[./]/g, "-").substring(0, 10);

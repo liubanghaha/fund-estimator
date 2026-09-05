@@ -27,24 +27,37 @@ async function fetchSelfEstimate(fundCode) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）
   const em = await fd.fetchLatestNavEastMoney(fundCode);
 
-  // 2. 自主估算：持仓股涨跌加权
+  // 2. 自主估算：指数基金优先用跟踪指数实时行情，否则持仓股加权兜底
   let selfChangeRate = null;
   if (fd.isBJWeekday()) {
+    // 2a) 指数优先：东财 INDEXCODE 覆盖所有指数基金（行业天然全覆盖），用指数实时涨跌幅估算。
+    //     带 fund_index_cache 缓存：命中直接用，未命中才调东财并写回。
     try {
-      const holdings = await fd.fetchTempHoldings(fundCode);
-      if (holdings && holdings.length > 0) {
-        const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
-        const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
-        let totalRatio = 0, weightedChange = 0;
-        for (const h of holdings) {
-          const p = prices[h.stockCode];
-          if (!p || p.changeRate == null) continue;
-          totalRatio += h.navRatio;
-          weightedChange += p.changeRate * h.navRatio;
-        }
-        if (totalRatio > 0) selfChangeRate = +(weightedChange / totalRatio).toFixed(2);
+      const track = await fd.getTrackIndexCached(db, fundCode);
+      if (track && track.indexCode) {
+        const idx = await fd.fetchIndexRealtime(track.indexCode);
+        if (idx && idx.changeRate != null) selfChangeRate = idx.changeRate;
       }
     } catch (e) { /* ignore */ }
+
+    // 2b) 持仓加权兜底：非指数基金 / 指数行情失败时，用持仓股实时涨跌加权
+    if (selfChangeRate == null) {
+      try {
+        const holdings = await fd.fetchTempHoldings(fundCode);
+        if (holdings && holdings.length > 0) {
+          const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
+          const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
+          let totalRatio = 0, weightedChange = 0;
+          for (const h of holdings) {
+            const p = prices[h.stockCode];
+            if (!p || p.changeRate == null) continue;
+            totalRatio += h.navRatio;
+            weightedChange += p.changeRate * h.navRatio;
+          }
+          if (totalRatio > 0) selfChangeRate = +(weightedChange / totalRatio).toFixed(2);
+        }
+      } catch (e) { /* ignore */ }
+    }
   }
 
   // 3. 组装返回：净值已公布用精确值，否则用自主估算

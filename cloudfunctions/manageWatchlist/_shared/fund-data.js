@@ -310,6 +310,162 @@ function fetchLatestNavMNF(fundCode, opts = {}) {
   });
 }
 
+// ---------------- 指数基金跟踪指数（INDEXCODE） ----------------
+
+/**
+ * 调东财基金详情接口，返回该基金的跟踪指数信息。
+ * 任意指数基金都能拿到官方 INDEXCODE（如沪深300→000300、中证白酒→399997），
+ * 从而无需手工维护"行业→指数"映射表，行业天然全覆盖。
+ * 返回 { indexCode, indexName, fundType } | null；非指数基金 INDEXCODE 为空。
+ */
+function fetchTrackIndex(fundCode, opts = {}) {
+  const { timeoutMs = 8000 } = opts;
+  return new Promise((resolve) => {
+    const req = https.get({
+      hostname: "fundmobapi.eastmoney.com",
+      path: `/FundMNewApi/FundMNDetailInformation?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`,
+      headers: { Referer: "https://m.fund.eastmoney.com/" },
+    }, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const d = (JSON.parse(body).Datas) || {};
+          const indexCode = (d.INDEXCODE || "").trim();
+          if (!indexCode || !/^\d{6}$/.test(indexCode)) return resolve(null);
+          resolve({
+            indexCode,
+            indexName: (d.INDEXNAME || "").trim(),
+            fundType: (d.FTYPE || "").trim(),
+          });
+        } catch (e) { resolve(null); }
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+  });
+}
+
+/**
+ * 判断指数代码的行情市场前缀（腾讯行情用 sh/sz）。
+ * A 股宽基/行业指数：39 开头为深市(sz，如 399006 创业板指、399997 中证白酒)，其余为沪市(sh)。
+ */
+function resolveIndexPrefix(indexCode) {
+  const c = String(indexCode || "").trim();
+  if (/^39\d{4}$/.test(c)) return "sz";
+  return "sh";
+}
+
+/**
+ * 拉指数实时涨跌幅（腾讯行情 qt.gtimg.cn），返回 { price, prevClose, changeRate } | null。
+ * 与 fetchStockPricesTencent 同源（腾讯 qt.gtimg.cn），字段 [3]=现价 [4]=昨收。
+ */
+function fetchIndexRealtime(indexCode, opts = {}) {
+  const { timeoutMs = 8000 } = opts;
+  const prefix = resolveIndexPrefix(indexCode);
+  const qtCode = `${prefix}${indexCode}`;
+  return new Promise((resolve) => {
+    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          const body = Buffer.concat(chunks).toString("utf-8");
+          const re = new RegExp(`v_${qtCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}="([^"]*)"`);
+          const match = body.match(re);
+          if (!match) return resolve(null);
+          const fields = match[1].split("~");
+          const curr = parseFloat(fields[3]);
+          const prev = parseFloat(fields[4]);
+          if (isNaN(curr) || isNaN(prev) || prev <= 0) return resolve(null);
+          resolve({
+            price: curr,
+            prevClose: prev,
+            changeRate: +(((curr - prev) / prev) * 100).toFixed(2),
+          });
+        } catch (e) { resolve(null); }
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+  });
+}
+
+// ---------------- 跟踪指数查询（带 fund_index_cache 缓存） ----------------
+
+const INDEX_CACHE_COLLECTION = "fund_index_cache";
+
+async function _indexCacheUpsert(db, fundCode, indexCode, indexName) {
+  try {
+    await db.collection(INDEX_CACHE_COLLECTION).doc(fundCode).set({
+      data: { fundCode, indexCode: indexCode || "", indexName: indexName || "", updatedAt: Date.now() },
+    });
+  } catch (e) { /* 缓存写失败不影响主流程 */ }
+}
+
+/**
+ * 批量获取跟踪指数（带 cache）：一次 `_.in` 查缓存，缺的调东财补上并写回。
+ * 返回 map：{ [fundCode]: { indexCode, indexName, fundType } | null }
+ * null 表示"非指数基金 / 查不到"，同样会被缓存（indexCode 空），避免反复查东财。
+ */
+async function getTrackIndexBatchCached(db, fundCodes, opts = {}) {
+  const map = {};
+  const codes = (fundCodes || []).filter(Boolean);
+  if (!codes.length || !db) return map;
+  const missing = [];
+  try {
+    const _ = db.command;
+    const BATCH = 100;
+    for (let i = 0; i < codes.length; i += BATCH) {
+      const res = await db.collection(INDEX_CACHE_COLLECTION)
+        .where({ fundCode: _.in(codes.slice(i, i + BATCH)) })
+        .field({ fundCode: true, indexCode: true, indexName: true })
+        .get();
+      (res.data || []).forEach(d => {
+        map[d.fundCode] = d.indexCode ? { indexCode: d.indexCode, indexName: d.indexName || "", fundType: "" } : null;
+      });
+    }
+  } catch (e) { /* 缓存读失败走全量补拉 */ }
+
+  for (const code of codes) if (!(code in map)) missing.push(code);
+
+  // 补拉缺失（并发限制，避免瞬时大量请求东财）
+  if (missing.length > 0) {
+    const CONCURRENT = opts.concurrent || 8;
+    for (let i = 0; i < missing.length; i += CONCURRENT) {
+      const batch = missing.slice(i, i + CONCURRENT);
+      const results = await Promise.all(batch.map(async (code) => {
+        const track = await fetchTrackIndex(code, opts);
+        if (track) {
+          await _indexCacheUpsert(db, code, track.indexCode, track.indexName);
+          return { code, val: track };
+        }
+        // 非指数基金：缓存"无跟踪指数"，避免重复查东财
+        await _indexCacheUpsert(db, code, "", "");
+        return { code, val: null };
+      }));
+      results.forEach(r => { map[r.code] = r.val; });
+    }
+  }
+  return map;
+}
+
+/**
+ * 单基金获取跟踪指数（带 cache）：查缓存，无则调东财补上并写回。
+ * 返回 { indexCode, indexName, fundType } | null。
+ */
+async function getTrackIndexCached(db, fundCode, opts = {}) {
+  if (!db || !fundCode) return fetchTrackIndex(fundCode, opts);
+  try {
+    const res = await db.collection(INDEX_CACHE_COLLECTION).doc(fundCode).get();
+    const d = res && res.data;
+    if (d) return d.indexCode ? { indexCode: d.indexCode, indexName: d.indexName || "", fundType: "" } : null;
+  } catch (e) { /* 未命中缓存，走补拉 */ }
+  const track = await fetchTrackIndex(fundCode, opts);
+  await _indexCacheUpsert(db, fundCode, track ? track.indexCode : "", track ? track.indexName : "");
+  return track;
+}
+
 /**
  * 历史净值（分页并发拉取，页序从新到旧）
  * 注意：东财 lsjz 接口固定每页 20 条（实测 pageSize 任意值均被忽略），
@@ -374,4 +530,9 @@ module.exports = {
   fetchLatestNavEastMoney,
   fetchLatestNavMNF,
   fetchNAVHistory,
+  fetchTrackIndex,
+  resolveIndexPrefix,
+  fetchIndexRealtime,
+  getTrackIndexBatchCached,
+  getTrackIndexCached,
 };

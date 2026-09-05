@@ -560,22 +560,45 @@ async function computeSelfEstimates(codes, startTime) {
       stockPriceMap = await fd.fetchStockPricesTencent([...stockSet]);
     }
 
-    // 3. 逐基金计算加权涨跌
+    // 3. 逐基金计算加权涨跌：指数基金优先用跟踪指数实时行情，否则持仓股加权
+    // 3-前置：批量取跟踪指数（带 fund_index_cache 缓存，缺的补拉写回），一次请求完成，避免逐只 HTTP
+    const trackMap = await fd.getTrackIndexBatchCached(db, codes);
     const timeStr = fd.formatBJTime();
     for (const code of codes) {
-      const holdings = holdingsMap[code];
-      if (!holdings || holdings.length === 0) continue;
-
-      let totalRatio = 0, weightedChange = 0;
-      for (const h of holdings) {
-        const price = stockPriceMap[h.stockCode];
-        if (!price || price.changeRate == null) continue;
-        totalRatio += h.navRatio;
-        weightedChange += price.changeRate * h.navRatio;
+      // 3a) 指数优先：东财 INDEXCODE 覆盖所有指数基金（行业天然全覆盖），用指数实时涨跌幅估算
+      let estChange = null;
+      const track = trackMap[code];
+      if (track && track.indexCode) {
+        try {
+          const idx = await fd.fetchIndexRealtime(track.indexCode);
+          if (idx && idx.changeRate != null) estChange = idx.changeRate;
+        } catch (e) { /* ignore */ }
       }
 
-      if (totalRatio > 0) {
-        const estChange = +(weightedChange / totalRatio).toFixed(2);
+      // 3b) 持仓加权兜底：非指数基金 / 指数行情失败时，用持仓股实时涨跌加权
+      if (estChange == null) {
+        const holdings = holdingsMap[code];
+        if (!holdings || holdings.length === 0) continue;
+        let totalRatio = 0, weightedChange = 0;
+        for (const h of holdings) {
+          const price = stockPriceMap[h.stockCode];
+          if (!price || price.changeRate == null) continue;
+          totalRatio += h.navRatio;
+          weightedChange += price.changeRate * h.navRatio;
+        }
+        if (totalRatio > 0) {
+          estChange = +(weightedChange / totalRatio).toFixed(2);
+          map[code] = {
+            fundCode: code,
+            fundName: "",
+            nav: null,
+            estimatedNav: null,
+            estimatedChangeRate: estChange,
+            estimateTime: timeStr,
+            _coverage: +totalRatio.toFixed(1),
+          };
+        }
+      } else {
         map[code] = {
           fundCode: code,
           fundName: "",
@@ -583,7 +606,7 @@ async function computeSelfEstimates(codes, startTime) {
           estimatedNav: null,
           estimatedChangeRate: estChange,
           estimateTime: timeStr,
-          _coverage: +totalRatio.toFixed(1),
+          _coverage: 0,
         };
       }
     }

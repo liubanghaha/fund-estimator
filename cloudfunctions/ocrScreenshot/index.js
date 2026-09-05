@@ -376,78 +376,296 @@ async function doBaiduOCR(fileID) {
   try {
     const r = await cloud.getTempFileURL({ fileList: [fileID] });
     const url = r.fileList[0] && r.fileList[0].tempFileURL;
-    if (!url) return { text: null, err: "no url" };
+    if (!url) return { text: null, words: null, err: "no url" };
     const https = require("https"), http = require("http");
     const imgBase64 = await new Promise((resolve) => {
       const mod = url.startsWith("https") ? https : http;
       const chunks = [];
       mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
-    if (!imgBase64) return { text: null, err: "download fail" };
+    if (!imgBase64) return { text: null, words: null, err: "download fail" };
     const tokenRes = await new Promise((resolve) => {
       https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => {
         let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
       }).on("error", () => resolve(null));
     });
-    if (!tokenRes) return { text: null, err: "token fail" };
+    if (!tokenRes) return { text: null, words: null, err: "token fail" };
     const body = `image=${encodeURIComponent(imgBase64)}&language_type=CHN_ENG`;
-    const text = await new Promise((resolve, reject) => {
+    // accurate 接口返回每个词的坐标 location，供布局解析器使用
+    const json = await new Promise((resolve, reject) => {
       const req = https.request({
-        hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate_basic?access_token=${tokenRes}`,
+        hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate?access_token=${tokenRes}`,
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve((j.words_result || []).map(w => w.words).join("\n")); } catch (e) { reject(e); } }); });
+      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
       req.write(body); req.end();
       req.setTimeout(15000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", (e) => reject(e));
     });
-    return { text, err: null };
+    const words = json.words_result || [];
+    const text = words.map(w => w.words).join("\n");
+    return { text, words, err: null };
   } catch (e) {
-    return { text: null, err: e.message };
+    return { text: null, words: null, err: e.message };
   }
+}
+
+// ========== 坐标布局解析器（支付宝等主流截图：列表/详情/流水三格式） ==========
+
+const LAYOUT_UI_WORDS = /^(买入|卖出|赎回|基金|持有|代码|金额|收益|份额|净值|成本|我的|全部|自选|黄金|详情|名称|资产|截图|添加|更多|产品|去市场|客服|转换|定投|讨论|理财师|投资指南|投资计划|收益明细|交易记录|累计盈亏|业绩走势|返回|清仓|分析|复盘|历史|持仓|现金|红利|再投资|待确认|中高|风险|昨日|日涨幅|基金净值|持仓成本价|持有份额|持有金额|持有收益|累计收益|收益率|日涨|市场|解读|公司|电台|基金市场|机会|看|偏股|偏债|指数|全部持有|明细|搜索|持有收益率|金额\/昨日|单位|资产详情)$/;
+const LAYOUT_FUND_KW = /混合|股票|指数|债券|货币|ETF|LOF|QDII|FOF|联接|稳健|优选|精选|灵活|配置|成长|价值|蓝筹|红利|医疗|医药|消费|科技|资源|创新|前沿|多元|策略|增强|驱动|领航|纳斯达克|标普|恒生|全球|海外|黄金/;
+const LAYOUT_MONEY_RE = /^[¥￥]?([\d,]+)(\.\d{1,2})?$/;
+const LAYOUT_SIGNED_RE = /^[+-][\d,]+\.?\d{0,2}$/;
+const LAYOUT_DATE_RE = /^(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?$/;
+
+function layoutRows(words) {
+  const toks = (words || []).map((w) => ({
+    text: w.words, x: (w.location || {}).left || 0, y: (w.location || {}).top || 0,
+    w: (w.location || {}).width || 0, h: (w.location || {}).height || 0,
+  }));
+  const rows = [];
+  for (const t of toks) {
+    const c = t.y + t.h / 2;
+    let row = null;
+    for (const r of rows) {
+      const rc = r.y + r.h / 2;
+      if (Math.abs(rc - c) < Math.max(r.h, t.h) * 0.75) { row = r; break; }
+    }
+    if (!row) { rows.push({ toks: [], y: t.y, h: t.h }); row = rows[rows.length - 1]; }
+    row.toks.push(t);
+    row.y = Math.min(row.y, t.y);
+    row.h = Math.max(row.h, t.h);
+  }
+  return rows
+    .map((r) => {
+      r.toks.sort((a, b) => a.x - b.x);
+      r.x0 = r.toks[0].x;
+      r.text = r.toks.map((t) => t.text).join(" ");
+      return r;
+    })
+    .sort((a, b) => a.y - b.y);
+}
+
+function layoutMoney(t) {
+  const m = t.match(LAYOUT_MONEY_RE);
+  if (!m) return null;
+  return parseFloat(m[1].replace(/,/g, "") + (m[2] || ""));
+}
+function layoutSigned(t) {
+  if (!LAYOUT_SIGNED_RE.test(t) || t.endsWith("%")) return null;
+  return parseFloat(t.replace(/,/g, ""));
+}
+function layoutIsCode6(t) { return /^\d{6}$/.test(t); }
+function layoutIsNameish(t) {
+  if (!t || t.length < 2) return false;
+  if (LAYOUT_UI_WORDS.test(t) && t.length <= 8) return false;
+  if (LAYOUT_FUND_KW.test(t)) return true;
+  return /^[一-鿿]{3,}$/.test(t);
+}
+function layoutIsNameTail(t) {
+  // 跨行续名词："C" / "合C" / "票A" / "配置混合C" / "成长混合C"
+  return /^[一-鿿]{0,3}[ABC]$/.test(t) || /^[一-鿿（）()A-Za-z]{1,8}?(?:混合|股票|指数|债券|联接|ETF|LOF|货币|稳健)[AC]?$/.test(t);
+}
+
+// 持仓列表页：主行 = 名称开头 + 行内金额；名称截断时拼下一行首词
+// 通用化：市值是"名称后第一个 非6位代码 的金额"；6位纯数字视为基金代码而非市值；
+//        行内无市值时向下跨行找"资产/金额"标签后的数值；不绑定平台布局。
+function layoutParseList(rows) {
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const toks = r.toks;
+    if (toks.length < 2) continue;
+    const j0 = toks.findIndex((t) => layoutMoney(t.text) === null && layoutSigned(t.text) === null && !layoutIsCode6(t.text));
+    if (j0 < 0 || !layoutIsNameish(toks[j0].text)) continue;
+
+    // 名称边界：从 j0 到第一个 6位代码 或 金额 为止（名称后可能紧跟代码，如天天）
+    let nEnd = toks.length;
+    for (let k = j0; k < toks.length; k++) {
+      if (layoutIsCode6(toks[k].text) || layoutMoney(toks[k].text) !== null || layoutSigned(toks[k].text) !== null) { nEnd = k; break; }
+    }
+    let name = toks.slice(j0, nEnd).map((t) => t.text).join("");
+
+    // 找持有收益（layoutSigned 带符号值，如 +120.50 / -15.00）——先独立扫整行
+    let hr = "";
+    for (let k = j0 + 1; k < toks.length; k++) {
+      if (layoutIsCode6(toks[k].text)) continue;
+      const s = layoutSigned(toks[k].text);
+      if (s !== null && s !== undefined) { hr = toks[k].text; break; }
+    }
+    // 找市值：名称后第一个 非6位代码 的 >=10 金额（6位纯数字是代码，不是市值）
+    let mv = null, mi = -1;
+    for (let k = j0 + 1; k < toks.length; k++) {
+      if (layoutIsCode6(toks[k].text)) continue;
+      const v = layoutMoney(toks[k].text);
+      if (v !== null && v >= 10) { mv = v; mi = k; break; }
+    }
+    // 跨行兜底：行内无市值（或名称后只有代码）→ 向下找"资产/金额"标签行下的数值
+    if (mv === null) {
+      const fb = findAssetBelow(rows, i, r);
+      if (fb) { mv = fb.value; mi = -1; }
+    }
+    if (mv === null) continue;
+
+    // 名称结尾不完整 → 拼下一行首词
+    const nameEndsWell = /[ABC]$/.test(name) || /(?:混合|股票|指数|债券|货币|联接|ETF|LOF|QDII|FOF|稳健)$/.test(name);
+    if (!nameEndsWell) {
+      const nx = rows[i + 1];
+      if (nx && nx.y - r.y < 200 && nx.toks.length > 0 && layoutIsNameTail(nx.toks[0].text) && Math.abs(nx.x0 - r.x0) < 60) {
+        name += nx.toks[0].text;
+      }
+    }
+    if (out.some((h) => h.fundName === name)) continue;
+    out.push({ fundName: name, marketValue: String(mv), holdingReturn: hr ? hr.replace(/,/g, "") : "" });
+  }
+  return out;
+}
+
+// 向下跨行找资产标签行的数值：找到含"资产/金额/持有金额/市值"标签的行，取它下方最近一行的数值（跳过6位代码）
+function findAssetBelow(rows, i, r) {
+  for (let j = i + 1; j < rows.length && j < i + 4; j++) {
+    const rr = rows[j];
+    if (rr.y - r.y > 220) break;
+    if (/资产|金额|持有金额|市值|持有市值/.test(rr.text)) {
+      const nr = rows[j + 1];
+      if (nr && nr.y - rr.y < 200) {
+        for (const t of nr.toks) {
+          if (layoutIsCode6(t.text)) continue;
+          const v = layoutMoney(t.text);
+          if (v !== null && v >= 10) return { value: v };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// 单基金详情页：名称 + 代码 + "金额（元）/持有收益（元）" 标签-数值配对
+function layoutParseDetail(rows) {
+  let nameRow = null;
+  for (const r of rows) {
+    const t = r.text.trim();
+    if (t.length >= 6 && t.length <= 24 && LAYOUT_FUND_KW.test(t) && !LAYOUT_UI_WORDS.test(t.split(" ")[0])) { nameRow = r; break; }
+  }
+  if (!nameRow) return [];
+  let fundCode = "", marketValue = "", holdingReturn = "";
+  for (const r of rows) {
+    if (r.y <= nameRow.y || r.y - nameRow.y > 300) continue;
+    const m = r.text.match(/(^|\s)(\d{6})(\s|$)/);
+    if (m) { fundCode = m[2]; break; }
+  }
+  const center = (t) => t.x + t.w / 2;
+  for (const r of rows) {
+    const tagTok = r.toks.find((t) => /金额/.test(t.text) && /元/.test(t.text));
+    if (!tagTok) continue;
+    let best = null, bestDy = 1e9;
+    for (const r2 of rows) {
+      const dy = r2.y - tagTok.y;
+      if (dy < 30 || dy > 400) continue;
+      for (const t of r2.toks) {
+        const v = layoutMoney(t.text);
+        if (v !== null && v >= 100 && !layoutIsCode6(t.text) && dy < bestDy) { bestDy = dy; best = v; }
+      }
+    }
+    if (best !== null) marketValue = String(best);
+    break;
+  }
+  for (const r of rows) {
+    const tagTok = r.toks.find((t) => /持有收益/.test(t.text) && /元/.test(t.text));
+    if (!tagTok) continue;
+    let bestTok = null, bestD = 1e9;
+    for (const r2 of rows) {
+      const dy = r2.y - tagTok.y;
+      if (dy < 30 || dy > 400) continue;
+      for (const t of r2.toks) {
+        const v = layoutSigned(t.text);
+        if (v === null) continue;
+        const d = Math.abs(center(t) - center(tagTok));
+        if (d < bestD) { bestD = d; bestTok = t; }
+      }
+    }
+    if (bestTok) holdingReturn = bestTok.text.replace(/,/g, "");
+    break;
+  }
+  return [{ fundName: nameRow.text.trim(), fundCode, marketValue, holdingReturn }];
+}
+
+// 布局解析统一入口：返回 { type: "list"|"detail"|"tx"|"other", holdings }
+function layoutParseWords(words) {
+  const rows = layoutRows(words);
+  const has = (re) => rows.some((r) => re.test(r.text));
+  if (has(/(买入|卖出|赎回)\s*(基金)?\s*[|｜]/) || has(/基金[|｜]/)) return { type: "tx", holdings: [] }; // 流水页（持仓导入场景无输出，由买卖记录入口处理）
+  if (has(/金额（元）|昨日收益（元）|资产详情|持仓成本价/)) return { type: "detail", holdings: layoutParseDetail(rows) };
+  const holdings = layoutParseList(rows);
+  // 页面级信号：非持仓页（首页宫格/工具页）偶现"名称+数字"行，要求页面含持仓上下文才认定是持仓列表
+  if (holdings.length > 0 && !has(/持有|持仓|市值|我的资产|资产总额|累计收益|昨日收益/)) return { type: "other", holdings: [] };
+  return { type: holdings.length ? "list" : "other", holdings };
 }
 
 // ========== 主入口 ==========
 
-exports.main = async (event) => {
-  const { fileID } = event;
-  if (!fileID) return { code: 400, msg: "请提供截图" };
-
+// 文本兜底：微信 + OCR.space 并发，谁先返回用谁；再走正则解析（仅在百度识别不可用时）
+async function runTextFallback(fileID) {
   const debug = {};
-  let text = null, method = "none";
-
-  // 三个引擎并发调用，谁先返回用谁
   const results = await Promise.all([
-    doBaiduOCR(fileID).then(r => { debug.baidu = { ok: !!r.text, err: r.err, len: r.text ? r.text.length : 0 }; return { t: r.text, m: "baidu" }; }),
     doWechatOCR(fileID).then(r => { debug.wx = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "wechat" }; }),
     doOcrspaceOCR(fileID).then(r => { debug.ocrspace = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "ocrspace" }; }),
   ]);
+  let text = null, method = "none";
   for (const r of results) {
     if (r.t && r.t.length > 10) { text = r.t; method = r.m; break; }
   }
-
   if (!text) return { code: 500, msg: "OCR识别失败", debug };
-
-  console.log("[ocrScreenshot] raw text (" + text.length + " chars):", text.slice(0, 800));
+  console.log("[ocrScreenshot] fallback raw text (" + text.length + " chars):", text.slice(0, 300));
   const holdings = parseText(text);
-  console.log("[ocrScreenshot] parsed holdings:", holdings.length);
-  // 自动按名称匹配基金代码
   await enrichCodes(holdings);
   debug.holdings = holdings.length;
   return { code: 0, data: { raw: text, method, holdings, debug } };
+}
+
+exports.main = async (event) => {
+  const { fileID } = event;
+  if (!fileID) return { code: 400, msg: "请提供截图" };
+  const t0 = Date.now();
+
+  // 主链路：百度 OCR（带词坐标）→ 布局解析
+  const baidu = await doBaiduOCR(fileID);
+  if (baidu.words && baidu.words.length >= 3) {
+    const layout = layoutParseWords(baidu.words);
+    console.log("[ocrScreenshot] layout type:", layout.type, "holdings:", layout.holdings.length, "ms:", Date.now() - t0);
+    if (layout.type === "tx") {
+      // 交易流水页：持仓导入场景无输出（由加减仓入口识别）
+      return { code: 0, data: { raw: baidu.text, method: "baidu-layout", type: "tx", holdings: [], debug: { baidu: { ok: true } } } };
+    }
+    if (layout.holdings.length > 0) {
+      await enrichCodes(layout.holdings);
+      return {
+        code: 0,
+        data: { raw: baidu.text, method: "baidu-layout", type: layout.type, holdings: layout.holdings, debug: { baidu: { ok: true, ms: Date.now() - t0 } } },
+      };
+    }
+    // 布局解析不出（无持仓页/未适配格式）→ 尝试文本兜底
+    const fb = await runTextFallback(fileID);
+    if (fb.code === 0) return fb;
+  }
+
+  // 百度不可用 → 文本兜底
+  return runTextFallback(fileID);
 };
 
 async function enrichCodes(holdings) {
   const toSearch = holdings.filter((h) => !h.fundCode && h.fundName);
   if (toSearch.length === 0) return;
   const https = require("https");
-  for (const h of toSearch) {
+  // 并发搜索（每只内部关键词降级串行，基金之间无依赖）
+  await Promise.all(toSearch.map(async (h) => {
     try {
       const code = await searchFundCode(https, h.fundName);
-      if (code) h.fundCode = code;
+      // 只接受 6 位数字代码，防搜索兜底写入假代码
+      if (code && /^\d{6}$/.test(code)) h.fundCode = code;
     } catch (e) {
       // 搜索失败不阻塞
     }
-  }
+  }));
 }
 
 function searchFundCode(https, name) {

@@ -96,7 +96,7 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, prevDataIncomplete } };
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
   } catch (e) {
     console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
@@ -177,14 +177,47 @@ function fetchHoldings(fundCode, year, month) {
           // 拉取失败仅指无匹配/超时/网络错误（走下方 catch/超时分支）
           if (!match) { resolve({ holdings: [], reportMonth: null, ok: true }); return; }
           const html = match[1].replace(/\\"/g, '"');
-          // 解析实际报告截止日期（e.g. "2025-12-31" → year=2025, month=12）
-          const dateMatch = html.match(/(\d{4})-(\d{2})-\d{2}/);
-          const reportYear = dateMatch ? parseInt(dateMatch[1]) : null;
-          const reportMonth = dateMatch ? parseInt(dateMatch[2]) : null;
-          // 表头定位「占净值比例」列：列数随基金类型/季度变化（实测 7/9 列，
-          // 可能 8/10 列），固定 tds[n-3] 在列数变化时会取错列；以表头列名为准
+
+          // 东财 jjcc 按 year 返回该年多个季度的 <table>，每个 table 前带"截止至：YYYY-MM-DD"（报告期）。
+          // fetchHoldings 需按目标季度截止日选对对应 table，否则取到的上期=本期、或占比列错位。
+          // 目标季度截止日：month 为季度末月，Q1→03-31 / Q2→06-30 / Q3→09-30 / Q4→12-31。
+          const targetEnd = `${year}-${String(month).padStart(2, "0")}-${month === 3 ? "31" : month === 6 ? "30" : month === 9 ? "30" : "31"}`;
+
+          // 按"截止至"日期把每个 table 报告期分组
+          let targetTable = null, reportYear = null, reportMonth = null;
+          const tblRe = /<table[\s\S]*?<\/table>/g;
+          let tblMatch;
+          while ((tblMatch = tblRe.exec(html)) !== null) {
+            const tbl = tblMatch[0];
+            const before = html.slice(Math.max(0, tblMatch.index - 300), tblMatch.index);
+            const endMatch = before.match(/截止至：[\s\S]*?(\d{4}-\d{2}-\d{2})/);
+            const dateStr = endMatch ? endMatch[1] : null;
+            const thText = (tbl.match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [])
+              .map(t => t.replace(/<[^>]+>/g, "").replace(/\s+/g, "")).join("|");
+            if (thText.indexOf("占净值") === -1) continue; // 只认持仓主表（含占净值比例表头）
+            if (dateStr === targetEnd) { targetTable = tbl; reportYear = parseInt(dateStr.slice(0, 4)); reportMonth = parseInt(dateStr.slice(5, 7)); break; }
+            // 用最近一个"非目标但已发布"的表兜底（前端 prevDataIncomplete 已处理缺失）
+            if (!targetTable && dateStr) { /* 暂记第一个含占净值的表，若未命中目标则用它 */ }
+          }
+          const mainHtml = targetTable || (() => {
+            // 未命中目标季度：退化为取第一个含占净值的表（历史数据）
+            const anyTbl = html.match(/<table[\s\S]*?<\/table>/g);
+            if (anyTbl) {
+              for (const t of anyTbl) {
+                if ((t.match(/<th[^>]*>([\s\S]*?)<\/th>/g) || []).some(x => x.replace(/<[^>]+>/g, "").replace(/\s+/g, "").indexOf("占净值") !== -1)) {
+                  const b = html.slice(Math.max(0, html.indexOf(t) - 300), html.indexOf(t));
+                  const em = b.match(/截止至：[\s\S]*?(\d{4}-\d{2}-\d{2})/);
+                  if (em) { reportYear = parseInt(em[1].slice(0, 4)); reportMonth = parseInt(em[1].slice(5, 7)); }
+                  return t;
+                }
+              }
+            }
+            return html;
+          })();
+
+          // 表头定位「占净值比例」列（列数随季度变化，7 列/9 列不同，须用当前 table 的表头）
           const ratioCol = (() => {
-            const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+            const thead = mainHtml.match(/<thead[\s\S]*?<\/thead>/);
             if (!thead) return -1;
             const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
             for (let i = 0; i < ths.length; i++) {
@@ -196,19 +229,33 @@ function fetchHoldings(fundCode, year, month) {
           const rows = [];
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
-          while ((trMatch = trRegex.exec(html)) !== null) {
+          while ((trMatch = trRegex.exec(mainHtml)) !== null) {
             const tds = [];
             const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
             let tdMatch;
             while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
               tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
             }
-            // 列数 7-10 均接受；占比列优先用表头定位，找不到再回退倒数第 3 列
+            // 列数 7-10 均接受；占比列必须稳定为准：优先表头「占净值比例」定位，
+            // 表头定位失败或该列值域异常（非 0-100 的百分比）时，回退到"行内首个 0-100 的数"，
+            // 绝不使用固定倒数第 N 列（列数随基金类型/季度变化，固定偏移会取错列导致占比离谱）。
+            // 均取不到 → 该行占比置 null（前端显示 --，而非用错列误导）。
             if (tds.length >= 7 && tds.length <= 10) {
               const n = tds.length;
-              const col = ratioCol >= 1 && ratioCol < n ? ratioCol : n - 3;
-              const ratioStr = tds[col];
-              const ratio = parseFloat(ratioStr);
+              const ratioStr = (() => {
+                // 1) 表头定位的列，校验值域在 0-100（占比是百分比）
+                if (ratioCol >= 1 && ratioCol < n) {
+                  const v = parseFloat(tds[ratioCol]);
+                  if (!isNaN(v) && v >= 0 && v <= 100) return tds[ratioCol];
+                }
+                // 2) 行内首个 0-100 的百分比数（占比列）
+                for (let i = 1; i < n; i++) {
+                  const v = parseFloat(tds[i]);
+                  if (!isNaN(v) && v >= 0 && v <= 100) return tds[i];
+                }
+                return null;
+              })();
+              const ratio = ratioStr == null ? NaN : parseFloat(ratioStr);
               rows.push({
                 rank: tds[0],
                 stockCode: tds[1],
