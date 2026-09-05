@@ -43,6 +43,7 @@ Page({
     // 行业板块（持仓行业置顶，横滑）
     sectors: [],
     sectorPages: [],
+    sectorCurrent: 0,
     sectorSort: "weight", // weight=持仓匹配 | gain=涨幅最多 | loss=涨幅最小
     mineCount: 0,
     // 核心指数（A/港/美/亚太 四类切换）
@@ -176,6 +177,17 @@ Page({
     const sectorPages = [];
     for (let i = 0; i < ordered.length; i += 6) sectorPages.push(ordered.slice(i, i + 6));
     data.sectorPages = sectorPages;
+    data.sectorCurrent = Math.min(this.data.sectorCurrent || 0, sectorPages.length - 1);
+  },
+
+  onSectorPageChange(e) {
+    this.setData({ sectorCurrent: e.detail.current });
+  },
+
+  // 点指示点直达对应页（快速滑动）
+  onSectorDotTap(e) {
+    const i = +e.currentTarget.dataset.i;
+    if (i !== this.data.sectorCurrent) this.setData({ sectorCurrent: i });
   },
 
   onSectorSort(e) {

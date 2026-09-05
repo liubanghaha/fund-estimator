@@ -45,18 +45,24 @@
         </view>
         <text wx:else class="mk-sec-note">数据陈述，仅供参考</text>
       </view>
-      <swiper class="sec-swiper" indicator-dots="{{sectorPages.length > 1}}" indicator-color="rgba(0,0,0,.12)" indicator-active-color="var(--primary,#E4393C)">
-        <swiper-item wx:for="{{sectorPages}}" wx:key="index" wx:for-item="page">
-          <view class="sec-grid">
-            <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{page}}" wx:key="code">
-              <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
-              <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
-              <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
-              <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
+      <view class="sec-swiper-wrap">
+        <swiper class="sec-swiper" current="{{sectorCurrent}}" bindchange="onSectorPageChange">
+          <swiper-item wx:for="{{sectorPages}}" wx:key="index" wx:for-item="page">
+            <view class="sec-grid">
+              <view class="sec-card {{item.isUp ? 'up-bg' : item.isDown ? 'down-bg' : ''}} {{item.mine ? 'mine' : ''}}" wx:for="{{page}}" wx:key="code">
+                <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
+                <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
+                <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
+                <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
+              </view>
             </view>
-          </view>
-        </swiper-item>
-      </swiper>
+          </swiper-item>
+        </swiper>
+        <!-- 自定义指示点：点任意点直达对应页 -->
+        <view class="sec-dots" wx:if="{{sectorPages.length > 1}}">
+          <view class="sec-dot {{sectorCurrent === index ? 'active' : ''}}" wx:for="{{sectorPages}}" wx:key="index" data-i="{{index}}" bind:tap="onSectorDotTap"></view>
+        </view>
+      </view>
     </view>
 
     <!-- 核心指数 -->

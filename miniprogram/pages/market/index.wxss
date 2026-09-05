@@ -26,8 +26,14 @@
 .ov-bar-down{background:#2E8B57;transition:width .4s}
 
 /* ===== 行业板块：两列网格，每页 6 个，左右翻页 ===== */
+.sec-swiper-wrap{position:relative}
 .sec-swiper{height:640rpx}
 .sec-grid{display:flex;flex-wrap:wrap;justify-content:space-between;align-content:flex-start;padding-bottom:48rpx}
+/* 自定义指示点：28rpx 点按热区 + 14rpx 视觉圆点，点按直达对应页 */
+.sec-dots{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;align-items:center;z-index:5}
+.sec-dot{width:30rpx;height:30rpx;display:flex;align-items:center;justify-content:center}
+.sec-dot::before{content:'';width:14rpx;height:14rpx;border-radius:50%;background:rgba(0,0,0,.15)}
+.sec-dot.active::before{background:var(--primary,#E4393C)}
 .sec-card{width:calc((100% - 14rpx)/2);margin-bottom:14rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8;min-height:170rpx}
 .sec-card.up-bg{background:rgba(228,57,60,.07)}
 .sec-card.down-bg{background:rgba(46,139,87,.08)}
