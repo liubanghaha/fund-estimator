@@ -107,7 +107,7 @@
     },
     {
       "name": "computeFundTemperature",
-      "timeout": 120,
+      "timeout": 300,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "triggers": [

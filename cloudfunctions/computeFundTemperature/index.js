@@ -32,6 +32,10 @@ exports.main = async (event) => {
     // 1. 获取所有持仓的基金代码（去重）
     const fundCodes = await getUniqueFundCodes();
     console.log(`[computeFundTemperature] 持仓基金数: ${fundCodes.length}`);
+    // 运行状态落库（app_config）：CLI 拉不到 120s 函数的返回/日志，用状态文档观测任务死在哪一步
+    await db.collection("app_config").doc("temp_task_status").set({
+      data: { status: "running", today, startTime: Date.now(), fundCount: fundCodes.length }
+    }).catch(() => {});
     if (fundCodes.length === 0) return { code: 0, msg: "无持仓基金" };
 
     // 2. 获取持仓股列表
@@ -163,9 +167,15 @@ exports.main = async (event) => {
     const dist = { low: 0, mid: 0, high: 0, nodata: 0 };
     results.forEach(r => { dist[r.signal] = (dist[r.signal] || 0) + 1; });
     console.log(`[computeFundTemperature] 完成 ${results.length} 只 (低估:${dist.low} 正常:${dist.mid} 高估:${dist.high} 无数据:${dist.nodata})`);
+    await db.collection("app_config").doc("temp_task_status").set({
+      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist }
+    }).catch(() => {});
     return { code: 0, data: { count: results.length, date: today, signalDist: dist } };
   } catch (e) {
     console.error("[computeFundTemperature] 异常:", e);
+    await db.collection("app_config").doc("temp_task_status").set({
+      data: { status: "error", error: String(e.message || e).slice(0, 300), failedAt: Date.now() }
+    }).catch(() => {});
     return { code: 500, msg: e.message };
   }
 };

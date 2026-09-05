@@ -251,35 +251,39 @@ async function _fetchLiveEastMoney(codes, timeoutMs) {
   for (let i = 0; i < codes.length; i += BATCH) {
     const batch = codes.slice(i, i + BATCH);
     const secids = batch.map(_buildSecid).join(",");
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}`;
-    await new Promise((resolve) => {
-      const req = https.get(url, { headers: { Referer: "https://quote.eastmoney.com/" } }, (res) => {
+    // ⚠️ 2026-09-04 起该接口无 ut 令牌返回空（同 clist），必须带 ut；push2 对云函数出口偶发限流 → 主站失败走 delay 镜像
+    const q = `fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+    const fetchBody = (host) => new Promise((resolve) => {
+      const req = https.get(`https://${host}/api/qt/ulist.np/get?${q}`, { headers: { Referer: "https://quote.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
         let body = "";
         res.on("data", (c) => { body += c; });
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(body).data;
-            if (data && data.diff) {
-              data.diff.forEach(item => {
-                const pe = item.f9;
-                if (pe !== undefined && pe !== null) {
-                  const actualPE = pe > 500 ? pe / 100 : pe;
-                  const pb = item.f164 != null ? (+item.f164) : null;
-                  map[item.f12] = {
-                    pe: actualPE,
-                    pb: pb && pb > 0 ? pb : null,
-                    price: item.f2 || null,
-                    industry: item.f100 || "其他",
-                  };
-                }
-              });
-            }
-          } catch (e) { /* ignore */ }
-          resolve();
-        });
+        res.on("end", () => resolve(body));
       });
-      req.setTimeout(timeoutMs, () => { req.destroy(); resolve(); });
-      req.on("error", () => resolve());
+      req.setTimeout(timeoutMs, () => { req.destroy(); resolve(""); });
+      req.on("error", () => resolve(""));
+    });
+    let body = await fetchBody("push2.eastmoney.com");
+    if (!body || body.length < 10) body = await fetchBody("push2delay.eastmoney.com");
+    await new Promise((resolve) => {
+      try {
+        const data = JSON.parse(body).data;
+        if (data && data.diff) {
+          data.diff.forEach(item => {
+            const pe = item.f9;
+            if (pe !== undefined && pe !== null) {
+              const actualPE = pe > 500 ? pe / 100 : pe;
+              const pb = item.f164 != null ? (+item.f164) : null;
+              map[item.f12] = {
+                pe: actualPE,
+                pb: pb && pb > 0 ? pb : null,
+                price: item.f2 || null,
+                industry: item.f100 || "其他",
+              };
+            }
+          });
+        }
+      } catch (e) { /* ignore */ }
+      resolve();
     });
   }
   return map;

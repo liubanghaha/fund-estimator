@@ -27,7 +27,7 @@
       </view>
       <view wx:if="{{loadingMore}}" class="news-tip">加载中...</view>
       <view wx:if="{{!loading && !loadError && displayItems.length === 0}}" class="news-tip">当前筛选条件下暂无快讯</view>
-      <view wx:if="{{hasMore && displayItems.length}}" class="news-tip">上拉加载更多</view>
+      <view wx:if="{{hasMore && displayItems.length}}" class="news-tip news-more-btn" bind:tap="loadMore">加载更多</view>
       <view wx:if="{{!hasMore && displayItems.length}}" class="news-tip">已加载全部</view>
     </view>
 

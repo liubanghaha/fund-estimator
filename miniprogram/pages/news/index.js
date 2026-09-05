@@ -37,6 +37,7 @@ Page({
   },
 
   fetchFirst() {
+    this._autoPages = 0;
     this.setData({ loading: !this.data.flashItems.length, loadError: false });
     return api.fetchNews({}).then((res) => {
       if (res && res.result && res.result.code === 0 && res.result.data) {
@@ -91,10 +92,15 @@ Page({
     if (!this.data.displayItems[idx] || !this.data.displayItems[idx].long) return; // 短文本无展开态
     this.setData({ [`displayItems[${idx}]._open`]: !this.data.displayItems[idx]._open });
   },
-  // 只看重要
+  // 只看重要 + 日期分组标签（今天/昨天/M月D日）
   _applyFilter() {
     let items = this.data.flashItems;
     if (this.data.importantOnly) items = items.filter((i) => i.important);
+    // 筛选后可见条目过少时页面不滚动，onReachBottom 永不触发 → 自动补拉下一页（有上限防打爆）
+    if (items.length < 5 && this.data.hasMore && !this.data.loadingMore && this._autoPages < 4) {
+      this._autoPages = (this._autoPages || 0) + 1;
+      this.loadMore();
+    }
     const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
     const yest = new Date(Date.now() + 8 * 3600000 - 86400000).toISOString().slice(0, 10);
     let prev = "";

@@ -22,5 +22,6 @@
 .date-label{font-size:24rpx;color:#666;font-weight:600}
 .news-meta{display:flex;gap:16rpx;margin-top:10rpx;font-size:20rpx;color:#BBB}
 .news-tip{font-size:24rpx;color:#BBB;text-align:center;padding:24rpx 0}
+.news-more-btn{color:var(--primary,#E4393C);font-weight:600}
 .news-loading{padding:40rpx 0}
 .news-retry{margin:20rpx auto 0;width:280rpx;font-size:26rpx;background:var(--primary,var(--up));color:#FFF;border-radius:40rpx}
