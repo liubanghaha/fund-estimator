@@ -6,7 +6,8 @@
     "pages/search/index",
     "pages/add-holding/index",
     "pages/adjust-holding/index",
-    "pages/login/index"
+    "pages/login/index",
+    "pages/ops/index"
   ],
   "subpackages": [
     {
@@ -21,7 +22,9 @@
   ],
   "preloadRule": {
     "pages/index/index": {
-      "packages": ["subpackages/analysis"],
+      "packages": [
+        "subpackages/analysis"
+      ],
       "network": "all"
     }
   },
@@ -37,9 +40,18 @@
     "selectedColor": "#E4393C",
     "backgroundColor": "#FFFFFF",
     "list": [
-      { "pagePath": "pages/index/index", "text": "我的持仓" },
-      { "pagePath": "pages/watchlist/index", "text": "自选" },
-      { "pagePath": "pages/user-center/index", "text": "我的" }
+      {
+        "pagePath": "pages/index/index",
+        "text": "我的持仓"
+      },
+      {
+        "pagePath": "pages/watchlist/index",
+        "text": "自选"
+      },
+      {
+        "pagePath": "pages/user-center/index",
+        "text": "我的"
+      }
     ]
   },
   "sitemapLocation": "sitemap.json",

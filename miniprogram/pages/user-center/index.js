@@ -14,8 +14,7 @@ Page({
     showMigrate: false,
     migrateCode: "",
     migrating: false,
-    // 运营助手（功能下线，保留代码待恢复）
-    // isOpsAdmin: false,
+    isOpsAdmin: false,
   },
 
   onShow() {
@@ -29,17 +28,16 @@ Page({
     }
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme, briefAuthed: subscribe.hasAuthed() });
-    // 运营助手（功能下线，保留代码待恢复）
-    // api.opsTool("checkAdmin").then((res) => {
-    //   const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
-    //   this.setData({ isOpsAdmin });
-    // }).catch(() => {});
+    // 运营助手入口（仅管理员可见；页面本身另有管理员门禁）
+    api.opsTool("checkAdmin").then((res) => {
+      const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
+      this.setData({ isOpsAdmin });
+    }).catch(() => {});
   },
 
-  // 运营助手（功能下线，保留代码待恢复）
-  // onOpenOps() {
-  //   wx.navigateTo({ url: "/pages/ops/index" });
-  // },
+  onOpenOps() {
+    wx.navigateTo({ url: "/pages/ops/index" });
+  },
 
   onBriefing() {
     this.setData({ showBrief: !this.data.showBrief });

@@ -15,8 +15,7 @@
     <view class="menu-item" bind:tap="onBriefing"><text>📈 收盘播报</text><text class="arrow">{{showBrief ? '∨' : (briefAuthed ? '已开启' : '>')}}</text></view>
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
     <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
-    <!-- 运营助手（功能下线，保留代码待恢复） -->
-    <!-- <view class="menu-item" wx:if="{{isOpsAdmin}}" bind:tap="onOpenOps"><text>运营助手</text><text class="arrow">></text></view> -->
+    <view class="menu-item" wx:if="{{isOpsAdmin}}" bind:tap="onOpenOps"><text>运营助手</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onToggleTheme"><text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text></view>
   </view>
