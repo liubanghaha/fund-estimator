@@ -1,5 +1,6 @@
 /* 行情中心 V1：市场概览 + 持仓行业高亮 + 核心指数 */
-.page{min-height:100vh;background:#F6F6F6;padding:20rpx 24rpx 40rpx;box-sizing:border-box}
+.page{min-height:100vh;background:#F6F6F6;padding:16rpx 24rpx 40rpx;box-sizing:border-box}
+.disclaimer{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 0 4rpx}
 .mk-card{background:#FFF;border-radius:20rpx;padding:28rpx 24rpx;margin-bottom:20rpx}
 .mk-sec-title{font-size:28rpx;font-weight:700;color:#333;margin-bottom:20rpx}
 .mk-sec-note{font-size:20rpx;color:#BBB;font-weight:400;margin-left:12rpx}
