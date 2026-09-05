@@ -25,9 +25,10 @@
 .ov-bar-up{background:#E4393C;transition:width .4s}
 .ov-bar-down{background:#2E8B57;transition:width .4s}
 
-/* ===== 行业板块横滑 ===== */
-.sec-scroll{white-space:nowrap}
-.sec-card{display:inline-block;vertical-align:top;width:240rpx;margin-right:16rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8}
+/* ===== 行业板块：两列网格，每页 6 个，左右翻页 ===== */
+.sec-swiper{height:560rpx}
+.sec-grid{display:flex;flex-wrap:wrap;justify-content:space-between;align-content:flex-start}
+.sec-card{width:calc((100% - 14rpx)/2);margin-bottom:14rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8;min-height:170rpx}
 .sec-card.up-bg{background:rgba(228,57,60,.07)}
 .sec-card.down-bg{background:rgba(46,139,87,.08)}
 .sec-card.mine{border:2rpx solid var(--primary, #E4393C)}

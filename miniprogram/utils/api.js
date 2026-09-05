@@ -179,8 +179,13 @@ const api = {
       "399006": "0.399006",
       "HSTECH": "124.HSTECH",
       "HSI": "124.HSI",
+      "SPX": "100.SPX",
+      "N225": "100.N225",
+      "KS11": "100.KS11",
     };
     const secid = INDEX_SECID[indexCode] || "";
+    // 未映射代码早退（避免空 secid 拉回错误数据），由调用方走云函数多源路径
+    if (!secid) return Promise.resolve({ code: 400, msg: "不支持的指数代码" });
 
     const doRequest = (url) => new Promise((resolve) => {
       wx.request({

@@ -25,9 +25,8 @@ const IDX_TABS = [
   { key: "us", label: "美股" },
   { key: "ap", label: "亚太" },
 ];
-const A_CODES = ["000001", "399001", "000300", "399006"];
 const FETCH_TIMEOUT = 3000;
-const HK_FETCH_TIMEOUT = 8000; // 港股走云函数多源并行竞速，放宽到 8s
+const CLOUD_FETCH_TIMEOUT = 12000; // 云函数多源竞速兜底的客户端等待上限（美股/亚太无腾讯映射，依赖此路径）
 
 Page({
   data: {
@@ -43,6 +42,7 @@ Page({
     upPct: 50, downPct: 50,
     // 行业板块（持仓行业置顶，横滑）
     sectors: [],
+    sectorPages: [],
     mineCount: 0,
     // 核心指数（A/港/美/亚太 四类切换）
     idxTabs: IDX_TABS,
@@ -111,6 +111,10 @@ Page({
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
     };
+    // 行业两列网格分页：每页 6 个（2×3），swiper 左右翻页
+    const sectorPages = [];
+    for (let i = 0; i < data.sectors.length; i += 6) sectorPages.push(data.sectors.slice(i, i + 6));
+    data.sectorPages = sectorPages;
     // 指数按 A/港/美/亚太 分组，展示当前选中组
     const grouped = { a: [], hk: [], us: [], ap: [] };
     (cache.indexCards || []).forEach((c) => {
@@ -175,23 +179,25 @@ Page({
 
   // 核心指数：与首页 fetchIndices 同源同口径（腾讯日K → 东财客户端 → 云函数）
   _fetchIndices() {
+    // 腾讯映射缺失的代码（SPX/IXIC/N225/KS11）跳过腾讯直试东财客户端 K 线，避免浪费一轮竞速
     const fetchOne = async (idx) => {
-      const isHK = !A_CODES.includes(idx.code);
-      const tRes = await Promise.race([
-        api.fetchMarketIndexTencent(idx.code, 2).catch(() => null),
-        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
-      ]);
-      if (tRes && tRes.code === 0 && tRes.data && tRes.data.length > 0) return tRes.data;
-      if (!isHK) {
-        const clientRes = await Promise.race([
-          api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
+      const tencentOk = !!({ "000001": 1, "399001": 1, "000300": 1, "399006": 1, "HSTECH": 1, "HSI": 1 })[idx.code];
+      if (tencentOk) {
+        const tRes = await Promise.race([
+          api.fetchMarketIndexTencent(idx.code, 2).catch(() => null),
           new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
         ]);
-        if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) return clientRes.data;
+        if (tRes && tRes.code === 0 && tRes.data && tRes.data.length > 0) return tRes.data;
       }
+      const clientRes = await Promise.race([
+        api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
+        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+      ]);
+      if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) return clientRes.data;
+      // 云函数多源兜底（美股/亚太走新浪/东财/腾讯竞速，放宽到 12s）
       const res = await Promise.race([
         api.fetchMarketIndex(idx.code, 2).catch(() => null),
-        new Promise((r) => setTimeout(() => r(null), isHK ? HK_FETCH_TIMEOUT : FETCH_TIMEOUT)),
+        new Promise((r) => setTimeout(() => r(null), CLOUD_FETCH_TIMEOUT)),
       ]);
       return (res && res.result && res.result.code === 0 && res.result.data) || [];
     };

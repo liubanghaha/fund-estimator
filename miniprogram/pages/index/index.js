@@ -756,14 +756,13 @@ Page({
       if (tRes && tRes.code === 0 && tRes.data && tRes.data.length > 0) {
         return tRes.data;
       }
-      if (!isHK) {
-        const clientRes = await Promise.race([
-          api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
-          new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
-        ]);
-        if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) {
-          return clientRes.data;
-        }
+      // 东财客户端 K 线对全部已映射代码生效（含美股 100.SPX/100.IXIC 类），不再仅限 A 股
+      const clientRes = await Promise.race([
+        api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
+        new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
+      ]);
+      if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) {
+        return clientRes.data;
       }
       const res = await Promise.race([
         api.fetchMarketIndex(idx.code, 2).catch(() => null),
