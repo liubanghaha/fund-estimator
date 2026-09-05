@@ -74,7 +74,7 @@
 
     <!-- 我的持仓 -->
     <view wx:if="{{hasHolding && holdingData}}" class="my-holding-card">
-      <view class="mh-title">我的持仓</view>
+      <view class="mh-title">我的持仓<text class="mh-calibrate" bind:tap="onCalibrate">校准</text></view>
       <view class="mh-grid">
         <view class="mh-item">
           <view class="mh-label">持有金额</view>
@@ -377,5 +377,25 @@
       </button>
     </view>
     <view class="bottom-safe"></view>
+
+    <!-- 数据校准弹层：只改份额/成本数字，不出现买入卖出交易字眼 -->
+    <view wx:if="{{showCalibrate}}" class="cal-mask" bind:tap="onCalibrateCancel">
+      <view class="cal-card" catch:tap>
+        <view class="cal-title">数据校准</view>
+        <view class="cal-desc">修正份额与成本记录误差，只改数字，不产生新记录</view>
+        <view class="cal-row">
+          <text class="cal-label">持有份额</text>
+          <input class="cal-input" type="digit" value="{{calShares}}" bindinput="onCalSharesInput" placeholder="如 1234.56" />
+        </view>
+        <view class="cal-row">
+          <text class="cal-label">买入净值</text>
+          <input class="cal-input" type="digit" value="{{calPrice}}" bindinput="onCalPriceInput" placeholder="如 1.2345" />
+        </view>
+        <view class="cal-btns">
+          <button class="cal-btn ghost" bind:tap="onCalibrateCancel">取消</button>
+          <button class="cal-btn primary" bind:tap="onCalibrateSave" loading="{{calSaving}}" disabled="{{calSaving}}">保存</button>
+        </view>
+      </view>
+    </view>
   </view>
 </view>

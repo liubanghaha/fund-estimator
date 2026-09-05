@@ -230,3 +230,17 @@
 .turnover-note{padding:12rpx 0 0;font-size:20rpx;color:#BBB;line-height:1.6}
 .turnover-desc{color:#666;margin-bottom:8rpx}
 .turnover-formula{font-size:20rpx}
+
+/* 数据校准 */
+.mh-calibrate{float:right;font-size:22rpx;color:#BBB;font-weight:400;padding:0 8rpx}
+.cal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center}
+.cal-card{width:600rpx;background:#FFF;border-radius:20rpx;padding:36rpx 32rpx 28rpx}
+.cal-title{font-size:32rpx;font-weight:700;color:#333;text-align:center}
+.cal-desc{font-size:22rpx;color:#BBB;text-align:center;margin:10rpx 0 26rpx}
+.cal-row{display:flex;align-items:center;margin-bottom:20rpx}
+.cal-label{width:150rpx;font-size:26rpx;color:#666;flex-shrink:0}
+.cal-input{flex:1;background:#F7F7F7;border-radius:10rpx;padding:16rpx 20rpx;font-size:28rpx;color:#333}
+.cal-btns{display:flex;margin-top:30rpx}
+.cal-btn{flex:1;font-size:28rpx;border-radius:44rpx;line-height:2.4}
+.cal-btn.ghost{background:#F2F2F2;color:#666;margin-right:20rpx}
+.cal-btn.primary{background:var(--primary-gradient,linear-gradient(135deg,#E4393C,#FF6B6B));color:#FFF}

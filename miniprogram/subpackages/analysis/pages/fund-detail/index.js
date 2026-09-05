@@ -18,6 +18,8 @@ Page({
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
     hasHolding: false, holdingId: null, holdingData: null, followed: false, activeTab: "trend",
+    // 数据校准（修正份额/成本记录误差，无交易语义）
+    showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
     showAllHistory: false,
     isTrading: false,
     chartPeriod: '1M',
@@ -909,6 +911,48 @@ Page({
     if (this.data.profileLoading) return;
     this.setData({ profileLoading: true });
     this.fetchProfile().finally(() => this.setData({ profileLoading: false }));
+  },
+
+  // ===== 数据校准（P0-3）：修正 OCR/推算的份额与成本误差，纯数字修正不产生交易记录 =====
+  onCalibrate() {
+    const h = this.data.holdingData || {};
+    this.setData({ showCalibrate: true, calShares: String(h.shares || ""), calPrice: String(h.buyPrice || "") });
+  },
+  onCalSharesInput(e) { this.setData({ calShares: e.detail.value }); },
+  onCalPriceInput(e) { this.setData({ calPrice: e.detail.value }); },
+  onCalibrateCancel() { this.setData({ showCalibrate: false }); },
+  async onCalibrateSave() {
+    const shares = parseFloat(this.data.calShares);
+    const buyPrice = parseFloat(this.data.calPrice);
+    if (!(shares > 0) || !(buyPrice > 0)) { wx.showToast({ title: "请输入有效的份额与净值", icon: "none" }); return; }
+    if (!this.data.holdingId) { wx.showToast({ title: "持仓数据未就绪", icon: "none" }); return; }
+    this.setData({ calSaving: true });
+    try {
+      // 市值/收益按官方净值重算，口径与 add-holding/adjust-holding 一致
+      const nav = parseFloat(this.data.actualNav || this.data.nav) || 0;
+      const buyAmount = +(shares * buyPrice).toFixed(2);
+      const marketValue = nav > 0 ? +(shares * nav).toFixed(2) : buyAmount;
+      const holdingReturn = +(marketValue - buyAmount).toFixed(2);
+      await api.holdingUpdate(this.data.holdingId, {
+        shares: parseFloat(shares.toFixed(4)),
+        buyPrice: parseFloat(buyPrice.toFixed(4)),
+        buyAmount, marketValue, holdingReturn,
+      });
+      // 本地即时生效 + 首页等列表页走强制刷新
+      if (this._rawHolding) {
+        Object.assign(this._rawHolding, { shares, buyPrice, buyAmount, marketValue, holdingReturn });
+        this.enrichHoldingData();
+      }
+      wx.removeStorageSync("portfolio_cache");
+      wx.setStorageSync("portfolio_force_refresh", true);
+      this._saveCache();
+      this.setData({ showCalibrate: false });
+      wx.showToast({ title: "已校准", icon: "success" });
+    } catch (e) {
+      console.error("数据校准保存失败:", e);
+      wx.showToast({ title: "保存失败，请重试", icon: "none" });
+    }
+    this.setData({ calSaving: false });
   },
   onImportScreenshot() {
     wx.showActionSheet({

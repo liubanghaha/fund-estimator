@@ -95,6 +95,8 @@ Page({
     // 分享卡片
     showShareCard: false,
     shareCardRendered: false,
+    // 添加到我的小程序轻引导（卡片保存/分享后触发）
+    showAddGuide: false,
     // 分享落地横幅 + 渠道来源
     shareCard: null,
     entryChannel: "",
@@ -114,6 +116,7 @@ Page({
     }
     // 分享确认埋点：onShareAppMessage 触发即用户已确认转发；带 token 与否是渠道归因的关键分叉
     track.share({ sharePage: "index", hasToken: !!(token && hasHolding), hasProfit: p !== 0 });
+    this._maybeShowAddGuide(); // 分享动作后 → 轻引导添加到我的小程序
     return {
       title,
       path: token && hasHolding ? `/pages/index/index?share=${token}` : "/pages/index/index",
@@ -1047,6 +1050,29 @@ Page({
     this._shareCanvas = null;
   },
 
+  // 「添加到我的小程序」轻引导（P0-3）：卡片保存/分享成功后触发。
+  // 微信无 API 检测"已添加"，用频控兜底：7 天一次、累计 3 次后不再打扰，6s 自动收起
+  _maybeShowAddGuide() {
+    try {
+      const count = wx.getStorageSync("addguide_count") || 0;
+      const last = wx.getStorageSync("addguide_last") || 0;
+      if (count >= 3) return;
+      if (last && Date.now() - last < 7 * 86400000) return;
+      wx.setStorageSync("addguide_count", count + 1);
+      wx.setStorageSync("addguide_last", Date.now());
+    } catch (e) { return; }
+    this.setData({ showAddGuide: true });
+    if (this._addGuideTimer) clearTimeout(this._addGuideTimer);
+    this._addGuideTimer = setTimeout(() => {
+      if (this.data.showAddGuide) this.setData({ showAddGuide: false });
+    }, 6000);
+  },
+
+  onCloseAddGuide() {
+    if (this._addGuideTimer) { clearTimeout(this._addGuideTimer); this._addGuideTimer = null; }
+    this.setData({ showAddGuide: false });
+  },
+
   async onSaveShareCard() {
     try {
       const tempPath = await this._getShareCardTempPath();
@@ -1069,6 +1095,7 @@ Page({
       });
       wx.showToast({ title: '已保存到相册', icon: 'success' });
       this.setData({ showShareCard: false, shareCardRendered: false });
+      this._maybeShowAddGuide(); // 卡片保存成功 → 轻引导添加到我的小程序
     } catch (e) {
       console.error('保存分享卡片失败:', e);
       if (e.errMsg && e.errMsg.includes('auth deny')) {

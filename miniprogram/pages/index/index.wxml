@@ -340,4 +340,10 @@
       <view class="ver-close" bind:tap="onCloseUpdateLog">知道了</view>
     </view>
   </view>
+
+  <!-- 添加到我的小程序轻引导（指向右上角胶囊） -->
+  <view wx:if="{{showAddGuide}}" class="add-guide" bind:tap="onCloseAddGuide">
+    <text class="add-guide-text">点右上角「···」→ 添加到我的小程序</text>
+    <view class="add-guide-close">×</view>
+  </view>
 </view>
