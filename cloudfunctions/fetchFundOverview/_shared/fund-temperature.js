@@ -37,6 +37,41 @@ function classifyIndustryCode(industry) {
 /**
  * 行业 → 中文展示标签（资产配置用），「其他」时用股票名关键词兜底
  */
+/**
+ * 用户持仓行业聚合（getPortfolio 资产配置 与 fetchMarketOverview 持仓行业置顶 共用，保证两页同口径）。
+ * 权重取持仓档案市值（缺失/为 0 回退 份额×档案净值），不依赖实时估值——
+ * 否则估值缺失的基金被整只剔除，穿透会塌缩成个别基金的行业。
+ * @param holdingsDocs 持仓文档数组（需含 fundCode/marketValue/shares/nav）
+ * @param tempLatest { [fundCode]: 最新温度记录（需含 detailPEs） }
+ * @returns { list: [{industry, raw 占比(已按行业权重归一)}], coverage: 行业明细覆盖的持仓市值占比 }
+ */
+function aggregateUserIndustries(holdingsDocs, tempLatest) {
+  const industryMap = {};
+  let totalWeight = 0;
+  let totalValue = 0, coveredValue = 0;
+  for (const h of holdingsDocs || []) {
+    const shares = parseFloat(h.shares) || 0;
+    const nav = parseFloat(h.nav) || 0;
+    let fundValue = parseFloat(h.marketValue);
+    if (!(fundValue > 0)) fundValue = shares * nav;
+    if (!(fundValue > 0)) continue;
+    totalValue += fundValue;
+    const t = tempLatest && tempLatest[h.fundCode];
+    if (!t || !t.detailPEs || !t.detailPEs.length) continue;
+    coveredValue += fundValue;
+    for (const pe of t.detailPEs) {
+      const w = fundValue * ((parseFloat(pe.ratio)) || 0) / 100;
+      const cat = classifyIndustryLabel(pe.industry, pe.name);
+      industryMap[cat] = (industryMap[cat] || 0) + w;
+      totalWeight += w;
+    }
+  }
+  const list = Object.entries(industryMap)
+    .map(([industry, w]) => ({ industry, raw: totalWeight > 0 ? (w / totalWeight) * 100 : 0 }))
+    .sort((a, b) => b.raw - a.raw);
+  return { list, coverage: totalValue > 0 ? +((coveredValue / totalValue) * 100).toFixed(1) : null };
+}
+
 function classifyIndustryLabel(industry, stockName) {
   if (industry && industry !== "其他" && industry !== "其它") {
     // 东财 2025 行业分类细化，二级名带 Ⅱ 后缀（白酒Ⅱ/银行Ⅱ/军工电子Ⅱ）；
@@ -392,4 +427,5 @@ module.exports = {
       .replace(/高估/g, "温度偏高")
       .replace(/正常/g, "温度适中");
   },
+  aggregateUserIndustries,
 };

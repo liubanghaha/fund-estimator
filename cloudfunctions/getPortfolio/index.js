@@ -297,38 +297,12 @@ exports.main = async (event) => {
     let healthScore = null;
     if (withAnalysis !== false) {
     try {
-      let enrichedCount = 0, withTempCount = 0, withDetailCount = 0;
-      const industryMap = {};
-      let totalWeight = 0;
-      let totalHoldingsValue = 0, coveredHoldingsValue = 0; // 穿透覆盖率：有行业明细的持仓市值占比
-      for (const h of enriched) {
-        if (!h.peTemp || !h.peTemp.totalStocks) continue;
-        enrichedCount++;
-        // 权重兜底链：实时估值缺失（周末/接口抖动）时回退持仓档案净值/市值，
-        // 否则单次请求里估值缺失的基金被整体剔除，穿透塌缩成个别基金的行业
-        const sharesN = parseFloat(h.shares) || 0;
-        const navN = parseFloat(h.currentNav) || parseFloat(h.nav) || 0;
-        let fundValue = sharesN * navN;
-        if (fundValue <= 0) fundValue = parseFloat(h.marketValue) || 0;
-        if (fundValue <= 0) continue;
-        totalHoldingsValue += fundValue;
-        withTempCount++;
-        const t = tempMap[h.fundCode];
-        if (!t || !t.detailPEs || !t.detailPEs.length) continue;
-        withDetailCount++;
-        coveredHoldingsValue += fundValue;
-        for (const pe of t.detailPEs) {
-          const w = fundValue * (pe.ratio / 100);
-          const cat = ft.classifyIndustryLabel(pe.industry, pe.name);
-          industryMap[cat] = (industryMap[cat] || 0) + w;
-          totalWeight += w;
-        }
-      }
-      if (totalWeight > 0) {
-        console.log(`[getPortfolio] 资产配置: enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount} totalWeight=${totalWeight.toFixed(0)} industries=${Object.keys(industryMap).length}`);
-        const list = Object.entries(industryMap)
-          .map(([industry, w]) => ({ industry, raw: (w / totalWeight) * 100 }))
-          .sort((a, b) => b.raw - a.raw);
+      // 行业聚合走 _shared 共享实现（与行情页 fetchMarketOverview 完全同口径）：
+      // 权重取持仓档案市值（缺失回退 份额×档案净值），不依赖实时估值，避免穿透随估值可用性塌缩
+      const agg = ft.aggregateUserIndustries(enriched, tempMap);
+      if (agg.list.length > 0) {
+        console.log(`[getPortfolio] 资产配置: 覆盖率=${agg.coverage}% industries=${agg.list.length}`);
+        const list = agg.list;
         // 分离「其他」与真实行业；top20 只排真实行业，其余全合并到一个「其他」
         const realList = list.filter(i => i.industry !== "其他");
         const otherRaw = list.filter(i => i.industry === "其他").reduce((s, i) => s + i.raw, 0);
@@ -346,13 +320,12 @@ exports.main = async (event) => {
         const maxName = maxReal ? maxReal.industry : "";
         assetAllocation = {
           items: top10,
-          // 穿透覆盖率：行业明细只来自前十大重仓股 + 温度任务已覆盖的基金，
-          // 覆盖率低时穿透占比仅代表已覆盖部分，页面需明示
-          coverage: totalHoldingsValue > 0 ? +((coveredHoldingsValue / totalHoldingsValue) * 100).toFixed(1) : null,
+          // 穿透覆盖率：基于全部持仓市值（行业明细只来自前十大重仓股 + 温度任务已覆盖的基金）
+          coverage: agg.coverage,
           warning: maxPercent > 30 ? `单一行业「${maxName}」占比 ${maxPercent}%，建议分散配置` : null,
         };
       } else {
-        console.log(`[getPortfolio] 资产配置: 无有效数据 enriched=${enrichedCount} withTemp=${withTempCount} withDetail=${withDetailCount}`);
+        console.log("[getPortfolio] 资产配置: 无有效数据");
       }
     } catch (e) { console.error("[getPortfolio] 资产配置失败:", e.message, e.stack); assetAllocation = null; }
 

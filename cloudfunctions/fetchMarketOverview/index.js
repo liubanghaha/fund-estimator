@@ -186,25 +186,11 @@ async function fetchUserIndustries(openid) {
       if (!latest[t.fundCode]) latest[t.fundCode] = t;
     }
 
-    const industryMap = {};
-    let totalWeight = 0;
-    for (const h of holdings) {
-      const t = latest[h.fundCode];
-      if (!t || !t.detailPEs || !t.detailPEs.length) continue;
-      const fundValue = +(h.marketValue != null ? h.marketValue : (parseFloat(h.shares) || 0) * (parseFloat(h.nav) || 0)) || 0;
-      if (fundValue <= 0) continue;
-      for (const pe of t.detailPEs) {
-        const w = fundValue * ((parseFloat(pe.ratio)) || 0) / 100;
-        const cat = ft.classifyIndustryLabel(pe.industry, pe.name);
-        industryMap[cat] = (industryMap[cat] || 0) + w;
-        totalWeight += w;
-      }
-    }
-    if (totalWeight <= 0) return [];
-    return Object.entries(industryMap)
-      .filter(([k]) => k !== "其他")
-      .map(([industry, w]) => ({ industry, percent: +((w / totalWeight) * 100).toFixed(1) }))
-      .sort((a, b) => b.percent - a.percent);
+    // 聚合走 _shared 共享实现（与 getPortfolio 资产配置完全同口径），剔除「其他」后返回
+    const agg = ft.aggregateUserIndustries(holdings, latest);
+    return agg.list
+      .filter((i) => i.industry !== "其他")
+      .map((i) => ({ industry: i.industry, percent: +i.raw.toFixed(1) }));
   } catch (e) {
     console.error("[fetchMarketOverview] 持仓行业失败:", e.message);
     return [];
