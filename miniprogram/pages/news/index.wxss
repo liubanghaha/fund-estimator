@@ -15,7 +15,8 @@
 .news-body.important .news-text{font-weight:600}
 .news-important-tag{display:inline-block;font-size:18rpx;color:#FFF;background:#E4393C;border-radius:6rpx;padding:2rpx 10rpx;margin-right:10rpx;vertical-align:2rpx}
 .news-text.clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
-.news-toggle{font-size:22rpx;color:var(--primary,#E4393C);padding:8rpx 0 0}
+.news-toggle{font-size:26rpx;color:#BBB;text-align:center;line-height:1;padding:10rpx 20rpx 0;transition:transform .2s;transform:rotate(0)}
+.news-toggle.open{transform:rotate(180deg)}
 .news-meta{display:flex;gap:16rpx;margin-top:10rpx;font-size:20rpx;color:#BBB}
 .news-tip{font-size:24rpx;color:#BBB;text-align:center;padding:24rpx 0}
 .news-loading{padding:40rpx 0}
