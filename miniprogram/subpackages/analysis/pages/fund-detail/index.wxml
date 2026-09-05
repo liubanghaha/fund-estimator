@@ -198,6 +198,9 @@
       <view wx:if="{{profileLoading}}" class="loading-compact">
         <text class="loading-text">加载中...</text>
       </view>
+      <view wx:elif="{{profileLoaded && !profile}}" class="loading-compact" bind:tap="onRetryProfile">
+        <text class="loading-text">档案加载失败，点击重试</text>
+      </view>
       <block wx:elif="{{profileLoaded}}">
       <view wx:if="{{manager && manager.name}}" class="info-card">
         <view class="section-title">基金经理</view>

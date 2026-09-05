@@ -4,6 +4,9 @@ const chart = require("../../../../utils/chart");
 const marketTime = require("../../../../utils/market-time");
 
 const CACHE_PREFIX = "fund_detail_cache_";
+// 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
+// 旧版本缓存自动作废 → 重新进入页面即拉到新值，避免用户一直看到修复前的错误调仓动向。
+const HOLDINGS_CACHE_VERSION = 2;
 
 Page({
   data: {
@@ -262,7 +265,13 @@ Page({
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
         holdings: cached.holdings || [], exited: cached.exited || [],
         quarterLabel: cached.quarterLabel || '', prevDataIncomplete: !!cached.prevDataIncomplete,
-        turnoverRates: cached.turnoverRates || [], profile: cached.profile || null, manager: cached.manager || null,
+        turnoverRates: cached.turnoverRates || [],
+        // 旧版代码曾把档案接口超时的 profile:null 洗成空对象 {} 写入缓存；fundSizeText 只在
+        // 档案成功处理后才存在，据此剔除脏数据让其自动重拉。profileLoaded 同步置位，
+        // 否则缓存秒开时点档案 tab 不触发拉取、profileLoaded 恒为 false → 档案页空白
+        profile: cached.profile && cached.profile.fundSizeText ? cached.profile : null,
+        manager: cached.manager || null,
+        profileLoaded: !!(cached.profile && cached.profile.fundSizeText),
       }, () => {
         this.calcReturns(cached.history);
         this.updateDisplay();
@@ -288,8 +297,14 @@ Page({
         }
         this.drawChart();
       });
-      // 持仓/档案缓存超过 7 天视为陈旧：切 tab 时后台静默刷新 fetchProfile（旧值先显不转圈）
-      this._profileStale = !cached.ts || (Date.now() - cached.ts > 7 * 86400000);
+      // 持仓/档案缓存超过 7 天，或缓存数据版本落后（后端修正调仓动向等计算）→ 视为陈旧：
+      // 切 tab 时后台静默刷新 fetchProfile（旧值先显不转圈）。版本旧时主动重拉，立即用新值覆盖。
+      const cacheVersionOk = cached.dataVersion === HOLDINGS_CACHE_VERSION;
+      this._profileStale = !cacheVersionOk || !cached.ts || (Date.now() - cached.ts > 7 * 86400000);
+      if (!cacheVersionOk) {
+        // 旧版本缓存（如含修复前错误调仓动向）：渲染旧值后立即重拉档案/持仓，覆盖为最新
+        this.fetchProfile().catch(() => {});
+      }
       return marketTime.isCacheFresh(cached);
     } catch (e) { return false; }
   },
@@ -310,6 +325,7 @@ Page({
         holdings: this.data.holdings, exited: this.data.exited,
         quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
         turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
+        dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),
       });
     } catch (e) { /* ignore */ }
@@ -442,39 +458,53 @@ Page({
     } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
-  async fetchProfile() {
-    try {
-      const res = await api.fetchFundProfile(this.data.fundCode);
-      if (res.result && res.result.code === 0) {
-        let p = res.result.data.profile || {};
-        if (p.fundSize) { p.fundSizeText = (p.fundSize / 100000000).toFixed(2) + '亿'; }
-        else { p.fundSizeText = '--'; }
-        const riskMap = { '1': '低风险', '2': '中低风险', '3': '中风险', '4': '中高风险', '5': '高风险' };
-        p.riskText = riskMap[p.riskLevel] || p.riskLevel || '--';
+  fetchProfile() {
+    // 防重入：版本旧触发(加载时) 与 切 tab 可能并发；在途时复用同一请求，
+    // 避免切 tab 空转一次（转圈一闪而过、数据要等在途请求结束才出现）
+    if (this._profilePromise) return this._profilePromise;
+    this._profilePromise = (async () => {
+      try {
+        const res = await api.fetchFundProfile(this.data.fundCode);
+        if (res.result && res.result.code === 0) {
+          // 档案子请求超时时云函数仍返回 code:0 + profile:null；
+          // 若洗成 {} 会作为真值写入缓存，切档案 tab 的 !profile 重试守卫从此失效 → 永久空白。
+          // 视为失败：不覆盖已有值、不写缓存，下次切 tab 自动重试。
+          const p = res.result.data.profile || null;
+          if (p) {
+            if (p.fundSize) { p.fundSizeText = (p.fundSize / 100000000).toFixed(2) + '亿'; }
+            else { p.fundSizeText = '--'; }
+            const riskMap = { '1': '低风险', '2': '中低风险', '3': '中风险', '4': '中高风险', '5': '高风险' };
+            p.riskText = riskMap[p.riskLevel] || p.riskLevel || '--';
+          }
 
-        const holdings = res.result.data.holdings || [];
-        // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
-        const exited = res.result.data.exited || [];
-        this.setData({ profile: p, manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] });
-        // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
-        this._saveCache();
+          const holdings = res.result.data.holdings || [];
+          // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
+          const exited = res.result.data.exited || [];
+          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] };
+          if (p) patch.profile = p;
+          this.setData(patch);
+          // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
+          if (p) this._saveCache();
 
-        // 后台拉取股票行情（仅补云函数未返回的），不阻塞渲染
-        const missingQuotes = holdings.filter(h => h.stockChangeRate == null);
-        if (missingQuotes.length > 0) {
-          this._fetchStockQuotes(missingQuotes).then(quotes => {
-            if (!Object.keys(quotes).length) return;
-            const updated = holdings.map(h => ({
-              ...h,
-              stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
-              isHK: h.stockCode && h.stockCode.length === 5,
-            }));
-            this.setData({ holdings: updated });
-            this._saveCache(); // 行情补拉后更新缓存，下次秒出的就是带实时涨跌的版本
-          });
+          // 后台拉取股票行情（仅补云函数未返回的），不阻塞渲染
+          const missingQuotes = holdings.filter(h => h.stockChangeRate == null);
+          if (missingQuotes.length > 0) {
+            this._fetchStockQuotes(missingQuotes).then(quotes => {
+              if (!Object.keys(quotes).length) return;
+              const updated = holdings.map(h => ({
+                ...h,
+                stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
+                isHK: h.stockCode && h.stockCode.length === 5,
+              }));
+              this.setData({ holdings: updated });
+              this._saveCache(); // 行情补拉后更新缓存，下次秒出的就是带实时涨跌的版本
+            });
+          }
         }
-      }
-    } catch (e) { console.error("获取基金档案失败:", e); }
+      } catch (e) { console.error("获取基金档案失败:", e); }
+      this._profilePromise = null;
+    })();
+    return this._profilePromise;
   },
 
   // 兜底：客户端拉取股票行情（当云函数未返回时）
@@ -874,6 +904,11 @@ Page({
       await this.fetchProfile();
       this.setData({ profileLoading: false, profileLoaded: true });
     }
+  },
+  onRetryProfile() {
+    if (this.data.profileLoading) return;
+    this.setData({ profileLoading: true });
+    this.fetchProfile().finally(() => this.setData({ profileLoading: false }));
   },
   onImportScreenshot() {
     wx.showActionSheet({
