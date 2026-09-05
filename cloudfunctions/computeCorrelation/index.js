@@ -76,9 +76,9 @@ async function fetchHoldings(fundCode) {
               });
             }
           }
-          // 打新获配股占净值显示 0.00%，多只基金同时打新会造成"重合"假象，
-          // 埋掉真正的重仓重合——占比 <0.1% 的零星持仓不参与重合度统计
-          resolve(rows.filter((r) => r.navRatio >= 0.1));
+          // 口径=「前十大持仓对比」：QDII 等基金东财披露全量明细（70+ 行），须截取前十大
+          // 打新获配股占净值显示 0.00%，多只基金同时打新会造成重合假象，一并剔除
+          resolve(rows.slice(0, 10).filter((r) => r.navRatio >= 0.1));
         } catch (e) { resolve([]); }
       });
     });
