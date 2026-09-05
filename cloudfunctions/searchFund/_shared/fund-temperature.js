@@ -38,7 +38,12 @@ function classifyIndustryCode(industry) {
  * 行业 → 中文展示标签（资产配置用），「其他」时用股票名关键词兜底
  */
 function classifyIndustryLabel(industry, stockName) {
-  if (industry && industry !== "其他" && industry !== "其它") return industry;
+  if (industry && industry !== "其他" && industry !== "其它") {
+    // 东财 2025 行业分类细化，二级名带 Ⅱ 后缀（白酒Ⅱ/银行Ⅱ/军工电子Ⅱ）；
+    // 展示与东财板块名对齐时剥离，避免新旧两套名字并存导致穿透/匹配碎片化
+    const stripped = industry.replace(/[ⅠⅡⅢ]+$/, "").trim();
+    return stripped || industry;
+  }
   const labels = { tech: "科技", biomed: "医药", consume: "消费", finance: "金融", cycle: "周期", utility: "公用事业", mfg: "制造" };
   const map = {
     tech: ["半导体", "芯片", "软件", "计算机", "通信", "电子", "光模块", "互联网", "游戏", "传媒", "元件", "IT", "信息", "数据", "智能", "科技"],

@@ -300,15 +300,18 @@ exports.main = async (event) => {
       let enrichedCount = 0, withTempCount = 0, withDetailCount = 0;
       const industryMap = {};
       let totalWeight = 0;
+      let totalHoldingsValue = 0, coveredHoldingsValue = 0; // 穿透覆盖率：有行业明细的持仓市值占比
       for (const h of enriched) {
         if (!h.peTemp || !h.peTemp.totalStocks) continue;
         enrichedCount++;
         const fundValue = (parseFloat(h.shares) || 0) * (parseFloat(h.currentNav) || 0);
         if (fundValue <= 0) continue;
+        totalHoldingsValue += fundValue;
         withTempCount++;
         const t = tempMap[h.fundCode];
         if (!t || !t.detailPEs || !t.detailPEs.length) continue;
         withDetailCount++;
+        coveredHoldingsValue += fundValue;
         for (const pe of t.detailPEs) {
           const w = fundValue * (pe.ratio / 100);
           const cat = ft.classifyIndustryLabel(pe.industry, pe.name);
@@ -338,6 +341,9 @@ exports.main = async (event) => {
         const maxName = maxReal ? maxReal.industry : "";
         assetAllocation = {
           items: top10,
+          // 穿透覆盖率：行业明细只来自前十大重仓股 + 温度任务已覆盖的基金，
+          // 覆盖率低时穿透占比仅代表已覆盖部分，页面需明示
+          coverage: totalHoldingsValue > 0 ? +((coveredHoldingsValue / totalHoldingsValue) * 100).toFixed(1) : null,
           warning: maxPercent > 30 ? `单一行业「${maxName}」占比 ${maxPercent}%，建议分散配置` : null,
         };
       } else {

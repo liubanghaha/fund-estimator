@@ -26,7 +26,7 @@
 
     <!-- 2. 持仓穿透 -->
     <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="card">
-      <view class="card-title">🏭 行业穿透</view>
+      <view class="card-title">🏭 行业穿透<text wx:if="{{assetAllocation.coverage != null}}" style="float:right;font-size:20rpx;color:#BBB;font-weight:400;line-height:1.5">覆盖持仓 {{assetAllocation.coverage}}%</text></view>
       <view wx:for="{{assetAllocation.items}}" wx:key="industry" wx:if="{{index < 10 || showAllIndustries}}" class="asset-row">
         <text class="asset-name">{{item.industry}}</text>
         <text class="asset-pct">{{item.percent}}%</text>

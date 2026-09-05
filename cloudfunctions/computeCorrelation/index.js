@@ -24,9 +24,28 @@ async function fetchHoldings(fundCode) {
           const match = body.match(/content:"([^"]+)"/);
           if (!match) { resolve([]); return; }
           const html = match[1].replace(/\\"/g, '"');
+          // 东财 jjcc 按 year 返回当年多个季度的 <table>，须按"截止至"日期选中目标季度表，
+          // 否则全年各季度行混入 → 同一股票被计多次 → fundCount/重合度虚高
+          const targetEnd = `${curY}-${String(curM).padStart(2, "0")}-${curM === 3 ? "31" : curM === 6 ? "30" : curM === 9 ? "30" : "31"}`;
+          const pickTable = (htmlStr) => {
+            const tblRe = /<table[\s\S]*?<\/table>/g;
+            let tm;
+            let firstValid = null;
+            while ((tm = tblRe.exec(htmlStr)) !== null) {
+              const tbl = tm[0];
+              const before = htmlStr.slice(Math.max(0, tm.index - 300), tm.index);
+              const em = before.match(/截止至：[\s\S]*?(\d{4}-\d{2}-\d{2})/);
+              const thText = ((tbl.match(/<th[^>]*>([\s\S]*?)<\/th>/g) || []).map(t => t.replace(/<[^>]+>/g, "").replace(/\s+/g, "")).join("|"));
+              if (thText.indexOf("占净值") === -1) continue;
+              if (!firstValid) firstValid = tbl;
+              if (em && em[1] === targetEnd) return tbl;
+            }
+            return firstValid || htmlStr;
+          };
+          const mainHtml = pickTable(html);
           // 表头定位「占净值比例」列（列数随基金类型/季度变化，固定 n-3 会取错列）
           const ratioCol = (() => {
-            const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+            const thead = mainHtml.match(/<thead[\s\S]*?<\/thead>/);
             if (!thead) return -1;
             const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
             for (let i = 0; i < ths.length; i++) {
@@ -36,16 +55,18 @@ async function fetchHoldings(fundCode) {
             return -1;
           })();
           const rows = [];
+          const seen = new Set(); // 同基金同季度内按 stockCode 去重
           const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
           let trMatch;
-          while ((trMatch = trRegex.exec(html)) !== null) {
+          while ((trMatch = trRegex.exec(mainHtml)) !== null) {
             const tds = [];
             const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
             let tdMatch;
             while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
               tds.push(tdMatch[1].replace(/<[^>]+>/g, "").trim());
             }
-            if (tds.length >= 7 && tds.length <= 10 && !tds[0].includes("*")) {
+            if (tds.length >= 7 && tds.length <= 10 && !tds[0].includes("*") && !seen.has(tds[1])) {
+              seen.add(tds[1]);
               const n = tds.length;
               const col = ratioCol >= 1 && ratioCol < n ? ratioCol : n - 3;
               rows.push({

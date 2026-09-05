@@ -211,6 +211,18 @@
           "subscribeMessage.send"
         ]
       }
+    },
+    {
+      "name": "fetchMarketOverview",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "zzDebug",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

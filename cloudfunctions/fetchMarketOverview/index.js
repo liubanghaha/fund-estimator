@@ -42,7 +42,9 @@ exports.main = async (event = {}) => {
     const others = sectors
       .filter((s) => !usedCodes.has(s.code))
       .sort((a, b) => (b.changeRate != null ? b.changeRate : -999) - (a.changeRate != null ? a.changeRate : -999));
-    return { code: 0, data: { overview, sectors: mineCards.concat(others), mineCount: mineCards.length, flows } };
+    // 展示封顶：领涨 30 + 领跌 15（全量列表仅作匹配池，全部展示要翻 80+ 页）
+    const displayOthers = others.length > 45 ? others.slice(0, 30).concat(others.slice(-15)) : others;
+    return { code: 0, data: { overview, sectors: mineCards.concat(displayOthers), mineCount: mineCards.length, flows } };
   } catch (e) {
     console.error("[fetchMarketOverview] 失败:", e.message || e);
     return { code: 500, msg: "行情数据获取失败" };
@@ -116,10 +118,10 @@ async function fetchOverview() {
   }
 }
 
-// 行业板块行情：领涨 30 + 领跌 15（板块库已细化至 ~496 个，全量拉取过重且无展示必要）。
+// 行业板块全量列表（~496 个，分页 5×100）：作为持仓行业匹配池必须拉全，
+// 只取领涨/领跌榜会导致用户行业多数不在榜内而匹配失败。展示端另行封顶。
 // ⚠️ clist 必须带 ut 令牌（东财 web 公开 token），否则返回空
 async function fetchSectors() {
-  const base = "https://push2.eastmoney.com/api/qt/clist/get?np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281";
   const parse = (body) => {
     try {
       const root = JSON.parse(body);
@@ -134,28 +136,22 @@ async function fetchSectors() {
       })).filter((s) => s.name);
     } catch (e) { return []; } // 限流/空响应体容错
   };
-  const tryUrl = async (url) => {
-    try {
-      const body = await httpGet(url);
-      return parse(body);
-    } catch (e) {
-      return [];
+  const tryPage = async (pn) => {
+    const q = `pn=${pn}&pz=100&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+    let body = await httpGet("https://push2.eastmoney.com/api/qt/clist/get?" + q).catch(() => "");
+    if (!body || body === "null") {
+      body = await httpGet("https://push2delay.eastmoney.com/api/qt/clist/get?" + q).catch(() => "");
     }
+    return parse(body);
   };
-  const suffix = "&pn=1&pz=30&po=1";
-  const suffixAsc = "&pn=1&pz=15&po=0";
-  // 云函数出口对 clist 偶发限流：主站 → delay 镜像 依次尝试
-  let desc = await tryUrl("https://push2.eastmoney.com/api/qt/clist/get?np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281" + suffix);
-  let asc = await tryUrl("https://push2.eastmoney.com/api/qt/clist/get?np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281" + suffixAsc);
-  if (!desc.length && !asc.length) {
-    desc = await tryUrl("https://push2delay.eastmoney.com/api/qt/clist/get?np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281" + suffix);
-    asc = await tryUrl("https://push2delay.eastmoney.com/api/qt/clist/get?np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281" + suffixAsc);
-  }
   const seen = new Set();
   const out = [];
-  for (const s of [...desc, ...asc]) {
-    if (!seen.has(s.code)) { seen.add(s.code); out.push(s); }
+  for (let pn = 1; pn <= 5; pn++) {
+    const rows = await tryPage(pn);
+    rows.forEach((s) => { if (!seen.has(s.code)) { seen.add(s.code); out.push(s); } });
+    if (rows.length < 100) break;
   }
+  // clist 按 f3 降序返回，out 已有序
   return out;
 }
 
