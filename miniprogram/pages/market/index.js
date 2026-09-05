@@ -8,14 +8,22 @@ const track = require("../../utils/track");
 
 const CACHE_KEY = "market_center_cache";
 const INDICES = [
-  { code: "000001", name: "上证指数" },
-  { code: "399001", name: "深证成指" },
-  { code: "000300", name: "沪深300" },
-  { code: "399006", name: "创业板指" },
-  { code: "HSTECH", name: "恒生科技" },
-  { code: "HSI", name: "恒生指数" },
-  { code: "SPX", name: "标普500" },
-  { code: "IXIC", name: "纳斯达克" },
+  { code: "000001", name: "上证指数", group: "a" },
+  { code: "399001", name: "深证成指", group: "a" },
+  { code: "000300", name: "沪深300", group: "a" },
+  { code: "399006", name: "创业板指", group: "a" },
+  { code: "HSTECH", name: "恒生科技", group: "hk" },
+  { code: "HSI", name: "恒生指数", group: "hk" },
+  { code: "SPX", name: "标普500", group: "us" },
+  { code: "IXIC", name: "纳斯达克", group: "us" },
+  { code: "N225", name: "日经225", group: "ap" },
+  { code: "KS11", name: "韩国KOSPI", group: "ap" },
+];
+const IDX_TABS = [
+  { key: "a", label: "A股" },
+  { key: "hk", label: "港股" },
+  { key: "us", label: "美股" },
+  { key: "ap", label: "亚太" },
 ];
 const A_CODES = ["000001", "399001", "000300", "399006"];
 const FETCH_TIMEOUT = 3000;
@@ -33,13 +41,14 @@ Page({
     shAmountText: "",
     szAmountText: "",
     upPct: 50, downPct: 50,
-    // 行业板块（持仓行业置顶；默认展示 6 个，可展开全部）
+    // 行业板块（持仓行业置顶，横滑）
     sectors: [],
-    displaySectors: [],
-    sectorsExpanded: false,
     mineCount: 0,
-    // 核心指数
+    // 核心指数（A/港/美/亚太 四类切换）
+    idxTabs: IDX_TABS,
+    idxTab: "a",
     indexCards: [],
+    indexCardsGrouped: {},
     indexLoading: true,
     updatedAt: "",
   },
@@ -98,13 +107,18 @@ Page({
       overview: ov,
       sectors: cache.sectors || [],
       mineCount: cache.mineCount || 0,
-      indexCards: cache.indexCards || [],
+      indexCards: [],
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
     };
-    // 行业默认展示 6 个，可展开全部
-    const all = data.sectors;
-    data.displaySectors = this.data.sectorsExpanded ? all : all.slice(0, 6);
+    // 指数按 A/港/美/亚太 分组，展示当前选中组
+    const grouped = { a: [], hk: [], us: [], ap: [] };
+    (cache.indexCards || []).forEach((c) => {
+      const def = INDICES.find((i) => i.code === c.code);
+      (grouped[def ? def.group : "a"] || grouped.a).push(c);
+    });
+    data.indexCardsGrouped = grouped;
+    data.indexCards = grouped[this.data.idxTab] || [];
     if (ov && (ov.up || ov.down)) {
       const total = ov.up + ov.down + ov.flat;
       data.upPct = total ? Math.round((ov.up / total) * 100) : 50;
@@ -126,10 +140,11 @@ Page({
     return yi.toFixed(0) + "亿";
   },
 
-  // 行业展开/收起
-  onToggleSectors() {
-    const expanded = !this.data.sectorsExpanded;
-    this.setData({ sectorsExpanded: expanded, displaySectors: expanded ? this.data.sectors : this.data.sectors.slice(0, 6) });
+  // 指数分类切换（A/港/美/亚太）
+  onIdxTab(e) {
+    const key = e.currentTarget.dataset.key;
+    if (!key || key === this.data.idxTab) return;
+    this.setData({ idxTab: key, indexCards: this.data.indexCardsGrouped[key] || [] });
   },
 
   // 主力净额 → 数据陈述文案（合规红线 #5：只陈述不带引导词）

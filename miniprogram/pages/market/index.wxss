@@ -43,8 +43,8 @@
 .idx-price{font-size:34rpx;font-weight:700;margin-top:8rpx}
 .idx-rate{font-size:24rpx;margin-top:4rpx}
 
-/* 行业两列网格（默认 6 个可展开） */
-.sec-grid{display:flex;flex-wrap:wrap;justify-content:space-between}
-.sec-grid .sec-card{width:calc((100% - 14rpx)/2);margin:0 0 14rpx 0;display:block;white-space:normal}
-.sec-toggle{font-size:24rpx;color:var(--primary,#E4393C);text-align:center;padding:10rpx 0 2rpx}
+/* 指数分类切换（A/港/美/亚太） */
+.idx-tabs{display:flex;gap:14rpx;margin-bottom:18rpx}
+.idx-tab{font-size:24rpx;color:#666;background:#F2F2F2;border-radius:26rpx;padding:8rpx 26rpx}
+.idx-tab.active{color:#FFF;background:var(--primary,#E4393C);font-weight:600}
 .idx-flow{font-size:20rpx;margin-top:6rpx;color:#999;white-space:nowrap}

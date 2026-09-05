@@ -10,6 +10,8 @@ const INDEX_SYMBOL = {
   "HSI": "HSI",
   "SPX": "SPX",
   "IXIC": "IXIC",
+  "N225": "N225",
+  "KS11": "KS11",
 };
 
 const US_SINA_SYMBOLS = { "SPX": "gb_inx", "IXIC": "gb_ixic" };
@@ -26,6 +28,8 @@ exports.main = async (event) => {
       data = await fetchHKIndexData(indexCode, days);
     } else if (indexCode === "SPX" || indexCode === "IXIC") {
       data = await fetchUSIndexData(indexCode, days);
+    } else if (indexCode === "N225" || indexCode === "KS11") {
+      data = await fetchGlobalIndexData(indexCode, days);
     } else {
       data = await fetchAShareIndexData(INDEX_SYMBOL[indexCode], indexCode, days);
     }
@@ -237,6 +241,46 @@ function buildQuoteData(price, prevClose, open, high, low) {
 function formatDate(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// ========== 亚太指数（东财国际指数，市场前缀 100，两位小数 scale=100） ==========
+
+const GLOBAL_EM_SECIDS = { "N225": "100.N225", "KS11": "100.KS11" };
+
+// 指定 host 的东财实时行情（主站/镜像同构；云出口对 push2 偶发限流需要双 host 兜底）
+function fetchEMRealtimeOn(host, secid) {
+  return httpGet({
+    hostname: host,
+    path: `/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170`,
+  }, { Referer: "https://quote.eastmoney.com/" }, 8000).then((body) => {
+    try {
+      const d = JSON.parse(body).data;
+      if (!d || !d.f43) return [];
+      const price = (d.f43 || 0) / 100, prevClose = (d.f60 || 0) / 100;
+      const open = (d.f46 || 0) / 100, high = (d.f44 || 0) / 100, low = (d.f45 || 0) / 100;
+      if (price <= 0) return [];
+      return buildQuoteData(price, prevClose, open, high, low);
+    } catch (e) { return []; }
+  });
+}
+
+async function fetchGlobalIndexData(code, days) {
+  const secid = GLOBAL_EM_SECIDS[code];
+  // 实时行情优先（行情中心只取 days<=2 的快照），主站失败走 delay 镜像
+  let quote = await fetchEMRealtimeOn("push2.eastmoney.com", secid);
+  if (!quote || quote.length < 2) quote = await fetchEMRealtimeOn("push2delay.eastmoney.com", secid);
+  if (quote && quote.length >= 2 && days <= 2) return quote;
+  // 历史场景：东财全球 K 线 + 实时收盘融合
+  const kline = await fetchEastMoneyGlobalKline(secid, days).catch(() => []);
+  let data = kline && kline.length ? kline : (quote || []);
+  if (quote && quote.length >= 2 && data && data.length > 0) {
+    const q = quote[quote.length - 1];
+    const k = data[data.length - 1];
+    if (k.date === q.date) data[data.length - 1] = { ...k, close: q.close };
+    else data.push({ date: q.date, open: q.open || q.close, close: q.close, high: q.high, low: q.low, volume: 0 });
+  }
+  if (data && data.length > 1) data.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return data || [];
 }
 
 // ========== 通用 HTTP 请求 ==========
