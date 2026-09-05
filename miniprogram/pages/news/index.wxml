@@ -1,0 +1,58 @@
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <view class="disclaimer">资讯来自第三方公开渠道，仅供参考，不构成投资建议。</view>
+
+  <!-- 子 tab：快讯 / 要闻 -->
+  <view class="sub-tabs">
+    <view class="sub-tab {{tab === 'flash' ? 'active' : ''}}" bind:tap="onTab" data-tab="flash">快讯 7×24</view>
+    <view class="sub-tab {{tab === 'headlines' ? 'active' : ''}}" bind:tap="onTab" data-tab="headlines">要闻</view>
+  </view>
+
+  <!-- 快讯 7×24 -->
+  <block wx:if="{{tab === 'flash'}}">
+    <view class="filter-row">
+      <view class="filter-chips">
+        <text class="filter-chip {{filter === item.key ? 'active' : ''}}" wx:for="{{filters}}" wx:key="key" data-key="{{item.key}}" bind:tap="onFilterTap">{{item.label}}</text>
+      </view>
+      <text class="filter-chip imp {{importantOnly ? 'active' : ''}}" bind:tap="onImportantToggle">重要</text>
+    </view>
+
+    <view class="news-list">
+      <view class="news-item" wx:for="{{displayItems}}" wx:key="id">
+        <view class="news-time">{{item.timeShort}}</view>
+        <view class="news-body {{item.important ? 'important' : ''}}">
+          <view class="news-text">
+            <text wx:if="{{item.important}}" class="news-important-tag">重要</text>
+            {{item.content}}
+          </view>
+          <view class="news-meta">
+            <text class="news-source">{{item.sourceText}}</text>
+            <text class="news-cat">{{item.categoryText}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{loadingMore}}" class="news-tip">加载中...</view>
+      <view wx:if="{{!loading && !loadError && displayItems.length === 0}}" class="news-tip">当前筛选条件下暂无快讯</view>
+      <view wx:if="{{hasMore && displayItems.length}}" class="news-tip">上拉加载更多</view>
+      <view wx:if="{{!hasMore && displayItems.length}}" class="news-tip">已加载全部</view>
+    </view>
+  </block>
+
+  <!-- 要闻 -->
+  <block wx:if="{{tab === 'headlines'}}">
+    <view class="news-list">
+      <view class="hl-item" wx:for="{{headlines}}" wx:key="id">
+        <view class="hl-title">{{item.title}}</view>
+        <view class="hl-summary">{{item.summary}}</view>
+        <view class="hl-meta">{{item.media}} · {{item.timeShort}}</view>
+      </view>
+      <view wx:if="{{!loading && headlines.length === 0}}" class="news-tip">暂无要闻</view>
+    </view>
+  </block>
+
+  <!-- 加载/错误 -->
+  <view wx:if="{{loading}}" class="news-loading"><text class="news-tip">分析中...</text></view>
+  <view wx:if="{{loadError}}" class="news-loading">
+    <text class="news-tip">资讯加载失败，下拉重试</text>
+    <button class="news-retry" bind:tap="onRetry">点击重试</button>
+  </view>
+</view>

@@ -217,6 +217,12 @@
       "timeout": 20,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "fetchNews",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

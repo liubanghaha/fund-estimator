@@ -8,7 +8,8 @@
     "pages/adjust-holding/index",
     "pages/login/index",
     "pages/ops/index",
-    "pages/market/index"
+    "pages/market/index",
+    "pages/news/index"
   ],
   "subpackages": [
     {
@@ -52,6 +53,10 @@
       {
         "pagePath": "pages/watchlist/index",
         "text": "自选"
+      },
+      {
+        "pagePath": "pages/news/index",
+        "text": "资讯"
       },
       {
         "pagePath": "pages/user-center/index",

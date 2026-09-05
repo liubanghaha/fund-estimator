@@ -1,0 +1,123 @@
+const api = require("../../utils/api");
+
+const FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "stock", label: "股市" },
+  { key: "fund", label: "基金" },
+  { key: "macro", label: "宏观" },
+];
+const CAT_TEXT = { fund: "基金", stock: "股市", macro: "宏观", mix: "综合" };
+const SOURCE_TEXT = { em: "东财快讯", jin10: "金十快讯" };
+
+Page({
+  data: {
+    theme: "red",
+    tab: "flash", // flash 快讯 7×24 | headlines 要闻
+    filters: FILTERS,
+    filter: "all",
+    importantOnly: false,
+    flashItems: [],
+    displayItems: [],
+    headlines: [],
+    sortEnd: "",
+    hasMore: false,
+    loading: true,
+    loadingMore: false,
+    loadError: false,
+  },
+
+  onLoad() {
+    this.setData({ theme: wx.getStorageSync("theme") || "red" });
+    this.fetchFirst();
+  },
+  onShow() {
+    const theme = wx.getStorageSync("theme") || "red";
+    if (theme !== this.data.theme) this.setData({ theme });
+  },
+  onPullDownRefresh() {
+    this.fetchFirst().finally(() => wx.stopPullDownRefresh());
+  },
+  onReachBottom() {
+    this.loadMore();
+  },
+
+  fetchFirst() {
+    this.setData({ loading: !this.data.flashItems.length, loadError: false });
+    return api.fetchNews({}).then((res) => {
+      if (res && res.result && res.result.code === 0 && res.result.data) {
+        const d = res.result.data;
+        const flash = this._normalizeFlash((d.flash && d.flash.items) || []);
+        this.setData({
+          flashItems: flash,
+          sortEnd: (d.flash && d.flash.sortEnd) || "",
+          hasMore: !!(d.flash && d.flash.sortEnd),
+          headlines: this._normalizeHeadlines((d.headlines && d.headlines.items) || []),
+        });
+        this._applyFilter();
+      } else {
+        this.setData({ loadError: true });
+      }
+      this.setData({ loading: false });
+    }).catch(() => {
+      this.setData({ loading: false, loadError: true });
+    });
+  },
+
+  loadMore() {
+    if (this.data.tab !== "flash" || !this.data.hasMore || this.data.loadingMore) return;
+    this.setData({ loadingMore: true });
+    api.fetchNews({ sortEnd: this.data.sortEnd }).then((res) => {
+      if (res && res.result && res.result.code === 0 && res.result.data) {
+        const d = res.result.data;
+        const more = this._normalizeFlash((d.flash && d.flash.items) || []);
+        this.setData({
+          flashItems: this.data.flashItems.concat(more),
+          sortEnd: (d.flash && d.flash.sortEnd) || "",
+          hasMore: !!(d.flash && d.flash.sortEnd),
+        });
+        this._applyFilter();
+      }
+      this.setData({ loadingMore: false });
+    }).catch(() => this.setData({ loadingMore: false }));
+  },
+
+  _normalizeFlash(items) {
+    return items.map((it) => ({
+      ...it,
+      timeShort: (it.time || "").slice(11, 16),
+      sourceText: SOURCE_TEXT[it.source] || "快讯",
+      categoryText: CAT_TEXT[it.category] || "综合",
+    }));
+  },
+  _normalizeHeadlines(items) {
+    return items.map((it) => ({ ...it, timeShort: (it.time || "").slice(5, 16) }));
+  },
+
+  // 客户端过滤：分类 chips + 只看重要
+  _applyFilter() {
+    const f = this.data.filter;
+    let items = this.data.flashItems;
+    if (f !== "all") items = items.filter((i) => i.category === f);
+    if (this.data.importantOnly) items = items.filter((i) => i.important);
+    this.setData({ displayItems: items });
+  },
+
+  onTab(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab !== this.data.tab) this.setData({ tab });
+  },
+  onFilterTap(e) {
+    const key = e.currentTarget.dataset.key;
+    if (key !== this.data.filter) {
+      this.setData({ filter: key });
+      this._applyFilter();
+    }
+  },
+  onImportantToggle() {
+    this.setData({ importantOnly: !this.data.importantOnly });
+    this._applyFilter();
+  },
+  onRetry() {
+    this.fetchFirst();
+  },
+});

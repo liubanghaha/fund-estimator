@@ -5,7 +5,7 @@ const api = {
   READ_ONLY_FUNCS: [
     "userLogin", "searchFund", "getPortfolio", "portfolioLight",
     "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
-    "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview",
+    "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview", "fetchNews",
     "batchFetchEstimate", "computeCorrelation",
     "dcaBacktest", "getMigrationCode",
   ],
@@ -171,6 +171,10 @@ const api = {
   // 行情中心快照：两市成交额/涨跌家数 + 行业板块（登录用户持仓行业置顶）
   fetchMarketOverview() {
     return this.callFunction("fetchMarketOverview", {});
+  },
+  // 资讯聚合：快讯 7×24（东财+金十，sortEnd 翻页游标）+ 要闻
+  fetchNews(params = {}) {
+    return this.callFunction("fetchNews", params);
   },
   fetchMarketIndexClient(indexCode, days = 80) {
     // 含港股指数映射（124.HSTECH/124.HSI），避免未识别代码静默回退返回上证错数据
