@@ -43,6 +43,7 @@ Page({
     // 行业板块（持仓行业置顶，横滑）
     sectors: [],
     sectorPages: [],
+    sectorSort: "weight", // weight=持仓匹配 | gain=涨幅最多 | loss=涨幅最小
     mineCount: 0,
     // 核心指数（A/港/美/亚太 四类切换）
     idxTabs: IDX_TABS,
@@ -103,21 +104,19 @@ Page({
 
   _render(cache) {
     const ov = cache.overview;
+    this._sectorsRaw = cache.sectors || [];
+    this._mineCount = cache.mineCount || 0;
     const data = {
       loading: false,
       loadError: false,
       emptyData: !!cache.empty,
       overview: ov,
-      sectors: cache.sectors || [],
-      mineCount: cache.mineCount || 0,
+      mineCount: this._mineCount,
       indexCards: [],
       indexLoading: false,
       updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
     };
-    // 行业两列网格分页：每页 6 个（2×3），swiper 左右翻页
-    const sectorPages = [];
-    for (let i = 0; i < data.sectors.length; i += 6) sectorPages.push(data.sectors.slice(i, i + 6));
-    data.sectorPages = sectorPages;
+    this._applySectorSort(data, this.data.sectorSort);
     // 指数按 A/港/美/亚太 分组，展示当前选中组
     const grouped = { a: [], hk: [], us: [], ap: [] };
     (cache.indexCards || []).forEach((c) => {
@@ -159,6 +158,32 @@ Page({
     const yi = Math.abs(main) / 1e8;
     const amt = yi >= 10000 ? (yi / 10000).toFixed(2) + "万亿" : yi.toFixed(1) + "亿";
     return "主力净" + (main >= 0 ? "流入" : "流出") + " " + amt;
+  },
+
+  // 行业排序：weight=持仓匹配（命中行业按占仓权重在前，服务端默认序）｜gain=当日涨幅最多｜loss=涨幅最小
+  _applySectorSort(data, mode) {
+    const all = this._sectorsRaw || [];
+    let ordered;
+    if (mode === "gain") {
+      ordered = all.slice().sort((a, b) => (b.changeRate != null ? b.changeRate : -999) - (a.changeRate != null ? a.changeRate : -999));
+    } else if (mode === "loss") {
+      ordered = all.slice().sort((a, b) => (a.changeRate != null ? a.changeRate : 999) - (b.changeRate != null ? b.changeRate : 999));
+    } else {
+      ordered = all;
+    }
+    data.sectors = ordered;
+    // 两列网格分页：每页 6 个（2×3），swiper 左右翻页
+    const sectorPages = [];
+    for (let i = 0; i < ordered.length; i += 6) sectorPages.push(ordered.slice(i, i + 6));
+    data.sectorPages = sectorPages;
+  },
+
+  onSectorSort(e) {
+    const key = e.currentTarget.dataset.key;
+    if (!key || key === this.data.sectorSort) return;
+    const data = { sectorSort: key };
+    this._applySectorSort(data, key);
+    this.setData(data);
   },
 
   // 概览+行业板块（单云调用）；失败返回 null 由缓存兜底

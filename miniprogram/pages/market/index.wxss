@@ -44,6 +44,13 @@
 .idx-price{font-size:34rpx;font-weight:700;margin-top:8rpx}
 .idx-rate{font-size:24rpx;margin-top:4rpx}
 
+/* 行业排序 chips */
+.mk-sec-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:20rpx}
+.mk-sec-title-row .mk-sec-title{margin-bottom:0}
+.sort-chips{display:flex;gap:10rpx}
+.sort-chip{font-size:20rpx;color:#888;background:#F2F2F2;border-radius:20rpx;padding:6rpx 18rpx}
+.sort-chip.active{color:#FFF;background:var(--primary,#E4393C);font-weight:600}
+
 /* 指数分类切换（A/港/美/亚太） */
 .idx-tabs{display:flex;gap:14rpx;margin-bottom:18rpx}
 .idx-tab{font-size:24rpx;color:#666;background:#F2F2F2;border-radius:26rpx;padding:8rpx 26rpx}
