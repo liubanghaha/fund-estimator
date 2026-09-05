@@ -88,7 +88,8 @@
 .pe-switch-dot{width:36rpx;height:36rpx;border-radius:50%;background:#FFF;position:absolute;top:4rpx;left:4rpx;transition:left .2s;box-shadow:0 1rpx 4rpx rgba(0,0,0,.15)}
 .pe-switch.on .pe-switch-dot{left:40rpx}
 
-.holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF}
+.holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF;position:relative}
+.table-fade{position:absolute;right:0;top:0;bottom:0;width:36rpx;background:linear-gradient(90deg,rgba(255,255,255,0),#FFF);pointer-events:none;z-index:2}
 .updated-tag{font-size:14rpx;color:#FFF;background:var(--primary);border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle}
 
 /* 表格 */

@@ -104,7 +104,7 @@ page {
 
 /* 数据来源提示（页面顶部） */
 .disclaimer {
-  padding: 16rpx 32rpx;
+  padding: 8rpx 32rpx;
   text-align: center;
   color: #999;
   font-size: 20rpx;
