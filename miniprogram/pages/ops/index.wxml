@@ -13,13 +13,13 @@
 
   <block wx:else>
     <!-- Tab 切换 -->
-    <view class="ops-tabs">
+    <scroll-view class="ops-tabs" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="ops-tab {{tab === 'briefing' ? 'active' : ''}}" bind:tap="onTab" data-tab="briefing">温度简报</view>
-      <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道小程序码</view>
+      <view class="ops-tab {{tab === 'channels' ? 'active' : ''}}" bind:tap="onTab" data-tab="channels">渠道码</view>
       <view class="ops-tab {{tab === 'track' ? 'active' : ''}}" bind:tap="onTab" data-tab="track">埋点周报</view>
       <view class="ops-tab {{tab === 'push' ? 'active' : ''}}" bind:tap="onTab" data-tab="push">推送灰度</view>
-      <view class="ops-tab {{tab === 'recall' ? 'active' : ''}}" bind:tap="onTab" data-tab="recall">老用户召回</view>
-    </view>
+      <view class="ops-tab {{tab === 'recall' ? 'active' : ''}}" bind:tap="onTab" data-tab="recall">召回</view>
+    </scroll-view>
 
     <!-- ===== 温度简报 ===== -->
     <view wx:if="{{tab === 'briefing'}}" class="ops-card">
