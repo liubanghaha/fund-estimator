@@ -72,6 +72,36 @@ function aggregateUserIndustries(holdingsDocs, tempLatest) {
   return { list, coverage: totalValue > 0 ? +((coveredValue / totalValue) * 100).toFixed(1) : null };
 }
 
+/**
+ * 七大类归一：基金名称/股票行业关键词 → 科技/医药/消费/金融/周期/公用事业/制造（无匹配返回"其他"）。
+ * getPortfolio 主打行业定位（基金名 → 契约主题）与重仓股行业聚合共用。
+ */
+const MAJOR_INDUSTRY_MAP = {
+  科技: ["半导体", "芯片", "软件", "计算机", "通信", "电子", "光模块", "互联网", "游戏", "传媒", "元件", "IT", "信息", "数据", "智能", "科技", "人工智能", "创新", "云计算", "算力"],
+  医药: ["医药", "生物", "医疗", "中药", "化学制药", "器械", "健康", "疫苗"],
+  消费: ["白酒", "食品", "饮料", "家电", "汽车", "服装", "旅游", "零售", "免税", "调味品", "乳业", "养殖", "消费", "农业", "酒店", "餐饮", "美妆", "纺织", "畜牧", "屠宰"],
+  金融: ["银行", "保险", "证券", "地产", "房地产", "金融", "信托", "期货", "多元金融"],
+  周期: ["煤炭", "钢铁", "有色", "石油", "化工", "稀土", "黄金", "铜", "铝", "海运", "造船", "矿石", "建材", "水泥", "玻璃", "金属", "纸", "化纤", "塑料", "橡胶", "化学", "采掘", "石化"],
+  公用事业: ["电力", "水务", "高速", "公路", "港口", "铁路", "燃气", "环保", "新能源发电", "电网", "核电", "水电"],
+  制造: ["机械", "电气", "新能源", "电池", "军工", "航天", "船舶", "仪器仪表", "电力设备", "航空", "光伏", "风电", "通用设备", "专用设备", "电源", "装备", "重工", "锅炉", "电机", "自动化", "机器人", "电器", "智造", "汽车零部件"],
+};
+
+function classifyMajorIndustry(text, fallbackName) {
+  const t = String(text || "");
+  if (t) {
+    for (const [label, keywords] of Object.entries(MAJOR_INDUSTRY_MAP)) {
+      if (keywords.some(k => t.includes(k))) return label;
+    }
+  }
+  const fb = String(fallbackName || "");
+  if (fb) {
+    for (const [label, keywords] of Object.entries(MAJOR_INDUSTRY_MAP)) {
+      if (keywords.some(k => fb.includes(k))) return label;
+    }
+  }
+  return "其他";
+}
+
 function classifyIndustryLabel(industry, stockName) {
   if (industry && industry !== "其他" && industry !== "其它") {
     // 东财 2025 行业分类细化，二级名带 Ⅱ 后缀（白酒Ⅱ/银行Ⅱ/军工电子Ⅱ）；
@@ -432,4 +462,5 @@ module.exports = {
       .replace(/正常/g, "温度适中");
   },
   aggregateUserIndustries,
+  classifyMajorIndustry,
 };
