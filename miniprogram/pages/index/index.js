@@ -920,17 +920,6 @@ Page({
   },
   onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
 
-  // 低频功能收进「更多」：买卖记录 / 批量操作
-  onMoreActions() {
-    wx.showActionSheet({
-      itemList: ["买卖记录 / 加减仓", "批量操作"],
-      success: (res) => {
-        if (res.tapIndex === 0) this.onAdjust();
-        else if (res.tapIndex === 1) this.onToggleBatch();
-      },
-    });
-  },
-
   onToggleBatch() {
     const enter = !this.data.batchMode;
     const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));

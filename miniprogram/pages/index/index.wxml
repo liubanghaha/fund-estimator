@@ -118,13 +118,17 @@
             <view class="action-icon">📝</view>
             <view class="action-text">新增</view>
           </view>
+          <view class="action-item" bind:tap="onAdjust">
+            <view class="action-icon">✏️</view>
+            <view class="action-text">加减仓</view>
+          </view>
           <view class="action-item" bind:tap="onCorrelation">
             <view class="action-icon">📊</view>
             <view class="action-text">资产分析</view>
           </view>
-          <view class="action-item" bind:tap="onMoreActions">
-            <view class="action-icon">⋯</view>
-            <view class="action-text">更多</view>
+          <view class="action-item" bind:tap="onToggleBatch">
+            <view class="action-icon">📋</view>
+            <view class="action-text">批量</view>
           </view>
         </view>
 
