@@ -45,7 +45,9 @@ function httpGet(url, headers = {}, timeout = 8000) {
 async function fetchEMFlash(sortEnd) {
   try {
     const url = `https://np-weblist.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=${encodeURIComponent(sortEnd)}&pageSize=50&req_trace=${Date.now()}`;
-    const d = JSON.parse(await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" }));
+    let body = await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" });
+    if (!body || body.length < 10) body = await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" }); // 限流重试一次
+    const d = JSON.parse(body);
     const data = d.data || {};
     const items = (data.fastNewsList || []).map((it) => ({
       id: "em_" + it.code,
@@ -65,12 +67,15 @@ async function fetchEMFlash(sortEnd) {
 // 金十快讯（宏观/国际/央行强项；important=1 为重要）
 async function fetchJin10() {
   try {
-    const d = JSON.parse(await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", {
+    const jHeaders = {
       "x-app-id": "bVBF4FyRTn5NJF5n",
       "x-version": "1.0.0",
       Origin: "https://www.jin10.com",
       Referer: "https://www.jin10.com/",
-    }));
+    };
+    let jBody = await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", jHeaders);
+    if (!jBody || jBody.length < 10) jBody = await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", jHeaders);
+    const d = JSON.parse(jBody);
     const items = (d.data || []).map((it) => {
       const dd = it.data || {};
       return {
@@ -105,6 +110,10 @@ exports.main = async (event = {}) => {
       fetchEMFlash(sortEnd),
       sortEnd ? Promise.resolve([]) : fetchJin10(), // 翻页只走东财游标；金十仅首页补强
     ]);
+    // 双源全挂（出口被限流等）：返回 last-good 实例缓存并标 stale，客户端提示为缓存数据
+    if (em.items.length === 0 && jin10.length === 0 && _memCache.data) {
+      return { code: 0, data: Object.assign({ stale: true }, _memCache.data) };
+    }
 
     // 双源按时间归并 + 前 18 字指纹去重（同一事件两源都发）；时政类条目整条剔除
     const seen = new Set();

@@ -1,5 +1,6 @@
 .page{min-height:100vh;background:#F5F5F5;padding:16rpx 24rpx 40rpx;box-sizing:border-box}
 .disclaimer{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 0 4rpx}
+.news-stale-tip{font-size:22rpx;color:#B8860B;background:#FFF8E1;border-radius:10rpx;padding:12rpx 20rpx;margin-bottom:16rpx;text-align:center}
 .filter-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
 .filter-chips{display:flex;gap:10rpx}
 .filter-chip{font-size:22rpx;color:#666;background:#FFF;border-radius:24rpx;padding:8rpx 22rpx}

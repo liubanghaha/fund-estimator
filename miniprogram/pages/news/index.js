@@ -16,6 +16,7 @@ Page({
     loading: true,
     loadingMore: false,
     loadError: false,
+    refreshFailed: false,
   },
 
   onLoad() {
@@ -52,7 +53,7 @@ Page({
 
   fetchFirst() {
     this._autoPages = 0;
-    this.setData({ loading: !this.data.flashItems.length, loadError: false });
+    this.setData({ loading: !this.data.flashItems.length, loadError: false, refreshFailed: false });
     return api.fetchNews({}).then((res) => {
       if (res && res.result && res.result.code === 0 && res.result.data) {
         const d = res.result.data;
@@ -61,16 +62,24 @@ Page({
           flashItems: flash,
           sortEnd: (d.flash && d.flash.sortEnd) || "",
           hasMore: !!(d.flash && d.flash.sortEnd),
+          refreshFailed: false,
         });
         this._applyFilter();
-        // 写缓存：下次打开秒开（日期分组标签渲染时按当天重算，不受缓存日期影响）
-        try { wx.setStorageSync(CACHE_KEY, { ts: Date.now(), flashItems: this.data.flashItems, sortEnd: this.data.sortEnd, hasMore: this.data.hasMore }); } catch (e) { /* ignore */ }
+        // 写缓存：下次打开秒开（日期分组标签渲染时按当天重算，不受缓存日期影响）。
+        // 空结果不覆盖缓存（源临时故障时保留上次数据）
+        if (flash.length) {
+          try { wx.setStorageSync(CACHE_KEY, { ts: Date.now(), flashItems: this.data.flashItems, sortEnd: this.data.sortEnd, hasMore: this.data.hasMore }); } catch (e) { /* ignore */ }
+        }
+      } else if (this.data.flashItems.length) {
+        // 有缓存：静默保留旧数据，仅提示刷新失败
+        this.setData({ refreshFailed: true, loading: false });
       } else {
         this.setData({ loadError: true });
       }
       this.setData({ loading: false });
     }).catch(() => {
-      this.setData({ loading: false, loadError: true });
+      if (this.data.flashItems.length) this.setData({ refreshFailed: true, loading: false });
+      else this.setData({ loading: false, loadError: true });
     });
   },
 

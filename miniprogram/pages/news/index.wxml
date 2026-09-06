@@ -2,6 +2,7 @@
   <view class="disclaimer">资讯来自第三方公开渠道，仅供参考，不构成投资建议。</view>
 
   <!-- 快讯 7×24 -->
+  <view wx:if="{{refreshFailed}}" class="news-stale-tip">⚠️ 刷新失败，当前为缓存数据，下拉可重试</view>
   <view class="filter-row">
       <text class="date-label">{{dateLabel}}</text>
       <text class="filter-chip imp {{importantOnly ? 'active' : ''}}" bind:tap="onImportantToggle">重要</text>
