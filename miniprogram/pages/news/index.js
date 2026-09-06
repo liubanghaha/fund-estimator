@@ -1,6 +1,7 @@
 const api = require("../../utils/api");
 
 const CAT_TEXT = { fund: "基金", stock: "股市", macro: "宏观", mix: "综合" };
+const CACHE_KEY = "news_cache";
 const SOURCE_TEXT = { em: "东财快讯", jin10: "金十快讯" };
 
 Page({
@@ -23,6 +24,20 @@ Page({
     const d = new Date(Date.now() + 8 * 3600000);
     const week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][d.getUTCDay()];
     this.setData({ dateLabel: `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${week}` });
+    // 缓存秒开：先渲染上次数据（日期分组标签按今天重算），后台拉最新
+    try {
+      const cached = wx.getStorageSync(CACHE_KEY);
+      if (cached && cached.flashItems && cached.flashItems.length) {
+        this.setData({
+          flashItems: cached.flashItems,
+          headlines: cached.headlines || [],
+          sortEnd: cached.sortEnd || "",
+          hasMore: !!cached.hasMore,
+          loading: false,
+        });
+        this._applyFilter();
+      }
+    } catch (e) { /* ignore */ }
     this.fetchFirst();
   },
   onShow() {
@@ -49,6 +64,8 @@ Page({
           hasMore: !!(d.flash && d.flash.sortEnd),
         });
         this._applyFilter();
+        // 写缓存：下次打开秒开（日期分组标签渲染时按当天重算，不受缓存日期影响）
+        try { wx.setStorageSync(CACHE_KEY, { ts: Date.now(), flashItems: this.data.flashItems, headlines: this.data.headlines, sortEnd: this.data.sortEnd, hasMore: this.data.hasMore }); } catch (e) { /* ignore */ }
       } else {
         this.setData({ loadError: true });
       }

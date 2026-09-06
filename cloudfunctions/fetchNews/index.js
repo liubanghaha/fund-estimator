@@ -90,7 +90,15 @@ async function fetchJin10() {
 }
 
 
+// 实例级缓存：多用户同时打开资讯页时吸收重复外呼（东财/金十对高频 IP 限流）。
+// 仅缓存首页合并结果；带 sortEnd 的翻页请求实时走接口。
+let _memCache = { ts: 0, data: null };
+
 exports.main = async (event = {}) => {
+  const sortEnd = String(event.sortEnd || "");
+  if (!sortEnd && _memCache.data && Date.now() - _memCache.ts < 60000) {
+    return { code: 0, data: _memCache.data };
+  }
   try {
     const sortEnd = String(event.sortEnd || "");
     const [em, jin10] = await Promise.all([
@@ -111,7 +119,9 @@ exports.main = async (event = {}) => {
         flash.push(Object.assign({}, it, { category: classify((it.title || "") + " " + it.content) }));
       });
 
-    return { code: 0, data: { flash: { items: flash, sortEnd: em.sortEnd } } };
+    const data = { flash: { items: flash, sortEnd: em.sortEnd }, headlines: { items: headlines } };
+    _memCache = { ts: Date.now(), data };
+    return { code: 0, data };
   } catch (e) {
     console.error("[fetchNews] 失败:", e.message || e);
     return { code: 500, msg: "资讯获取失败" };
