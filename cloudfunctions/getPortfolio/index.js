@@ -197,21 +197,27 @@ exports.main = async (event) => {
     let tempMap = {};
     const tempDebug = {};
     try {
-      const tempCodes = enriched.map(h => h.fundCode);
-      // 逐基金取各自最新温度（并发 12 次单查，成本可控）：凌晨任务可能只跑完部分基金，
-      // 每基金独立按 date desc 取最新——列表页永远与详情页（fetchFundEstimate 同逻辑）同源
-      const tempRows = await Promise.all(tempCodes.map(async (c) => {
-        try {
+      const _ = db.command;
+      const tempCodes = [...new Set(enriched.map(h => h.fundCode))];
+      // 批量 where-in 单查 + 每基金取 date 最新（此前逐基金并发单查会间歇失败，
+      // 失败的基金走 position 兜底编出温度，导致列表与详情页温度对不上）
+      const tempRows = [];
+      {
+        const PAGE = 100;
+        let skip = 0;
+        while (skip < 2000) {
           const res = await db.collection("fund_temperatures")
-            .where({ fundCode: c })
-            .orderBy("date", "desc").limit(1)
+            .where({ fundCode: _.in(tempCodes) })
+            .orderBy("date", "desc").skip(skip).limit(PAGE)
             .field({ fundCode: true, date: true, signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWith52w: true, totalStocks: true, detailPEs: true })
             .get();
-          return (res.data && res.data[0]) || null;
-        } catch (e) { return null; }
-      }));
-      tempRows.forEach(t => { if (t) tempMap[t.fundCode] = t; });
-      tempDebug.found = tempRows.filter(Boolean).length;
+          tempRows.push(...(res.data || []));
+          if ((res.data || []).length < PAGE) break;
+          skip += PAGE;
+        }
+      }
+      tempRows.forEach(t => { if (t && !tempMap[t.fundCode]) tempMap[t.fundCode] = t; });
+      tempDebug.found = Object.keys(tempMap).length;
       // 缺失温度的基金不在请求内重计算（每只持仓股一个 HTTP，会拖垮用户请求）：
       // 首页有 position 兜底展示，凌晨定时任务会补全缺失温度
 
