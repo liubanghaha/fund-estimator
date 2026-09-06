@@ -196,8 +196,7 @@
                 </view>
               </view>
             </view>
-                    <view class="table-fade"></view>
-</scroll-view>
+          </scroll-view>
         </view>
 
         <view wx:elif="{{activeGroup !== 'all'}}" class="empty-group">
