@@ -59,8 +59,11 @@ Page({
     // 缓存新鲜度走交易日时钟（盘中短 TTL、收盘净值发布即冻结、周末/节假日全天免拉）
     const cached = wx.getStorageSync(CACHE_PREFIX + options.fundCode);
     const cacheFresh = cached && cached.history && cached.history.length && marketTime.isCacheFresh(cached);
+    // 温度按天轮换：温度任务每天凌晨更新 fund_temperatures，缓存里隔天的温度视为过期，
+    // 否则周末冻结期间详情页会一直停留在旧温度，与每天实时拉取的列表页不一致
+    const tempStale = !cached || cached.tempDate !== marketTime.bjDateStr();
     // 缓存缺失/过期时自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
-    this._pendingAutoRefresh = !this._skipCache && !cacheFresh;
+    this._pendingAutoRefresh = !this._skipCache && (!cacheFresh || tempStale);
     // 立即加载（缓存秒开 + 过期则拉新），不依赖下拉动画链路，避免页面卡加载
     this.fetchAll();
   },
@@ -320,6 +323,7 @@ Page({
         actualNav: this.data.actualNav, actualChangeRate: this.data.actualChangeRate,
         actualDate: this.data.actualDate, displayChangeRate: this.data.displayChangeRate,
         peTemp: this.data.peTemp,
+        tempDate: marketTime.bjDateStr(),
         history: this.data.navHistory,
         holdingData: this.data.holdingData,
         rawHolding: this._rawHolding || this._lastRawHolding,
