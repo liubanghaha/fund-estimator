@@ -30,7 +30,6 @@ Page({
       if (cached && cached.flashItems && cached.flashItems.length) {
         this.setData({
           flashItems: cached.flashItems,
-          headlines: cached.headlines || [],
           sortEnd: cached.sortEnd || "",
           hasMore: !!cached.hasMore,
           loading: false,
@@ -65,7 +64,7 @@ Page({
         });
         this._applyFilter();
         // 写缓存：下次打开秒开（日期分组标签渲染时按当天重算，不受缓存日期影响）
-        try { wx.setStorageSync(CACHE_KEY, { ts: Date.now(), flashItems: this.data.flashItems, headlines: this.data.headlines, sortEnd: this.data.sortEnd, hasMore: this.data.hasMore }); } catch (e) { /* ignore */ }
+        try { wx.setStorageSync(CACHE_KEY, { ts: Date.now(), flashItems: this.data.flashItems, sortEnd: this.data.sortEnd, hasMore: this.data.hasMore }); } catch (e) { /* ignore */ }
       } else {
         this.setData({ loadError: true });
       }

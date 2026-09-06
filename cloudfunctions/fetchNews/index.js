@@ -119,7 +119,7 @@ exports.main = async (event = {}) => {
         flash.push(Object.assign({}, it, { category: classify((it.title || "") + " " + it.content) }));
       });
 
-    const data = { flash: { items: flash, sortEnd: em.sortEnd }, headlines: { items: headlines } };
+    const data = { flash: { items: flash, sortEnd: em.sortEnd } };
     _memCache = { ts: Date.now(), data };
     return { code: 0, data };
   } catch (e) {
