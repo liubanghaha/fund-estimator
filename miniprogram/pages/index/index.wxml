@@ -150,7 +150,7 @@
         </view>
 
         <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
-          <scroll-view class="table-scroll" scroll-x enhanced show-scrollbar="{{false}}" enable-flex>
+          <scroll-view class="table-scroll" scroll-x show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
               <view class="t-row t-head" bind:longpress="onLongPressHeader">
                 <view class="t-cell t-name">名称<text class="t-hint">长按排序</text></view>
