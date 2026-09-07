@@ -9,6 +9,7 @@ const SCENE = "closing_brief";
 const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7 天频控）
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
 const KEY_SILENT_DAY = "brief_silent_day"; // 最近一次静默授权日期（每天最多一次）
+const KEY_ALERT_DAY = "alert_auth_day";   // 提醒类授权的请求日期（每天最多弹一次授权窗）
 const DECLINE_COOLDOWN = 7 * 24 * 3600 * 1000;
 const track = require("./track.js"); // P0-0 sub_authorize 事件
 
@@ -77,6 +78,35 @@ function requestAuth(src) {
   });
 }
 
+// 提醒类授权的频控版 requestAuth：每天最多拉起一次弹窗——
+// 当天首次保存提醒时弹（未勾「总是保持以上选择」的用户不再反复被问）；
+// 当天已请求过的，仅对已授权用户静默调一次 requestSubscribeMessage 攒额度
+// （勾了「总是保持以上选择」的用户微信侧无感通过，每次保存=每条提醒的推送额度）。
+function requestAlertAuth(src) {
+  const today = new Date().toDateString();
+  try {
+    if (wx.getStorageSync(KEY_ALERT_DAY) === today) {
+      if (hasAuthed()) {
+        wx.requestSubscribeMessage({
+          tmplIds: [TEMPLATE_ID],
+          success(res) {
+            if (res[TEMPLATE_ID] === "accept") {
+              wx.cloud.callFunction({
+                name: "dailyBriefing",
+                data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
+              }).catch(() => {});
+            }
+          },
+          fail() { /* 静默失败不影响保存 */ },
+        });
+      }
+      return Promise.resolve({ ok: true, silent: true });
+    }
+    wx.setStorageSync(KEY_ALERT_DAY, today);
+  } catch (e) { /* ignore */ }
+  return requestAuth(src);
+}
+
 // 已授权用户的静默攒额度：每天最多一次，必须挂在用户手势回调中
 // （如首页下拉刷新 onScrollRefresh）。勾了「总是保持以上选择」的用户无感 accept；
 // 未勾的用户会再弹一次授权弹窗，失败静默无副作用。
@@ -137,4 +167,4 @@ function optOutRecall() {
   }).catch(() => {});
 }
 
-module.exports = { TEMPLATE_ID, requestAuth, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };
+module.exports = { TEMPLATE_ID, requestAuth, requestAlertAuth, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };

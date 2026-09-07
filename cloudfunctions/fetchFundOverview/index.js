@@ -80,7 +80,7 @@ async function fetchProfileData(fundCode) {
   const [profile, manager] = await Promise.all([
     new Promise((resolve) => {
       const url = `https://fundmobapi.eastmoney.com/FundMApi/FundDetailInformation.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-      const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+      const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
         let body = "";
         res.on("data", (c) => { body += c; });
         res.on("end", () => {
@@ -104,7 +104,7 @@ async function fetchProfileData(fundCode) {
     }),
     new Promise((resolve) => {
       const url = `https://fundmobapi.eastmoney.com/FundMApi/FundManagerList.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-      const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+      const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
         let body = "";
         res.on("data", (c) => { body += c; });
         res.on("end", () => {

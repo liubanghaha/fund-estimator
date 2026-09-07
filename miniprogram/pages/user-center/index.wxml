@@ -28,8 +28,8 @@
   <!-- 收盘播报（订阅消息） -->
   <view wx:if="{{showBrief}}" class="feedback-form">
     <view class="fb-section">
-      <view class="fb-label">每天 15:30 一条</view>
-      <view class="migrate-tip">交易日收盘后推送：持仓当日估算涨跌、温度变化播报。数据播报，不构成投资建议，可随时在微信「服务通知」中拒收。</view>
+      <view class="fb-label">净值确认后送达</view>
+      <view class="migrate-tip">交易日净值公布确认后推送：持仓当日最终收益、温度变化播报。数据播报，不构成投资建议，可随时在微信「服务通知」中拒收。</view>
       <button class="migrate-btn" bind:tap="onBriefingAuth" loading="{{briefSubmitting}}">{{briefAuthed ? '补充推送额度' : '立即订阅'}}</button>
       <view class="migrate-tip">一次性订阅 = 授权一次发一条。弹授权时勾选「总是保持以上选择」，每次打开小程序会自动补充额度，体验等同长期开启。</view>
     </view>

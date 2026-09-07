@@ -284,7 +284,7 @@ async function _fetchLiveEastMoney(codes, timeoutMs) {
     // ⚠️ 2026-09-04 起该接口无 ut 令牌返回空（同 clist），必须带 ut；push2 对云函数出口偶发限流 → 主站失败走 delay 镜像
     const q = `fltt=2&fields=f2,f9,f12,f100,f164&secids=${secids}&ut=bd1d9ddb04089700cf9c27f6f7426281`;
     const fetchBody = (host) => new Promise((resolve) => {
-      const req = https.get(`https://${host}/api/qt/ulist.np/get?${q}`, { headers: { Referer: "https://quote.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const req = https.get(`https://${host}/api/qt/ulist.np/get?${q}`, { headers: { Referer: "https://quote.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => { res.setEncoding("utf8");
         let body = "";
         res.on("data", (c) => { body += c; });
         res.on("end", () => resolve(body));
@@ -332,7 +332,7 @@ async function _fetchLiveTencent(codes, timeoutMs) {
     const qtCodes = batch.map(toQtCode).join(",");
     const url = `http://qt.gtimg.cn/q=${qtCodes}`;
     await new Promise((resolve) => {
-      const req = http.get(url, (res) => {
+      const req = http.get(url, (res) => { res.setEncoding("utf8");
         const chunks = [];
         res.on("data", (c) => { chunks.push(c); });
         res.on("end", () => {
@@ -404,7 +404,7 @@ async function fetchStockHistBatch(codes, opts = {}) {
 
   const fetchOne = (code) => new Promise((resolve) => {
     const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
-    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://data.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

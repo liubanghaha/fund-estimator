@@ -27,7 +27,7 @@ exports.main = async (event = {}) => {
   try {
     // 定时触发器分流：三个 timer 共用本函数
     if (event.Type === "Timer") {
-      if (event.TriggerName === "navBriefTimer") return await runNavBrief(false);
+      if (event.TriggerName === "confirmBriefTimer") return await runBriefing(false, false);
       if (event.TriggerName === "weeklyBriefTimer") return await runWeeklyBrief(false);
       return await runBriefing(false, false);
     }
@@ -95,7 +95,9 @@ async function handleAlertPush({ pushes }) {
   const token = await getAccessToken();
   const today = td.bjDateStr();
   let sent = 0, failed = 0;
-  for (const p of pushes.slice(0, 200)) {
+  // 全量分页处理：命中数超过单轮上限时不截断（截断会静默漏发且无日志）
+  for (let start = 0; start < pushes.length; start += 200) {
+  for (const p of pushes.slice(start, start + 200)) {
     const brief = {
       thing1: { value: "韭菜估值宝" },
       thing2: { value: String(p.fundName || "持仓基金").slice(0, 20) },
@@ -107,7 +109,7 @@ async function handleAlertPush({ pushes }) {
       const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE }).update({
+      await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
       sent++;
@@ -121,6 +123,7 @@ async function handleAlertPush({ pushes }) {
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
     }
+  }
   }
   return { code: 0, sent, failed };
 }
@@ -173,8 +176,15 @@ async function handleRecallPush({ targets }) {
   if (!Array.isArray(targets) || targets.length === 0) return { code: 0, sent: 0, failed: 0 };
   const token = await getAccessToken();
   const today = td.bjDateStr();
+  // 召回与用户主动订阅的播报/提醒共用模板额度池：只对本地 quota>=2 的用户发，
+  // 避免运营召回挤掉用户主动订阅的收盘播报/涨跌提醒（微信额度不足时 43101 静默漏发）
+  const subRows = await readAll("subscriptions", {}, ["_openid", "scene", "quota"]);
+  const quotaMap = {};
+  subRows.forEach(s => { quotaMap[s._openid] = (quotaMap[s._openid] || 0) + Math.max(0, s.quota || 0); });
+  const eligible = targets.filter(t => !t.recallOptOut && (quotaMap[t.openid] || 0) >= 2);
+  let skipped = targets.length - eligible.length;
   let sent = 0, failed = 0;
-  for (const t of targets.slice(0, 200)) {
+  for (const t of eligible.slice(0, 200)) {
     const brief = {
       thing1: { value: "韭菜估值宝" },
       thing2: { value: "你的持仓组合" },
@@ -187,7 +197,7 @@ async function handleRecallPush({ targets }) {
       const errcode = await sendSubscribe(token, t.openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE }).update({
+      await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
       sent++;
@@ -202,7 +212,7 @@ async function handleRecallPush({ targets }) {
       failed++;
     }
   }
-  return { code: 0, sent, failed };
+  return { code: 0, sent, failed, skipped };
 }
 
 // ---- action: recallOptOut ----
@@ -258,12 +268,19 @@ async function runBriefing(dryRun, force) {
   // 3. 温度变化：数据交易日 vs 上一交易日的全市场 signal
   const [todaySigs, prevSigs] = await Promise.all([loadSignals(dataDay), loadSignals(prevDay)]);
 
-  // 4. 收益快照：每人 points 最后一条 rate（收盘后必然存在）
+  // 4. 收益快照：每人 points 最后一条 rate（收盘后必然存在，仅作未确认时的估算兜底）
   const rateMap = {};
   const snaps = await readAll("profit_snapshots", { date: dataDay }, ["_openid", "points"]);
   snaps.forEach(s => {
     if (s.points && s.points.length > 0) rateMap[s._openid] = s.points[s.points.length - 1].rate;
   });
+
+  // 4.5 确认门：不固定发送时刻——官方净值（actualDate=当日）全部公布后本档即发；
+  // 968 互认基金 T+1 公布不参与确认；23:00 最后一档兜底（未发布按估算口径并保留文案区分）
+  const confirmation = await collectConfirmation(targets, byUser, dataDay);
+  if (!dryRun && !force && !confirmation.allConfirmed && !confirmation.isLastSlot) {
+    return { code: 0, msg: `等待净值确认 ${confirmation.publishedCount}/${confirmation.totalCount}` };
+  }
 
   // 5. 分批发送（防重发：当天已成功发送过的用户跳过，覆盖 force 补发场景）
   const sentLogs = await readAll("push_logs", { scene: SCENE, date: dataDay, status: "sent" }, ["_openid"]);
@@ -277,7 +294,9 @@ async function runBriefing(dryRun, force) {
     const batch = runList.slice(i, i + BATCH_SIZE);
     for (const sub of batch) {
       if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
-      const brief = buildBrief(sub._openid, byUser[sub._openid], totalMarket[sub._openid], rateMap[sub._openid], todaySigs, prevSigs);
+      // 官方净值已确认的组合按确认值计算；未确认（含 T+1 兜底档）回退收盘估算口径
+      const confirmRate = calcConfirmedRate(byUser[sub._openid], confirmation);
+      const brief = buildBrief(sub._openid, byUser[sub._openid], totalMarket[sub._openid], confirmRate != null ? confirmRate : rateMap[sub._openid], todaySigs, prevSigs);
       if (!brief) { skipped++; continue; } // 无快照且温度无变化，不发不扣额度
       if (dryRun) {
         await db.collection("push_logs").add({
@@ -429,7 +448,7 @@ async function runNavBrief(force, dryRun) {
       const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").doc(sub._id).update({
+      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
       sent++;
@@ -539,7 +558,7 @@ async function runWeeklyBrief(force, dryRun) {
       const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").doc(sub._id).update({
+      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
       sent++;
@@ -626,7 +645,7 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
       const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").doc(sub._id).update({
+      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
       sent++;
@@ -646,6 +665,66 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
 // ---- 文案装配 ----
 // thing 字段限 20 字符。装配：账号位=品牌、用户位=持仓概览、数据位=涨跌+温度变化。
 // 措辞红线：数据陈述（估算 X 元 / 温度转偏高），不出现"收益/建议/止盈"字样。
+// ---- 确认门：拉今日官方净值，判定「最终收益已确定」----
+// 返回 navInfo（已发布基金涨幅）、prevNav（前日净值基准）、确认状态；
+// 968 互认基金 T+1 公布，不参与当日确认；isLastSlot=23:00 最后检查档（兜底发送）
+async function collectConfirmation(targets, byUser, dataDay) {
+  const codeSet = new Set();
+  targets.forEach(t => (byUser[t._openid] || []).forEach(h => { if (h.fundCode) codeSet.add(h.fundCode); }));
+  const codes = [...codeSet];
+  const navInfo = {};
+  const prevNav = {};
+  const navStart = Date.now();
+  const CONCURRENT = 16;
+  for (let i = 0; i < codes.length && Date.now() - navStart < 90000; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    const results = await Promise.all(batch.map(async (code) => {
+      try { return { code, r: await fd.fetchLatestNavEastMoney(code) }; } catch (e) { return { code, r: {} }; }
+    }));
+    results.forEach(({ code, r }) => {
+      if (r && r.actualDate === dataDay && r.actualChangeRate != null) {
+        navInfo[code] = { published: true, changeRate: r.actualChangeRate };
+      }
+    });
+  }
+  // 前日净值基准：fund_navs 的 dataDay 记录即前日净值（snapshotProfit 盘中写入）
+  const prevRows = await readAll("fund_navs", { date: dataDay }, ["fundCode", "yesterdayNav"]);
+  prevRows.forEach(r => { if (r.yesterdayNav > 0) prevNav[r.fundCode] = r.yesterdayNav; });
+
+  const t1Count = codes.filter(c => String(c).startsWith("968")).length;
+  const publishedCount = Object.keys(navInfo).length;
+  const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
+  const isLastSlot = bjNow.getUTCHours() === 23 && bjNow.getUTCMinutes() === 0;
+  return {
+    navInfo,
+    prevNav,
+    publishedCount,
+    totalCount: codes.length,
+    allConfirmed: codes.length > 0 && publishedCount + t1Count >= codes.length,
+    isLastSlot,
+  };
+}
+
+// 组合确认收益率：可计算基金（有前日净值+份额、非 968）官方涨幅全部就绪时按
+// 份额×前日净值基准实时计算；否则返回 null 由调用方回退收盘估算
+function calcConfirmedRate(funds, confirmation) {
+  const { navInfo, prevNav } = confirmation;
+  let totalBase = 0, real = 0, computable = 0, published = 0;
+  funds.forEach(f => {
+    if (String(f.fundCode || "").startsWith("968")) return; // T+1 不计入确认口径
+    const prev = prevNav[f.fundCode];
+    const shares = parseFloat(f.shares);
+    if (!prev || !(shares > 0)) return;
+    computable++;
+    const base = shares * prev;
+    totalBase += base;
+    const info = navInfo[f.fundCode];
+    if (info && info.published) { published++; real += base * info.changeRate / 100; }
+  });
+  if (computable > 0 && published === computable && totalBase > 0) return real / totalBase;
+  return null;
+}
+
 function buildBrief(openid, funds, marketValue, rate, todaySigs, prevSigs) {
   let ups = 0, downs = 0;
   funds.forEach(f => {

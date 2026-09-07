@@ -16,7 +16,7 @@ async function fetchHoldings(fundCode) {
   }
   return new Promise((resolve) => {
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${curY}&month=${curM}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

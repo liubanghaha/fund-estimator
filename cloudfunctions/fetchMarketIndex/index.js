@@ -290,7 +290,7 @@ function httpGet(urlOrOpts, headers, timeoutMs = 10000) {
   const label = typeof urlOrOpts === "string" ? urlOrOpts.slice(0, 60) : (urlOrOpts.hostname + urlOrOpts.path).slice(0, 60);
   return new Promise((resolve) => {
     const h = headers || {};
-    const onResponse = (res) => {
+    const onResponse = (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => { resolve(body); });

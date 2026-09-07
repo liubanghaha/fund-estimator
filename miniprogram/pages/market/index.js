@@ -7,6 +7,8 @@ const track = require("../../utils/track");
 // 指数口径与首页统一：腾讯日K优先（涨跌幅 close 差分）→ 东财客户端 → 云函数多源兜底
 
 const CACHE_KEY = "market_center_cache";
+// 缓存版本：行业占比重算口径变更时 +1，旧缓存作废强制重拉（冻结缓存不会自然过期）
+const CACHE_VERSION = 2;
 const INDICES = [
   { code: "000001", name: "上证指数", group: "a" },
   { code: "399001", name: "深证成指", group: "a" },
@@ -62,18 +64,42 @@ Page({
   onShow() {
     const theme = wx.getStorageSync("theme") || "red";
     if (theme !== this.data.theme) this.setData({ theme });
+    // 盘中自动刷新：30s 轮询（仅交易时段 + 页面可见期），盘后/周末自动停，切走页面自动停止
+    this._startPoll();
+  },
+  onHide() {
+    this._stopPoll();
+  },
+  onUnload() {
+    this._stopPoll();
+  },
+  _startPoll() {
+    this._stopPoll();
+    this._pollTimer = setInterval(() => {
+      if (marketTime.marketPhase() === "trading" && !this._refreshing) this.refresh(true);
+    }, 30000);
+  },
+  _stopPoll() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
   },
   onPullDownRefresh() {
     this.refresh(true).finally(() => wx.stopPullDownRefresh());
   },
 
   refresh(force) {
+    if (this._refreshing) return Promise.resolve(); // 防重入：轮询/下拉/打开并发时只跑一路
+    this._refreshing = true;
     const cached = wx.getStorageSync(CACHE_KEY);
     // 坏缓存检测：指数卡大半为 "--"（如一次性超时）时视为无效，冻结逻辑不适用，强制重拉
     const cachedCards = (cached && cached.indexCards) || [];
     const cachedOk = cachedCards.filter((c) => c.price !== "--").length >= 6;
-    if (!force && cached && cachedOk && marketTime.isCacheFresh(cached, { estimateTtl: 60 * 1000, finalAtClose: true })) {
+    const cacheUpToDate = cached && cached.v === CACHE_VERSION;
+    if (!force && cacheUpToDate && cachedOk && marketTime.isCacheFresh(cached, { estimateTtl: 60 * 1000, finalAtClose: true })) {
       this._render(cached);
+      this._refreshing = false;
       return Promise.resolve();
     }
     this.setData({ loading: !cached, emptyData: false, loadError: false });
@@ -86,18 +112,27 @@ Page({
         if (!f || f.main == null) return c;
         return { ...c, flowText: this._fmtFlow(f.main), isFlowUp: f.main >= 0 };
       });
+      // 部分失败兜底：概览为空/行业为空/指数卡全"--"时保留上次好缓存，
+      // 避免东财对云函数限流的窗口内把好缓存洗成空白态（限流是分钟级的，恢复后自然更新）
+      const effOverview = overviewRes && overviewRes.overview ? overviewRes.overview : ((cached && cached.overview) || null);
+      const effSectors = overviewRes && overviewRes.sectors && overviewRes.sectors.length ? overviewRes.sectors : ((cached && cached.sectors) || []);
+      const effIndexCards = indexCards.some((c) => c.price !== "--") ? cardsWithFlow : ((cached && cached.indexCards) || cardsWithFlow);
+      const effMineCount = overviewRes && overviewRes.mineCount != null ? overviewRes.mineCount : ((cached && cached.mineCount) || 0);
       const cache = {
         ts: now,
-        overview: overviewRes ? overviewRes.overview : (cached && cached.overview) || null,
-        sectors: overviewRes ? overviewRes.sectors : (cached && cached.sectors) || [],
-        mineCount: overviewRes ? overviewRes.mineCount : (cached && cached.mineCount) || 0,
+        v: CACHE_VERSION,
+        overview: effOverview,
+        sectors: effSectors,
+        mineCount: effMineCount,
         flows,
-        indexCards: cardsWithFlow,
-        empty: !!(overviewRes && overviewRes.empty) && !indexCards.some((c) => c.price !== "--"),
+        indexCards: effIndexCards,
+        empty: !effOverview && effSectors.length === 0 && !indexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
       this._render(cache);
+      this._refreshing = false;
     }).catch(() => {
+      this._refreshing = false;
       if (cached) { this._render(cached); return; }
       this.setData({ loading: false, loadError: true });
     });

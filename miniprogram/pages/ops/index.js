@@ -155,7 +155,7 @@ Page({
     const r = await new Promise((resolve) => {
       wx.showModal({
         title: "确认发送召回",
-        content: "将向发送组用户真实发送推送并消耗其推送额度（对照组仅记录不发送）。额度与收盘小结共用，务必避开 15:30/21:30 前后。确定发送？",
+        content: "将向发送组用户真实发送推送并消耗其推送额度（对照组仅记录不发送）。额度与收盘小结共用，务必避开晚间播报窗口（20:00-23:00）前后。确定发送？",
         success: (res) => resolve(res.confirm),
       });
     });

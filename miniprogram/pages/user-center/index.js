@@ -265,9 +265,10 @@ Page({
   },
 
   onShowVersion() {
+    const log = getApp().getChangelog() || [];
     this.setData({
       appVersion: getApp().getVersion() || "1.0.0",
-      versionLog: getApp().getChangelog() || [],
+      versionLog: log.length ? [log[0]] : [],
       showVersionLog: true,
     });
   },

@@ -114,7 +114,7 @@ function fetchTempHoldings(fundCode, opts = {}) {
   const { year, month } = getQuarterParams();
   return new Promise((resolve) => {
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=${topline}&year=${year}&month=${month}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -138,7 +138,7 @@ function fetchTempHoldingsWithMeta(fundCode, opts = {}) {
   const { year, month } = getQuarterParams();
   return new Promise((resolve) => {
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=${topline}&year=${year}&month=${month}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -191,7 +191,7 @@ function fetchStockPricesTencent(codes, opts = {}) {
 
   const fetchBatch = (batchCodes) => new Promise((resolve) => {
     const qtCodes = batchCodes.map(toQtCode).join(",");
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => {
+    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => { res.setEncoding("utf8");
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
@@ -244,7 +244,7 @@ function fetchLatestNavEastMoney(fundCode, opts = {}) {
       hostname: "api.fund.eastmoney.com",
       path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=1&pageSize=${pageSize}`,
       headers: { Referer: "https://fundf10.eastmoney.com/" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -286,7 +286,7 @@ function fetchLatestNavMNF(fundCode, opts = {}) {
       hostname: "fundmobapi.eastmoney.com",
       path: `/FundMNewApi/FundMNFInfo?Fcodes=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`,
       headers: { Referer: "https://m.fund.eastmoney.com/" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -325,7 +325,7 @@ function fetchTrackIndex(fundCode, opts = {}) {
       hostname: "fundmobapi.eastmoney.com",
       path: `/FundMNewApi/FundMNDetailInformation?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`,
       headers: { Referer: "https://m.fund.eastmoney.com/" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -365,7 +365,7 @@ function fetchIndexRealtime(indexCode, opts = {}) {
   const prefix = resolveIndexPrefix(indexCode);
   const qtCode = `${prefix}${indexCode}`;
   return new Promise((resolve) => {
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => {
+    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => { res.setEncoding("utf8");
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
@@ -481,7 +481,7 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
       hostname: "api.fund.eastmoney.com",
       path: `/f10/lsjz?callback=jQuery&fundCode=${fundCode}&pageIndex=${pageIndex}&pageSize=${perPage}`,
       headers: { Referer: "https://fundf10.eastmoney.com/" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

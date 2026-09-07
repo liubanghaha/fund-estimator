@@ -107,7 +107,7 @@ function fetchProfile(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
     const url = `https://fundmobapi.eastmoney.com/FundMApi/FundDetailInformation.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -142,7 +142,7 @@ function fetchManager(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
     const url = `https://fundmobapi.eastmoney.com/FundMApi/FundManagerList.ashx?FCODE=${fundCode}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -167,7 +167,7 @@ function fetchHoldings(fundCode, year, month) {
   const https = require("https");
   return new Promise((resolve) => {
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=10&year=${year}&month=${month}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => {
+    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -284,7 +284,7 @@ function fetchTurnoverRate(fundCode) {
     const url = `https://fund.eastmoney.com/${fundCode}.html`;
     const req = https.get(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

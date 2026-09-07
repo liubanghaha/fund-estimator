@@ -437,7 +437,7 @@ Page({
     this.setData({ showColEdit: false });
   },
 
-  // 新版本功能提示：升级后首次启动弹一次（全新用户不弹，避免打扰）
+  // 新版本功能提示：升级后首次启动弹一次，点击「知道了」后不再弹（全新用户不弹，避免打扰）
   _maybeShowUpdateLog() {
     try {
       const cur = getApp().getVersion();
@@ -447,12 +447,13 @@ Page({
         const log = (getApp().getChangelog() || []).find(c => c.version === cur) || (getApp().getChangelog() || [])[0];
         if (log) this.setData({ showUpdateLog: true, updateVersion: log.version, updateItems: log.items });
       }
-      wx.setStorageSync("update_seen_version", cur);
     } catch (e) { /* ignore */ }
   },
 
   onCloseUpdateLog() {
     this.setData({ showUpdateLog: false });
+    // 点击「知道了」后记录当前版本，同版本不再弹
+    try { wx.setStorageSync("update_seen_version", getApp().getVersion()); } catch (e) { /* ignore */ }
   },
 
   // ---- 止盈止损提醒 ----
@@ -516,9 +517,13 @@ Page({
       name: "dailyBriefing",
       data: { action: "alertSet", settings },
     }).catch(() => {});
-    // 保存提醒 = 用户明确要提醒，此刻请求推送授权（全漏斗转化率最高点）：
-    // 未授权用户弹授权窗；已授权勾「总是保持」的静默 +1 额度
-    subscribe.requestAuth("scene_alert");
+    // 保存提醒 = 用户明确要提醒，此刻请求推送授权（全漏斗转化率最高点）；
+    // 每天最多弹一次授权窗（已授权用户当天后续保存无感续额度）
+    subscribe.requestAlertAuth("scene_alert").then((r) => {
+      if (r && r.ok === false) {
+        wx.showToast({ title: "已保存，但未授权推送，收不到提醒", icon: "none", duration: 2000 });
+      }
+    });
   },
   onCloseAlertEdit() { this.setData({ showAlertEdit: false }); },
   onDismissAlert() {
@@ -930,15 +935,26 @@ Page({
   },
 
   // 全局涨跌提醒开关：开启后全部持仓按默认 ±3% 提醒（云端检测端兜底，新持仓自动纳入）
-  onToggleGlobalAlert() {
+  async onToggleGlobalAlert() {
     const next = !this.data.alertGlobalOn;
     this.setData({ alertGlobalOn: next });
     wx.setStorageSync("alertGlobalOn", next);
+    // 开启时同步拉起订阅授权（单基金保存提醒同款；无授权微信侧 43101 会静默丢弃推送）
+    let authed = true;
+    if (next) {
+      const r = await subscribe.requestAlertAuth("scene_alert");
+      authed = !!(r && r.ok);
+    }
     wx.cloud.callFunction({
       name: "dailyBriefing",
       data: { action: "alertSet", globalOn: next },
     }).then(() => {
-      wx.showToast({ title: next ? "已开启全局提醒" : "已关闭全局提醒", icon: "none", duration: 1500 });
+      wx.showToast({
+        title: authed ? (next ? "已开启全局提醒" : "已关闭全局提醒")
+          : "已开启，但未授权推送，收不到提醒",
+        icon: "none",
+        duration: 2000,
+      });
     }).catch(() => {
       // 失败回滚本地（云端为准）
       this.setData({ alertGlobalOn: !next });

@@ -104,7 +104,7 @@ function sendNotification(type, content, contact, imageCount) {
         "Content-Type": "application/x-www-form-urlencoded",
         "Content-Length": Buffer.byteLength(body),
       },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let data = "";
       res.on("data", (c) => { data += c; });
       res.on("end", () => {

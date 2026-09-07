@@ -314,7 +314,7 @@ async function doOcrspaceOCR(fileID) {
     const imgBuffer = await new Promise((resolve) => {
       const mod = imgUrl.startsWith("https") ? https : http;
       const chunks = [];
-      mod.get(imgUrl, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks))); }).on("error", () => resolve(null));
+      mod.get(imgUrl, (res) => { res.setEncoding("utf8"); res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks))); }).on("error", () => resolve(null));
     });
     if (!imgBuffer) {
       console.log("[ocrScreenshot] ocrspace download failed");
@@ -343,7 +343,7 @@ async function doOcrspaceOCR(fileID) {
         path: "/parse/image",
         method: "POST",
         headers: { "Content-Type": "multipart/form-data; boundary=" + boundary, "Content-Length": body.length },
-      }, (res) => {
+      }, (res) => { res.setEncoding("utf8");
         let d = "";
         res.on("data", c => d += c);
         res.on("end", () => resolve(d));
@@ -381,11 +381,11 @@ async function doBaiduOCR(fileID) {
     const imgBase64 = await new Promise((resolve) => {
       const mod = url.startsWith("https") ? https : http;
       const chunks = [];
-      mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
+      mod.get(url, (res) => { res.setEncoding("utf8"); res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
     if (!imgBase64) return { text: null, words: null, err: "download fail" };
     const tokenRes = await new Promise((resolve) => {
-      https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => {
+      https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => { res.setEncoding("utf8");
         let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
       }).on("error", () => resolve(null));
     });
@@ -396,7 +396,7 @@ async function doBaiduOCR(fileID) {
       const req = https.request({
         hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate?access_token=${tokenRes}`,
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
+      }, (res) => { res.setEncoding("utf8"); let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
       req.write(body); req.end();
       req.setTimeout(15000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", (e) => reject(e));
@@ -692,7 +692,7 @@ function tryKeywords(https, keywords, idx) {
   const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(kw)}&type=14&token=DGCE23MHKBN23AKDN23&count=5`;
 
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

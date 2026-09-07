@@ -191,14 +191,9 @@
       "handler": "index.main",
       "triggers": [
         {
-          "name": "closingBriefTimer",
+          "name": "confirmBriefTimer",
           "type": "timer",
-          "config": "0 30 15 * * 1-5 *"
-        },
-        {
-          "name": "navBriefTimer",
-          "type": "timer",
-          "config": "0 30 21 * * 1-5 *"
+          "config": "0 0,20,40 20-23 * * 1-5 *"
         },
         {
           "name": "weeklyBriefTimer",

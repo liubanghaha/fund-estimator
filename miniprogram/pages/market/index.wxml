@@ -25,13 +25,15 @@
       </view>
       <view class="ov-breadth">
         <view class="ov-breadth-nums">
-          <text class="up">上涨 {{overview.up || 0}}</text>
-          <text class="dim">平 {{overview.flat || 0}}</text>
-          <text class="down">下跌 {{overview.down || 0}}</text>
+          <text class="up">上涨 {{overview.up == null ? '--' : overview.up}}</text>
+          <text class="dim">平 {{overview.flat == null ? '--' : overview.flat}}</text>
+          <text class="down">下跌 {{overview.down == null ? '--' : overview.down}}</text>
         </view>
         <view class="ov-bar">
-          <view class="ov-bar-up" style="width:{{upPct}}%"></view>
-          <view class="ov-bar-down" style="width:{{downPct}}%"></view>
+          <block wx:if="{{overview.up != null}}">
+            <view class="ov-bar-up" style="width:{{upPct}}%"></view>
+            <view class="ov-bar-down" style="width:{{downPct}}%"></view>
+          </block>
         </view>
       </view>
     </view>
@@ -69,6 +71,7 @@
 
     <!-- 核心指数 -->
     <view class="mk-card">
+      <view class="mk-sec-title">核心指数</view>
       <view class="idx-tabs">
         <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
       </view>

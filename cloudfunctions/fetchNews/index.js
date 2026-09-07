@@ -33,7 +33,7 @@ function classify(text) {
 
 function httpGet(url, headers = {}, timeout = 8000) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: Object.assign({ "User-Agent": "Mozilla/5.0" }, headers) }, (res) => {
+    const req = https.get(url, { headers: Object.assign({ "User-Agent": "Mozilla/5.0" }, headers) }, (res) => { res.setEncoding("utf8");
       let b = ""; res.on("data", c => b += c); res.on("end", () => resolve(b));
     });
     req.setTimeout(timeout, () => req.destroy(new Error("timeout")));

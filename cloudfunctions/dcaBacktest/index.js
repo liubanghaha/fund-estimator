@@ -220,7 +220,7 @@ function fetchNAVPage(https, fundCode, year, pageIndex) {
   return new Promise((resolve) => {
     const req = https.get(url, {
       headers: { Referer: "https://fundf10.eastmoney.com/" },
-    }, (res) => {
+    }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {

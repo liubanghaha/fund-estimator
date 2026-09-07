@@ -99,7 +99,7 @@ async function doSpaceOCR(fileID) {
       const req = https.request({
         hostname: "api.ocr.space", path: "/parse/image", method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", apikey: OCRSPACE_API_KEY, "Content-Length": Buffer.byteLength(body) },
-      }, (res) => {
+      }, (res) => { res.setEncoding("utf8");
         let d = ""; res.on("data", c => d += c); res.on("end", () => {
           try {
             const j = JSON.parse(d);
@@ -124,11 +124,11 @@ async function doBaiduOCR(fileID) {
     const imgBase64 = await new Promise((resolve) => {
       const mod = url.startsWith("https") ? https : http;
       const chunks = [];
-      mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
+      mod.get(url, (res) => { res.setEncoding("utf8"); res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
     if (!imgBase64) return { text: null, words: null, err: "download fail" };
     const tokenRes = await new Promise((resolve) => {
-      https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => {
+      https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => { res.setEncoding("utf8");
         let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
       }).on("error", () => resolve(null));
     });
@@ -139,7 +139,7 @@ async function doBaiduOCR(fileID) {
       const req = https.request({
         hostname: "aip.baidubce.com", path: `/rest/2.0/ocr/v1/accurate?access_token=${tokenRes}`,
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      }, (res) => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
+      }, (res) => { res.setEncoding("utf8"); let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
       req.write(body); req.end();
       req.setTimeout(15000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", (e) => reject(e));

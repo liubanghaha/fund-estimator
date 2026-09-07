@@ -150,7 +150,7 @@
     <!-- ===== 老用户召回 ===== -->
     <view wx:if="{{tab === 'recall'}}" class="ops-card">
       <view class="ops-card-title">📣 老用户召回</view>
-      <view class="ops-card-desc">向「有额度且 N 天未打开」的用户发召回（纯数据陈述文案）。额度与双条同池，发送窗口选工作日上午，避开 15:30/21:30。试水先发 100（发送 50 / 对照 50）。</view>
+      <view class="ops-card-desc">向「有额度且 N 天未打开」的用户发召回（纯数据陈述文案）。额度与双条同池，发送窗口选工作日上午，避开晚间播报窗口（20:00-23:00）。试水先发 100（发送 50 / 对照 50）。</view>
 
       <view class="ops-add-row">
         <picker mode="selector" range="{{['7天未打开', '14天未打开', '30天未打开']}}" value="{{recallBucketIdx}}" bindchange="onRecallBucketChange">

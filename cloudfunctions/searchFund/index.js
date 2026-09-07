@@ -40,7 +40,7 @@ function searchByName(name) {
   const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encoded}`;
 
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
@@ -71,7 +71,7 @@ function lookUpFund(fundCode) {
   const encoded = encodeURIComponent(fundCode);
   const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encoded}`;
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
