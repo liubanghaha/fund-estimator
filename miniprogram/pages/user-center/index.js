@@ -10,6 +10,8 @@ Page({
     feedbackText: "",
     feedbackImages: [],
     feedbackSubmitting: false,
+    // 实时估值数据源：em=东财官方估值（默认）| self=自算估值
+    estimateSrcText: "数据源一",
     // 数据迁移（旧版本用户认领数据）
     showMigrate: false,
     migrateCode: "",
@@ -27,7 +29,11 @@ Page({
       });
     }
     const theme = wx.getStorageSync("theme") || "red";
-    this.setData({ theme, briefAuthed: subscribe.hasAuthed() });
+    this.setData({
+      theme,
+      briefAuthed: subscribe.hasAuthed(),
+      estimateSrcText: (wx.getStorageSync("estimate_src") || "em") === "self" ? "数据源二" : "数据源一",
+    });
     // 运营助手入口（仅管理员可见；页面本身另有管理员门禁）
     api.opsTool("checkAdmin").then((res) => {
       const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
@@ -37,6 +43,28 @@ Page({
 
   onOpenOps() {
     wx.navigateTo({ url: "/pages/ops/index" });
+  },
+
+  // 实时估值数据源切换：数据源一=东财官方接口实时估值（与天天基金 App 同口径，推荐）；
+  // 数据源二=自主估算（跟踪指数/持仓股加权）。改变立即对详情页/走势/加减仓生效。
+  onEstimateSrc() {
+    wx.showActionSheet({
+      itemList: ["数据源一", "数据源二"],
+      success: (res) => {
+        const key = res.tapIndex === 1 ? "self" : "em";
+        wx.setStorageSync("estimate_src", key);
+        this.setData({ estimateSrcText: key === "self" ? "数据源二" : "数据源一" });
+        wx.showToast({ title: key === "self" ? "已切换为数据源二" : "已切换为数据源一", icon: "none" });
+        // 同步偏好到云端：盘中涨跌提醒按用户所选源触发；失败静默（提醒回退默认官方口径）
+        wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSrc", src: key } }).catch(() => {});
+        // 首页/详情缓存按旧源口径算过，切源后强制失效，下次打开用新源重拉
+        try {
+          wx.removeStorageSync("portfolio_cache");
+          wx.setStorageSync("portfolio_force_refresh", true);
+        } catch (e) { /* ignore */ }
+      },
+      fail: () => {},
+    });
   },
 
   onBriefing() {

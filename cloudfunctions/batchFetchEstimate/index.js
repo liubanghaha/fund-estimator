@@ -1,6 +1,7 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const fd = require("./_shared/fund-data");
+const https = require("https");
 
 // ---- 自主计算基金估算涨跌（取代已下线的天天基金 API） ----
 
@@ -92,12 +93,15 @@ exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
 
-  const { codes = [] } = event;
+  const { codes = [], src } = event;
+  const estSrc = src === "self" ? "self" : "em";
   if (!codes.length) return { code: 400, msg: "缺少基金代码" };
 
   try {
-    // 自主估算（持仓 × 实时行情加权）+ 东方财富最新净值，并行执行
-    const [estMap, emResults] = await Promise.all([
+    // 官方估值（FundMNFInfo GSZZL）+ 自主估算（持仓 × 实时行情加权）+ 东方财富最新净值，并行执行
+    const todayStr = fd.formatBJDate();
+    const [mnfMap, estMap, emResults] = await Promise.all([
+      fetchMNFEstimates(codes),
       computeSelfEstimates(codes),
       Promise.all(codes.map(code => fd.fetchLatestNavEastMoney(code))),
     ]);
@@ -106,11 +110,23 @@ exports.main = async (event) => {
     codes.forEach((code, i) => {
       const em = emResults[i] || {};
       const est = estMap[code] || {};
+      const mnf = mnfMap[code] || {};
+      const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
       const nav = em.actualNav != null ? em.actualNav : null;
-      // 盘中优先自主估算；无估算（周末/持仓抓取失败）用净值涨跌幅兜底
-      const estimatedChangeRate = est.estimatedChangeRate != null
-        ? est.estimatedChangeRate
-        : (em.actualChangeRate != null ? em.actualChangeRate : null);
+      // 净值已公布用精确值；未公布按所选源（em=官方 GSZZL 优先，self=自算优先），互相兜底
+      let estimatedChangeRate = null, estimateTime = "", source = "";
+      if (em.actualDate === todayStr) {
+        estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null;
+        source = "nav";
+      } else if (estSrc === "em" && mnfToday) {
+        estimatedChangeRate = mnf.gszzl; estimateTime = mnf.gzhm || mnf.gztime; source = "em";
+      } else if (est.estimatedChangeRate != null) {
+        estimatedChangeRate = est.estimatedChangeRate; estimateTime = est.estimateTime || ""; source = "self";
+      } else if (mnfToday) {
+        estimatedChangeRate = mnf.gszzl; estimateTime = mnf.gzhm || mnf.gztime; source = "em";
+      } else {
+        estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
+      }
       // 估算净值 = 最新净值 × (1 + 估算涨跌%)
       const estimatedNav = (estimatedChangeRate != null && nav != null)
         ? +(nav * (1 + estimatedChangeRate / 100)).toFixed(4)
@@ -122,7 +138,8 @@ exports.main = async (event) => {
         estimatedNav,
         estimatedChangeRate,
         displayChangeRate: selectChangeRate(nav, em.actualNav, estimatedChangeRate, em.actualChangeRate),
-        estimateTime: est.estimateTime || "",
+        estimateTime,
+        source,
       };
     });
     return { code: 0, data };
@@ -131,3 +148,47 @@ exports.main = async (event) => {
     return { code: 500, msg: "获取失败" };
   }
 };
+
+
+// GZTIME 是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss" 与 "MM-DD HH:mm:ss" 两种盘中格式
+function _gdIsToday(gztime, todayStr) {
+  const gd = String(gztime || "").trim();
+  return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
+}
+
+// FundMNFInfo 批量官方估值（200/批，与天天基金 App 同口径）
+function fetchMNFEstimates(codes) {
+  const map = {};
+  if (!codes || !codes.length) return Promise.resolve(map);
+  const all = [...codes];
+  const batch = () => new Promise((resolve) => {
+    const list = all.slice(0, 200);
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
+            map[it.FCODE] = {
+              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
+              gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
+              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
+              gztime: it.GZTIME || null,
+            };
+          });
+        } catch (e) { /* ignore */ }
+        resolve();
+      });
+    });
+    req.setTimeout(6000, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+  return (async () => {
+    while (all.length > 0) {
+      await batch();
+      all.splice(0, 200);
+    }
+    return map;
+  })();
+}

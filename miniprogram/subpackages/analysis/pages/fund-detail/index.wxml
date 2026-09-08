@@ -36,7 +36,7 @@
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
             {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
           </view>
-          <view class="nav-badge">实时数据</view>
+          <view class="nav-badge">实时数据 <text wx:if="{{estSource == 'em'}}" class="nav-badge-src">官方</text><text wx:elif="{{estSource == 'self'}}" class="nav-badge-src">自算</text></view>
         </view>
       </view>
     </view>

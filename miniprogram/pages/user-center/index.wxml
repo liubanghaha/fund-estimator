@@ -15,6 +15,7 @@
   <view class="menu-group-title">通知与数据</view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onBriefing"><text>📈 收盘播报</text><text class="arrow">{{showBrief ? '∨' : (briefAuthed ? '已开启' : '>')}}</text></view>
+    <view class="menu-item" bind:tap="onEstimateSrc"><text>数据源</text><text class="arrow">{{estimateSrcText}} ›</text></view>
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
     <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
   </view>

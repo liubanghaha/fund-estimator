@@ -2,15 +2,17 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const fd = require("./_shared/fund-data");
+const https = require("https");
 const ft = require("./_shared/fund-temperature");
 
 exports.main = async (event) => {
-  const { fundCode } = event;
+  const { fundCode, src } = event;
   if (!fundCode || !/^\d{6}$/.test(fundCode)) return { code: 400, msg: "请提供有效的6位基金代码" };
+  const estSrc = src === "self" ? "self" : "em";
 
   try {
     const [estimate, history, profileData, peTemp] = await Promise.all([
-      fetchEstimate(fundCode),
+      fetchEstimate(fundCode, estSrc),
       fd.fetchNAVHistory(fundCode, 260),
       fetchProfileData(fundCode),
       fetchPeTemp(fundCode),
@@ -31,11 +33,49 @@ exports.main = async (event) => {
   }
 };
 
-async function fetchEstimate(fundCode) {
+async function fetchEstimate(fundCode, estSrc) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）
   const em = await fd.fetchLatestNavEastMoney(fundCode);
+  const todayStr = fd.formatBJDate();
+  const estimateUpdated = em.actualDate === todayStr;
 
-  // 2. 自主估算：持仓股涨跌加权
+  // 净值已公布：估算请求无意义（官方 GSZZL 已清空），直接走真值短路，省两轮外部请求
+  if (estimateUpdated) {
+    return {
+      nav: (em.yesterdayNav || em.actualNav) || null,
+      estimatedNav: null,
+      estimatedChangeRate: em.actualChangeRate != null ? em.actualChangeRate : null,
+      estimateTime: "",
+      source: "nav",
+      actualNav: em.actualNav,
+      actualDate: em.actualDate,
+      actualChangeRate: em.actualChangeRate,
+    };
+  }
+
+  // 2. 官方估值（FundMNFInfo GSZZL；与天天基金 App 同口径，仅盘中/净值未公布前提供）
+  const mnf = await new Promise((resolve) => {
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(fundCode)}`;
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          const it = (JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas || [])[0] || {};
+          resolve({
+            gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
+            gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
+            gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
+            gztime: it.GZTIME || null,
+          });
+        } catch (e) { resolve({}); }
+      });
+    });
+    req.setTimeout(6000, () => { req.destroy(); resolve({}); });
+    req.on("error", () => resolve({}));
+  });
+
+  // 3. 自主估算：持仓股涨跌加权
   let selfEstimate = null;
   if (fd.isBJWeekday()) {
     try {
@@ -57,18 +97,26 @@ async function fetchEstimate(fundCode) {
     } catch (e) { /* ignore */ }
   }
 
-  // 3. 组装返回：净值已公布用精确值，否则用自主估算
-  const todayStr = fd.formatBJDate();
-  const estimateUpdated = em.actualDate === todayStr;
+  // 4. 组装（净值未公布）：按所选源优先，三层兜底
+  const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
 
-  // nav 要与 actualNav 保持一致，避免前端 selectChangeRate 误判
-  const baseNav = estimateUpdated ? (em.yesterdayNav || em.actualNav) : em.actualNav;
+  let estRate = null, estTime = "", source = "nav";
+  if (estSrc === "em" && mnfToday) {
+    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  } else if (selfEstimate != null) {
+    estRate = selfEstimate; estTime = fd.formatBJTime(); source = "self";
+  } else if (mnfToday) {
+    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  } else {
+    estRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
+  }
 
   return {
-    nav: baseNav || null,
-    estimatedNav: null,
-    estimatedChangeRate: !estimateUpdated && selfEstimate != null ? selfEstimate : (em.actualChangeRate || 0),
-    estimateTime: !estimateUpdated && selfEstimate != null ? fd.formatBJTime() : "",
+    nav: em.actualNav || null,
+    estimatedNav: source === "em" ? (mnf.gsz || null) : null,
+    estimatedChangeRate: estRate,
+    estimateTime: estTime,
+    source,
     actualNav: em.actualNav,
     actualDate: em.actualDate,
     actualChangeRate: em.actualChangeRate,

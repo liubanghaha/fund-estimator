@@ -639,11 +639,14 @@ Page({
     // 快照 rate 可能有缺口（snapshotProfit 某些分钟未写入），缺失分钟用最近一次有效快照
     // 前值填充（ffill），使两条线时间点一致、锯齿对齐；避免红线在快照稀疏处大段直连。
     // 快照 time 由 snapshotProfit 写入，已是北京时间（getUTCHours()+8），与指数时间同一坐标系。
+    // 快照点存双口径（rate=官方口径、rateSelf=自算口径，旧点为单值无 rateSelf）：
+    // 按用户数据源偏好选值，切换源后整条曲线按所选源重绘
+    const srcSelf = (wx.getStorageSync("estimate_src") || "em") === "self";
     const snapMap = {};
     profitSnaps.forEach(p => {
       if (!isTrading(p.time)) return;
       // 同一分钟多快照时取最后写入的一个
-      snapMap[p.time] = p.rate;
+      snapMap[p.time] = (srcSelf && p.rateSelf != null) ? p.rateSelf : p.rate;
     });
 
     // 时间主轴：优先用指数分时的时间序列（连续、密集）；指数缺失时退回快照时间轴

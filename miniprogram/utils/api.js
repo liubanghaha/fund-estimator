@@ -56,15 +56,20 @@ const api = {
     return this.callFunction("searchFund", { keyword });
   },
   fetchFundEstimate(fundCode) {
-    return this.callFunction("fetchFundEstimate", { fundCode });
+    return this.callFunction("fetchFundEstimate", { fundCode, src: this._estimateSrc() });
   },
   getPortfolio(historyDays, opts = {}) {
     const data = { ...opts };
     if (historyDays) data.historyDays = historyDays;
+    data.src = this._estimateSrc();
     return this.callFunction("getPortfolio", data);
   },
+  // 估值数据源偏好：em=东财官方估值（默认）| self=自算估值；存储 key: estimate_src
+  _estimateSrc() {
+    try { return wx.getStorageSync("estimate_src") || "em"; } catch (e) { return "em"; }
+  },
   portfolioLight() {
-    return this.callFunction("portfolioLight", {});
+    return this.callFunction("portfolioLight", { src: this._estimateSrc() });
   },
   fetchFundNAVHistory(fundCode, days) {
     return this.callFunction("fetchFundNAVHistory", { fundCode, days });
@@ -73,7 +78,7 @@ const api = {
     return this.callFunction("fetchFundProfile", { fundCode });
   },
   fetchFundOverview(fundCode) {
-    return this.callFunction("fetchFundOverview", { fundCode });
+    return this.callFunction("fetchFundOverview", { fundCode, src: this._estimateSrc() });
   },
   userLogin() {
     return this.callFunction("userLogin", {});
@@ -162,7 +167,7 @@ const api = {
     return this.callFunction("manageTransaction", { action: "list", fundCode });
   },
   batchFetchEstimate(codes) {
-    return this.callFunction("batchFetchEstimate", { codes });
+    return this.callFunction("batchFetchEstimate", { codes, src: this._estimateSrc() });
   },
   fetchMarketIndex(indexCode, days) {
     return this.callFunction("fetchMarketIndex", { indexCode, days });

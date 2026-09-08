@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+const https = require("https");
 const db = cloud.database();
 const _ = db.command;
 const fd = require("./_shared/fund-data");
@@ -7,7 +8,8 @@ const ft = require("./_shared/fund-temperature");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
-  const { historyDays, testOpenid, withAnalysis, withNav60 } = event || {};
+  const { historyDays, testOpenid, withAnalysis, withNav60, src } = event || {};
+  const estSrc = src === "self" ? "self" : "em"; // em=东财官方估值优先（默认）；self=自算优先
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
   const _startTime = Date.now();
@@ -37,6 +39,8 @@ exports.main = async (event) => {
     // 历史净值合并为一次请求（max(60, historyDays)），内存拆分 nav60，避免重复拉取
     const codes = holdings.map((h) => h.fundCode);
     const tiantianMap = await computeSelfEstimates(codes, _startTime);
+    // 官方估值批量（FundMNFInfo GSZZL 与天天基金 App 同口径）：src=em 时优先、src=self 时兜底
+    const mnfMap = await fetchMNFEstimates(codes);
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 60);
     // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控
@@ -119,14 +123,22 @@ exports.main = async (event) => {
       const now = new Date();
       const todayStr = fd.formatBJDate(now);
       const estimateUpdated = eastmoney.actualDate === todayStr;
-      if (!estimateUpdated && tiantian.estimatedChangeRate != null) {
-        console.log(`[enrich] ${h.fundCode} 使用自主估算 estChangeRate=${tiantian.estimatedChangeRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
+      // 估算源选择：em=官方估值优先（GSZZL 当日有效时覆盖自算）；self=自算优先（官方兜底）
+      const mnf = mnfMap[h.fundCode] || {};
+      const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
+      let estRate = tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : (mnfToday ? mnf.gszzl : null);
+      let estSource = tiantian.estimatedChangeRate != null ? "self" : (mnfToday ? "em" : "");
+      if (estSrc === "em" && mnfToday && tiantian.estimatedChangeRate != null) {
+        estRate = mnf.gszzl; estSource = "em";
+      }
+      if (estRate != null) {
+        console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
 
-      if (!estimateUpdated && tiantian.estimatedChangeRate != null && yesterdayNav != null) {
-        // 今日净值未公布 → 自主估算模式：用持仓股实时涨跌加权计算
-        todayProfitAmount = yesterdayNav * tiantian.estimatedChangeRate / 100 * shares;
-        todayChangeRate = tiantian.estimatedChangeRate;
+      if (!estimateUpdated && estRate != null && yesterdayNav != null) {
+        // 今日净值未公布 → 估算模式（官方 GSZZL 或自主加权）
+        todayProfitAmount = yesterdayNav * estRate / 100 * shares;
+        todayChangeRate = estRate;
       } else if (currentNav != null && yesterdayNav != null && currentNav !== yesterdayNav) {
         // 今日净值已公布 → 精确模式
         todayProfitAmount = (currentNav - yesterdayNav) * shares;
@@ -136,7 +148,7 @@ exports.main = async (event) => {
       }
 
       totalYesterdayMarket += yesterdayNavSafe * shares;
-      if (tiantian.estimateTime) updateTime = tiantian.estimateTime;
+      if (estRate != null) { updateTime = estSource === "em" ? (mnf.gzhm || "") : (tiantian.estimateTime || ""); }
 
       const costValue = buyPrice * shares;
       const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;
@@ -605,4 +617,42 @@ async function computeSelfEstimates(codes, startTime) {
   }
 
   return map;
+}
+
+
+// FundMNFInfo 批量估值（200/批，与天天基金 App 同口径）：返回 { fundCode: { gsz, gszzl, gztime } }
+function fetchMNFEstimates(codes) {
+  const map = {};
+  if (!codes || !codes.length) return Promise.resolve(map);
+  const all = [...codes];
+  const batch = () => new Promise((resolve) => {
+    const list = all.slice(0, 200);
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
+            map[it.FCODE] = {
+              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
+              gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
+              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
+              gztime: it.GZTIME || null,
+            };
+          });
+        } catch (e) { /* ignore */ }
+        resolve();
+      });
+    });
+    req.setTimeout(6000, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+  return (async () => {
+    while (all.length > 0) {
+      await batch();
+      all.splice(0, 200);
+    }
+    return map;
+  })();
 }

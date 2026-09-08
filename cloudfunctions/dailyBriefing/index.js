@@ -38,6 +38,7 @@ exports.main = async (event = {}) => {
     if (event.action === "logInfo") return await handleLogInfo(event.logId);
     if (event.action === "alertGet") return await handleAlertGet();
     if (event.action === "alertSet") return await handleAlertSet(event);
+    if (event.action === "alertSrc") return await handleAlertSrc(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
     if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);
@@ -77,6 +78,24 @@ async function handleAlertSet({ settings, globalOn }) {
   } else {
     await db.collection("alert_settings").add({
       data: { _openid: OPENID, settings: hasSettings ? settings : {}, globalOn: !!globalOn, peCache: {}, createdAt: now, updatedAt: now }
+    });
+  }
+  return { code: 0 };
+}
+
+// ---- action: alertSrc ----
+// 数据源偏好同步到云端（snapshotProfit 涨跌提醒按用户所选源触发）
+async function handleAlertSrc({ src }) {
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: -1, msg: "无用户身份" };
+  if (src !== "em" && src !== "self") return { code: -1, msg: "src 非法" };
+  const found = await db.collection("alert_settings").where({ _openid: OPENID }).get();
+  const now = Date.now();
+  if (found.data.length > 0) {
+    await db.collection("alert_settings").doc(found.data[0]._id).update({ data: { src, updatedAt: now } });
+  } else {
+    await db.collection("alert_settings").add({
+      data: { _openid: OPENID, settings: {}, globalOn: false, src, createdAt: now, updatedAt: now }
     });
   }
   return { code: 0 };

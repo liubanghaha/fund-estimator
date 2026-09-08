@@ -5,6 +5,7 @@ const db = cloud.database();
 // 轻量轮询接口：仅返回盘中收益率快照，用于高频轮询
 // 替代原先每 15 秒调一次重型的 getPortfolio
 exports.main = async (event) => {
+  const srcSelf = (event && event.src) === "self";
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
 
@@ -34,7 +35,7 @@ exports.main = async (event) => {
       intradaySnapshots = snapRes.data[0].points || [];
       if (intradaySnapshots.length > 0) {
         const last = intradaySnapshots[intradaySnapshots.length - 1];
-        todayProfitRate = last.rate || 0;
+        todayProfitRate = srcSelf ? (last.rateSelf != null ? last.rateSelf : (last.rate || 0)) : (last.rate || 0);
         updateTime = last.time || "";
       }
     }

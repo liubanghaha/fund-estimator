@@ -11,7 +11,7 @@ const HOLDINGS_CACHE_VERSION = 2;
 Page({
   data: {
     fundCode: "", fundName: "", loading: true, errorMsg: "",
-    nav: null, estimatedNav: null, estimatedChangeRate: null, estimateTime: "",
+    nav: null, estimatedNav: null, estimatedChangeRate: null, estimateTime: "", estSource: "",
     actualNav: "", actualDate: "", actualChangeRate: null,
     navHistory: [], displayHistory: [],
     todayReturn: null, weekReturn: null, monthReturn: null,
@@ -141,6 +141,7 @@ Page({
               nav: e.nav != null ? e.nav : this.data.nav,
               estimatedNav: e.estimatedNav != null ? e.estimatedNav : this.data.estimatedNav,
               estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : this.data.estimatedChangeRate,
+              estSource: e.source || this.data.estSource,
               estimateTime: e.estimateTime || this.data.estimateTime,
               actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
               actualChangeRate: actualCR,
@@ -191,7 +192,7 @@ Page({
             const displayCR = calc.selectChangeRate(yesterdayNav, actNavRaw, d.estimatedChangeRate, actualCR);
             this.setData({
               nav: d.nav, estimatedNav: d.estimatedNav,
-              estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
+              estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime, estSource: d.source || "",
               fundName: this.data.fundName || d.fundName || "",
               actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
               actualChangeRate: actualCR,
@@ -429,7 +430,7 @@ Page({
         const displayCR = calc.selectChangeRate(yesterdayNav, actNavRaw, d.estimatedChangeRate, actualCR);
         this.setData({
           nav: d.nav, estimatedNav: d.estimatedNav,
-          estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime,
+          estimatedChangeRate: d.estimatedChangeRate, estimateTime: d.estimateTime, estSource: d.source || "",
           fundName: this.data.fundName || d.fundName || "",
           actualNav: d.actualNav ? d.actualNav.toFixed(4) : this.data.actualNav,
           actualChangeRate: actualCR,

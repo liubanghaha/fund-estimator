@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const https = require("https");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
@@ -43,24 +44,29 @@ exports.main = async (event) => {
     let written = 0;
     const sample = [];
     const pending = [];
-    // 聚合（纯内存，快）：算出每位用户的加权收益率
+    // 聚合（纯内存，快）：每位用户算双口径加权收益率——
+    // rate=官方口径（每基金官方 GSZZL 优先，缺值回退自算）、rateSelf=自算口径；
+    // 快照点两值并存，读取端按用户数据源偏好展示，切换源历史曲线立即变化
     for (const [openid, userHoldings] of Object.entries(userMap)) {
-      let totalWeightedRate = 0, totalBase = 0;
+      let totalWeightedRate = 0, totalWeightedSelf = 0, totalBase = 0;
       for (const h of userHoldings) {
         const fr = fundRateMap[h.fundCode];
         const nav = navMap[h.fundCode] || (parseFloat(h.buyPrice) > 0 ? parseFloat(h.buyPrice) : 0);
         const shares = parseFloat(h.shares || h.amount || 0);
         const weight = shares * nav;
         if (weight > 0) {
-          totalWeightedRate += (fr ? fr.rate : 0) * weight;
+          const selfRate = fr ? fr.rate : 0;
+          totalWeightedSelf += selfRate * weight;
+          totalWeightedRate += (fr && fr.rateEm != null ? fr.rateEm : selfRate) * weight;
           totalBase += weight;
         }
       }
       if (totalBase <= 0) continue; // 无有效数据不写假 0 点
       const rate = +((totalWeightedRate / totalBase)).toFixed(2);
+      const rateSelf = +((totalWeightedSelf / totalBase)).toFixed(2);
       if (sample.length < 5) sample.push({ openid: openid.slice(0, 8) + "…", funds: userHoldings.length, rate });
       if (force) { written++; continue; } // dry-run 只算不写
-      pending.push({ openid, rate });
+      pending.push({ openid, rate, rateSelf });
     }
 
     // 分批并发写：每批 CONCURRENT 个用户并行 upsert，预算在批间判断以尽量写全一批
@@ -68,7 +74,7 @@ exports.main = async (event) => {
     const WRITE_BUDGET_MS = 112000; // 留 ~8s 给函数收尾（timeout 120s）
     for (let i = 0; i < pending.length && el() < WRITE_BUDGET_MS; i += CONCURRENT) {
       const batch = pending.slice(i, i + CONCURRENT);
-      const results = await Promise.all(batch.map(p => writePoints(p.openid, today, time, p.rate)));
+      const results = await Promise.all(batch.map(p => writePoints(p.openid, today, time, p.rate, p.rateSelf)));
       results.forEach(ok => { if (ok) written++; });
     }
     if (el() >= WRITE_BUDGET_MS && written < pending.length) {
@@ -102,7 +108,7 @@ exports.main = async (event) => {
 const ALERT_GLOBAL_DEFAULT = { upper: 3, lower: -3 };
 
 async function checkRateAlerts(userMap, fundRateMap, today, el) {
-  const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true, globalOn: true });
+  const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true, globalOn: true, src: true });
   if (alertDocs.length === 0) return 0;
   const alertMap = {};
   alertDocs.forEach(d => { alertMap[d._openid] = d; });
@@ -118,14 +124,17 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
     const doc = alertMap[openid];
     if (!doc) continue;
     const settings = doc.settings || {};
+    // 触发口径跟随用户数据源偏好：src=self → 自算；默认/无 src（老用户）→ 官方（缺值回退自算）
+    const userSelf = doc.src === "self";
     for (const h of userHoldings) {
       const s = settings[h.fundCode] || (doc.globalOn ? ALERT_GLOBAL_DEFAULT : null);
       if (!s) continue;
       const fr = fundRateMap[h.fundCode];
       if (!fr || typeof fr.rate !== "number") continue;
+      const rate = userSelf ? fr.rate : (fr.rateEm != null ? fr.rateEm : fr.rate);
       let kind = "";
-      if (s.upper > 0 && fr.rate >= s.upper) kind = "up";
-      else if (s.lower < 0 && fr.rate <= s.lower) kind = "down";
+      if (s.upper > 0 && rate >= s.upper) kind = "up";
+      else if (s.lower < 0 && rate <= s.lower) kind = "down";
       if (!kind) continue;
       const cand = {
         openid,
@@ -133,10 +142,10 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
         fundCode: h.fundCode,
         kind,
         fundName: h.fundName || h.fundCode,
-        text: `估算${fr.rate >= 0 ? "+" : ""}${fr.rate.toFixed(2)}%，触及提醒线`,
+        text: `估算${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%，触及提醒线`,
       };
-      if (!best[openid] || Math.abs(fr.rate) > Math.abs(best[openid]._rate)) {
-        cand._rate = fr.rate;
+      if (!best[openid] || Math.abs(rate) > Math.abs(best[openid]._rate)) {
+        cand._rate = rate;
         best[openid] = cand;
       }
     }
@@ -190,19 +199,21 @@ async function readAllHoldings() {
 // 将单个用户当天的快照点写入 profit_snapshots（upsert + 同分钟去重）。
 // 与原子写点的语义一致：当天文档存在则 push 新点（同分钟已存在则跳过），否则新建文档。
 // 返回 true 表示本分钟这一点已写入（供调用方计数）。
-async function writePoints(openid, today, time, rate) {
+async function writePoints(openid, today, time, rate, rateSelf) {
   try {
+    const point = { time, rate };
+    if (rateSelf != null) point.rateSelf = rateSelf; // 旧逻辑单值点无 rateSelf，读取端回退 rate
     const doc = await db.collection("profit_snapshots")
       .where({ _openid: openid, date: today }).get();
     if (doc.data && doc.data.length > 0) {
       const exists = (doc.data[0].points || []).some(p => p.time === time);
       if (exists) return true; // 同分钟已存在，视为写入成功（避免并发重写报错）
       await db.collection("profit_snapshots").doc(doc.data[0]._id).update({
-        data: { points: db.command.push({ time, rate }) }
+        data: { points: db.command.push(point) }
       });
     } else {
       await db.collection("profit_snapshots").add({
-        data: { _openid: openid, date: today, points: [{ time, rate }] }
+        data: { _openid: openid, date: today, points: [point] }
       });
     }
     return true;
@@ -305,9 +316,25 @@ async function buildGlobalFundRates(fundCodes, startTime) {
       weightedChange += price.changeRate * h.navRatio;
     }
     if (totalRatio > 0) {
-      fundRateMap[code] = { rate: +(weightedChange / totalRatio).toFixed(2) };
+      fundRateMap[code] = { rate: +(weightedChange / totalRatio).toFixed(2), rateEm: null };
     }
   }
+
+  // 5) 官方估值（FundMNFInfo GSZZL，与天天基金 App 同口径；仅盘中提供，净值公布/盘后为 null）：
+  //    快照双口径（官方 rateEm + 自算 rate）并存，读取端按用户数据源偏好选值；
+  //    官方缺值时该基金在"官方口径"聚合中回退自算（rateEm=null → 用 rate）
+  try {
+    if (Object.keys(fundRateMap).length > 0 && el() < 90000) {
+      const mnfMap = await fetchMNFEstimates(Object.keys(fundRateMap));
+      const todayStr = fd.formatBJDate();
+      Object.keys(fundRateMap).forEach(code => {
+        const m = mnfMap[code];
+        if (m && m.gztime != null && (_gdIsToday(m.gztime, todayStr)) && m.gszzl != null) {
+          fundRateMap[code].rateEm = m.gszzl;
+        }
+      });
+    }
+  } catch (e) { console.warn("[snapshotProfit] 官方估值获取失败:", e.message); }
 
   return { fundRateMap, navMap, stockCount: stockSet.size };
 }
@@ -371,4 +398,47 @@ async function fetchAllStockPrices(codes, startTime) {
     results.forEach(m => Object.assign(map, m));
   }
   return map;
+}
+
+
+// GZTIME 是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss" 与 "MM-DD HH:mm:ss" 两种盘中格式
+function _gdIsToday(gztime, todayStr) {
+  const gd = String(gztime || "").trim();
+  return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
+}
+
+// FundMNFInfo 批量官方估值（200/批，与天天基金 App 同口径）
+function fetchMNFEstimates(codes) {
+  const map = {};
+  if (!codes || !codes.length) return Promise.resolve(map);
+  const all = [...codes];
+  const batch = () => new Promise((resolve) => {
+    const list = all.slice(0, 200);
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
+    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
+            map[it.FCODE] = {
+              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
+              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
+              gztime: it.GZTIME || null,
+            };
+          });
+        } catch (e) { /* ignore */ }
+        resolve();
+      });
+    });
+    req.setTimeout(6000, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+  return (async () => {
+    while (all.length > 0) {
+      await batch();
+      all.splice(0, 200);
+    }
+    return map;
+  })();
 }
