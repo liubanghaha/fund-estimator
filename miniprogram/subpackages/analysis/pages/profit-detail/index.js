@@ -1126,7 +1126,7 @@ Page({
   _startPolling() {
     this._stopPolling();
     this._pollFundRate();
-    this._pollTimer = setInterval(() => this._pollFundRate(), 15000);
+    this._pollTimer = setInterval(() => this._pollFundRate(), 30000);
   },
 
   _stopPolling() {

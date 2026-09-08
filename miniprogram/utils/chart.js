@@ -187,6 +187,33 @@ const chart = {
    * 当天走势双线对比图（组合收益 vs 大盘指数）
    * data: [{ time: "09:31", rate: 0.12, indexRate: -0.05 }, ...]
    */
+  // 按 null 断开折线为连续段（缺数据不跨空连接）
+  _splitSegments(data, field, xp, yp, zeroY) {
+    const segs = [];
+    let cur = [];
+    data.forEach((d, i) => {
+      if (d[field] == null) { if (cur.length) { segs.push(cur); cur = []; } return; }
+      cur.push({ x: xp(i), y: yp(d[field]) });
+    });
+    if (cur.length) segs.push(cur);
+    return segs;
+  },
+
+  // Catmull-Rom → 三次贝塞尔：折线变平滑曲线，严格过每个数据点（值不改变，仅视觉圆滑）
+  _smoothPolyline(ctx, pts) {
+    if (!pts || pts.length === 0) return;
+    if (pts.length === 1) { ctx.moveTo(pts[0].x, pts[0].y); return; }
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+      ctx.bezierCurveTo(
+        p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6,
+        p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6,
+        p2.x, p2.y
+      );
+    }
+  },
+
   drawIntradayChart(canvas, opts = {}) {
     const { w = 340, h = 200, data = [], fieldA = 'rate', fieldB = 'indexRate',
       labelA = '组合收益', labelB = '', padding } = opts;
@@ -266,38 +293,27 @@ const chart = {
         return;
       }
 
-      // 面积（仅收益线填充）
+      // 面积（仅收益线填充，与平滑折线同一路径，避免线面错位）
       if (cfg.isProfit) {
         const gradient = ctx.createLinearGradient(0, p.top, 0, h - p.bottom);
         const alpha = cfg.color === '#E4393C' ? 'rgba(228,57,60,0.08)' : 'rgba(46,139,87,0.08)';
         gradient.addColorStop(0, alpha);
         gradient.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.beginPath();
-        let started = false;
-        data.forEach((d, i) => {
-          if (d[cfg.field] == null) return;
-          const x = xp(i), y = yp(d[cfg.field]);
-          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-        });
-        if (started) {
-          const lastIdx = data.map((d, i) => d[cfg.field] != null ? i : -1).filter(i => i >= 0).pop();
-          const firstIdx = data.findIndex(d => d[cfg.field] != null);
-          ctx.lineTo(xp(lastIdx), zeroY);
-          ctx.lineTo(xp(firstIdx), zeroY);
+        const segs = this._splitSegments(data, cfg.field, xp, yp, zeroY);
+        segs.forEach(seg => {
+          ctx.beginPath();
+          this._smoothPolyline(ctx, seg);
+          ctx.lineTo(seg[seg.length - 1].x, zeroY);
+          ctx.lineTo(seg[0].x, zeroY);
           ctx.closePath();
           ctx.fillStyle = gradient;
           ctx.fill();
-        }
+        });
       }
 
-      // 折线
+      // 折线（平滑曲线：Catmull-Rom 过所有数据点，数值不变仅视觉圆滑；null 断开分段）
       ctx.beginPath();
-      let started = false;
-      data.forEach((d, i) => {
-        if (d[cfg.field] == null) return;
-        const x = xp(i), y = yp(d[cfg.field]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-      });
+      this._splitSegments(data, cfg.field, xp, yp, zeroY).forEach(seg => this._smoothPolyline(ctx, seg));
       ctx.strokeStyle = cfg.color;
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -448,22 +464,15 @@ const chart = {
       const alpha = profitColor === '#E4393C' ? 'rgba(228,57,60,0.08)' : 'rgba(46,139,87,0.08)';
       gradient.addColorStop(0, alpha);
       gradient.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.beginPath();
-      let started = false;
-      data.forEach((d2, i) => {
-        if (d2[fieldA] == null) return;
-        const x = xp(i), y = yp(d2[fieldA]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-      });
-      if (started) {
-        const lastIdx = data.map((dd, i) => dd[fieldA] != null ? i : -1).filter(i => i >= 0).pop();
-        const firstIdx = data.findIndex(dd => dd[fieldA] != null);
-        ctx.lineTo(xp(lastIdx), zeroY);
-        ctx.lineTo(xp(firstIdx), zeroY);
+      this._splitSegments(data, fieldA, xp, yp, zeroY).forEach(seg => {
+        ctx.beginPath();
+        this._smoothPolyline(ctx, seg);
+        ctx.lineTo(seg[seg.length - 1].x, zeroY);
+        ctx.lineTo(seg[0].x, zeroY);
         ctx.closePath();
         ctx.fillStyle = gradient;
         ctx.fill();
-      }
+      });
     }
 
     // 两条线
@@ -471,12 +480,7 @@ const chart = {
       const vals = data.map(d => d[cfg.f]).filter(v => v != null);
       if (vals.length < 2) return;
       ctx.beginPath();
-      let started = false;
-      data.forEach((d2, i) => {
-        if (d2[cfg.f] == null) return; // skip null, keep connected
-        const x = xp(i), y = yp(d2[cfg.f]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-      });
+      this._splitSegments(data, cfg.f, xp, yp, zeroY).forEach(seg => this._smoothPolyline(ctx, seg));
       ctx.strokeStyle = cfg.c;
       ctx.lineWidth = 1;
       ctx.stroke();

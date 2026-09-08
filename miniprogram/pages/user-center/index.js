@@ -55,8 +55,11 @@ Page({
         wx.setStorageSync("estimate_src", key);
         this.setData({ estimateSrcText: key === "self" ? "数据源二" : "数据源一" });
         wx.showToast({ title: key === "self" ? "已切换为数据源二" : "已切换为数据源一", icon: "none" });
-        // 同步偏好到云端：盘中涨跌提醒按用户所选源触发；失败静默（提醒回退默认官方口径）
-        wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSrc", src: key } }).catch(() => {});
+        // 云端同步加 500ms 去抖：快速连切时只发最后一次选择，避免异步乱序导致云端 src 落到旧值
+        if (this._alertSrcTimer) clearTimeout(this._alertSrcTimer);
+        this._alertSrcTimer = setTimeout(() => {
+          wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSrc", src: key } }).catch(() => {});
+        }, 500);
         // 首页/详情缓存按旧源口径算过，切源后强制失效，下次打开用新源重拉
         try {
           wx.removeStorageSync("portfolio_cache");
