@@ -98,10 +98,13 @@ Page({
     const cachedOk = cachedCards.filter((c) => c.price !== "--").length >= 6;
     const cacheUpToDate = cached && cached.v === CACHE_VERSION;
     if (!force && cacheUpToDate && cachedOk && marketTime.isCacheFresh(cached, { estimateTtl: 60 * 1000, finalAtClose: true })) {
-      this._render(cached);
+      this._render(cached, true);
       this._refreshing = false;
       return Promise.resolve();
     }
+    // 缓存秒开：缓存存在但不新鲜时先渲染旧数据（避免 fetch 期间 3-15s 空态：
+    // 概览 null/指数 [] 的"全 --/无卡片"中间态），后台拉新完成后覆盖
+    if (cached && cacheUpToDate) this._render(cached, true);
     this.setData({ loading: !cached, emptyData: false, loadError: false });
     return Promise.all([this._fetchOverview(), this._fetchIndices()]).then(([overviewRes, indexCards]) => {
       const now = Date.now();
@@ -133,12 +136,12 @@ Page({
       this._refreshing = false;
     }).catch(() => {
       this._refreshing = false;
-      if (cached) { this._render(cached); return; }
+      if (cached) { this._render(cached, true); return; }
       this.setData({ loading: false, loadError: true });
     });
   },
 
-  _render(cache) {
+  _render(cache, fromCache) {
     const ov = cache.overview;
     this._sectorsRaw = cache.sectors || [];
     this._mineCount = cache.mineCount || 0;
@@ -150,7 +153,9 @@ Page({
       mineCount: this._mineCount,
       indexCards: [],
       indexLoading: false,
-      updatedAt: marketTime.bjTimeStr ? marketTime.bjTimeStr() : new Date(Date.now() + 8 * 3600000).toISOString().slice(11, 16),
+      // 秒开（旧缓存）时显示缓存保存时刻，标注诚实；拉新成功后显示当前时刻
+      updatedAt: new Date((fromCache ? (cache.ts || 0) : Date.now()) + 8 * 3600000)
+        .toISOString().slice(11, 16),
     };
     this._applySectorSort(data, this.data.sectorSort);
     // 指数按 A/港/美/亚太 分组，展示当前选中组

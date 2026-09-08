@@ -191,7 +191,7 @@ function fetchStockPricesTencent(codes, opts = {}) {
 
   const fetchBatch = (batchCodes) => new Promise((resolve) => {
     const qtCodes = batchCodes.map(toQtCode).join(",");
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => { res.setEncoding("utf8");
+    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => {
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
@@ -365,7 +365,7 @@ function fetchIndexRealtime(indexCode, opts = {}) {
   const prefix = resolveIndexPrefix(indexCode);
   const qtCode = `${prefix}${indexCode}`;
   return new Promise((resolve) => {
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => { res.setEncoding("utf8");
+    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => {
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {

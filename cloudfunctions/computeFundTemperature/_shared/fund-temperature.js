@@ -332,7 +332,7 @@ async function _fetchLiveTencent(codes, timeoutMs) {
     const qtCodes = batch.map(toQtCode).join(",");
     const url = `http://qt.gtimg.cn/q=${qtCodes}`;
     await new Promise((resolve) => {
-      const req = http.get(url, (res) => { res.setEncoding("utf8");
+      const req = http.get(url, (res) => {
         const chunks = [];
         res.on("data", (c) => { chunks.push(c); });
         res.on("end", () => {

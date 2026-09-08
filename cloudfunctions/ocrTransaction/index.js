@@ -124,7 +124,7 @@ async function doBaiduOCR(fileID) {
     const imgBase64 = await new Promise((resolve) => {
       const mod = url.startsWith("https") ? https : http;
       const chunks = [];
-      mod.get(url, (res) => { res.setEncoding("utf8"); res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
+      mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
     if (!imgBase64) return { text: null, words: null, err: "download fail" };
     const tokenRes = await new Promise((resolve) => {
