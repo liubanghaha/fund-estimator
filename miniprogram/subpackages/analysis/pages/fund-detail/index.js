@@ -135,46 +135,7 @@ Page({
             this.fetchTransactions().catch(() => {}),
           ]);
           if (estRes && estRes.result && estRes.result.code === 0) {
-            const e = estRes.result.data;
-            const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
-            this.setData({
-              nav: e.nav != null ? e.nav : this.data.nav,
-              estimatedNav: e.estimatedNav != null ? e.estimatedNav : this.data.estimatedNav,
-              estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : this.data.estimatedChangeRate,
-              estSource: e.source || this.data.estSource,
-              estimateTime: e.estimateTime || this.data.estimateTime,
-              actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
-              actualChangeRate: actualCR,
-              displayChangeRate: calc.selectChangeRate(
-                e.nav != null ? e.nav : this.data.nav,
-                e.actualNav != null ? e.actualNav : parseFloat(this.data.actualNav),
-                e.estimatedChangeRate, actualCR),
-              actualDate: e.actualDate || this.data.actualDate,
-              peTemp: e.peTemp || this.data.peTemp,
-            });
-            // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
-            if (e.actualDate && e.actualNav) {
-              const merged = this._mergeHistory(cached.history, [{
-                date: e.actualDate, nav: e.actualNav,
-                changeRate: e.actualChangeRate != null ? e.actualChangeRate : 0,
-              }]);
-              this.setData({
-                navHistory: merged,
-                displayHistory: merged.slice(0, 10),
-                showAllHistory: false,
-              });
-              this.calcReturns(merged);
-              // 缓存断档（隔了多个交易日才进）→ 单点合并补不齐中间日期，后台全量补拉历史
-              const newestBefore = cached.history[0] && cached.history[0].date;
-              const dayBefore = (() => {
-                const t = new Date(e.actualDate + "T00:00:00Z");
-                t.setUTCDate(t.getUTCDate() - 1);
-                return t.toISOString().slice(0, 10);
-              })();
-              if (newestBefore && newestBefore < marketTime.lastTradingDay(dayBefore)) {
-                this.fetchHistory(300);
-              }
-            }
+            this._applyEstimate(estRes.result.data, cached);
           }
         } else {
           // 首次无缓存历史 → 全量概览（一次拿 260 天历史 + 估值 + 温度；档案/持仓由切 Tab 懒加载）
@@ -215,7 +176,16 @@ Page({
           // profile 在切 Tab 时懒加载，但基础数据已就绪
         }
       } else {
-        await Promise.all([this.checkFollow(), this.checkHolding(), this.fetchTransactions()]);
+        // 缓存新鲜也静默轻量刷新估值：服务端口径修正/净值发布即时覆盖缓存旧值，防陈旧口径驻留
+        const [estRes] = await Promise.all([
+          api.fetchFundEstimate(this.data.fundCode).catch(() => null),
+          this.checkFollow().catch(() => {}),
+          this.checkHolding().catch(() => {}),
+          this.fetchTransactions().catch(() => {}),
+        ]);
+        if (estRes && estRes.result && estRes.result.code === 0) {
+          this._applyEstimate(estRes.result.data, cached);
+        }
       }
       this.updateDisplay();
       this.enrichHoldingData();
@@ -232,6 +202,49 @@ Page({
   },
 
   // ============ 缓存 ============
+
+  // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）
+  _applyEstimate(e, cached) {
+    const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
+    this.setData({
+      nav: e.nav != null ? e.nav : this.data.nav,
+      estimatedNav: e.estimatedNav != null ? e.estimatedNav : this.data.estimatedNav,
+      estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : this.data.estimatedChangeRate,
+      estSource: e.source || this.data.estSource,
+      estimateTime: e.estimateTime || this.data.estimateTime,
+      actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
+      actualChangeRate: actualCR,
+      displayChangeRate: calc.selectChangeRate(
+        e.nav != null ? e.nav : this.data.nav,
+        e.actualNav != null ? e.actualNav : parseFloat(this.data.actualNav),
+        e.estimatedChangeRate, actualCR),
+      actualDate: e.actualDate || this.data.actualDate,
+      peTemp: e.peTemp || this.data.peTemp,
+    });
+    // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
+    if (e.actualDate && e.actualNav) {
+      const merged = this._mergeHistory(cached.history, [{
+        date: e.actualDate, nav: e.actualNav,
+        changeRate: e.actualChangeRate != null ? e.actualChangeRate : 0,
+      }]);
+      this.setData({
+        navHistory: merged,
+        displayHistory: merged.slice(0, 10),
+        showAllHistory: false,
+      });
+      this.calcReturns(merged);
+      // 缓存断档（隔了多个交易日才进）→ 单点合并补不齐中间日期，后台全量补拉历史
+      const newestBefore = cached.history[0] && cached.history[0].date;
+      const dayBefore = (() => {
+        const t = new Date(e.actualDate + "T00:00:00Z");
+        t.setUTCDate(t.getUTCDate() - 1);
+        return t.toISOString().slice(0, 10);
+      })();
+      if (newestBefore && newestBefore < marketTime.lastTradingDay(dayBefore)) {
+        this.fetchHistory(300);
+      }
+    }
+  },
 
   // 读缓存（不渲染），供 fetchAll 判断是否有历史可复用
   _readCache() {

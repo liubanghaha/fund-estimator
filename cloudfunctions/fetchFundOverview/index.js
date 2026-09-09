@@ -4,6 +4,7 @@ const db = cloud.database();
 const fd = require("./_shared/fund-data");
 const https = require("https");
 const ft = require("./_shared/fund-temperature");
+const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { fundCode, src } = event;
@@ -37,7 +38,8 @@ async function fetchEstimate(fundCode, estSrc) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）
   const em = await fd.fetchLatestNavEastMoney(fundCode);
   const todayStr = fd.formatBJDate();
-  const estimateUpdated = em.actualDate === todayStr;
+  // 数据所属日：当日 9:30 起为今日；凌晨/周末/节假日为上一交易日（净值已确定，按实际口径）
+  const estimateUpdated = em.actualDate === _dataDay(todayStr);
 
   // 净值已公布：估算请求无意义（官方 GSZZL 已清空），直接走真值短路，省两轮外部请求
   if (estimateUpdated) {
@@ -189,4 +191,21 @@ async function fetchPeTemp(fundCode) {
     }
   } catch (e) { /* ignore */ }
   return null;
+}
+
+// 数据所属日（净值/估算口径）：当日 9:30 起（含盘后当晚）为今日——盘中估算/晚间精确；
+// 次日凌晨开盘前与周末、节假日为上一交易日——净值已确定，按实际口径
+function _dataDay(todayStr) {
+  const bj = new Date(Date.now() + 8 * 3600000);
+  const day = bj.getUTCDay();
+  const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+  const openedToday = day >= 1 && day <= 5 && min >= 570;
+  // lastTradingDay 含当天，取"上一交易日"须从昨天回找
+  return openedToday && td.isTradingDay(todayStr) ? todayStr : td.lastTradingDay(_addDays(todayStr, -1));
+}
+
+function _addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

@@ -617,8 +617,8 @@ Page({
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
           groupSummary,
           totalAmount: d.totalAmount,
-          todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit,
-          todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate,
+          todayProfit: d.todayProfit,
+          todayProfitRate: d.todayProfitRate,
           totalReturn: d.totalReturn,
           totalReturnRate: d.totalReturnRate,
           updateTime: d.updateTime || "",
@@ -633,7 +633,7 @@ Page({
         // 组合级净值日（持仓最大 actualDate）：供 isCacheFresh 判断当晚净值发布后冻结
         const maxActualDate = holdings.reduce((m, h) => (h.actualDate && h.actualDate > m ? h.actualDate : m), "");
         this._portfolioCache = {
-          holdings, totalAmount: d.totalAmount, todayProfit: parseFloat(d.todayProfit) !== 0 ? d.todayProfit : this.data.todayProfit, todayProfitRate: parseFloat(d.todayProfitRate) !== 0 ? d.todayProfitRate : this.data.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now(),
+          holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now(),
           actualDate: maxActualDate || undefined,
         };
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });

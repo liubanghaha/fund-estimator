@@ -274,7 +274,7 @@ async function runBriefing(dryRun, force) {
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
   // 2. 全量持仓按 openid 分组（同 snapshotProfit 模式：一次读全量，内存分组）
-  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue"]);
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue", "shares"]);
   const byUser = {};
   const totalMarket = {};
   holdings.forEach(h => {
@@ -295,7 +295,7 @@ async function runBriefing(dryRun, force) {
   });
 
   // 4.5 确认门：不固定发送时刻——官方净值（actualDate=当日）全部公布后本档即发；
-  // 968 互认基金 T+1 公布不参与确认；23:00 最后一档兜底（未发布按估算口径并保留文案区分）
+  // 968 互认基金 T+1 公布不参与确认；23:00 最后一档兜底（已发布按实际、未发布按估算混合，文案标"估"）
   const confirmation = await collectConfirmation(targets, byUser, dataDay);
   if (!dryRun && !force && !confirmation.allConfirmed && !confirmation.isLastSlot) {
     return { code: 0, msg: `等待净值确认 ${confirmation.publishedCount}/${confirmation.totalCount}` };
@@ -313,9 +313,10 @@ async function runBriefing(dryRun, force) {
     const batch = runList.slice(i, i + BATCH_SIZE);
     for (const sub of batch) {
       if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
-      // 官方净值已确认的组合按确认值计算；未确认（含 T+1 兜底档）回退收盘估算口径
-      const confirmRate = calcConfirmedRate(byUser[sub._openid], confirmation);
-      const brief = buildBrief(sub._openid, byUser[sub._openid], totalMarket[sub._openid], confirmRate != null ? confirmRate : rateMap[sub._openid], todaySigs, prevSigs);
+      // 官方净值口径：全确认按实际；未确认（23:00 兜底档）按"已发布实际+未发布估算"混合，
+      // estimated 标志让文案区分估算部分，避免把兜底值误读为确认值
+      const rateInfo = resolveRate(byUser[sub._openid], confirmation, rateMap[sub._openid], totalMarket[sub._openid]);
+      const brief = buildBrief(sub._openid, byUser[sub._openid], rateInfo ? rateInfo.base : totalMarket[sub._openid], rateInfo ? rateInfo.rate : rateMap[sub._openid], todaySigs, prevSigs, !rateInfo || !rateInfo.confirmed);
       if (!brief) { skipped++; continue; } // 无快照且温度无变化，不发不扣额度
       if (dryRun) {
         await db.collection("push_logs").add({
@@ -724,27 +725,42 @@ async function collectConfirmation(targets, byUser, dataDay) {
   };
 }
 
-// 组合确认收益率：可计算基金（有前日净值+份额、非 968）官方涨幅全部就绪时按
-// 份额×前日净值基准实时计算；否则返回 null 由调用方回退收盘估算
-function calcConfirmedRate(funds, confirmation) {
+// 组合收益率与金额基数（与页面 getPortfolio 混合口径对齐）：
+// - 全确认：rate=官方净值加权实际涨幅，base=份额×前日净值（昨日市值），confirmed=true
+// - 未全确认（仅 23:00 兜底档触达）：已发布基金按官方实际、未发布部分按组合估算率兜底，
+//   confirmed=false 供文案标"估"区分
+// - 完全无前日净值数据：rate=组合估算率、base=DB marketValue（旧兜底），confirmed=false
+function resolveRate(funds, confirmation, estRate, dbMarket) {
   const { navInfo, prevNav } = confirmation;
-  let totalBase = 0, real = 0, computable = 0, published = 0;
+  let totalBase = 0, real = 0, estBase = 0, computable = 0, published = 0;
   funds.forEach(f => {
-    if (String(f.fundCode || "").startsWith("968")) return; // T+1 不计入确认口径
+    if (String(f.fundCode || "").startsWith("968")) return; // T+1 不计入当日口径
     const prev = prevNav[f.fundCode];
     const shares = parseFloat(f.shares);
-    if (!prev || !(shares > 0)) return;
-    computable++;
-    const base = shares * prev;
+    let base = shares > 0 && prev > 0 ? shares * prev : 0;
+    const hasPrev = base > 0;
+    if (hasPrev) computable++;
+    if (base <= 0 && parseFloat(f.marketValue) > 0) base = parseFloat(f.marketValue); // 无前日净值做基数兜底
+    if (base <= 0) return;
     totalBase += base;
     const info = navInfo[f.fundCode];
-    if (info && info.published) { published++; real += base * info.changeRate / 100; }
+    if (info && info.published) {
+      if (hasPrev) published++;
+      real += base * info.changeRate / 100;
+    } else {
+      estBase += base;
+    }
   });
-  if (computable > 0 && published === computable && totalBase > 0) return real / totalBase;
-  return null;
+  if (computable === 0 || totalBase <= 0) {
+    // 无任何可计算基金：完全回退估算口径（旧行为）
+    if (estRate != null && dbMarket > 0) return { rate: estRate, base: dbMarket, confirmed: false };
+    return null;
+  }
+  const rate = (real + (estRate != null ? estBase * estRate / 100 : 0)) / totalBase * 100;
+  return { rate, base: totalBase, confirmed: published === computable };
 }
 
-function buildBrief(openid, funds, marketValue, rate, todaySigs, prevSigs) {
+function buildBrief(openid, funds, baseValue, rate, todaySigs, prevSigs, estimated) {
   let ups = 0, downs = 0;
   funds.forEach(f => {
     const t = todaySigs.get(f.fundCode), p = prevSigs.get(f.fundCode);
@@ -754,8 +770,8 @@ function buildBrief(openid, funds, marketValue, rate, todaySigs, prevSigs) {
   if (rate == null && ups + downs === 0) return null;
 
   let data;
-  if (rate != null && marketValue > 0) {
-    const amount = marketValue * rate / 100;
+  if (rate != null && baseValue > 0) {
+    const amount = baseValue * rate / 100;
     const amt = `${amount >= 0 ? "+" : ""}${amount.toFixed(0)}元`;
     if (ups + downs > 0) {
       const tempTxt = [
@@ -764,7 +780,11 @@ function buildBrief(openid, funds, marketValue, rate, todaySigs, prevSigs) {
       ].filter(Boolean).join(",");
       data = `${amt},${tempTxt}`;
     } else {
-      data = `${amt}(${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%)`;
+      // 未确认时含估算兜底部分，文案标"估"与全确认实际口径区分
+      const rateTxt = estimated
+        ? `估${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%`
+        : `${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%`;
+      data = `${amt}(${rateTxt})`;
     }
   } else if (rate != null) {
     data = `今日估算${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%`;

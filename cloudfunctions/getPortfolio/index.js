@@ -5,6 +5,7 @@ const db = cloud.database();
 const _ = db.command;
 const fd = require("./_shared/fund-data");
 const ft = require("./_shared/fund-temperature");
+const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
@@ -119,10 +120,18 @@ exports.main = async (event) => {
         }
       }
 
-      // 今日净值是否已公布（北京时间 = UTC，净值日期无时区问题）
+      // 数据所属日：当日 9:30 起（含盘后当晚）展示今日——盘中估算、晚间净值公布后精确；
+      // 次日凌晨开盘前与周末/节假日展示最近交易日——净值已确定，按精确口径（此前按 todayStr
+      // 硬比导致午夜后把已确定净值误判为"今日未公布"，整组合退回自算估算口径）
       const now = new Date();
       const todayStr = fd.formatBJDate(now);
-      const estimateUpdated = eastmoney.actualDate === todayStr;
+      const bjNow = new Date(now.getTime() + 8 * 3600000);
+      const bjDay = bjNow.getUTCDay();
+      const bjMin = bjNow.getUTCHours() * 60 + bjNow.getUTCMinutes();
+      const openedToday = bjDay >= 1 && bjDay <= 5 && bjMin >= 570 && td.isTradingDay(todayStr);
+      // lastTradingDay 含当天（9/10 凌晨直接传今天会返回 9/10），取"上一交易日"须从昨天回找
+      const displayDay = openedToday ? todayStr : td.lastTradingDay(addDays(todayStr, -1));
+      const estimateUpdated = eastmoney.actualDate === displayDay;
       // 估算源选择：em=官方估值优先（GSZZL 当日有效时覆盖自算）；self=自算优先（官方兜底）
       const mnf = mnfMap[h.fundCode] || {};
       const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
@@ -655,4 +664,11 @@ function fetchMNFEstimates(codes) {
     }
     return map;
   })();
+}
+
+// 纯日期偏移（UTC 计算："YYYY-MM-DD" 无时区歧义）
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
