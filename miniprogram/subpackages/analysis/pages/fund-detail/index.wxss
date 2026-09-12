@@ -256,3 +256,7 @@
 .chart-loading-mask{position:absolute;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.55)}
 .chart-loading-text{font-size:24rpx;color:#999}
 .risk-explain{margin-top:12rpx;font-size:20rpx;color:#BBB;line-height:1.5}
+/* 定投回测易用化 */
+.dca-quick{display:flex;gap:12rpx;margin-top:4rpx}
+.dca-quick-chip{font-size:22rpx;color:#888;background:#F2F2F2;border-radius:20rpx;padding:6rpx 20rpx}
+.dca-text{font-size:22rpx;color:#888;line-height:1.6;background:#F8F8F8;border-radius:12rpx;padding:16rpx;margin-bottom:16rpx}

@@ -1190,7 +1190,24 @@ Page({
 
   // ---- 定投回测 ----
   onToggleDCA() {
+    // 易用化：首次展开即填好默认值（月投 1000 / 起始近3年），用户直接点"开始模拟"就能出结果
+    if (!this.data.showDCA && !this.data.dcaStartDate) {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 3);
+      this.setData({
+        dcaAmount: this.data.dcaAmount || "1000",
+        dcaStartDate: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      });
+    }
     this.setData({ showDCA: !this.data.showDCA });
+  },
+  // 快捷周期：近1年/3年/5年 一键填充起始月
+  onDCAPeriod(e) {
+    const years = parseFloat(e.currentTarget.dataset.years);
+    if (!years) return;
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - years);
+    this.setData({ dcaStartDate: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` });
   },
   onDCAAmount(e) { this.setData({ dcaAmount: e.detail.value }); },
   onDCAStartDate(e) { this.setData({ dcaStartDate: e.detail.value }); },
@@ -1208,7 +1225,7 @@ Page({
         data: { fundCode, monthlyAmount: parseFloat(dcaAmount), startYear, startMonth, monthlyDay: 1 },
       });
       if (res.result && res.result.code === 0) {
-        this.setData({ dcaResult: res.result.data });
+        this.setData({ dcaResult: res.result.data, dcaText: this._dcaText(res.result.data) });
       } else {
         wx.showToast({ title: (res.result && res.result.msg) || "回测失败", icon: "none" });
       }
@@ -1216,6 +1233,12 @@ Page({
       wx.showToast({ title: "回测失败", icon: "none" });
     }
     this.setData({ dcaLoading: false });
+  },
+  // 结果解读：一句白话 + 单位投入价值（历史演算口径，合规注明不代表未来）
+  _dcaText(d) {
+    if (!d || !d.totalInvested) return "";
+    const per = (d.currentValue / d.totalInvested).toFixed(2);
+    return `按月定投 ${d.months} 期、每 1 元投入如今价值 ${per} 元（按年化 ${d.annualizedReturn}% 演算，历史数据不代表未来收益）`;
   },
 
   // ---- 费用黑洞 ----

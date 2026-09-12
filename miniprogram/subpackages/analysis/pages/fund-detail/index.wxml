@@ -354,8 +354,14 @@
               <text class="dca-input dca-picker">{{dcaStartDate || '选择年月'}}</text>
             </picker>
           </view>
+          <view class="dca-quick">
+            <text class="dca-quick-chip" data-years="1" bind:tap="onDCAPeriod">近1年</text>
+            <text class="dca-quick-chip" data-years="3" bind:tap="onDCAPeriod">近3年</text>
+            <text class="dca-quick-chip" data-years="5" bind:tap="onDCAPeriod">近5年</text>
+          </view>
           <button class="dca-btn" bind:tap="onRunDCA" loading="{{dcaLoading}}">开始模拟</button>
         </view>
+        <view wx:if="{{dcaText}}" class="dca-text">{{dcaText}}</view>
         <view wx:if="{{dcaResult}}" class="dca-result">
           <view class="dca-stat-row">
             <view class="dca-stat"><text class="dca-stat-val">{{dcaResult.totalInvested}}</text><text class="dca-stat-label">累计投入(元)</text></view>
