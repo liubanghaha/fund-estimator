@@ -26,6 +26,7 @@ Page({
     // 老用户召回
     recallBucketIdx: 0,
     recallBuckets: ["7d", "14d", "30d"],
+    recallVariant: "a", // a=通用文案 | b=个性化（"你M月买入的XX温度X.XX"）
     recallPreview: null,
     recallSending: false,
     recallReport: null,
@@ -157,11 +158,17 @@ Page({
     this.setData({ recallBucketIdx: idx, recallPreview: null });
   },
 
+  onRecallVariant(e) {
+    const variant = e.currentTarget.dataset.variant;
+    if (!variant || variant === this.data.recallVariant) return;
+    this.setData({ recallVariant: variant, recallPreview: null }); // 切换文案组后旧预览作废
+  },
+
   // 预览目标（dryRun：不落库不发送）
   async onRecallPreview() {
     this.setData({ recallSending: true });
     try {
-      const res = await api.opsTool("recallSend", { bucket: this.data.recallBuckets[this.data.recallBucketIdx], limit: 100, dryRun: true });
+      const res = await api.opsTool("recallSend", { bucket: this.data.recallBuckets[this.data.recallBucketIdx], limit: 100, dryRun: true, variant: this.data.recallVariant });
       if (res.result && res.result.code === 0) {
         this.setData({ recallPreview: res.result.data });
       } else {
@@ -186,7 +193,7 @@ Page({
     if (!r) return;
     this.setData({ recallSending: true });
     try {
-      const res = await api.opsTool("recallSend", { bucket: this.data.recallBuckets[this.data.recallBucketIdx], limit: 100, dryRun: false });
+      const res = await api.opsTool("recallSend", { bucket: this.data.recallBuckets[this.data.recallBucketIdx], limit: 100, dryRun: false, variant: this.data.recallVariant });
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
         this.setData({ recallPreview: null });

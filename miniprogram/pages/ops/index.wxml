@@ -161,12 +161,23 @@
         <button class="ops-mini-btn danger" bind:tap="onRecallSend" loading="{{recallSending}}" disabled="{{recallSending}}">试水发送 100</button>
       </view>
 
+      <!-- 文案 A/B：B 为个性化（"你M月买入的XX温度X.XX"），A/B 各自独立分组对照 -->
+      <view class="ops-add-row" style="margin-top:16rpx">
+        <text class="ops-card-desc" style="margin-right:8rpx">文案组：</text>
+        <text class="sort-chip {{recallVariant === 'a' ? 'active' : ''}}" data-variant="a" bind:tap="onRecallVariant">A 通用</text>
+        <text class="sort-chip {{recallVariant === 'b' ? 'active' : ''}}" data-variant="b" bind:tap="onRecallVariant">B 个性化</text>
+      </view>
+
       <block wx:if="{{recallPreview}}">
         <view class="ops-channel-head" style="margin-top:24rpx">
           <text class="ops-channel-name">🎯 目标预览（{{recallPreview.bucket}}，未发送）</text>
         </view>
         <view class="ops-channel-tip">额度池 {{recallPreview.pool}} 人 · 符合条件 {{recallPreview.eligible}} 人 · 本次：发送 {{recallPreview.sendCount}} / 对照 {{recallPreview.controlCount}}</view>
         <view class="ops-channel-tip">文案：{{recallPreview.briefPreview.thing2}}——{{recallPreview.briefPreview.thing3}}</view>
+        <block wx:if="{{recallVariant === 'b' && recallPreview.briefPreviewB && recallPreview.briefPreviewB.length}}">
+          <view class="ops-channel-tip">B 文案样例（实际发送按各人持仓生成）：</view>
+          <view class="ops-channel-tip" wx:for="{{recallPreview.briefPreviewB}}" wx:key="openid">· {{item.thing3}}</view>
+        </block>
         <view class="ops-channel-tip" wx:if="{{recallPreview.sample.length}}">样例 openid：{{recallPreview.sample[0]}} 等</view>
       </block>
 

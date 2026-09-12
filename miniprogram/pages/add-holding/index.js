@@ -310,6 +310,7 @@ Page({
 
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
+        if (d.added > 0) this._markFirstHolding(); // 激活指标：生涯首次添加持仓（批量导入）
         // 标记所有未保存为已保存
         for (const f of funds) {
           if (!f._saved && f.fundCode) f._saved = true;
@@ -347,6 +348,16 @@ Page({
       console.error("批量保存失败:", e);
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }
+  },
+
+  // 首日价值时刻（产品规划激活指标）：用户生涯首次添加持仓成功，only-once
+  _markFirstHolding() {
+    try {
+      if (!wx.getStorageSync("add_first_holding_done")) {
+        track.track("add_first_holding");
+        wx.setStorageSync("add_first_holding_done", Date.now());
+      }
+    } catch (e) { /* ignore */ }
   },
 
   onOcrCodeInput(e) {
@@ -603,6 +614,7 @@ Page({
         await api.holdingUpdate(id, data);
       } else {
         await api.holdingAdd(data);
+        this._markFirstHolding(); // 激活指标：生涯首次添加持仓
       }
       if (!isEdit) {
         api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});

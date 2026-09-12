@@ -669,6 +669,13 @@ Page({
           actualDate: maxActualDate || undefined,
         };
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
+        // 首日价值时刻（激活指标）：加持仓后首次在首页看到估值
+        try {
+          if (wx.getStorageSync("add_first_holding_done") && !wx.getStorageSync("first_estimate_seen") && holdings.some((h) => h.estimateUpdated)) {
+            track.track("first_estimate_seen");
+            wx.setStorageSync("first_estimate_seen", Date.now());
+          }
+        } catch (e) { /* ignore */ }
         return true;
       }
       // 业务失败（code!==0）也必须落地加载态，否则首次进入会永远停在“加载中...”

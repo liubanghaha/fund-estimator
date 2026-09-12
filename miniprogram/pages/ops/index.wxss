@@ -45,3 +45,6 @@
 .ops-mini-btn.danger{color:var(--up);background:#FDECEC}
 .ops-channel-tip{font-size:20rpx;color:#CCC;text-align:center;margin-top:12rpx}
 .ops-register-link{margin-top:40rpx;font-size:24rpx;color:#bbb;text-decoration:underline;padding:20rpx 40rpx}
+/* 文案 A/B 切换 chips */
+.sort-chip{font-size:22rpx;color:#888;background:#F2F2F2;border-radius:20rpx;padding:6rpx 20rpx}
+.sort-chip.active{color:#FFF;background:var(--primary);font-weight:600}
