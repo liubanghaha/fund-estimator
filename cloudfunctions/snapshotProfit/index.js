@@ -45,7 +45,7 @@ exports.main = async (event) => {
     const sample = [];
     const pending = [];
     // 聚合（纯内存，快）：每位用户算双口径加权收益率——
-    // rate=官方口径（每基金官方 GSZZL 优先，缺值回退自算）、rateSelf=自算口径；
+    // rate=数据源一口径（每基金新浪估值优先，缺值回退自算）、rateSelf=自算口径；
     // 快照点两值并存，读取端按用户数据源偏好展示，切换源历史曲线立即变化
     for (const [openid, userHoldings] of Object.entries(userMap)) {
       let totalWeightedRate = 0, totalWeightedSelf = 0, totalBase = 0;
@@ -57,7 +57,7 @@ exports.main = async (event) => {
         if (weight > 0) {
           const selfRate = fr ? fr.rate : 0;
           totalWeightedSelf += selfRate * weight;
-          totalWeightedRate += (fr && fr.rateEm != null ? fr.rateEm : selfRate) * weight;
+          totalWeightedRate += (fr && fr.rateSina != null ? fr.rateSina : selfRate) * weight;
           totalBase += weight;
         }
       }
@@ -124,14 +124,14 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
     const doc = alertMap[openid];
     if (!doc) continue;
     const settings = doc.settings || {};
-    // 触发口径跟随用户数据源偏好：src=self → 自算；默认/无 src（老用户）→ 官方（缺值回退自算）
+    // 触发口径跟随用户数据源偏好：src=self → 自算；默认/无 src（老用户）→ 数据源一（缺值回退自算）
     const userSelf = doc.src === "self";
     for (const h of userHoldings) {
       const s = settings[h.fundCode] || (doc.globalOn ? ALERT_GLOBAL_DEFAULT : null);
       if (!s) continue;
       const fr = fundRateMap[h.fundCode];
       if (!fr || typeof fr.rate !== "number") continue;
-      const rate = userSelf ? fr.rate : (fr.rateEm != null ? fr.rateEm : fr.rate);
+      const rate = userSelf ? fr.rate : (fr.rateSina != null ? fr.rateSina : fr.rate);
       let kind = "";
       if (s.upper > 0 && rate >= s.upper) kind = "up";
       else if (s.lower < 0 && rate <= s.lower) kind = "down";
@@ -316,25 +316,30 @@ async function buildGlobalFundRates(fundCodes, startTime) {
       weightedChange += price.changeRate * h.navRatio;
     }
     if (totalRatio > 0) {
-      fundRateMap[code] = { rate: +(weightedChange / totalRatio).toFixed(2), rateEm: null };
+      fundRateMap[code] = { rate: +(weightedChange / totalRatio).toFixed(2), rateSina: null };
     }
   }
 
-  // 5) 官方估值（FundMNFInfo GSZZL，与天天基金 App 同口径；仅盘中提供，净值公布/盘后为 null）：
-  //    快照双口径（官方 rateEm + 自算 rate）并存，读取端按用户数据源偏好选值；
-  //    官方缺值时该基金在"官方口径"聚合中回退自算（rateEm=null → 用 rate）
+  // 5) 数据源一估值（新浪实时估值；无覆盖标的如债券基金/968 互认缺值，停更标的按日期判定剔除）：
+  //    快照双口径（新浪 rateSina + 自算 rate）并存，读取端按用户数据源偏好选值；
+  //    新浪缺值时该基金在"数据源一"聚合中回退自算（rateSina=null → 用 rate）
   try {
     if (Object.keys(fundRateMap).length > 0 && el() < 90000) {
-      const mnfMap = await fetchMNFEstimates(Object.keys(fundRateMap));
+      // 全平台基金要十几批，新浪降级时不能让它吃到 120s 超时被杀（那会让整分钟快照全丢）：
+      // 预算 = 距 100s 还剩多少，留 20s 给聚合与分批写库
+      const sinaBudget = Math.min(30000, 100000 - el());
+      const sinaMap = sinaBudget > 1000
+        ? await fd.fetchSinaEstimates(Object.keys(fundRateMap), { budgetMs: sinaBudget })
+        : {};
       const todayStr = fd.formatBJDate();
       Object.keys(fundRateMap).forEach(code => {
-        const m = mnfMap[code];
-        if (m && m.gztime != null && (_gdIsToday(m.gztime, todayStr)) && m.gszzl != null) {
-          fundRateMap[code].rateEm = m.gszzl;
+        const s = sinaMap[code];
+        if (s && s.date != null && (_gdIsToday(s.date, todayStr)) && s.changeRate != null) {
+          fundRateMap[code].rateSina = s.changeRate;
         }
       });
     }
-  } catch (e) { console.warn("[snapshotProfit] 官方估值获取失败:", e.message); }
+  } catch (e) { console.warn("[snapshotProfit] 数据源一估值获取失败:", e.message); }
 
   return { fundRateMap, navMap, stockCount: stockSet.size };
 }
@@ -405,40 +410,4 @@ async function fetchAllStockPrices(codes, startTime) {
 function _gdIsToday(gztime, todayStr) {
   const gd = String(gztime || "").trim();
   return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
-}
-
-// FundMNFInfo 批量官方估值（200/批，与天天基金 App 同口径）
-function fetchMNFEstimates(codes) {
-  const map = {};
-  if (!codes || !codes.length) return Promise.resolve(map);
-  const all = [...codes];
-  const batch = () => new Promise((resolve) => {
-    const list = all.slice(0, 200);
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
-            map[it.FCODE] = {
-              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
-              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
-              gztime: it.GZTIME || null,
-            };
-          });
-        } catch (e) { /* ignore */ }
-        resolve();
-      });
-    });
-    req.setTimeout(6000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-  return (async () => {
-    while (all.length > 0) {
-      await batch();
-      all.splice(0, 200);
-    }
-    return map;
-  })();
 }

@@ -10,7 +10,7 @@ Page({
     feedbackText: "",
     feedbackImages: [],
     feedbackSubmitting: false,
-    // 实时估值数据源：em=东财官方估值（默认）| self=自算估值
+    // 实时估值数据源：数据源一=新浪实时估值（默认）| 数据源二=自算估值
     estimateSrcText: "数据源一",
     // 数据迁移（旧版本用户认领数据）
     showMigrate: false,
@@ -32,7 +32,7 @@ Page({
     this.setData({
       theme,
       briefAuthed: subscribe.hasAuthed(),
-      estimateSrcText: (wx.getStorageSync("estimate_src") || "em") === "self" ? "数据源二" : "数据源一",
+      estimateSrcText: api.estimateSrc() === "self" ? "数据源二" : "数据源一",
     });
     // 运营助手入口（仅管理员可见；页面本身另有管理员门禁）
     api.opsTool("checkAdmin").then((res) => {
@@ -45,13 +45,13 @@ Page({
     wx.navigateTo({ url: "/pages/ops/index" });
   },
 
-  // 实时估值数据源切换：数据源一=东财官方接口实时估值（与天天基金 App 同口径，推荐）；
+  // 实时估值数据源切换：数据源一=新浪实时估值（独立第三方估算，推荐）；
   // 数据源二=自主估算（跟踪指数/持仓股加权）。改变立即对详情页/走势/加减仓生效。
   onEstimateSrc() {
     wx.showActionSheet({
       itemList: ["数据源一", "数据源二"],
       success: (res) => {
-        const key = res.tapIndex === 1 ? "self" : "em";
+        const key = res.tapIndex === 1 ? "self" : "sina";
         wx.setStorageSync("estimate_src", key);
         this.setData({ estimateSrcText: key === "self" ? "数据源二" : "数据源一" });
         wx.showToast({ title: key === "self" ? "已切换为数据源二" : "已切换为数据源一", icon: "none" });

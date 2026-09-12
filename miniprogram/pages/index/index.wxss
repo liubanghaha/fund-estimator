@@ -22,15 +22,17 @@
 
 /* 仪表盘 */
 .dashboard{padding:0 24rpx}
-.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 32rpx 32rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
-.amount-toggle{position:absolute;right:24rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
-.share-toggle{position:absolute;left:20rpx;top:18rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 18rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
+.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:30rpx 28rpx 26rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
+.amount-toggle{position:absolute;right:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
+.share-toggle{position:absolute;left:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
 .share-toggle-icon{font-size:20rpx;margin-right:4rpx}
 .asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
 .asset-value{font-size:48rpx;font-weight:700;margin-bottom:12rpx}
-.asset-sub{font-size:24rpx;opacity:.85;display:flex;flex-wrap:wrap;gap:8rpx;justify-content:center}
-.asset-divider{opacity:.4}
+.asset-sub{font-size:24rpx;display:flex;flex-wrap:wrap;gap:26rpx;justify-content:center;align-items:baseline;margin-top:4rpx}
+/* 标签弱、数值强：原来三者同色同重，「市值 675,022.91」会盖住涨幅和累计 */
+.asset-sub-item{color:rgba(255,255,255,.72)}
+.asset-sub-num{color:#FFF;font-weight:600;font-size:26rpx;margin-left:4rpx}
 .asset-overview .up{color:#FFF}
 .asset-overview .down{color:#FFE082}
 
@@ -45,7 +47,7 @@
 /* 快捷操作 */
 .quick-actions{display:flex;justify-content:space-around;padding:22rpx 0;background:#FFF;border-radius:12rpx 12rpx 0 0;margin:0 4rpx;border-bottom:1rpx solid #F5F5F5}
 .action-item{display:flex;flex-direction:column;align-items:center;gap:8rpx}
-.action-icon{font-size:40rpx}
+.action-icon{font-size:34rpx;width:76rpx;height:76rpx;line-height:76rpx;text-align:center;border-radius:50%;background:var(--primary-bg)}
 .action-text{font-size:24rpx;color:#666}
 
 /* 持仓穿透 */
@@ -89,7 +91,7 @@
 .pe-switch.on .pe-switch-dot{left:40rpx}
 
 .holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF}
-.updated-tag{font-size:14rpx;color:#FFF;background:var(--primary);border-radius:50%;width:22rpx;height:22rpx;line-height:22rpx;text-align:center;display:inline-block;margin-right:6rpx;vertical-align:middle}
+.updated-tag{font-size:20rpx;color:#AAA;display:inline-block;margin-right:4rpx;vertical-align:middle}
 
 /* 表格 */
 .table-scroll{width:100%;background:#FFF}
@@ -98,16 +100,20 @@
 .t-head{border-radius:0}
 .t-row:last-child{border-bottom:none;border-radius:0 0 var(--radius-card) var(--radius-card)}
 .t-row.selected{outline:3rpx solid var(--primary);outline-offset:-3rpx}
-.t-cell{padding:18rpx 12rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
+.t-cell{padding:22rpx 12rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
 .t-head .t-cell{font-size:22rpx;color:#BBB;justify-content:center;align-items:flex-end;flex-direction:row;gap:4rpx;white-space:nowrap}
-.t-name{width:272rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1}
+.t-name{width:302rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1}
 .t-head .t-name{flex-direction:row;justify-content:flex-start;align-items:center}
-.t-hint{margin-left:6rpx;font-size:16rpx;color:#CCC;font-weight:400}
+/* 表头左格的设置入口（替代原「名称+长按排序」提示）：点击进入批量模式。
+   不描边（描边会在图标外形成一个圈）；三横线自绘，尺寸按列标题字号(22rpx)配平 */
+.batch-btn{padding:16rpx 12rpx;display:flex;align-items:center}
+.batch-bars{width:30rpx;display:flex;flex-direction:column;gap:5rpx}
+.batch-bar{height:4rpx;background:var(--primary);border-radius:2rpx}
 .t-cell:not(.t-name){width:204rpx;align-items:flex-end}
 .t-name .name-text{font-size:26rpx;font-weight:500;color:#333;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.t-name .code-text{font-size:22rpx;color:#999;margin-top:4rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.t-name .code-text{font-size:22rpx;color:#999;margin-top:8rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .t-val{font-size:28rpx;font-weight:600;line-height:1.3}
-.t-sub{font-size:24rpx;color:#999;margin-top:6rpx}
+.t-sub{font-size:24rpx;color:#999;margin-top:9rpx}
 .t-cell.active{color:var(--primary);font-weight:500}
 .sort-arrow{margin-left:4rpx;font-size:20rpx}
 .up{color:var(--up)}
@@ -158,12 +164,14 @@
 .group-tabs{white-space:nowrap;width:100%;padding:0 20rpx}
 .group-tab{display:inline-flex;align-items:center;padding:12rpx 20rpx;margin-right:8rpx;font-size:24rpx;color:#888;background:#F5F5F5;border-radius:24rpx;white-space:nowrap;transition:all .2s}
 .group-tab.active{color:#FFF;background:var(--primary);font-weight:500}
+.group-tab-n{font-size:20rpx;opacity:.6;margin-left:6rpx}
+.group-tab.active .group-tab-n{opacity:.85}
 .group-tab.dragging{opacity:.85;box-shadow:0 4rpx 16rpx rgba(0,0,0,.15)}
 .group-tab-add{width:52rpx;height:52rpx;padding:0;justify-content:center;font-size:28rpx;font-weight:600;color:#BBB;border:1rpx dashed #DDD;background:transparent}
 
 .group-badge{display:inline-block;background:rgba(255,255,255,.25);color:#FFF;font-size:20rpx;padding:4rpx 14rpx;border-radius:16rpx;margin-bottom:8rpx}
 
-.group-tag{font-size:18rpx;color:var(--primary);background:rgba(227,57,60,.08);padding:2rpx 8rpx;border-radius:6rpx;margin-right:6rpx;vertical-align:middle}
+.group-tag{font-size:20rpx;color:#78868F;background:#EEF1F3;padding:2rpx 10rpx;border-radius:6rpx;margin-left:8rpx;vertical-align:middle}
 
 .empty-group{display:flex;flex-direction:column;align-items:center;padding:48rpx;margin:0 4rpx;background:#FFF;border-radius:0 0 12rpx 12rpx}
 
@@ -229,7 +237,6 @@
 .col-edit-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:1001;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 .col-edit-card{width:560rpx;background:#FFF;border-radius:16rpx;padding:32rpx;animation:tempPopIn .25s cubic-bezier(.34,1.56,.64,1)}
 .col-edit-title{font-size:28rpx;font-weight:600;color:#333;margin-bottom:8rpx}
-.col-edit-hint{font-size:20rpx;color:#BBB;font-weight:400;margin-left:8rpx}
 .col-edit-row{display:flex;align-items:center;justify-content:space-between;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
 .col-edit-name{font-size:26rpx;color:#333}
 .col-edit-btns{display:flex;gap:16rpx}

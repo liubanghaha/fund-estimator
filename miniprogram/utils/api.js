@@ -64,9 +64,14 @@ const api = {
     data.src = this._estimateSrc();
     return this.callFunction("getPortfolio", data);
   },
-  // 估值数据源偏好：em=东财官方估值（默认）| self=自算估值；存储 key: estimate_src
+  // 估值数据源偏好：sina=数据源一（新浪实时估值，默认）| self=数据源二（自算估值）；
+  // 存储 key: estimate_src。老版本存的 em（原东财官方源，已停供）一并归一为数据源一
   _estimateSrc() {
-    try { return wx.getStorageSync("estimate_src") || "em"; } catch (e) { return "em"; }
+    try { return wx.getStorageSync("estimate_src") === "self" ? "self" : "sina"; } catch (e) { return "sina"; }
+  },
+  // 供页面读取当前数据源偏好（数据源一/数据源二 文案展示用）
+  estimateSrc() {
+    return this._estimateSrc();
   },
   portfolioLight() {
     return this.callFunction("portfolioLight", { src: this._estimateSrc() });
@@ -299,6 +304,9 @@ const api = {
       wx.request({
         url: `https://web.ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data&code=${code}`,
         header: { Referer: "https://gu.qq.com/" },
+        // 必须显式设超时：wx.request 默认 60s，一旦挂住会让调用方的 _fetchingToday 长期为 true，
+        // 后续切换指数全被挡（表现为"切换很慢/切不动"）
+        timeout: 6000,
         success(res) {
           try {
             const raw = (typeof res.data === 'string') ? res.data : JSON.stringify(res.data);

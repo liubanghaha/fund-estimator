@@ -88,14 +88,16 @@ async function handleAlertSet({ settings, globalOn }) {
 async function handleAlertSrc({ src }) {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: -1, msg: "无用户身份" };
-  if (src !== "em" && src !== "self") return { code: -1, msg: "src 非法" };
+  if (src !== "sina" && src !== "self" && src !== "em") return { code: -1, msg: "src 非法" };
+  // 老版本客户端仍可能上报 em（原东财官方源，已停供）→ 归一为当前的数据源一
+  const norm = src === "self" ? "self" : "sina";
   const found = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const now = Date.now();
   if (found.data.length > 0) {
-    await db.collection("alert_settings").doc(found.data[0]._id).update({ data: { src, updatedAt: now } });
+    await db.collection("alert_settings").doc(found.data[0]._id).update({ data: { src: norm, updatedAt: now } });
   } else {
     await db.collection("alert_settings").add({
-      data: { _openid: OPENID, settings: {}, globalOn: false, src, createdAt: now, updatedAt: now }
+      data: { _openid: OPENID, settings: {}, globalOn: false, src: norm, createdAt: now, updatedAt: now }
     });
   }
   return { code: 0 };

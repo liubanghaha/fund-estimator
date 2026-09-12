@@ -110,7 +110,7 @@ Page({
     const token = wx.getStorageSync("share_token");
     const hasHolding = this.data.holdings && this.data.holdings.length > 0;
     const p = parseFloat(this.data.todayProfit);
-    let title = "韭菜估值宝 · 涨跌有数";
+    let title = "韭菜估值宝 · 估值有数";
     if (token && hasHolding && p !== 0) {
       title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
     }
@@ -309,6 +309,11 @@ Page({
       if (forceRefresh) {
         wx.removeStorageSync("portfolio_force_refresh");
         this._lastFetch = 0;
+        // 光清 storage 不够：判新鲜度的 isCacheFresh 读的是内存里的 _portfolioCache，
+        // 盘后会命中「净值已发布即冻结」把这份旧缓存判为新鲜，needFetch=false 整个跳过拉取
+        // （改持仓/加减仓后总市值不更新）。必须一并清掉内存缓存，force_refresh 才真正生效。
+        this._portfolioCache = null;
+        this._cacheTs = 0;
       }
       // 交易日时钟判缓存新鲜度：盘中 30s 短 TTL；盘后净值发布(actualDate=今天)即冻结；
       // 周末/节假日/早盘全天免拉（数据只在交易日变化）
@@ -377,6 +382,12 @@ Page({
           dataReady: true,
         });
         this._refreshShareToken();
+      } else {
+        // storage 里没有可用缓存 → 同步清掉内存缓存，否则残留的旧对象会被 isCacheFresh
+        // 判为「盘后已冻结」而跳过拉取。放在这里可让所有「删 storage 缓存」的失效动作
+        // （持仓增删改、加减仓、数据源切换等）自动对内存生效，不必逐处记得清理。
+        this._portfolioCache = null;
+        this._cacheTs = 0;
       }
     } catch (e) { /* ignore cache read error */ }
   },
@@ -414,7 +425,8 @@ Page({
     this.setData({ showAssetAlloc: !this.data.showAssetAlloc });
   },
 
-  onLongPressHeader() {
+  // 列顺序调整入口：原为「长按表头」隐藏手势，现收进批量模式顶部栏的「列设置」
+  onOpenColEdit() {
     this.setData({ showColEdit: true });
   },
   onColMoveUp(e) {

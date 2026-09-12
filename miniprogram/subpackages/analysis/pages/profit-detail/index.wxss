@@ -97,3 +97,8 @@
 .brief-banner-text{flex:1;font-size:24rpx;color:#8A6116}
 .brief-banner-btn{margin:0 16rpx;padding:8rpx 26rpx;background:var(--primary);color:#fff;font-size:24rpx;border-radius:999rpx}
 .brief-banner-close{padding:0 8rpx;color:#C8A96A;font-size:34rpx;line-height:1}
+
+/* 切指数未命中预取时的图表区加载反馈（数据到位即消失，绘制带动画） */
+.chart-canvas-wrap{position:relative}
+.chart-loading-mask{position:absolute;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.55)}
+.chart-loading-text{font-size:24rpx;color:#999}

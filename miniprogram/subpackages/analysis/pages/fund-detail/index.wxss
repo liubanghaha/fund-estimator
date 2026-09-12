@@ -244,3 +244,8 @@
 .cal-btn{flex:1;font-size:28rpx;border-radius:44rpx;line-height:2.4}
 .cal-btn.ghost{background:#F2F2F2;color:#666;margin-right:20rpx}
 .cal-btn.primary{background:var(--primary-gradient,linear-gradient(135deg,var(--up),#FF6B6B));color:#FFF}
+
+/* 切区间补拉历史期间的图表区加载反馈（数据到位即消失，随后播进场动画） */
+.chart-canvas-wrap{position:relative}
+.chart-loading-mask{position:absolute;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.55)}
+.chart-loading-text{font-size:24rpx;color:#999}

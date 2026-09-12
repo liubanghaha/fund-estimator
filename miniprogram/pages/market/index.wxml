@@ -57,7 +57,6 @@
                 <view class="sec-name">{{item.name}}<text wx:if="{{item.mine}}" class="sec-mine-tag">持仓</text></view>
                 <view class="sec-rate {{item.isUp ? 'up' : item.isDown ? 'down' : ''}}">{{item.rateText}}</view>
                 <view wx:if="{{item.mine}}" class="sec-sub">{{item.weightText}}</view>
-                <view wx:elif="{{item.leaderText}}" class="sec-sub">{{item.leaderText}}</view>
               </view>
             </view>
           </swiper-item>

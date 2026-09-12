@@ -109,6 +109,7 @@ Page({
 
   async onSelectFundB(e) {
     const { code, name } = e.currentTarget.dataset;
+    this._chartAnimated = false; // 换了对比基金 → 新数据集重播进场动画
     wx.showLoading({ title: "加载中..." });
     this.setData({
       "fundB.code": code, "fundB.name": name,
@@ -168,6 +169,7 @@ Page({
   },
 
   onRemoveFundB() {
+    this._chartAnimated = false; // 更换对比基金 → 重播进场动画
     this._histB = null;
     this.setData({
       "fundB.code": "", "fundB.name": "", "fundB.nav": null, "fundB.changeRate": null,
@@ -283,7 +285,14 @@ Page({
       this._realW = rw;
       this._realH = rh;
       const opts = { ...this._getCompareOpts(), w: rw, h: rh, data: chartData };
-      chartUtil.drawDualLineChart(canvas, opts);
+      chartUtil.drawChartAnimated(canvas, {
+        // 与绘制同坐标系（drawDualLineChart 用的是 opts.w/opts.h）
+        w: opts.w, h: opts.h,
+        plot: opts.padding,
+        animate: !this._chartAnimated, duration: 1200,
+        draw: (c) => chartUtil.drawDualLineChart(c, opts),
+      });
+      this._chartAnimated = true;
       this._compareCanvas = canvas;
       this._compareOpts = opts;
     });

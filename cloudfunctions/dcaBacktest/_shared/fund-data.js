@@ -60,8 +60,10 @@ function getQuarterParams(date) {
 // 从表头 th 中定位「占净值比例」列索引（列数随基金类型/季度变化：
 // 实测 7 列（无最新价/涨跌幅）与 9 列（有）两种，n-3 恰好都指向占比列，
 // 但列数再变时固定下标会取错列 → 以表头列名为准，找不到时回退 n-3）
-function _findRatioColIndex(html) {
-  const thead = html.match(/<thead[\s\S]*?<\/thead>/);
+// 注意：必须传入单张表的 HTML——东财 jjcc 一次返回该年多张季度表，
+// 各表列数不同（占比列分别在 6 / 4），沿用第一张表的列下标去读后续表会整体错位
+function _findRatioColIndex(tableHtml) {
+  const thead = tableHtml.match(/<thead[\s\S]*?<\/thead>/);
   if (!thead) return -1;
   const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
   for (let i = 0; i < ths.length; i++) {
@@ -79,11 +81,26 @@ function _parseHoldingsHtml(body, withMeta) {
   const html = match[1].replace(/\\"/g, '"');
   const nameMatch = html.match(/<a title='([^']*)'/);
   const fundName = nameMatch ? nameMatch[1] : "";
-  const ratioCol = _findRatioColIndex(html);
+
+  // 东财 jjcc 带 year 参数会返回该年全部季度的持仓表（005660 返回 2026Q2 + 2026Q1 两张），
+  // 而且各表列数不同：9 列（含最新价/涨跌幅）占比在第 6 列，7 列的占比在第 4 列、第 6 列是
+  // 「持仓市值（万元）」。此前只认全文第一个 thead 的列下标，导致：
+  //   ① 上一季度表按第 6 列读，读到持仓市值，parseFloat("24,036.32") 在千分位逗号处截断成 24
+  //   ② 两个季度的持仓混在一起加权（005660 占比合计 249%），旧持仓稀释当期口径
+  // 估算只需最新一期持仓 → 取第一张含「占净值」表头的表（即最新季度），并用它自己的表头定列。
+  const tableRe = /<table[\s\S]*?<\/table>/g;
+  let tm, mainTable = null;
+  while ((tm = tableRe.exec(html)) !== null) {
+    if (_findRatioColIndex(tm[0]) !== -1) { mainTable = tm[0]; break; }
+  }
+  // 表结构意外变化时不比现状更差：退回全文解析，交给 n-3 兜底
+  if (!mainTable) mainTable = html;
+
+  const ratioCol = _findRatioColIndex(mainTable);
   const rows = [];
   const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
   let trMatch;
-  while ((trMatch = trRegex.exec(html)) !== null) {
+  while ((trMatch = trRegex.exec(mainTable)) !== null) {
     const tds = [];
     const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
     let tdMatch;
@@ -104,6 +121,22 @@ function _parseHoldingsHtml(body, withMeta) {
     }
   }
   return withMeta ? { holdings: rows, fundName } : rows;
+}
+
+// 持仓占比合计校验：单季度披露的「占净值比例」合计不可能超过 100%。
+// 早期解析把同一次年月响应里上一季度的表按错列读成「持仓市值（万元）」（parseFloat 在千分位
+// 逗号处截断成 24 这类值）并与当季混合，合计可达 200%+。这类历史脏数据会让加权口径失真，
+// 必须判为不可用并触发重新拉取——否则非季报窗口期会一直复用自己写下的脏缓存，污染长期驻留
+// （computeFundTemperature 的 getCachedHoldings 正是读自家 detailPEs）。
+// 阈值留 0.5 容忍百分号四舍五入。
+function isValidHoldings(list) {
+  if (!Array.isArray(list) || list.length === 0) return false;
+  let sum = 0;
+  for (const h of list) {
+    const v = Number(h && (h.navRatio != null ? h.navRatio : h.ratio));
+    sum += isFinite(v) ? v : 0;
+  }
+  return sum > 0 && sum <= 100.5;
 }
 
 /**
@@ -518,6 +551,79 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
   return pump().then(() => results.flat());
 }
 
+// ---------------- 新浪实时估值 ----------------
+
+// 新浪实时估值轻接口（支持批量，一次可带上百只）：
+//   https://hq.sinajs.cn/list=fu_001475,fu_110003
+// 响应为 GBK 文本，每行形如：
+//   var hq_str_fu_001475="名称,时间,估算净值,昨日净值,累计净值,分红,估算涨跌%,日期,第二套估算净值,第二套涨跌%";
+// 注意：必须带 Referer，否则 403；无覆盖的标的（债券基金、968 互认基金）返回空串。
+// 涨跌基准是上一交易日已公布净值（worth 字段可能是今日已公布的，不可当基准）。
+// 解析只取数字/日期字段，并以「日期」字段锚定位置——基金名称含逗号时按固定下标会整体错位。
+// opts.budgetMs：整体预算（毫秒）。到点即停止续批、返回已拿到的部分——估值是"有则优先、
+// 无则回退自算"，不能为凑齐全量把调用方的函数预算耗尽（快照任务每分钟跑，全平台基金要十几批；
+// 持仓上百只的用户同样会叠出多批）。
+function fetchSinaEstimates(codes, opts = {}) {
+  const map = {};
+  if (!codes || codes.length === 0) return Promise.resolve(map);
+  const { timeoutMs = 8000, batchSize = 60, budgetMs = 0 } = opts;
+
+  const fetchBatch = (batch, perTimeout) => new Promise((resolve) => {
+    const list = batch.map((c) => `fu_${c}`).join(",");
+    const req = https.get(`https://hq.sinajs.cn/list=${list}`, {
+      headers: { Referer: "https://finance.sina.com.cn/", "User-Agent": "Mozilla/5.0" },
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          // 按 latin1 取字节：只解析 ASCII 数字/日期，中文名称不参与取值故无需 GBK 解码
+          const body = Buffer.concat(chunks).toString("latin1");
+          const re = /hq_str_fu_(\w+)="([^"]*)"/g;
+          let m;
+          while ((m = re.exec(body)) !== null) {
+            const parts = m[2].split(",");
+            const di = parts.findIndex((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.trim()));
+            if (di < 6) continue; // 空数据（无覆盖标的）或字段不足
+            const nav = parseFloat(parts[di - 5]);
+            const changeRate = parseFloat(parts[di - 1]);
+            if (!isFinite(nav) || !isFinite(changeRate)) continue;
+            const prevNav = parseFloat(parts[di - 4]);
+            const nav2 = parseFloat(parts[di + 1]);
+            const changeRate2 = parseFloat(parts[di + 2]);
+            map[m[1]] = {
+              nav,                                        // 估算净值
+              prevNav: isFinite(prevNav) ? prevNav : null, // 昨日净值（涨跌基准）
+              changeRate,                                 // 估算涨跌%（主算法，误差更小）
+              nav2: isFinite(nav2) ? nav2 : null,         // 第二套算法估算净值
+              changeRate2: isFinite(changeRate2) ? changeRate2 : null,
+              time: (parts[di - 6] || "").slice(0, 5),   // 数据时间，统一为 HH:mm（与自算路径 formatBJTime 一致）
+              date: parts[di].trim(),                     // 估算所属日 YYYY-MM-DD
+            };
+          }
+        } catch (e) { /* ignore */ }
+        resolve();
+      });
+    });
+    req.setTimeout(perTimeout, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+
+  return (async () => {
+    const started = Date.now();
+    for (let i = 0; i < codes.length; i += batchSize) {
+      let perTimeout = timeoutMs;
+      if (budgetMs > 0) {
+        const remain = budgetMs - (Date.now() - started);
+        if (remain <= 0) break; // 预算用尽：停止续批，用已拿到的那部分
+        perTimeout = Math.min(timeoutMs, remain);
+      }
+      await fetchBatch(codes.slice(i, i + batchSize), perTimeout);
+    }
+    return map;
+  })();
+}
+
 module.exports = {
   formatBJDate,
   formatBJTime,
@@ -526,7 +632,9 @@ module.exports = {
   fetchTempHoldings,
   fetchTempHoldingsWithMeta,
   fetchTempHoldingsDeep,
+  isValidHoldings,
   fetchStockPricesTencent,
+  fetchSinaEstimates,
   fetchLatestNavEastMoney,
   fetchLatestNavMNF,
   fetchNAVHistory,

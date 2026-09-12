@@ -94,14 +94,14 @@ exports.main = async (event) => {
   if (!OPENID) return { code: 401, msg: "未登录" };
 
   const { codes = [], src } = event;
-  const estSrc = src === "self" ? "self" : "em";
+  const estSrc = src === "self" ? "self" : "sina";
   if (!codes.length) return { code: 400, msg: "缺少基金代码" };
 
   try {
-    // 官方估值（FundMNFInfo GSZZL）+ 自主估算（持仓 × 实时行情加权）+ 东方财富最新净值，并行执行
+    // 数据源一（新浪实时估值）+ 数据源二（自主估算：持仓 × 实时行情加权）+ 东方财富最新净值，并行执行
     const todayStr = fd.formatBJDate();
-    const [mnfMap, estMap, emResults] = await Promise.all([
-      fetchMNFEstimates(codes),
+    const [sinaMap, estMap, emResults] = await Promise.all([
+      fd.fetchSinaEstimates(codes, { budgetMs: 8000 }),
       computeSelfEstimates(codes),
       Promise.all(codes.map(code => fd.fetchLatestNavEastMoney(code))),
     ]);
@@ -110,27 +110,29 @@ exports.main = async (event) => {
     codes.forEach((code, i) => {
       const em = emResults[i] || {};
       const est = estMap[code] || {};
-      const mnf = mnfMap[code] || {};
-      const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
+      const sn = sinaMap[code] || {};
+      const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
       const nav = em.actualNav != null ? em.actualNav : null;
-      // 净值已公布用精确值；未公布按所选源（em=官方 GSZZL 优先，self=自算优先），互相兜底
+      // 净值已公布用精确值；未公布按所选源（sina=数据源一优先，self=数据源二优先），互相兜底
       let estimatedChangeRate = null, estimateTime = "", source = "";
       if (em.actualDate === todayStr) {
         estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null;
         source = "nav";
-      } else if (estSrc === "em" && mnfToday) {
-        estimatedChangeRate = mnf.gszzl; estimateTime = mnf.gzhm || mnf.gztime; source = "em";
+      } else if (estSrc === "sina" && sinaToday) {
+        estimatedChangeRate = sn.changeRate; estimateTime = sn.time || ""; source = "sina";
       } else if (est.estimatedChangeRate != null) {
         estimatedChangeRate = est.estimatedChangeRate; estimateTime = est.estimateTime || ""; source = "self";
-      } else if (mnfToday) {
-        estimatedChangeRate = mnf.gszzl; estimateTime = mnf.gzhm || mnf.gztime; source = "em";
+      } else if (sinaToday) {
+        estimatedChangeRate = sn.changeRate; estimateTime = sn.time || ""; source = "sina";
       } else {
         estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
       }
-      // 估算净值 = 最新净值 × (1 + 估算涨跌%)
-      const estimatedNav = (estimatedChangeRate != null && nav != null)
-        ? +(nav * (1 + estimatedChangeRate / 100)).toFixed(4)
-        : null;
+      // 估算净值：数据源一直用新浪给的估算净值，数据源二/兜底按最新净值 × (1 + 估算涨跌%)
+      const estimatedNav = (source === "sina" && sn.nav != null)
+        ? sn.nav
+        : ((estimatedChangeRate != null && nav != null)
+          ? +(nav * (1 + estimatedChangeRate / 100)).toFixed(4)
+          : null);
       data[code] = {
         fundCode: code,
         fundName: "",
@@ -154,41 +156,4 @@ exports.main = async (event) => {
 function _gdIsToday(gztime, todayStr) {
   const gd = String(gztime || "").trim();
   return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
-}
-
-// FundMNFInfo 批量官方估值（200/批，与天天基金 App 同口径）
-function fetchMNFEstimates(codes) {
-  const map = {};
-  if (!codes || !codes.length) return Promise.resolve(map);
-  const all = [...codes];
-  const batch = () => new Promise((resolve) => {
-    const list = all.slice(0, 200);
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
-            map[it.FCODE] = {
-              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
-              gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
-              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
-              gztime: it.GZTIME || null,
-            };
-          });
-        } catch (e) { /* ignore */ }
-        resolve();
-      });
-    });
-    req.setTimeout(6000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-  return (async () => {
-    while (all.length > 0) {
-      await batch();
-      all.splice(0, 200);
-    }
-    return map;
-  })();
 }

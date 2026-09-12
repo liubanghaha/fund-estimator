@@ -568,14 +568,24 @@ Page({
       if (type === "buy") { ns = oldS + s; np = (oldP * oldS + p * s) / ns; }
       else { ns = oldS - s; np = oldP; }
 
+      // marketValue/holdingReturn 与另两条加减仓路径同口径写入：
+      // getPortfolio 在实时净值取不到时会回退用存量 marketValue，不更新会残留旧市值
+      const oldMV = parseFloat(h.marketValue) || 0;
+      const newMV = type === "buy" ? +(oldMV + amt).toFixed(2) : +(oldMV - amt).toFixed(2);
+
       await api.holdingUpdate(h._id, {
         shares: parseFloat(ns.toFixed(4)),
         buyPrice: parseFloat(np.toFixed(4)),
         buyAmount: parseFloat((ns * np).toFixed(2)),
+        marketValue: newMV,
+        holdingReturn: +(newMV - ns * np).toFixed(2),
         });
 
       wx.hideLoading();
       wx.showToast({ title: type === "buy" ? "买入成功" : "卖出成功", icon: "success" });
+      // 与其它写入路径一致：失效首页缓存，否则切回首页仍显示旧总市值
+      wx.removeStorageSync("portfolio_cache");
+      wx.setStorageSync("portfolio_force_refresh", true);
       this.setData({ showForm: false, ocrResults: [] });
       this.loadHoldings();
     } catch (e) {

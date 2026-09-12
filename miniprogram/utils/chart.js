@@ -356,6 +356,152 @@ const chart = {
   },
 
   /**
+   * 通用「从左到右画出来」进场动画（全站折线类图表共用）。
+   * opts:
+   *   w, h            画布逻辑尺寸
+   *   plot            { left, right, top, bottom }：决定扫掠范围与"刷白"区域
+   *   draw(canvas)    把整张图画到传入的画布上（各图复用各自的原绘制函数；
+   *                   有叠加层如买卖点标记时，一并画在里面，否则动画会把它擦掉）
+   *   restore(ctx)    可选：刷白后补回静态底图——只有绘图区内含横向网格的图需要
+   *   animate/duration
+   * 实现：整图先烘到离屏画布，动画每帧只做「贴整图 + 把绘图区未画到的右段刷白」，
+   * 每帧开销固定（不逐帧重算曲线），稳定 60fps；不触发 setData。
+   */
+  drawChartAnimated(canvas, opts = {}) {
+    const { w = 340, h = 200, animate = true, duration = 1200, plot, draw, restore } = opts;
+    this.cancelChartAnim();
+    if (typeof draw !== 'function') return null;
+    if (!animate || typeof wx.createOffscreenCanvas !== 'function') {
+      draw(canvas);
+      return null;
+    }
+    const dpr = wx.getSystemInfoSync().pixelRatio || 1;
+    let off = null;
+    try {
+      off = wx.createOffscreenCanvas({ type: '2d', width: Math.ceil(w * dpr), height: Math.ceil(h * dpr) });
+      draw(off); // 整图（含各图自己的网格/标记/标签）→ 离屏
+    } catch (e) {
+      draw(canvas); // 离屏不可用：退回静态整图
+      return null;
+    }
+
+    const ctx = this._init(canvas, w, h);
+    this._canvasNode = canvas;
+    const P = plot || { left: 52, right: 12, top: 40, bottom: 36 };
+    const x0 = P.left, x1 = w - P.right;
+    const ph = h - P.top - P.bottom;
+    const t0 = Date.now();
+    this._animStart = t0;
+    const token = this._animToken; // cancelChartAnim 已递增过，取当前值作为本次动画的身份
+    const blitFull = () => {
+      ctx.drawImage(off, 0, 0, Math.ceil(w * dpr), Math.ceil(h * dpr), 0, 0, w, h);
+    };
+
+    const step = () => {
+      if (token !== this._animToken) return; // 已被取消/被新动画取代
+      const raw = Math.min(1, (Date.now() - t0) / duration);
+      const e = 1 - Math.pow(1 - raw, 2); // easeOutQuad：比 easeOutCubic 均匀，不会前段一下冲完
+      const xLimit = x0 + (x1 - x0) * e;
+      // 源矩形用离屏的**设备像素**，目标矩形用可见画布的**逻辑像素**（ctx 已按 dpr 缩放）
+      ctx.drawImage(off, 0, 0, Math.ceil(w * dpr), Math.ceil(h * dpr), 0, 0, w, h);
+      // 多刷 6px：曲线最后一个点正好落在 w-P.right 上，其线宽/抗锯齿会从边界露出小半截。
+      // 末帧（raw=1）不刷，所以不会把内容真正遮掉。
+      const tailW = raw < 1 ? (w - P.right + 6) - xLimit : 0;
+      if (tailW > 0) {
+        ctx.fillStyle = '#FFF';
+        ctx.fillRect(xLimit, P.top, tailW, ph);
+        if (typeof restore === 'function') restore(ctx);
+      }
+      if (raw < 1) {
+        this._animRAF = canvas.requestAnimationFrame(step);
+      } else {
+        blitFull(); // 末帧补一次整图（幂等），确保收尾一定是完整的
+        this._animRAF = null;
+        this._animStart = 0;
+      }
+    };
+    this._animRAF = canvas.requestAnimationFrame(step);
+
+    // 兜底：requestAnimationFrame 会被系统暂停（页面切后台、画布不可见等），
+    // 一旦停在中途，画布就永久停在半成品（2026-09-11 真机复现：曲线停在绘图区 82% 处不动）。
+    // 定时器不受 rAF 暂停影响，到点直接贴完整图并终止这条动画链。
+    if (this._animSafetyTimer) clearTimeout(this._animSafetyTimer);
+    this._animSafetyTimer = setTimeout(() => {
+      if (token !== this._animToken) return;
+      if (this._animRAF && canvas.cancelAnimationFrame) {
+        try { canvas.cancelAnimationFrame(this._animRAF); } catch (e) { /* ignore */ }
+      }
+      this._animRAF = null;
+      this._animStart = 0;
+      try { blitFull(); } catch (e) { /* ignore */ }
+    }, duration + 400);
+    return ctx;
+  },
+
+  /**
+   * 当天走势「从左到右画出来」的进场动画（同花顺式出图效果）。
+   * 实现方式：先用原 drawIntradayChart 把整图**画到离屏画布**（复用同一套绘制代码，
+   * 画面与静态渲染逐像素一致），动画期间每帧只把离屏画布的左段 drawImage 到可见画布——
+   * 每帧只有一次贴图，比逐帧重画整图快得多，所以更跟手、不掉帧。
+   * 不触发 setData，纯 canvas 绘制，不引起页面重渲染。
+   * opts.animate=false / 数据不足 2 点 / 不支持离屏画布时，回退为直接整图绘制。
+   */
+  drawIntradayChartAnimated(canvas, opts = {}) {
+    const { w = 340, h = 200, data = [], animate = true, duration = 1200 } = opts;
+    if (!animate || !data || data.length < 2) {
+      this.cancelChartAnim(); // 先掐掉上一次动画：否则它的残余帧会把这次整图又刷成半成品
+      return this.drawIntradayChart(canvas, opts);
+    }
+    return this.drawChartAnimated(canvas, {
+      w, h, animate, duration,
+      plot: opts.padding || { top: 40, right: 12, bottom: 36, left: 52 },
+      draw: (c) => this.drawIntradayChart(c, opts),
+      // 当天走势的绘图区里有横向网格 + 0% 基准虚线，属于静态底图，刷白后要补回来
+      restore: (ctx) => {
+        const g = this._lastIntradayDraw;
+        if (!g || !g.yp || g.yMin == null || g.yMax == null) return;
+        const P = g.p;
+        ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= 4; i++) {
+          const val = g.yMax - (g.yMax - g.yMin) / 4 * i;
+          ctx.beginPath(); ctx.moveTo(P.left, g.yp(val)); ctx.lineTo(g.w - P.right, g.yp(val)); ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(P.left, g.yp(0)); ctx.lineTo(g.w - P.right, g.yp(0)); ctx.stroke();
+        ctx.setLineDash([]);
+      },
+    });
+  },
+
+  // 是否有进场动画正在进行（轮询等"后台重绘"据此让路，避免把动画盖掉）。
+  // 带自动过期：页面切后台时 requestAnimationFrame 不再触发、_animRAF 会一直挂着，
+  // 若不设上限，调用方（如 30 秒轮询）会被永久挡住 → 开盘就看不到曲线更新。
+  isAnimating(duration) {
+    if (!this._animRAF) return false;
+    const t = this._animStart || 0;
+    if (t && Date.now() - t > (duration || 1200) + 800) {
+      this._animRAF = null; // 视为已停摆，放行
+      this._animStart = 0;
+      return false;
+    }
+    return true;
+  },
+
+  // 打断进场动画（新渲染 / 触摸交互前调用）：否则动画会把触摸画上的十字线擦掉
+  cancelChartAnim() {
+    if (this._animSafetyTimer) { clearTimeout(this._animSafetyTimer); this._animSafetyTimer = null; }
+    this._animToken = (this._animToken || 0) + 1; // 让已排队的帧回调与兜底定时器失效
+    if (this._animRAF && this._canvasNode && this._canvasNode.cancelAnimationFrame) {
+      try { this._canvasNode.cancelAnimationFrame(this._animRAF); } catch (e) { /* ignore */ }
+    }
+    this._animRAF = null;
+    this._animStart = 0;
+  },
+
+  /**
    * 当天走势触摸交互
    */
   handleIntradayTouch(ctx, e) {
@@ -435,6 +581,7 @@ const chart = {
   _drawIntradayFast(ctx) {
     const d = this._lastIntradayDraw;
     if (!d) return;
+    this.cancelChartAnim(); // 触摸打断进场动画，立即整图可交互
     const { data, xp, yp, fieldA, fieldB, w, h, p, profitColor, indexColor, labelA, labelB } = d;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, w, h);
@@ -576,6 +723,7 @@ const chart = {
   },
 
   _drawFastLine(ctx, d, opts) {
+    this.cancelChartAnim(); // 触摸打断进场动画：否则动画每帧刷白会把十字线擦掉
     const { data, xp, yp, yField, w, h, p, isReturn } = d;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, w, h);
@@ -612,6 +760,7 @@ const chart = {
   },
 
   _drawDualFast(ctx, d, opts) {
+    this.cancelChartAnim(); // 触摸打断进场动画，理由同 _drawFastLine
     const { data, xp, yp, fieldA, fieldB, w, h, p, colorA, colorB } = d;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, w, h);

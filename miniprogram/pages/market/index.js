@@ -249,7 +249,6 @@ Page({
           isUp: (s.changeRate || 0) > 0,
           isDown: (s.changeRate || 0) < 0,
           weightText: s.weight != null ? "占仓 " + s.weight + "%" : "",
-          leaderText: s.leader ? "领涨 " + s.leader + (s.leaderRate != null ? " " + (s.leaderRate > 0 ? "+" : "") + s.leaderRate + "%" : "") : "",
         }));
         return { overview: d.overview, sectors, mineCount: d.mineCount || 0, flows: d.flows || {}, empty: !!d.empty };
       }

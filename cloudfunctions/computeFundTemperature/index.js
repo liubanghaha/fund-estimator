@@ -253,7 +253,7 @@ async function recoverHoldingsFromHistory(fundCodes) {
         .where({ fundCode: _.in(batch), date: targetDate })
         .get();
       (res.data || []).forEach(t => {
-        if (t.detailPEs && t.detailPEs.length > 0 && !holdings[t.fundCode]) {
+        if (fd.isValidHoldings(t.detailPEs) && !holdings[t.fundCode]) {
           holdings[t.fundCode] = t.detailPEs.map(p => ({
             stockCode: p.code,
             stockName: p.name,
@@ -285,14 +285,17 @@ async function getCachedHoldings(fundCodes) {
     // 按 fundCode 去重，只取每个基金的第一条（最近）
     const seen = new Set();
     (res.data || []).forEach(t => {
-      if (!seen.has(t.fundCode) && t.detailPEs && t.detailPEs.length > 0) {
-        seen.add(t.fundCode);
-        holdings[t.fundCode] = t.detailPEs.map(p => ({
-          stockCode: p.code,
-          stockName: p.name,
-          navRatio: p.ratio,
-        }));
-      }
+      if (seen.has(t.fundCode)) return;
+      if (!t.detailPEs || t.detailPEs.length === 0) return;
+      // 每只基金只认最近一条：脏数据也在此判定，不回退更早记录（更早的同样脏）
+      seen.add(t.fundCode);
+      // 历史脏占比（合计 >100%）→ 判为未命中，触发 fetchHoldingsBatch 现拉修正
+      if (!fd.isValidHoldings(t.detailPEs)) return;
+      holdings[t.fundCode] = t.detailPEs.map(p => ({
+        stockCode: p.code,
+        stockName: p.name,
+        navRatio: p.ratio,
+      }));
     });
   }
   return holdings;

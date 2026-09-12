@@ -561,6 +561,9 @@ Page({
         try {
           await api.holdingRemove(id);
           wx.showToast({ title: "已删除", icon: "success" });
+          // 与其它写入路径一致：失效首页缓存，否则删除后切回首页仍显示旧总市值
+          wx.removeStorageSync('portfolio_cache');
+          wx.setStorageSync('portfolio_force_refresh', true);
           setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
         } catch (e) {
           wx.showToast({ title: "删除失败", icon: "none" });

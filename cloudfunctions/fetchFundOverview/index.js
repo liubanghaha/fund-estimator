@@ -9,7 +9,7 @@ const td = require("./_shared/trading-day");
 exports.main = async (event) => {
   const { fundCode, src } = event;
   if (!fundCode || !/^\d{6}$/.test(fundCode)) return { code: 400, msg: "请提供有效的6位基金代码" };
-  const estSrc = src === "self" ? "self" : "em";
+  const estSrc = src === "self" ? "self" : "sina";
 
   try {
     const [estimate, history, profileData, peTemp] = await Promise.all([
@@ -55,27 +55,8 @@ async function fetchEstimate(fundCode, estSrc) {
     };
   }
 
-  // 2. 官方估值（FundMNFInfo GSZZL；与天天基金 App 同口径，仅盘中/净值未公布前提供）
-  const mnf = await new Promise((resolve) => {
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(fundCode)}`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          const it = (JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas || [])[0] || {};
-          resolve({
-            gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
-            gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
-            gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
-            gztime: it.GZTIME || null,
-          });
-        } catch (e) { resolve({}); }
-      });
-    });
-    req.setTimeout(6000, () => { req.destroy(); resolve({}); });
-    req.on("error", () => resolve({}));
-  });
+  // 2. 数据源一：新浪实时估值（仅盘中/净值未公布前提供）
+  const sn = (await fd.fetchSinaEstimates([fundCode]))[fundCode] || {};
 
   // 3. 自主估算：持仓股涨跌加权
   let selfEstimate = null;
@@ -100,22 +81,22 @@ async function fetchEstimate(fundCode, estSrc) {
   }
 
   // 4. 组装（净值未公布）：按所选源优先，三层兜底
-  const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
+  const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
 
   let estRate = null, estTime = "", source = "nav";
-  if (estSrc === "em" && mnfToday) {
-    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  if (estSrc === "sina" && sinaToday) {
+    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else if (selfEstimate != null) {
     estRate = selfEstimate; estTime = fd.formatBJTime(); source = "self";
-  } else if (mnfToday) {
-    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  } else if (sinaToday) {
+    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else {
     estRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
   }
 
   return {
     nav: em.actualNav || null,
-    estimatedNav: source === "em" ? (mnf.gsz || null) : null,
+    estimatedNav: source === "sina" ? (sn.nav || null) : null,
     estimatedChangeRate: estRate,
     estimateTime: estTime,
     source,
@@ -195,6 +176,12 @@ async function fetchPeTemp(fundCode) {
 
 // 数据所属日（净值/估算口径）：当日 9:30 起（含盘后当晚）为今日——盘中估算/晚间精确；
 // 次日凌晨开盘前与周末、节假日为上一交易日——净值已确定，按实际口径
+// GZTIME/数据日期是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss"、"YYYY-MM-DD" 与 "MM-DD HH:mm:ss" 三种格式
+function _gdIsToday(gztime, todayStr) {
+  const gd = String(gztime || "").trim();
+  return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
+}
+
 function _dataDay(todayStr) {
   const bj = new Date(Date.now() + 8 * 3600000);
   const day = bj.getUTCDay();

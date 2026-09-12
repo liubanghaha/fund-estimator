@@ -10,7 +10,7 @@ const td = require("./_shared/trading-day");
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   const { historyDays, testOpenid, withAnalysis, withNav60, src } = event || {};
-  const estSrc = src === "self" ? "self" : "em"; // em=东财官方估值优先（默认）；self=自算优先
+  const estSrc = src === "self" ? "self" : "sina"; // sina=数据源一（新浪实时估值）优先；self=数据源二（自算）优先
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
   const _startTime = Date.now();
@@ -39,9 +39,12 @@ exports.main = async (event) => {
     // 批量请求估值（N 合 1），再并行获取东方财富最新净值与历史净值
     // 历史净值合并为一次请求（max(60, historyDays)），内存拆分 nav60，避免重复拉取
     const codes = holdings.map((h) => h.fundCode);
-    const tiantianMap = await computeSelfEstimates(codes, _startTime);
-    // 官方估值批量（FundMNFInfo GSZZL 与天天基金 App 同口径）：src=em 时优先、src=self 时兜底
-    const mnfMap = await fetchMNFEstimates(codes);
+    // 自算与数据源一互不依赖 → 并行，避免串行叠加延迟（新浪多批时会明显拖慢首页）；
+    // 新浪给 15s 总预算：到点用已拿到的部分，宁缺不拖垮函数（getPortfolio 超时 60s）
+    const [tiantianMap, sinaMap] = await Promise.all([
+      computeSelfEstimates(codes, _startTime),
+      fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
+    ]);
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 60);
     // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控
@@ -132,20 +135,20 @@ exports.main = async (event) => {
       // lastTradingDay 含当天（9/10 凌晨直接传今天会返回 9/10），取"上一交易日"须从昨天回找
       const displayDay = openedToday ? todayStr : td.lastTradingDay(addDays(todayStr, -1));
       const estimateUpdated = eastmoney.actualDate === displayDay;
-      // 估算源选择：em=官方估值优先（GSZZL 当日有效时覆盖自算）；self=自算优先（官方兜底）
-      const mnf = mnfMap[h.fundCode] || {};
-      const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
-      let estRate = tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : (mnfToday ? mnf.gszzl : null);
-      let estSource = tiantian.estimatedChangeRate != null ? "self" : (mnfToday ? "em" : "");
-      if (estSrc === "em" && mnfToday && tiantian.estimatedChangeRate != null) {
-        estRate = mnf.gszzl; estSource = "em";
+      // 估算源选择：sina=数据源一（新浪估值当日有效时覆盖自算）；self=数据源二（自算优先，新浪兜底）
+      const sn = sinaMap[h.fundCode] || {};
+      const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
+      let estRate = tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : (sinaToday ? sn.changeRate : null);
+      let estSource = tiantian.estimatedChangeRate != null ? "self" : (sinaToday ? "sina" : "");
+      if (estSrc === "sina" && sinaToday && tiantian.estimatedChangeRate != null) {
+        estRate = sn.changeRate; estSource = "sina";
       }
       if (estRate != null) {
         console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
 
       if (!estimateUpdated && estRate != null && yesterdayNav != null) {
-        // 今日净值未公布 → 估算模式（官方 GSZZL 或自主加权）
+        // 今日净值未公布 → 估算模式（新浪估值或自主加权）
         todayProfitAmount = yesterdayNav * estRate / 100 * shares;
         todayChangeRate = estRate;
       } else if (currentNav != null && yesterdayNav != null && currentNav !== yesterdayNav) {
@@ -157,7 +160,7 @@ exports.main = async (event) => {
       }
 
       totalYesterdayMarket += yesterdayNavSafe * shares;
-      if (estRate != null) { updateTime = estSource === "em" ? (mnf.gzhm || "") : (tiantian.estimateTime || ""); }
+      if (estRate != null) { updateTime = estSource === "sina" ? (sn.time || "") : (tiantian.estimateTime || ""); }
 
       const costValue = buyPrice * shares;
       const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;
@@ -505,7 +508,8 @@ async function computeSelfEstimates(codes, startTime) {
           .field({ fundCode: true, detailPEs: true })
           .get();
         (res.data || []).forEach(t => {
-          if (t.detailPEs && t.detailPEs.length > 0) {
+          // 历史脏占比（合计 >100%）判为不可用：不加入 known，交由 1c 现拉修正
+          if (fd.isValidHoldings(t.detailPEs)) {
             holdingsMap[t.fundCode] = t.detailPEs.map(p => ({ stockCode: p.code, navRatio: p.ratio }));
             known.add(t.fundCode);
           }
@@ -521,7 +525,7 @@ async function computeSelfEstimates(codes, startTime) {
           .where({ fundCode: _.in(codes.slice(i, i + BATCH)), date: today })
           .get();
         (res.data || []).forEach(d => {
-          if (d.holdings && d.holdings.length > 0 && !known.has(d.fundCode)) {
+          if (!known.has(d.fundCode) && fd.isValidHoldings(d.holdings)) {
             holdingsMap[d.fundCode] = d.holdings.map(h => ({ stockCode: h.stockCode, navRatio: h.navRatio }));
             known.add(d.fundCode);
           }
@@ -629,41 +633,10 @@ async function computeSelfEstimates(codes, startTime) {
 }
 
 
-// FundMNFInfo 批量估值（200/批，与天天基金 App 同口径）：返回 { fundCode: { gsz, gszzl, gztime } }
-function fetchMNFEstimates(codes) {
-  const map = {};
-  if (!codes || !codes.length) return Promise.resolve(map);
-  const all = [...codes];
-  const batch = () => new Promise((resolve) => {
-    const list = all.slice(0, 200);
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(list.join(","))}`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          ((JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas) || []).forEach((it) => {
-            map[it.FCODE] = {
-              gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
-              gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
-              gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
-              gztime: it.GZTIME || null,
-            };
-          });
-        } catch (e) { /* ignore */ }
-        resolve();
-      });
-    });
-    req.setTimeout(6000, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
-  });
-  return (async () => {
-    while (all.length > 0) {
-      await batch();
-      all.splice(0, 200);
-    }
-    return map;
-  })();
+// GZTIME/数据日期是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss"、"YYYY-MM-DD" 与 "MM-DD HH:mm:ss" 三种格式
+function _gdIsToday(gztime, todayStr) {
+  const gd = String(gztime || "").trim();
+  return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
 }
 
 // 纯日期偏移（UTC 计算："YYYY-MM-DD" 无时区歧义）

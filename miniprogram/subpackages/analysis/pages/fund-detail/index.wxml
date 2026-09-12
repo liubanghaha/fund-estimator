@@ -36,7 +36,7 @@
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
             {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
           </view>
-          <view class="nav-badge">实时数据 <text wx:if="{{estSource == 'em'}}" class="nav-badge-src">官方</text><text wx:elif="{{estSource == 'self'}}" class="nav-badge-src">自算</text></view>
+          <view class="nav-badge">实时数据 <text wx:if="{{estSource == 'sina'}}" class="nav-badge-src">数据源一</text><text wx:elif="{{estSource == 'self'}}" class="nav-badge-src">数据源二</text></view>
         </view>
       </view>
     </view>
@@ -123,7 +123,10 @@
           <view class="period-item {{chartPeriod === '1Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1Y">近一年</view>
           <view class="period-item {{chartPeriod === '3Y' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3Y">近三年</view>
         </view>
-        <canvas type="2d" id="navCanvas" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
+        <view class="chart-canvas-wrap">
+          <canvas type="2d" id="navCanvas" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onChartTouch" bindtouchmove="onChartTouch" bindtouchend="onChartTouch"></canvas>
+          <view wx:if="{{chartLoading}}" class="chart-loading-mask"><text class="chart-loading-text">加载区间数据…</text></view>
+        </view>
       </view>
       <view class="info-card"><view class="section-title">收益表现</view>
         <view class="metrics-grid">

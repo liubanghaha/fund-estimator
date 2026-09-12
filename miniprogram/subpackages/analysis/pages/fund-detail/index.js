@@ -18,6 +18,7 @@ Page({
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
     hasHolding: false, holdingId: null, holdingData: null, followed: false, activeTab: "trend",
+    chartLoading: false, // 切区间需补拉历史时图表区给加载反馈（否则数秒无反馈会被当成没反应）
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
     showAllHistory: false,
@@ -454,7 +455,7 @@ Page({
     } catch (e) { console.error("获取估值失败:", e); }
   },
 
-  async fetchHistory(days = 250) {
+  async fetchHistory(days = 250, opts = {}) {
     try {
       const res = await api.fetchFundNAVHistory(this.data.fundCode, days);
       if (res.result && res.result.code === 0) {
@@ -470,8 +471,11 @@ Page({
           });
           this.calcReturns(history);
           // 补拉（缓存断档场景）完成后：重绘图表（此前只 setData 不重绘，
-          // 断档数据按等间距 x 映射会把旧日期买入点压到图尾）+ 回写缓存避免下次再补
-          if (this.data.activeTab === 'trend') this.drawChart();
+          // 断档数据按等间距 x 映射会把旧日期买入点压到图尾）+ 回写缓存避免下次再补。
+          // opts.skipRedraw：调用方紧接着自己会重绘（如切区间），这里再画一次会与之重复——
+          // drawChart 是异步的（createSelectorQuery 回调），两次绘制会排队执行，
+          // 后者会把前者刚播的进场动画直接覆盖掉，表现为"切区间没有动画"
+          if (this.data.activeTab === 'trend' && !opts.skipRedraw) this.drawChart();
           this._saveCache();
         }
       }
@@ -636,10 +640,12 @@ Page({
       const opts = { w: rw, h: rh, ...this._getChartOpts(), data,
         padding: { top: 24, right: 24, bottom: 30, left: 52 },
         isReturn: result.isReturn };
-      const ctx = chart.drawLineChart(canvas, opts);
-      if (!ctx) return;
-
       const txMap = this.data.chartTxMap || {};
+      // 曲线与买卖点标记一起画到目标画布：标记必须烘进离屏图，随动画一起露出
+      const paint = (target) => {
+      const ctx = chart.drawLineChart(target, opts);
+      if (!ctx) return null;
+
       if (Object.keys(txMap).length > 0) {
         const p = opts.padding;
         // 必须与 drawLineChart 同一坐标系（opts.w/opts.h = 画布绘制尺寸）：
@@ -676,7 +682,20 @@ Page({
           }
         });
       }
-      this._baseData = { data, opts, canvas };
+      return ctx;
+      };
+
+      chart.drawChartAnimated(canvas, {
+        // 必须用 opts.w/opts.h：上面 _getChartOpts() 在 w:rw 之后展开，已把 opts.w 覆盖成
+        // _canvasW（=windowWidth-24），绘制坐标系以它为准；用 rw 会让刷白边界比绘图区右界
+        // 少一个卡片内边距（约 24px），动画期间右端会露出一截曲线
+        w: opts.w, h: opts.h,
+        plot: opts.padding,
+        animate: !this._chartAnimated, duration: 1200,
+        draw: paint,
+      });
+      this._chartAnimated = true;
+      this._baseData = { data, opts, canvas, paint };
     });
   },
 
@@ -765,8 +784,16 @@ Page({
     const neededDays = PERIOD_DAYS[period] || 260;
     this.setData({ chartPeriod: period });
     if (this.data.navHistory.length < neededDays) {
-      await this.fetchHistory(neededDays + 50);
+      // 补拉期间给加载反馈：这几秒里图表若毫无变化，用户会以为"点了没反应/没有动画"
+      this.setData({ chartLoading: true });
+      try {
+        // skipRedraw：下面统一绘制（带动画），避免与补拉后的内部重绘重复
+        await this.fetchHistory(neededDays + 50, { skipRedraw: true });
+      } finally {
+        this.setData({ chartLoading: false });
+      }
     }
+    this._chartAnimated = false;
     this.drawChart();
   },
 
@@ -916,7 +943,7 @@ Page({
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ activeTab: tab }, () => {
-      if (tab === 'trend') this.drawChart();
+      if (tab === 'trend') { this._chartAnimated = false; this.drawChart(); } // 切回走势：重播进场动画
     });
     if ((tab === 'holdings' || tab === 'profile') && (!this.data.profile || this._profileStale) && !this.data.profileLoading) {
       this._profileStale = false;

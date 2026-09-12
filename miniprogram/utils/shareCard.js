@@ -66,7 +66,7 @@ function drawShareCard(canvas, opts = {}) {
 
   ctx.fillStyle = '#999';
   ctx.font = '16px sans-serif';
-  ctx.fillText('涨跌有数 · 心中有底', 40, headY + 30);
+  ctx.fillText('估值有数 · 心中有底', 40, headY + 30);
 
   // 分隔线
   ctx.strokeStyle = '#F0F0F0';
@@ -173,7 +173,7 @@ function drawShareCard(canvas, opts = {}) {
   ctx.fillStyle = '#BBB';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('韭菜估值宝 · 涨跌有数', w / 2, h - 14);
+  ctx.fillText('韭菜估值宝 · 估值有数', w / 2, h - 14);
 
   // === 加载并绘制二维码 ===
   return new Promise((resolve) => {

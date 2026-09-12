@@ -84,7 +84,10 @@
           </view>
         </view>
       </view>
-      <canvas type="2d" id="profitCanvas" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onCanvasTouch" bindtouchmove="onCanvasTouch" bindtouchend="onCanvasTouch"></canvas>
+      <view class="chart-canvas-wrap">
+        <canvas type="2d" id="profitCanvas" style="width:100%;height:{{canvasHRpx}}rpx" bindtouchstart="onCanvasTouch" bindtouchmove="onCanvasTouch" bindtouchend="onCanvasTouch"></canvas>
+        <view wx:if="{{todayChartLoading}}" class="chart-loading-mask"><text class="chart-loading-text">切换指数中…</text></view>
+      </view>
       <view wx:if="{{activeTab !== 'today'}}" class="dd-tip">回撤 = 从历史最高点到当前的最大跌幅，衡量最坏情况下的亏损幅度</view>
     </view>
 

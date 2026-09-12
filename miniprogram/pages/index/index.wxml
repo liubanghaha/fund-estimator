@@ -84,11 +84,9 @@
             {{amountVisible ? (groupSummary ? fmt.money(groupSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
           </view>
           <view class="asset-sub">
-            <text>涨幅 {{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text>
-            <text class="asset-divider">|</text>
-            <text>市值 {{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text>
-            <text class="asset-divider">|</text>
-            <text class="{{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">累计 {{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text>
+            <text class="asset-sub-item">涨幅<text class="asset-sub-num">{{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text></text>
+            <text class="asset-sub-item">市值<text class="asset-sub-num">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text></text>
+            <text class="asset-sub-item">累计<text class="asset-sub-num {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text></text>
           </view>
         </view>
 
@@ -96,6 +94,7 @@
           <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
           <text class="batch-top-title">已选 {{selectedCount}} 项</text>
           <view class="batch-top-right">
+            <text class="batch-top-link" bind:tap="onOpenColEdit">列设置</text>
             <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
             <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
             <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
@@ -126,17 +125,13 @@
             <view class="action-icon">📊</view>
             <view class="action-text">资产分析</view>
           </view>
-          <view class="action-item" bind:tap="onToggleBatch">
-            <view class="action-icon">📋</view>
-            <view class="action-text">批量</view>
-          </view>
         </view>
 
         <!-- 分组标签栏 -->
         <view wx:if="{{holdings.length > 0}}" class="group-tabs-wrap">
           <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
-            <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部 {{groupCounts.all || 0}}</view>
-            <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组 {{groupCounts.ungrouped || 0}}</view>
+            <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部<text class="group-tab-n">{{groupCounts.all || 0}}</text></view>
+            <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组<text class="group-tab-n">{{groupCounts.ungrouped || 0}}</text></view>
             <block wx:for="{{groups}}" wx:key="*this">
               <view
                 class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
@@ -147,7 +142,7 @@
                 bind:touchend="onGroupTouchEnd"
                 data-group="{{item}}"
                 data-index="{{index}}"
-              >{{item}} {{groupCounts[item] || 0}}</view>
+              >{{item}}<text class="group-tab-n">{{groupCounts[item] || 0}}</text></view>
             </block>
             <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
           </scroll-view>
@@ -156,8 +151,19 @@
         <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
           <scroll-view class="table-scroll" scroll-x show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
-              <view class="t-row t-head" bind:longpress="onLongPressHeader">
-                <view class="t-cell t-name">名称<text class="t-hint">长按排序</text></view>
+              <view class="t-row t-head">
+                <view class="t-cell t-name">
+                  <!-- 设置入口：点击进入批量模式（全选/移动分组/删除/全局提醒 + 列设置）。
+                       三横线用 CSS 画而非字形：粗细/间距/颜色完全可控，且不受设备字体影响
+                       （U+2630/U+2261 这类字形在部分机型会缺字变方框） -->
+                  <view class="batch-btn" bind:tap="onToggleBatch">
+                    <view class="batch-bars">
+                      <view class="batch-bar"></view>
+                      <view class="batch-bar"></view>
+                      <view class="batch-bar"></view>
+                    </view>
+                  </view>
+                </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
@@ -170,11 +176,8 @@
                 data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-id="{{item._id}}">
                 <view class="t-cell t-name">
                   <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
-                  <view class="name-text">
-                    <text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text>
-                    {{item.fundName}}
-                  </view>
-                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}</view>
+                  <view class="name-text">{{item.fundName}}</view>
+                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}<text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text></view>
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
@@ -270,7 +273,7 @@
   <!-- 列表头排序 -->
   <view wx:if="{{showColEdit}}" class="col-edit-mask" bind:tap="onCloseColEdit">
     <view class="col-edit-card" catch:tap="">
-      <view class="col-edit-title">调整列表头顺序<text class="col-edit-hint">（长按表头触发）</text></view>
+      <view class="col-edit-title">调整列表头顺序</view>
       <view wx:for="{{colOrder}}" wx:key="*this" class="col-edit-row">
         <text class="col-edit-name">{{colDefs[item].label}}</text>
         <view class="col-edit-btns">

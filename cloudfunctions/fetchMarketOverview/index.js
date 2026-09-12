@@ -31,7 +31,8 @@ async function saveDbShared(payload) {
 // 行情中心 V1 数据源（云函数无域名白名单限制）：
 // - 概览：东财 push2 行情字段，沪综指(1.000001/全沪) + 深综指(0.399106/全深)：
 //   f6=成交额(元)，f104/f105/f106=成分内上涨/下跌/平盘家数，两市合计 ≈ 全市场
-// - 行业板块：东财 push2 clist 行业板块（fs=m:90+t:2），f14=名称 f3=涨跌幅 f128=领涨股 f136=领涨股涨跌幅
+// - 行业板块：东财 push2 clist 行业板块（fs=m:90+t:2），f14=名称 f3=涨跌幅
+//   注：不取 f128/f136（领涨股名称/涨跌幅）——个股行情不在本小程序服务范围内
 // - 持仓行业置顶：holdings 市值 × fund_temperatures.detailPEs 重仓股行业占比
 //   （分类口径 ft.classifyIndustryLabel 与 getPortfolio 资产配置一致，东财 f100 行业名与板块名同源可精确匹配）
 
@@ -258,13 +259,11 @@ async function fetchSectors() {
         code: r.f12 || "",
         name: r.f14 || "",
         changeRate: r.f3 === "-" || r.f3 == null ? null : +r.f3,
-        leader: r.f128 && r.f128 !== "-" ? r.f128 : "",
-        leaderRate: r.f136 === "-" || r.f136 == null ? null : +r.f136,
       })).filter((s) => s.name);
     } catch (e) { return []; } // 限流/空响应体容错
   };
   const tryPage = async (pn) => {
-    const q = `pn=${pn}&pz=100&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14,f128,f136&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+    const q = `pn=${pn}&pz=100&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f3,f12,f14&ut=bd1d9ddb04089700cf9c27f6f7426281`;
     let body = await httpGet("https://push2.eastmoney.com/api/qt/clist/get?" + q).catch(() => "");
     if (!body || body === "null") {
       body = await httpGet("https://push2delay.eastmoney.com/api/qt/clist/get?" + q).catch(() => "");

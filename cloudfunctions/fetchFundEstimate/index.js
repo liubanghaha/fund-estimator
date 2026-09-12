@@ -31,35 +31,15 @@ function _gdIsToday(gztime, todayStr) {
   return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
 }
 
-// FundMNFInfo 官方估值字段（GSZ/GSZZL/GZTIME），独立小请求避免改动 _shared 批量同步；
-// 净值未公布时返回估算值，公布后应使用 actualChangeRate
-function fetchMNFEstimate(fundCode, timeoutMs = 6000) {
-  return new Promise((resolve) => {
-    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=200&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=wechat_est&Fcodes=${encodeURIComponent(fundCode)}`;
-    const req = https.get(url, { headers: { Referer: "https://m.fund.eastmoney.com/", "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", (c) => { chunks.push(c); });
-      res.on("end", () => {
-        try {
-          const it = (JSON.parse(Buffer.concat(chunks).toString("utf8")).Datas || [])[0] || {};
-          resolve({
-            gsz: it.GSZ != null && it.GSZ !== "--" ? parseFloat(it.GSZ) : null,
-            gzhm: (String(it.GZTIME || "").match(/(\d{1,2}:\d{2})/) || [])[1] || "",
-            gszzl: it.GSZZL != null && it.GSZZL !== "--" ? parseFloat(it.GSZZL) : null,
-            gztime: it.GZTIME || null,
-          });
-        } catch (e) { resolve({}); }
-      });
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({}); });
-    req.on("error", () => resolve({}));
-  });
+// 新浪实时估值（数据源一）：轻接口单只查询，字段说明见 _shared/fund-data.fetchSinaEstimates
+function fetchSinaEstimate(fundCode) {
+  return fd.fetchSinaEstimates([fundCode]).then((m) => m[fundCode] || {});
 }
 
 async function fetchSelfEstimate(fundCode, src) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）
   const em = await fd.fetchLatestNavEastMoney(fundCode);
-  const estSrc = src === "self" ? "self" : "em"; // 默认 em（东财官方优先）
+  const estSrc = src === "self" ? "self" : "sina"; // 默认 sina（数据源一优先）
   const todayStr = fd.formatBJDate();
   // 数据所属日：当日 9:30 起为今日；凌晨/周末/节假日为上一交易日（净值已确定，按实际口径）
   const estimateUpdated = em.actualDate === _dataDay(todayStr);
@@ -81,8 +61,8 @@ async function fetchSelfEstimate(fundCode, src) {
     };
   }
 
-  // 2. 官方估值（FundMNFInfo GSZZL，盘中值；与天天基金 App 同口径）
-  const mnf = await fetchMNFEstimate(fundCode);
+  // 2. 数据源一：新浪实时估值（盘中值，独立第三方估算）
+  const sn = await fetchSinaEstimate(fundCode);
 
   // 3. 自主估算：指数基金优先用跟踪指数实时行情，否则持仓股加权兜底
   let selfChangeRate = null;
@@ -117,16 +97,17 @@ async function fetchSelfEstimate(fundCode, src) {
     }
   }
 
-  // 4. 组装（净值未公布）：按所选源优先（em=官方估值优先、self=自算优先），互相兜底后回退昨日涨幅
-  const mnfToday = mnf.gztime != null && (_gdIsToday(mnf.gztime, todayStr)) && mnf.gszzl != null;
+  // 4. 组装（净值未公布）：按所选源优先（sina=数据源一优先、self=数据源二优先），互相兜底后回退昨日涨幅
+  //    新浪对无覆盖标的（债券基金/968 互认）返回空，或数据非当日（停更标的）→ 视为不可用
+  const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
 
   let estRate, estTime, source;
-  if (estSrc === "em" && mnfToday) {
-    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  if (estSrc === "sina" && sinaToday) {
+    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else if (selfChangeRate != null) {
     estRate = selfChangeRate; estTime = fd.formatBJTime(); source = "self";
-  } else if (mnfToday) {
-    estRate = mnf.gszzl; estTime = mnf.gzhm || mnf.gztime; source = "em";
+  } else if (sinaToday) {
+    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else {
     estRate = em.actualChangeRate || null; estTime = ""; source = "nav";
   }
@@ -137,7 +118,7 @@ async function fetchSelfEstimate(fundCode, src) {
   return {
     fundCode,
     nav: baseNav || em.actualNav || null,
-    estimatedNav: source === "em" ? (mnf.gsz || null) : null,
+    estimatedNav: source === "sina" ? (sn.nav || null) : null,
     estimatedChangeRate: estRate,
     estimateTime: estTime,
     source,

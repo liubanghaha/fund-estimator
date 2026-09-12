@@ -13,6 +13,7 @@ Page({
   data: {
     activeTab: "today",
     profitMode: "amount",
+    todayChartLoading: false, // 切指数未命中预取时，图表区给加载反馈（否则几秒无反馈=像卡住）
     loading: true,
     loadError: false,
     empty: false,
@@ -458,20 +459,24 @@ Page({
       const cw = res[0].width || w;
       const ch = res[0].height || h;
       const targetW = cw * dpr, targetH = ch * dpr;
-      canvas.width = 1; canvas.height = 1;
-      canvas.width = targetW; canvas.height = targetH;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, targetW, targetH);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, targetW, targetH);
-      ctx.scale(dpr, dpr);
-
-      if (!r) {
-        ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, cw, ch);
-        return;
-      }
-
-      this._drawHistory(ctx, cw, ch, r);
+      // 历史走势图也用「从左到右画出来」的进场动画（与当天走势同款）；
+      // 该图绘图区内有横向网格，刷白后由 restore 用页面自己的 _drawGrid 补回
+      const drawFn = (target) => {
+        const ctx = chartUtil._init(target, cw, ch);
+        if (!r) { ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, cw, ch); return; }
+        this._drawHistory(ctx, cw, ch, r);
+      };
+      chartUtil.drawChartAnimated(canvas, {
+        w: cw, h: ch,
+        plot: { left: 52, right: 12, top: 40, bottom: 36 },
+        animate: !this._histAnimated, duration: 1200,
+        draw: drawFn,
+        restore: (ctx) => {
+          const g = this._chartDraw;
+          if (g && g.yi) this._drawGrid(ctx, g.p, g.cw, g.ch, g.y0, g.y1, g.yi);
+        },
+      });
+      this._histAnimated = true;
     });
   },
 
@@ -639,9 +644,9 @@ Page({
     // 快照 rate 可能有缺口（snapshotProfit 某些分钟未写入），缺失分钟用最近一次有效快照
     // 前值填充（ffill），使两条线时间点一致、锯齿对齐；避免红线在快照稀疏处大段直连。
     // 快照 time 由 snapshotProfit 写入，已是北京时间（getUTCHours()+8），与指数时间同一坐标系。
-    // 快照点存双口径（rate=官方口径、rateSelf=自算口径，旧点为单值无 rateSelf）：
+    // 快照点存双口径（rate=数据源一口径、rateSelf=自算口径，旧点为单值无 rateSelf）：
     // 按用户数据源偏好选值，切换源后整条曲线按所选源重绘
-    const srcSelf = (wx.getStorageSync("estimate_src") || "em") === "self";
+    const srcSelf = api.estimateSrc() === "self";
     const snapMap = {};
     profitSnaps.forEach(p => {
       if (!isTrading(p.time)) return;
@@ -685,8 +690,8 @@ Page({
     const hasIdx = result.filter(d => d.indexRate != null).length;
     if (hasRate > 20 && hasIdx > 20) this._saveTodayCache(result);
 
-    // 盘后口径对齐：快照是盘中估算（0.62%），摘要卡净值公布后切官方（0.55%），
-    // 两者差异会让图例与顶部卡对不上。盘后把末端快照点替换为组合当前口径值
+    // 末端口径对齐：快照分钟点与顶部「当天收益」卡（实时/盘后净值口径）天然存在时间差，
+    // 差异明显时不替换会让图例与卡片对不上；用卡片当前值替换末端点使两处一致
     this._alignEndWithOfficial(result);
 
     return result;
@@ -695,10 +700,10 @@ Page({
     }
   },
 
-  // 盘后（非交易时段）且组合当前收益率可取得时，将曲线最后一个点替换为最新口径值，
-  // 使图例与顶部摘要一致；盘中不替换（估算曲线保持原生走势）
+  // 将曲线最后一个点替换为组合当前口径值（todayProfitRate），使图例与顶部摘要一致。
+  // 盘中快照滞后 1~2 分钟、盘后快照=盘中估算 vs 卡片=正式净值，都靠此对齐；
+  // 卡片与快照值一致时（差异 < 0.02）不生效，保持曲线原生走势
   _alignEndWithOfficial(result) {
-    if (this._isTradingNow()) return;
     const rate = parseFloat(this.data.todayProfitRate);
     if (!(rate > -100 && rate < 100)) return;
     const pts = result.filter(p => p.rate != null);
@@ -767,18 +772,18 @@ Page({
     }
 
     this._todayCaches = this._todayCaches || {};
+    // 收盘后只有"覆盖到收盘"的缓存可直接渲染；半截缓存跳过，
+    // 交给下面的 _buildIntradayData 用完整分时重建（否则会先闪一版半截曲线）
+    const trading = this._isTradingNow();
     const memCache = this._todayCaches[indexCode];
-    if (memCache && memCache.data && memCache.data.length > 0) {
-      if (this._isTradingNow()) {
-        this._renderToday(w, h, memCache.data, compareLabel);
-        return;
-      }
+    if (memCache && memCache.data && memCache.data.length > 0
+        && (trading || this._cacheCoversSession(memCache.data))) {
       this._renderToday(w, h, memCache.data, compareLabel);
       return;
     }
 
     const storageData = this._loadTodayCache(indexCode);
-    if (storageData) {
+    if (storageData && (trading || this._cacheCoversSession(storageData))) {
       this._renderToday(w, h, storageData, compareLabel);
       return;
     }
@@ -820,10 +825,20 @@ Page({
       const rh = res[0].height || h;
       this._realW = rw;
       this._realH = rh;
-      chartUtil.drawIntradayChart(res[0].node, {
+      // 进场动画只在"首次出图/切回今日/换对比指数"时播放，30s 轮询刷新不重播（否则每 30 秒重画一次很烦）
+      const animate = !this._todayAnimated;
+      if (animate) this._todayAnimated = true;
+      chartUtil.drawIntradayChartAnimated(res[0].node, {
         w: rw, h: rh, data,
         labelA: '我的收益', labelB: compareLabel,
+        animate, duration: 1200,
       });
+      // 预取其它指数分时：挂在"首次真正渲染"之后。原来挂在 fetchIntraday 尾部，
+      // 但首屏命中分时缓存时不会走那里 → 预取静默失效 → 切指数仍要等请求
+      if (!this._prefetchKicked) {
+        this._prefetchKicked = true;
+        setTimeout(() => this._prefetchIndices(), 200);
+      }
     });
   },
 
@@ -858,17 +873,29 @@ Page({
     const code = this.data.compareIndex || '000001';
     this._todayCaches = this._todayCaches || {};
     const mem = this._todayCaches[code];
-    if (mem && mem.data && mem.data.length) return false;
+    if (mem && mem.data && mem.data.length) return !this._cacheCoversSession(mem.data);
     try {
       const cached = wx.getStorageSync(INTRADAY_CACHE_PREFIX + code);
-      if (cached && cached.date === calc.formatDate(new Date()) && cached.data && cached.data.length) return false;
+      if (cached && cached.date === calc.formatDate(new Date()) && cached.data && cached.data.length) {
+        return !this._cacheCoversSession(cached.data);
+      }
     } catch (e) {}
     return true;
   },
 
-  async fetchIntraday(indexCode) {
-    if (this._fetchingToday) return;
+  // 分时缓存是否覆盖到收盘。收盘后只有"完整到收盘"的缓存才算新鲜——
+  // 原实现只看"有没有今日缓存"，于是盘中某刻存下的半截数据被当成终态：
+  // 图表永久停在缓存时刻（2026-09-11 真机：曲线停在 14:15 / 14:23），切换指数也复用这份半截数据。
+  _cacheCoversSession(data) {
+    if (!data || !data.length) return false;
+    const last = data[data.length - 1];
+    return !!(last && last.time && last.time >= '14:55');
+  },
+
+  async fetchIntraday(indexCode, opts = {}) {
+    if (this._fetchingToday) return false; // 已有请求在飞：明确告知调用方"这次没轮到"
     this._fetchingToday = true;
+    const animate = !!opts.animate; // 切指数：数据到位后这一次绘制播进场动画；轮询：不播
     const code = indexCode || this.data.compareIndex;
     try {
       const ires = await api.fetchIndexIntradayTencent(code);
@@ -878,9 +905,11 @@ Page({
       this._todayCaches = this._todayCaches || {};
       delete this._todayCaches[code];
       try { wx.removeStorageSync(INTRADAY_CACHE_PREFIX + code); } catch (e) {}
+      if (animate) this._todayAnimated = false; // 这一次绘制播动画
       this._draw();
     } catch (e) {}
     this._fetchingToday = false;
+    return true;
   },
 
   // ============ 日历 ============
@@ -905,7 +934,7 @@ Page({
 
   // ============ 事件 ============
 
-  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; this.setData({ activeTab: tab }, () => { this._draw(); }); },
+  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; if (tab === 'today') this._todayAnimated = false; else this._histAnimated = false; this.setData({ activeTab: tab }, () => { this._draw(); }); },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, this._calDm()), weekCalendar: this._weeks(this._dailyChange, m, this._calDm()) }); },
@@ -947,7 +976,67 @@ Page({
     return dm;
   },
   onToggleMode() { this._cal(); this.setData({ profitMode: this.data.profitMode === 'amount' ? 'rate' : 'amount' }); },
-  onSelectIndex(e) { const { code, name } = e.currentTarget.dataset; if (code === this.data.compareIndex) return; this.setData({ compareIndex: code, compareLabel: name }); if (this.data.activeTab === 'today') { delete this._intradayRaw; this._fetchingToday = false; this.fetchIntraday(code); return; } const data = this._idxMap ? this._idxMap[code] : null; if (!data || !data.length) { this._fetch(); return; } this._indexDaily = data; this._draw(); },
+  onSelectIndex(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (code === this.data.compareIndex) return;
+    this._todayAnimated = false;
+    this._histAnimated = false;
+    this.setData({ compareIndex: code, compareLabel: name });
+    if (this.data.activeTab === 'today') {
+      // 优先用预取的分时：立即换线（不清 _intradayRaw，否则 _drawToday 判定"指数未就绪"会挂起 → 图表冻结数秒）
+      const hit = (this._idxRawCache || {})[code];
+      if (hit && hit.data && hit.data.length > 0) {
+        this._intradayRaw = hit.data;
+        this._fetchingToday = false;
+        this._todayAnimated = false;
+        this._draw();
+        // 预取超过 1 分钟：等动画播完(1.2s)再后台补最新分钟，避免这次无动画重绘把动画盖掉
+        if (Date.now() - hit.ts > 60000) setTimeout(() => this.fetchIntraday(code), 1500);
+        return;
+      }
+      // 未命中预取：不要用旧指数数据重绘（那会把动画播在旧曲线上，随后新曲线"无动画"地突然出现），
+      // 只给加载反馈，等数据到位后由 fetchIntraday 画这一次（带动画）
+      this._fetchingToday = false;
+      this.setData({ todayChartLoading: true });
+      // 若有轮询请求正在飞，fetchIntraday 会直接返回 false（这次没轮到）→ 重试，
+      // 否则新指数一直没数据、图表却显示着旧指数的曲线（开盘轮询最活跃，最容易撞上）
+      const runFetch = (left) => {
+        this.fetchIntraday(code, { animate: true }).then((did) => {
+          if (did === false && left > 0) return setTimeout(() => runFetch(left - 1), 400);
+          this.setData({ todayChartLoading: false });
+        });
+      };
+      runFetch(5);
+      return;
+    }
+    const data = this._idxMap ? this._idxMap[code] : null;
+    if (!data || !data.length) { this._fetch(); return; }
+    this._indexDaily = data;
+    this._draw();
+  },
+
+  // 预取其它指数的当日分时：首次切换不必等请求（否则会"停顿几秒"再换线）。
+  // 交易时段内预取超过 2 分钟视为过期，由 30 秒轮询逐只补新。
+  async _prefetchIndices() {
+    if (this._prefetching) return;
+    this._prefetching = true;
+    this._idxRawCache = this._idxRawCache || {};
+    const cur = this.data.compareIndex || '000001';
+    const list = (this.data.availableIndices || []).filter(i => i.code !== cur);
+    for (const idx of list) {
+      const hit = this._idxRawCache[idx.code];
+      const stale = hit && this._isTradingNow() && Date.now() - hit.ts > 120000;
+      if (hit && !stale) continue;
+      try {
+        const ires = await api.fetchIndexIntradayTencent(idx.code);
+        if (ires && ires.code === 0 && ires.data && ires.data.length > 0) {
+          this._idxRawCache[idx.code] = { data: ires.data, ts: Date.now() };
+        }
+      } catch (e) { /* ignore */ }
+      await new Promise(r => setTimeout(r, 150)); // 略作错开，避免瞬时打满请求
+    }
+    this._prefetching = false;
+  },
 
   onCanvasTouch(e) {
     const isToday = this.data.activeTab === 'today';
@@ -1026,6 +1115,7 @@ Page({
   },
 
   _touchHistory(ctx, d, px) {
+    chartUtil.cancelChartAnim(); // 触摸打断进场动画，避免十字线被动画帧刷白
     const { data, p, cw, ch, pw, ph, y0, y1, xi, yi, noIdx, hasP, compareLabel } = d;
     ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, cw, ch);
     this._drawGrid(ctx, p, cw, ch, y0, y1, yi);
@@ -1136,6 +1226,8 @@ Page({
   async _pollFundRate() {
     if (!this._isTradingNow()) { this._stopPolling(); return; }
     if (this._pollingNow) return;
+    // 动画进行中只跳过"重绘/拉分时"（否则后台重绘会把动画盖掉），数据更新照常做
+    const animating = chartUtil.isAnimating && chartUtil.isAnimating();
     this._pollingNow = true;
     try {
       const res = await api.portfolioLight();
@@ -1151,7 +1243,7 @@ Page({
       const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
       if (changed) {
         this.setData({ todayProfitRate: rate, todayProfit: tp });
-        if (this.data.activeTab === 'today') this._draw();
+        if (this.data.activeTab === 'today' && !animating) this._draw();
       }
       const snaps = d.intradaySnapshots;
       if (snaps && snaps.length > (this._profitSnapshots || []).length) {
@@ -1159,8 +1251,9 @@ Page({
         this._todayCaches = {};
         try { wx.removeStorageSync(INTRADAY_CACHE_PREFIX + (this.data.compareIndex || '000001')); } catch (e) {}
       }
-      if (this.data.activeTab === 'today') {
+      if (this.data.activeTab === 'today' && !animating) {
         this.fetchIntraday();
+        this._prefetchIndices(); // 顺带补新过期的指数预取（内部有节流与过期判断）
       }
     } catch (e) {}
     this._pollingNow = false;
