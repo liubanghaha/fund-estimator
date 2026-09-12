@@ -40,7 +40,7 @@
 		      <view class="summary-item {{activeTab === 'today' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="today">
 		        <view class="summary-label">当天收益</view>
 		        <view class="summary-value {{todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : ''}}">
-		          {{todayProfit > 0 ? '+' : ''}}{{todayProfit}}
+		          {{amountVisible ? (todayProfit > 0 ? '+' : '') + todayProfit : '****'}}
 		        </view>
 		        <view class="summary-rate {{todayProfitRate > 0 ? 'up' : todayProfitRate < 0 ? 'down' : ''}}">
 		          {{todayProfitRate > 0 ? '+' : ''}}{{todayProfitRate}}%
@@ -50,7 +50,7 @@
 		      <view class="summary-item {{activeTab === 'week' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="week">
         <view class="summary-label">本周收益</view>
         <view class="summary-value {{weekProfit > 0 ? 'up' : weekProfit < 0 ? 'down' : ''}}">
-          {{weekProfit > 0 ? '+' : ''}}{{weekProfit}}
+          {{amountVisible ? (weekProfit > 0 ? '+' : '') + weekProfit : '****'}}
         </view>
         <view class="summary-rate {{weekProfitRate > 0 ? 'up' : weekProfitRate < 0 ? 'down' : ''}}">
           {{weekProfitRate > 0 ? '+' : ''}}{{weekProfitRate}}%
@@ -59,7 +59,7 @@
       <view class="summary-item {{activeTab === 'month' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="month">
         <view class="summary-label">本月收益</view>
         <view class="summary-value {{monthProfit > 0 ? 'up' : monthProfit < 0 ? 'down' : ''}}">
-          {{monthProfit > 0 ? '+' : ''}}{{monthProfit}}
+          {{amountVisible ? (monthProfit > 0 ? '+' : '') + monthProfit : '****'}}
         </view>
         <view class="summary-rate {{monthProfitRate > 0 ? 'up' : monthProfitRate < 0 ? 'down' : ''}}">
           {{monthProfitRate > 0 ? '+' : ''}}{{monthProfitRate}}%
@@ -68,7 +68,7 @@
       <view class="summary-item {{activeTab === 'year' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="year">
         <view class="summary-label">本年收益</view>
         <view class="summary-value {{yearProfit > 0 ? 'up' : yearProfit < 0 ? 'down' : ''}}">
-          {{yearProfit > 0 ? '+' : ''}}{{yearProfit}}
+          {{amountVisible ? (yearProfit > 0 ? '+' : '') + yearProfit : '****'}}
         </view>
         <view class="summary-rate {{yearProfitRate > 0 ? 'up' : yearProfitRate < 0 ? 'down' : ''}}">
           {{yearProfitRate > 0 ? '+' : ''}}{{yearProfitRate}}%
@@ -101,11 +101,11 @@
     <view wx:if="{{showShadow}}" class="shadow-card">
       <view class="shadow-head">
         <text class="shadow-title">影子账户 · 如果没卖</text>
-        <text class="shadow-total {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{shadowTotal > 0 ? '+' : ''}}{{shadowTotal}}元</text>
+        <text class="shadow-total {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{amountVisible ? (shadowTotal > 0 ? '+' : '') + shadowTotal + '元' : '****'}}</text>
       </view>
       <view class="shadow-item" wx:for="{{shadowTop}}" wx:key="index" data-code="{{item.fundCode}}" data-name="{{item.fundName}}" bind:tap="onShadowFundTap">
         <text class="shadow-desc">{{item.dateShort}}卖出的 {{item.fundName}}（{{item.shares}}份）</text>
-        <text class="shadow-val {{item.shadow > 0 ? 'up' : item.shadow < 0 ? 'down' : ''}}">{{item.shadow > 0 ? '+' : ''}}{{item.shadow}}元</text>
+        <text class="shadow-val {{item.shadow > 0 ? 'up' : item.shadow < 0 ? 'down' : ''}}">{{amountVisible ? (item.shadow > 0 ? '+' : '') + item.shadow + '元' : '****'}}</text>
       </view>
       <view class="shadow-tip">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成任何操作建议</view>
     </view>

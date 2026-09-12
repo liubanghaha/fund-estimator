@@ -33,6 +33,7 @@ Page({
     ],
     canvasHRpx: 0,
     asOfTime: "",
+    amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
     showShadowCard: false, shadowTotal: null, shadowTop: [],
     showTodayReview: false, todayReview: null,
     earliestDate: "",
@@ -80,6 +81,8 @@ Page({
   },
 
   onLoad(options) {
+    // 金额隐藏跟随首页全局开关（隐私：金额 → ****，百分比保留）
+    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     this.setData({ showBriefBanner: subscribe.canPrompt() && !subscribe.hasAuthed() });
     // 召回推送落地：查推送类型，召回类显示一键退订横幅（双条播报不受影响）
     if (options && options.src === "push" && options.lid) {
@@ -125,6 +128,8 @@ Page({
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 金额隐藏开关也同步（首页切换后返回本页立即生效）
+    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量

@@ -38,9 +38,11 @@ Page({
     showTurnover: false,
     scrollRefreshing: false,
     showExited: false,
+    amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
   },
 
   onLoad(options) {
+    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     if (!options.fundCode) {
       // 缺参（分享链接被截断等）：置错误态，避免页面永远停在"加载中"
       this.setData({ loading: false, loadError: true });
@@ -87,6 +89,8 @@ Page({
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 金额隐藏开关也同步（首页切换后返回本页立即生效）
+    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     // 60s 轻量定时器重算 isTrading：停留页面跨过 15:00 收盘点时，
     // 估值卡片能自动切回净值卡片（isTrading 只在 onShow 算会卡在"交易中"展示）
     this._startTradingTimer();

@@ -50,7 +50,7 @@
         <view class="nav-main">
           <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
           <view wx:else class="nav-label">单位净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : ''}}">{{holdingData.todayProfit > 0 ? '+' : ''}}{{holdingData.todayProfit}}</view>
+          <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{amountVisible ? (holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (holdingData.todayProfit > 0 ? '+' : '') + holdingData.todayProfit : '****'}}</view>
           <view wx:else class="nav-big">{{actualNav || nav || '--'}}</view>
           <view wx:if="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
@@ -83,7 +83,7 @@
       <view class="mh-grid">
         <view class="mh-item">
           <view class="mh-label">持有金额</view>
-          <view class="mh-value">{{holdingData.marketValue}}</view>
+          <view class="mh-value">{{amountVisible ? holdingData.marketValue : '****'}}</view>
         </view>
         <view class="mh-item">
           <view class="mh-label">持有份额</view>
@@ -95,7 +95,7 @@
         </view>
         <view class="mh-item">
           <view class="mh-label">累计收益</view>
-          <view class="mh-value {{holdingData.totalReturn > 0 ? 'up' : holdingData.totalReturn < 0 ? 'down' : ''}}">{{holdingData.totalReturn > 0 ? '+' : ''}}{{holdingData.totalReturn}}</view>
+          <view class="mh-value {{amountVisible ? (holdingData.totalReturn > 0 ? 'up' : holdingData.totalReturn < 0 ? 'down' : '') : ''}}">{{amountVisible ? (holdingData.totalReturn > 0 ? '+' : '') + holdingData.totalReturn : '****'}}</view>
         </view>
         <view class="mh-item">
           <view class="mh-label">累计收益率</view>
