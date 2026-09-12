@@ -98,7 +98,9 @@ exports.main = async (event) => {
       let histData = {};
       // 90s 总预算内才拉历史 PE 区间（120s 超时留 30s 给写库），超预算用实时 PE 兜底
       if (Date.now() - _startTime < 90000) {
-        histData = await ft.fetchStockHistBatch(codes);
+        // 剩余预算传入批间循环：到点停止续批，已拉到的照常返回（缺历史的走实时 PE 兜底），
+        // 避免预算只在启动前检查一次、启动后冲破 120s 被强杀
+        histData = await ft.fetchStockHistBatch(codes, { budgetMs: 90000 - (Date.now() - _startTime) });
       } else {
         console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
       }

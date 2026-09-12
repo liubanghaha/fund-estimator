@@ -55,30 +55,12 @@ async function fetchEstimate(fundCode, estSrc) {
     };
   }
 
-  // 2. 数据源一：新浪实时估值（仅盘中/净值未公布前提供）
-  const sn = (await fd.fetchSinaEstimates([fundCode]))[fundCode] || {};
-
-  // 3. 自主估算：持仓股涨跌加权
-  let selfEstimate = null;
-  if (fd.isBJWeekday()) {
-    try {
-      const holdings = await fd.fetchTempHoldings(fundCode);
-      if (holdings && holdings.length > 0) {
-        const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
-        const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
-        let totalRatio = 0, weightedChange = 0;
-        for (const h of holdings) {
-          const p = prices[h.stockCode];
-          if (!p || p.changeRate == null) continue;
-          totalRatio += h.navRatio;
-          weightedChange += p.changeRate * h.navRatio;
-        }
-        if (totalRatio > 0) {
-          selfEstimate = +(weightedChange / totalRatio).toFixed(2);
-        }
-      }
-    } catch (e) { /* ignore */ }
-  }
+  // 2+3. 新浪实时估值与自主估算（持仓→行情）互不依赖 → 并行拉取
+  // （原串行三轮叠加：新浪 → 持仓 → 股票行情；两支与 em 无取值依赖，em 先行只为净值公布短路省请求）
+  const [sn, selfEstimate] = await Promise.all([
+    fd.fetchSinaEstimates([fundCode]).then((m) => m[fundCode] || {}),
+    computeSelfEstimate(fundCode),
+  ]);
 
   // 4. 组装（净值未公布）：按所选源优先，三层兜底
   const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
@@ -104,6 +86,64 @@ async function fetchEstimate(fundCode, estSrc) {
     actualDate: em.actualDate,
     actualChangeRate: em.actualChangeRate,
   };
+}
+
+// 自主估算：持仓股实时涨跌加权（仅工作日；失败/无数据返回 null）
+async function computeSelfEstimate(fundCode) {
+  if (!fd.isBJWeekday()) return null;
+  try {
+    const holdings = await fetchTempHoldingsCached(fundCode);
+    if (holdings && holdings.length > 0) {
+      const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
+      const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
+      let totalRatio = 0, weightedChange = 0;
+      for (const h of holdings) {
+        const p = prices[h.stockCode];
+        if (!p || p.changeRate == null) continue;
+        totalRatio += h.navRatio;
+        weightedChange += p.changeRate * h.navRatio;
+      }
+      if (totalRatio > 0) return +(weightedChange / totalRatio).toFixed(2);
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+// 持仓读取带 DB 缓存（三级来源与 getPortfolio.computeSelfEstimates 同口径）：
+// 温度表 detailPEs（当日）→ fund_holdings_cache（当日）→ 东财现拉并回写缓存（每只基金每天只拉一次），
+// DB 命中即跳过东财外呼
+async function fetchTempHoldingsCached(fundCode) {
+  const today = fd.formatBJDate();
+  try {
+    const res = await db.collection("fund_temperatures")
+      .where({ fundCode, date: today })
+      .field({ detailPEs: true })
+      .limit(1)
+      .get();
+    const t = (res.data || [])[0];
+    if (t && fd.isValidHoldings(t.detailPEs)) {
+      return t.detailPEs.map(p => ({ stockCode: p.code, navRatio: p.ratio }));
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    const res = await db.collection("fund_holdings_cache")
+      .where({ fundCode, date: today })
+      .limit(1)
+      .get();
+    const d = (res.data || [])[0];
+    if (d && fd.isValidHoldings(d.holdings)) {
+      return d.holdings.map(h => ({ stockCode: h.stockCode, navRatio: h.navRatio }));
+    }
+  } catch (e) { /* ignore */ }
+  const holdings = await fd.fetchTempHoldings(fundCode);
+  if (holdings && holdings.length > 0) {
+    // _id=fundCode_date 幂等 upsert（与 getPortfolio 兜底写缓存同款）
+    await db.collection("fund_holdings_cache")
+      .doc(`${fundCode}_${today}`)
+      .set({ data: { fundCode, date: today, holdings } })
+      .catch(() => {});
+  }
+  return holdings;
 }
 
 async function fetchProfileData(fundCode) {
@@ -160,11 +200,12 @@ async function fetchProfileData(fundCode) {
 
 async function fetchPeTemp(fundCode) {
   try {
-    const today = fd.formatBJDate();
+    // 取本基金最新一条温度（与 fetchFundEstimate.fetchTemperature 同口径）：
+    // 当天任务偶发失败/未跑到时兜底最近一次，详情页温度不因单日缺数消失
     const res = await db.collection("fund_temperatures")
-      .where({ fundCode, date: today })
+      .where({ fundCode })
+      .orderBy("date", "desc").limit(1)
       .field({ signal: true, label: true, normPE: true })
-      .limit(1)
       .get();
     if (res.data && res.data.length > 0) {
       const t = res.data[0];

@@ -1,7 +1,13 @@
 <view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
   <!-- 加载中 -->
-  <view wx:if="{{loading}}" class="loading-text">分析中...</view>
+  <view wx:if="{{loading}}" class="loading-text">正在分析持仓重合度，可能需要几秒…</view>
+
+  <!-- 失败重试 -->
+  <view wx:elif="{{loadError}}" class="empty-wrap">
+    <view class="empty-text">加载失败</view>
+    <button class="retry-btn" bind:tap="onRetry">点击重试</button>
+  </view>
 
   <!-- 内容 -->
   <view wx:else>
@@ -30,7 +36,7 @@
       <view wx:for="{{assetAllocation.items}}" wx:key="industry" wx:if="{{index < 10 || showAllIndustries}}" class="asset-row">
         <text class="asset-name">{{item.industry}}</text>
         <text class="asset-pct">{{item.percent}}%</text>
-        <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent * 2}}rpx"></view></view>
+        <view class="asset-bar"><view class="asset-fill" style="width:{{item.percent}}%"></view></view>
       </view>
       <view wx:if="{{assetAllocation.items.length > 10}}" class="expand-toggle" bind:tap="toggleIndustries">
         {{showAllIndustries ? '收起' : '展开更多 (' + (assetAllocation.items.length - 10) + '项)'}}
@@ -67,7 +73,9 @@
       <!-- 基金对重合（空状态占位，已移除功能） -->
     </view>
 
-    <view wx:if="{{!loadError && !healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">暂无数据</view>
-    <view wx:if="{{loadError}}" class="empty">加载失败，请稍后重试</view>
+    <view wx:if="{{!healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">
+      <view>暂无数据</view>
+      <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>
+    </view>
   </view>
 </view>

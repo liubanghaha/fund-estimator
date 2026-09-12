@@ -46,7 +46,8 @@ async function fetchEMFlash(sortEnd) {
   try {
     const url = `https://np-weblist.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=${encodeURIComponent(sortEnd)}&pageSize=50&req_trace=${Date.now()}`;
     let body = await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" });
-    if (!body || body.length < 10) body = await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" }); // 限流重试一次
+    // 限流重试一次（3s 短超时：失败多为限流/网络抖动，再等完整 8s 会挤占函数预算）
+    if (!body || body.length < 10) body = await httpGet(url, { Referer: "https://kuaixun.eastmoney.com/" }, 3000);
     const d = JSON.parse(body);
     const data = d.data || {};
     const items = (data.fastNewsList || []).map((it) => ({
@@ -74,7 +75,7 @@ async function fetchJin10() {
       Referer: "https://www.jin10.com/",
     };
     let jBody = await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", jHeaders);
-    if (!jBody || jBody.length < 10) jBody = await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", jHeaders);
+    if (!jBody || jBody.length < 10) jBody = await httpGet("https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1", jHeaders, 3000); // 重试同用 3s 短超时
     const d = JSON.parse(jBody);
     const items = (d.data || []).map((it) => {
       const dd = it.data || {};

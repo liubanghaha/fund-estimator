@@ -12,7 +12,7 @@ try {
   OCRSPACE_API_KEY = env.OCRSPACE_API_KEY || OCRSPACE_API_KEY;
 } catch (e) { /* env.json 不存在则使用环境变量 */ }
 
-exports.main = async (event) => {
+const _run = async (event) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "请先登录" };
   const { fileID } = event;
@@ -61,6 +61,15 @@ exports.main = async (event) => {
   console.log('[ocrTx] parsed transactions:', transactions.length);
   debug.txCount = transactions.length;
   return { code: 0, data: { raw: text, method, transactions, debug, ...(transactions[0] || {}) } };
+};
+
+exports.main = async (event) => {
+  const result = await _run(event);
+  // 截图含用户完整资产信息：OCR 结束即删（成功失败都删，失败重试由用户重新选图）
+  if (event && event.fileID) {
+    cloud.deleteFile({ fileList: [event.fileID] }).catch(() => {});
+  }
+  return result;
 };
 
 function applyConfirmRollover(tx) {

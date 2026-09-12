@@ -6,7 +6,6 @@
 "use strict";
 
 const https = require("https");
-const http = require("http");
 
 // ---------------- 北京时间工具 ----------------
 
@@ -224,7 +223,7 @@ function fetchStockPricesTencent(codes, opts = {}) {
 
   const fetchBatch = (batchCodes) => new Promise((resolve) => {
     const qtCodes = batchCodes.map(toQtCode).join(",");
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCodes}`, (res) => {
+    const req = https.get(`https://qt.gtimg.cn/q=${qtCodes}`, (res) => {
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
@@ -398,7 +397,7 @@ function fetchIndexRealtime(indexCode, opts = {}) {
   const prefix = resolveIndexPrefix(indexCode);
   const qtCode = `${prefix}${indexCode}`;
   return new Promise((resolve) => {
-    const req = http.get(`http://qt.gtimg.cn/q=${qtCode}`, (res) => {
+    const req = https.get(`https://qt.gtimg.cn/q=${qtCode}`, (res) => {
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
@@ -422,6 +421,59 @@ function fetchIndexRealtime(indexCode, opts = {}) {
     req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
     req.on("error", () => resolve(null));
   });
+}
+
+/**
+ * 批量拉指数实时涨跌（腾讯行情 qt.gtimg.cn 支持一次多只），
+ * 返回 { [indexCode]: { price, prevClose, changeRate } }。
+ * 解析口径与 fetchIndexRealtime 一致；批内未命中的 code（网络丢包等）
+ * 由调用方按需走 fetchIndexRealtime 单拉兜底。
+ */
+function fetchIndexRealtimeBatch(indexCodes, opts = {}) {
+  const map = {};
+  const codes = [...new Set((indexCodes || []).filter(Boolean))];
+  if (codes.length === 0) return Promise.resolve(map);
+  const { timeoutMs = 8000, batchSize = 50 } = opts;
+
+  const toQtCode = (code) => `${resolveIndexPrefix(code)}${code}`;
+
+  const fetchBatch = (batch) => new Promise((resolve) => {
+    const qtCodes = batch.map(toQtCode).join(",");
+    const req = https.get(`https://qt.gtimg.cn/q=${qtCodes}`, (res) => {
+      const chunks = [];
+      res.on("data", (c) => { chunks.push(c); });
+      res.on("end", () => {
+        try {
+          const body = Buffer.concat(chunks).toString("utf-8");
+          for (const code of batch) {
+            const qtCode = toQtCode(code);
+            const re = new RegExp(`v_${qtCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}="([^"]*)"`);
+            const match = body.match(re);
+            if (!match) continue;
+            const fields = match[1].split("~");
+            const curr = parseFloat(fields[3]);
+            const prev = parseFloat(fields[4]);
+            if (isNaN(curr) || isNaN(prev) || prev <= 0) continue;
+            map[code] = {
+              price: curr,
+              prevClose: prev,
+              changeRate: +(((curr - prev) / prev) * 100).toFixed(2),
+            };
+          }
+        } catch (e) { /* ignore */ }
+        resolve();
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(); });
+    req.on("error", () => resolve());
+  });
+
+  return (async () => {
+    for (let i = 0; i < codes.length; i += batchSize) {
+      await fetchBatch(codes.slice(i, i + batchSize));
+    }
+    return map;
+  })();
 }
 
 // ---------------- 跟踪指数查询（带 fund_index_cache 缓存） ----------------
@@ -502,11 +554,12 @@ async function getTrackIndexCached(db, fundCode, opts = {}) {
 /**
  * 历史净值（分页并发拉取，页序从新到旧）
  * 注意：东财 lsjz 接口固定每页 20 条（实测 pageSize 任意值均被忽略），
- * 页数 = ceil(need/20)；天数钳制 600（防止 days 参数被滥用为外部 API DoS）
+ * 页数 = ceil(need/20)；天数钳制 800（防 days 参数被滥用为外部 API DoS；
+ * 800 = 详情页"近三年"视图所需 750+50 的取数上限）
  */
 function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
   const { perPage = 20, timeoutMs = 8000 } = opts;
-  const need = Math.max(1, Math.min(600, totalNeeded || 0));
+  const need = Math.max(1, Math.min(800, totalNeeded || 0));
   const pages = Math.max(1, Math.ceil(need / perPage));
 
   const fetchPage = (pageIndex) => new Promise((resolve) => {
@@ -641,6 +694,7 @@ module.exports = {
   fetchTrackIndex,
   resolveIndexPrefix,
   fetchIndexRealtime,
+  fetchIndexRealtimeBatch,
   getTrackIndexBatchCached,
   getTrackIndexCached,
 };

@@ -8,8 +8,8 @@ const POLL_INTERVAL = 30000;  // 盘中轮询间隔 30 秒（原 10 秒，每次
 
 // 交易时段判断
 function isTradingTime() {
-  // 交易日时钟（含节假日表）：仅交易日 9:30~15:00 视作盘中
-  return marketTime.marketPhase() === "trading";
+  // 交易日时钟（含节假日表）：交易日 9:30~15:00 视作盘中，午休不轮询
+  return marketTime.marketPhase() === "trading" && !marketTime.isLunchBreak();
 }
 
 Page({
@@ -37,6 +37,7 @@ Page({
     sortOrder: "",
     searchKeyword: "",
     updateTime: "",
+    stale: false,
     summary: { avg: 0, up: 0, down: 0, total: 0 },
 	    pinnedCodes: [],
 	    // 左滑删除
@@ -144,7 +145,9 @@ Page({
         watchlist: [], displayList: [], loaded: true, groups: [], activeGroup: "all",
         checkedMap: {}, sortField: "", sortOrder: "", searchKeyword: "", updateTime: "",
         holdingCodes: [], groupCounts: {}, summary: { avg: 0, up: 0, down: 0, total: 0 },
+        stale: false,
       });
+      this._stopPolling();
       wx.removeStorageSync(CACHE_KEY);
     }
   },
@@ -158,7 +161,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.setData({ searchKeyword: "" });
+    // 保留当前搜索词，仅刷新数据
     this.fetchWatchlist().finally(() => wx.stopPullDownRefresh());
   },
 
@@ -167,6 +170,11 @@ Page({
   onTapItem(e) {
     if (this.data.batchMode) {
       this.toggleSelect(e);
+      return;
+    }
+    // 左滑展开态：首次点击只收回滑块，不跳详情
+    if (this.data._swipeIdx >= 0) {
+      this.setData({ _swipeIdx: -1, _swipeX: 0 });
       return;
     }
     const { code, name } = e.currentTarget.dataset;
@@ -262,18 +270,27 @@ Page({
         wx.showLoading({ title: "删除中..." });
         // 写操作限并发 3，避免 N 条串行云函数调用拖慢批量删除
         const CONCURRENT = 3;
-        let count = 0, idx = 0;
+        let ok = 0, fail = 0, idx = 0;
         const workers = [];
         const run = async () => {
           while (idx < codes.length) {
             const code = codes[idx++];
-            try { await api.watchlistRemove(code); count++; } catch (e) { /* ignore */ }
+            try {
+              const r = await api.watchlistRemove(code);
+              // 业务失败（code !== 0）也计入失败数，避免静默吞掉
+              if (r && r.result && r.result.code === 0) ok++;
+              else fail++;
+            } catch (e) { fail++; }
           }
         };
         for (let i = 0; i < Math.min(CONCURRENT, codes.length); i++) workers.push(run());
         await Promise.all(workers);
         wx.hideLoading();
-        wx.showToast({ title: `已删除 ${count} 个`, icon: "success" });
+        if (fail > 0) {
+          wx.showToast({ title: `成功 ${ok} 个，失败 ${fail} 个`, icon: "none" });
+        } else {
+          wx.showToast({ title: `已删除 ${ok} 个`, icon: "success" });
+        }
         this.setData({ batchMode: false, checkedMap: {} });
         this.fetchWatchlist();
       },
@@ -352,12 +369,10 @@ Page({
 
   onAddGroup() {
     this.showGroupInput((groupName) => {
-      wx.showToast({ title: `分组「${groupName}」已创建`, icon: "success", duration: 2000 });
+      // 合并为单条 toast（原两条连续 toast 会互相覆盖）
+      wx.showToast({ title: `已创建分组「${groupName}」，长按基金可移入分组`, icon: "none", duration: 2000 });
       this._saveGroupToCache(groupName);
       this.applyGroupFilter();
-      setTimeout(() => {
-        wx.showToast({ title: "长按基金可移入分组", icon: "none", duration: 2000 });
-      }, 2200);
     });
   },
 
@@ -371,6 +386,7 @@ Page({
     this._dragStartIdx = idx;
     this._didLongPress = false;
     this._dragMoved = false;
+    this._lastDragTs = 0;
     this._tabWidth = 0;
     wx.createSelectorQuery().selectAll('.group-tab').boundingClientRect(rects => {
       if (rects && rects.length > 0) {
@@ -415,6 +431,10 @@ Page({
       this._dragStartIdx = clamped;
       this._dragStartX = e.touches[0].clientX;
     } else {
+      // 高频 touchmove 节流：30ms 内跳过 setData，松手时由 touchend 强制落点
+      const now = Date.now();
+      if (now - (this._lastDragTs || 0) < 30) return;
+      this._lastDragTs = now;
       this.setData({ dragX: clampedX });
     }
   },
@@ -541,7 +561,9 @@ Page({
 
   _getCachedGroups() {
     try {
-      return wx.getStorageSync(GROUPS_CACHE_KEY) || [];
+      const list = wx.getStorageSync(GROUPS_CACHE_KEY) || [];
+      // 防御：清洗历史污染（曾有 bug 把对象数组写入缓存），只保留字符串分组名
+      return Array.isArray(list) ? list.filter(g => typeof g === 'string') : [];
     } catch (e) {
       return [];
     }
@@ -549,13 +571,19 @@ Page({
 
   _mergeGroups(serverGroups) {
     const cached = this._getCachedGroups();
+    // 防御：serverGroups 可能是对象数组（取 name）或字符串数组
+    const serverNames = [];
+    for (const g of (serverGroups || [])) {
+      const name = typeof g === 'string' ? g : (g && g.name);
+      if (name && !serverNames.includes(name)) serverNames.push(name);
+    }
     // 以缓存顺序为基础，合并服务端新增的分组（追加到末尾）
     const merged = [...cached];
-    for (const g of serverGroups) {
+    for (const g of serverNames) {
       if (!merged.includes(g)) merged.push(g);
     }
     // 清理缓存中已在服务端存在的分组
-    const toKeep = cached.filter(g => !serverGroups.includes(g));
+    const toKeep = cached.filter(g => !serverNames.includes(g));
     if (toKeep.length !== cached.length) {
       wx.setStorageSync(GROUPS_CACHE_KEY, toKeep);
     }
@@ -579,7 +607,7 @@ Page({
       const groups = this._mergeGroups(serverGroups);
       this.setData({ groups });
 
-      if (listRes.result && listRes.result.code === 0 && listRes.result.data.length > 0) {
+      if (listRes.result && listRes.result.code === 0 && ((listRes.result.data || []).length > 0)) {
         const items = listRes.result.data;
         const codes = items.map((w) => w.fundCode);
         const estRes = await api.batchFetchEstimate(codes).catch(() => null);
@@ -593,7 +621,6 @@ Page({
             group: w.group || "",
             nav: e ? e.nav : null,
             estimatedNav: e ? e.estimatedNav : null,
-            estimatedChangeRate: e ? e.estimatedChangeRate : null,
             displayChangeRate: e ? e.displayChangeRate : null,
             estimateTime: e ? e.estimateTime : null,
           };
@@ -605,7 +632,7 @@ Page({
         }, "") || this._nowStr();
 
         this.updateGroupCounts();
-        this.setData({ watchlist, loaded: true, loadError: false, updateTime }, () => {
+        this.setData({ watchlist, loaded: true, loadError: false, updateTime, stale: false }, () => {
           this.applyGroupFilter();
         });
 
@@ -621,7 +648,7 @@ Page({
           // ignore cache error
         }
       } else {
-        this.setData({ watchlist: [], displayList: [], loaded: true, loadError: false });
+        this.setData({ watchlist: [], displayList: [], loaded: true, loadError: false, stale: false });
       }
     } catch (e) {
       this.setData({ loaded: true, loadError: !this.data.watchlist.length });
@@ -649,11 +676,14 @@ Page({
   },
 
   async _refreshEstimates() {
+    if (this._estFetching) return; // 防重入（手动重试可与在途轮询并发）
+    this._estFetching = true;
     const codes = this.data.watchlist.map(w => w.fundCode);
     if (!codes.length) return;
+    const markStale = () => { if (this.data.watchlist.length) this.setData({ stale: true }); };
     try {
       const estRes = await api.batchFetchEstimate(codes);
-      if (!estRes || !estRes.result || estRes.result.code !== 0) return;
+      if (!estRes || !estRes.result || estRes.result.code !== 0) { markStale(); return; }
       const estData = estRes.result.data || {};
       const watchlist = this.data.watchlist.map(w => {
         const e = estData[w.fundCode];
@@ -661,12 +691,20 @@ Page({
         return {
           ...w,
           nav: e.nav || w.nav,
-          estimatedNav: e.estimatedNav || w.estimatedNav,
-          estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : w.estimatedChangeRate,
+          // null 判断而非真值：服务端清空估值（转入已确认净值）时要让"估"标消失
+          estimatedNav: e.estimatedNav != null ? e.estimatedNav : w.estimatedNav,
           displayChangeRate: e.displayChangeRate != null ? e.displayChangeRate : w.displayChangeRate,
           estimateTime: e.estimateTime || w.estimateTime,
         };
       });
+      // 对比新旧估值字段，无变化则跳过 setData（首次渲染走 fetchWatchlist，不经过此处）
+      const prevMap = {};
+      for (const w of this.data.watchlist) prevMap[w.fundCode] = w;
+      const changed = watchlist.some(w => {
+        const p = prevMap[w.fundCode];
+        return !p || p.nav !== w.nav || p.estimatedNav !== w.estimatedNav || p.displayChangeRate !== w.displayChangeRate || p.estimateTime !== w.estimateTime;
+      });
+      if (!changed && !this.data.stale) return;
       // 取最新估算时间
       const updateTime = codes.reduce((best, c) => {
         const e = estData[c];
@@ -715,8 +753,19 @@ Page({
         watchlist, updateTime, displayList: list,
         groupCounts: counts,
         summary: { avg: valid ? +(sum / valid).toFixed(2) : 0, up, down, total: valid },
+        stale: false,
       });
-    } catch (e) { /* 静默 */ }
+    } catch (e) {
+      // 轮询失败：有数据时标记 stale，提示条展示「更新失败」
+      markStale();
+    } finally {
+      this._estFetching = false;
+    }
+  },
+
+  // 轮询失败后点「更新失败」手动重试
+  onPollRetry() {
+    this._refreshEstimates();
   },
 
   // ========== 置顶 ==========
@@ -739,13 +788,15 @@ Page({
 
   onItemTouchStart(e) {
     if (this.data.batchMode || this.data.dragging) return;
-    // 先关闭其他打开的滑动
-    if (this.data._swipeIdx >= 0) {
+    const idx = parseInt(e.currentTarget.dataset.index);
+    // 当前行已展开时保持展开，交给 tap 收回（若在这里先收起，tap 收到的必是 -1，守卫永远不触发）
+    if (this.data._swipeIdx >= 0 && this.data._swipeIdx !== idx) {
       this.setData({ _swipeIdx: -1, _swipeX: 0 });
     }
     const touch = e.touches[0];
     this._swipeStartX = touch.clientX;
     this._swipeStartY = touch.clientY;
+    this._lastSwipeTs = 0;
     this._swiping = true;
   },
 
@@ -758,6 +809,10 @@ Page({
     if (dy > Math.abs(dx)) { this._swiping = false; return; }
     if (dx > 0) return; // 只允许左滑
     const idx = parseInt(e.currentTarget.dataset.index);
+    // 高频 touchmove 节流：30ms 内跳过 setData，松手时由 touchend 强制落点
+    const now = Date.now();
+    if (this.data._swipeIdx === idx && now - (this._lastSwipeTs || 0) < 30) return;
+    this._lastSwipeTs = now;
     this.setData({ _swipeIdx: idx, _swipeX: Math.max(dx, -120) });
   },
 

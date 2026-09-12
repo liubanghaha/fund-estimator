@@ -10,10 +10,10 @@ const HOLDINGS_CACHE_VERSION = 2;
 
 Page({
   data: {
-    fundCode: "", fundName: "", loading: true, errorMsg: "",
+    fundCode: "", fundName: "", loading: true, errorMsg: "", loadError: false,
     nav: null, estimatedNav: null, estimatedChangeRate: null, estimateTime: "", estSource: "",
     actualNav: "", actualDate: "", actualChangeRate: null,
-    navHistory: [], displayHistory: [],
+    navHistory: [], displayHistory: [], displayCount: 30,
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
@@ -21,7 +21,6 @@ Page({
     chartLoading: false, // 切区间需补拉历史时图表区给加载反馈（否则数秒无反馈会被当成没反应）
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
-    showAllHistory: false,
     isTrading: false,
     chartPeriod: '1M',
     chartTxMap: {},
@@ -41,12 +40,16 @@ Page({
   },
 
   onLoad(options) {
-    if (!options.fundCode) return;
+    if (!options.fundCode) {
+      // 缺参（分享链接被截断等）：置错误态，避免页面永远停在"加载中"
+      this.setData({ loading: false, loadError: true });
+      return;
+    }
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
         wx.setNavigationBarTitle({ title: fundName });
     this._firstLoad = true;
-    const { windowWidth } = wx.getSystemInfoSync();
+    const { windowWidth } = wx.getWindowInfo();
     const canvasW = windowWidth - 24;
     const canvasH = Math.round(canvasW * 0.53);
     this._canvasW = canvasW;
@@ -69,11 +72,12 @@ Page({
     this.fetchAll();
   },
 
-  // 首次渲染完成后自动调起下拉刷新动画（过早调用 startPullDownRefresh 无效）
+  // 首次渲染完成后自动调起 scroll-view 下拉刷新动画（过早调起 refresher 未挂载，无效）
   onReady() {
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
-      setTimeout(() => wx.startPullDownRefresh(), 500);
+      // 走 onScrollRefresh 同一条链路：含 _fetchingAll 防重入与刷新动画收起
+      setTimeout(() => this.onScrollRefresh(), 500);
     }
   },
 
@@ -81,6 +85,9 @@ Page({
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 60s 轻量定时器重算 isTrading：停留页面跨过 15:00 收盘点时，
+    // 估值卡片能自动切回净值卡片（isTrading 只在 onShow 算会卡在"交易中"展示）
+    this._startTradingTimer();
     if (this._firstLoad) { this._firstLoad = false; return; }
     const { fundCode } = this.data;
     if (!fundCode) return;
@@ -100,6 +107,28 @@ Page({
     }
     this._lastRefresh = now;
     this.refreshData();
+  },
+
+  onHide() { this._stopTradingTimer(); },
+
+  onUnload() { this._stopTradingTimer(); },
+
+  // isTrading 相关 data 的定时重算（updateDisplay 同时刷新涨跌口径与净值更新标记）
+  _startTradingTimer() {
+    if (this.data.loadError) return; // 缺参错误态无需定时重算
+    this._stopTradingTimer();
+    this._tradingTimer = setInterval(() => this.updateDisplay(), 60000);
+  },
+  _stopTradingTimer() {
+    if (this._tradingTimer) { clearInterval(this._tradingTimer); this._tradingTimer = null; }
+  },
+
+  // 分享
+  onShareAppMessage() {
+    return {
+      title: (this.data.fundName || "基金") + "的估值与温度",
+      path: "/subpackages/analysis/pages/fund-detail/index?fundCode=" + this.data.fundCode,
+    };
   },
 
   async refreshData() {
@@ -164,8 +193,8 @@ Page({
             if (d.history && d.history.length > 0) {
               this.setData({
                 navHistory: d.history,
-                displayHistory: d.history.slice(0, 10),
-                showAllHistory: false,
+                displayHistory: d.history.slice(0, 30),
+                displayCount: 30,
                 actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
                 actualDate: d.history[0].date,
                 actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
@@ -230,8 +259,8 @@ Page({
       }]);
       this.setData({
         navHistory: merged,
-        displayHistory: merged.slice(0, 10),
-        showAllHistory: false,
+        displayHistory: merged.slice(0, 30),
+        displayCount: 30,
       });
       this.calcReturns(merged);
       // 缓存断档（隔了多个交易日才进）→ 单点合并补不齐中间日期，后台全量补拉历史
@@ -278,8 +307,8 @@ Page({
         actualDate: cached.actualDate, displayChangeRate: cached.displayChangeRate,
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
-        displayHistory: (cached.history || []).slice(0, 10),
-        showAllHistory: false,
+        displayHistory: (cached.history || []).slice(0, 30),
+        displayCount: 30,
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cached.holdingData || null,
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
@@ -349,6 +378,20 @@ Page({
         dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),
       });
+      this._pruneCache();
+    } catch (e) { /* ignore */ }
+  },
+
+  // 缓存 LRU：每基金一个 key 无清理会一直累积，超过 20 只时按缓存时间戳（ts）淘汰最旧的
+  _pruneCache() {
+    try {
+      const keys = (wx.getStorageInfoSync().keys || [])
+        .filter(k => k.indexOf(CACHE_PREFIX) === 0);
+      if (keys.length <= 20) return;
+      const items = keys
+        .map(k => ({ k, ts: (wx.getStorageSync(k) || {}).ts || 0 }))
+        .sort((a, b) => a.ts - b.ts);
+      for (let i = 0; i < items.length - 20; i++) wx.removeStorageSync(items[i].k);
     } catch (e) { /* ignore */ }
   },
   async checkFollow() {
@@ -461,10 +504,13 @@ Page({
       if (res.result && res.result.code === 0) {
         const history = res.result.data;
         if (history.length > 0) {
+          // 服务端返回少于请求数-20 → 已到该基金历史上限（新基金）或服务端钳制（800 天）。
+          // 容忍个别页拉取失败（差一页不置位，代价只是下次切区间多补一轮）
+          if (days >= 800 || history.length < days - 20) this._historyMaxed = true;
           this.setData({
             navHistory: history,
-            displayHistory: history.slice(0, 10),
-            showAllHistory: false,
+            displayHistory: history.slice(0, 30),
+            displayCount: 30,
             actualNav: this.data.actualNav || (history[0].nav != null ? history[0].nav.toFixed(4) : ""),
             actualDate: history[0].date,
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),
@@ -567,9 +613,12 @@ Page({
   calcReturns(history) {
     const r = calc.calcPeriodReturns(history);
     const { displayChangeRate } = this.data;
-    const dd = calc.calcMaxDrawdown(history);
-    const vol = calc.calcVolatility(history);
-    const sharpe = calc.calcSharpe(history);
+    // 风险指标固定按"近一年"（最近 250 个交易日）计算：
+    // 用全量 history 的话，用户切过一次"近三年"（800 点）口径就变成三年，与"近一年"标签不符
+    const riskWindow = history.slice(0, 250);
+    const dd = calc.calcMaxDrawdown(riskWindow);
+    const vol = calc.calcVolatility(riskWindow);
+    const sharpe = calc.calcSharpe(riskWindow);
     const riskMetrics = dd.drawdown != null ? {
       maxDrawdown: dd.drawdown,
       ddPeakDate: dd.peakDate, ddTroughDate: dd.troughDate,
@@ -618,7 +667,11 @@ Page({
 
   _getChartOpts() {
     const hd = this.data.holdingData;
-    const color = hd && parseFloat(hd.totalReturn) >= 0 ? '#E4393C' : '#2E8B57';
+    // 无持仓 → 净值走势：净值曲线用中性蓝（红绿表达的是涨跌，净值曲线本身无涨跌语义）
+    if (!(hd && hd.shares && parseFloat(hd.shares) > 0)) {
+      return { w: this._canvasW || 340, h: this._canvasH || 180, color: '#1976D2' };
+    }
+    const color = parseFloat(hd.totalReturn) >= 0 ? '#E4393C' : '#2E8B57';
     return { w: this._canvasW || 340, h: this._canvasH || 180, color };
   },
 
@@ -645,6 +698,9 @@ Page({
       const paint = (target) => {
       const ctx = chart.drawLineChart(target, opts);
       if (!ctx) return null;
+      // 快照存页级：chart._lastDraw 是模块单例，页面栈里两个图表页会互相覆盖，
+      // 返回上一页再触摸会拿到别的页面的数据快照（十字线错位）
+      this._lastDrawSnap = chart._lastDraw;
 
       if (Object.keys(txMap).length > 0) {
         const p = opts.padding;
@@ -730,11 +786,10 @@ Page({
     if (this._touchT && now - this._touchT < 60) return;
     this._touchT = now;
 
-    const dpr = wx.getSystemInfoSync().pixelRatio;
-    canvas.width = opts.w * dpr;
-    canvas.height = opts.h * dpr;
+    // 不重建位图：setTransform 幂等重置变换（逐帧 canvas.width 赋值会清空并重建位图，低端机拖动掉帧）
+    const dpr = wx.getWindowInfo().pixelRatio;
     const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const p = opts.padding;
     const pw = opts.w - p.left - p.right, ph = opts.h - p.top - p.bottom;
@@ -755,7 +810,7 @@ Page({
     const pt = data[nearest];
     const cx = xp(nearest), cy = yp(pt.value);
 
-    chart._drawFastLine(ctx, chart._lastDraw, opts);
+    chart._drawFastLine(ctx, this._lastDrawSnap, opts);
     ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx, p.top); ctx.lineTo(cx, opts.h - p.bottom); ctx.stroke();
     ctx.beginPath();
@@ -783,7 +838,7 @@ Page({
     const PERIOD_DAYS = { '1M': 22, '3M': 66, '6M': 132, '1Y': 260, '3Y': 750 };
     const neededDays = PERIOD_DAYS[period] || 260;
     this.setData({ chartPeriod: period });
-    if (this.data.navHistory.length < neededDays) {
+    if (!this._historyMaxed && this.data.navHistory.length < neededDays) {
       // 补拉期间给加载反馈：这几秒里图表若毫无变化，用户会以为"点了没反应/没有动画"
       this.setData({ chartLoading: true });
       try {
@@ -919,12 +974,9 @@ Page({
     });
   },
 
-  onRefresh() {
+  onToggleTransactions() {
     const show = !this.data.showTransactions;
     this.setData({ showTransactions: show, scrollToTx: show ? "txSection" : "" });
-  },
-  onPullDownRefresh() {
-    this.fetchAll().finally(() => wx.stopPullDownRefresh());
   },
   onScrollRefresh() {
     // 防重入：已有 fetch 进行中直接收回动画，避免双刷
@@ -937,8 +989,12 @@ Page({
       this.setData({ scrollRefreshing: false });
     });
   },
-  onShowMore() { this.setData({ showAllHistory: true, displayHistory: this.data.navHistory }); },
-  onShowLess() { this.setData({ showAllHistory: false, displayHistory: this.data.navHistory.slice(0, 10) }); },
+  onShowMore() {
+    // 分页展示：默认 30 条，每次追加 30 条（displayHistory 独立于 navHistory）
+    const n = this.data.displayCount + 30;
+    this.setData({ displayCount: n, displayHistory: this.data.navHistory.slice(0, n) });
+  },
+  onShowLess() { this.setData({ displayCount: 30, displayHistory: this.data.navHistory.slice(0, 30) }); },
   onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;

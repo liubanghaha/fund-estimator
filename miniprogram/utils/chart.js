@@ -10,7 +10,7 @@ const _getChartColors = () => {
 
 const chart = {
   _init(canvas, w, h) {
-    const dpr = wx.getSystemInfoSync().pixelRatio;
+    const dpr = wx.getWindowInfo().pixelRatio;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     const ctx = canvas.getContext('2d');
@@ -27,8 +27,11 @@ const chart = {
     const vals = data.map(d => d[yField]);
     if (vals.length < 2) return null;
     let min = Math.min(...vals), max = Math.max(...vals);
-    if (min > 0) min = 0;
-    if (max < 0) max = 0;
+    // 收益图以 0 为基准；净值图（全正值）钳 0 会把多年涨幅压扁在图表顶部
+    if (isReturn) {
+      if (min > 0) min = 0;
+      if (max < 0) max = 0;
+    }
     const range = max - min || 0.01;
     const yMin = min - range * 0.15, yMax = max + range * 0.15;
 
@@ -67,9 +70,12 @@ const chart = {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     const suffix = isReturn ? '%' : '';
+    // 净值 Y 轴按刻度步长自适应位数：toFixed(2) 在低波动净值下相邻刻度会重成同一文本
+    const tickStep = (yMax - yMin) / 4;
+    const valDecimals = isReturn ? 1 : (tickStep < 0.005 ? 4 : tickStep < 0.05 ? 3 : 2);
     for (let i = 0; i <= 4; i++) {
       const val = yMax - (yMax - yMin) / 4 * i;
-      ctx.fillText(val.toFixed(isReturn ? 1 : 2) + suffix, p.left - 6, yp(val));
+      ctx.fillText(val.toFixed(valDecimals) + suffix, p.left - 6, yp(val));
     }
 
     // X 轴
@@ -83,7 +89,7 @@ const chart = {
       ctx.fillText(label, xp(idx), h - p.bottom + 8);
     }
 
-    this._lastDraw = { data, xp, yp, yField, xField, w, h, p, yMin, yMax, vals, isReturn };
+    this._lastDraw = { data, xp, yp, yField, xField, w, h, p, yMin, yMax, vals, isReturn, valDecimals };
     return ctx;
   },
 
@@ -375,7 +381,7 @@ const chart = {
       draw(canvas);
       return null;
     }
-    const dpr = wx.getSystemInfoSync().pixelRatio || 1;
+    const dpr = wx.getWindowInfo().pixelRatio || 1;
     let off = null;
     try {
       off = wx.createOffscreenCanvas({ type: '2d', width: Math.ceil(w * dpr), height: Math.ceil(h * dpr) });
@@ -503,13 +509,13 @@ const chart = {
 
   /**
    * 当天走势触摸交互
+   * @param d 绘制快照（由页面持有并显式传入，模块级 _lastIntradayDraw 单例跨页会互相覆盖）
    */
-  handleIntradayTouch(ctx, e) {
+  handleIntradayTouch(ctx, e, d) {
     const now = Date.now();
     if (this._intradayTouchTs && now - this._intradayTouchTs < 60) return;
     this._intradayTouchTs = now;
 
-    const d = this._lastIntradayDraw;
     if (!d || !d.data || d.data.length < 2) return;
     const { data, xp, yp, fieldA, fieldB, w, h, p, profitColor, indexColor, labelA, labelB } = d;
 
@@ -577,9 +583,9 @@ const chart = {
   /**
    * 当天走势快速重绘（用于触摸时覆盖底图）
    * 样式与 drawIntradayChart 保持一致（X 轴标签/面积/颜色），避免触摸瞬间外观跳变
+   * @param d 绘制快照（由页面持有并显式传入，模块级 _lastIntradayDraw 单例跨页会互相覆盖）
    */
-  _drawIntradayFast(ctx) {
-    const d = this._lastIntradayDraw;
+  _drawIntradayFast(ctx, d) {
     if (!d) return;
     this.cancelChartAnim(); // 触摸打断进场动画，立即整图可交互
     const { data, xp, yp, fieldA, fieldB, w, h, p, profitColor, indexColor, labelA, labelB } = d;
@@ -675,7 +681,8 @@ const chart = {
     if (this._dualTouchLastTime && now - this._dualTouchLastTime < 60) return;
     this._dualTouchLastTime = now;
 
-    const d = this._lastDualDraw;
+    // d 由页面持有并显式传入（模块级 _lastDualDraw 单例跨页会互相覆盖）
+    const d = opts;
     if (!d || !d.data || d.data.length < 2) return;
     const { data, xp, yp, fieldA, fieldB, w, h, p, colorA, colorB, labelA, labelB } = d;
 
@@ -723,6 +730,7 @@ const chart = {
   },
 
   _drawFastLine(ctx, d, opts) {
+    if (!d) return; // 无快照兜底（与其他 fast 接口对称）
     this.cancelChartAnim(); // 触摸打断进场动画：否则动画每帧刷白会把十字线擦掉
     const { data, xp, yp, yField, w, h, p, isReturn } = d;
     ctx.fillStyle = '#FFFFFF';
@@ -744,7 +752,7 @@ const chart = {
     const suffix = isReturn ? '%' : '';
     for (let i = 0; i <= 4; i++) {
       const val = d.yMax - (d.yMax - d.yMin) / 4 * i;
-      ctx.fillText(val.toFixed(isReturn ? 1 : 2) + suffix, p.left - 6, d.yp(val));
+      ctx.fillText(val.toFixed(d.valDecimals != null ? d.valDecimals : (isReturn ? 1 : 2)) + suffix, p.left - 6, d.yp(val));
     }
 
     ctx.fillStyle = '#CCC';

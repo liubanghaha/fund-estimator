@@ -64,3 +64,6 @@
 .update-btn{background:var(--primary);color:#FFF}
 .delete-btn{background:var(--up);color:#FFF}
 .adjust-btn{background:#2E8B57;color:#FFF}
+.card-code-row{display:flex;align-items:center;gap:10rpx}
+.card-confirm-tag{font-size:20rpx;color:#E6A23C;border:1rpx solid #E6A23C;border-radius:6rpx;padding:0 8rpx;line-height:28rpx}
+.card-code-row .card-code-input{flex:0 0 200rpx;width:200rpx;min-width:0;font-size:24rpx;color:#333;border-bottom:1rpx solid #E5E5E5;padding:4rpx 0}

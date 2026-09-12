@@ -61,10 +61,10 @@
     <view class="empty-hint">添加持仓后，自选中持有的基金会自动出现在这里</view>
   </view>
   <view wx:elif="{{displayList.length === 0}}" class="empty-wrap">
-    <button class="add-fund-btn" bind:tap="onAddToGroup">添加基金</button>
     <view class="empty-icon">📂</view>
     <view class="empty-text">该分组暂无基金</view>
     <view class="empty-hint">长按基金可移动到本分组</view>
+    <button class="add-fund-btn" bind:tap="onAddToGroup">从自选移入基金</button>
   </view>
 
   <view wx:else class="list">
@@ -74,7 +74,7 @@
       <!-- 主体 -->
       <view
         class="item {{batchMode ? 'batch-item' : ''}}"
-        style="{{_swipeIdx === index ? 'transform:translateX(' + _swipeX + 'rpx)' : ''}}"
+        style="{{_swipeIdx === index ? 'transform:translateX(' + _swipeX + 'px)' : ''}}"
         bind:tap="onTapItem"
         bind:longpress="onLongPressItem"
         bind:touchstart="onItemTouchStart"
@@ -94,9 +94,9 @@
         </view>
         <view class="item-right">
           <view class="item-rate {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">
-            {{item.displayChangeRate > 0 ? '+' : ''}}{{item.displayChangeRate != null ? item.displayChangeRate : '--'}}%
+            {{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}
           </view>
-          <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}</view>
+          <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}<text wx:if="{{item.estimatedNav}}" class="est-mark">估</text></view>
         </view>
       </view>
     </view>
@@ -104,7 +104,7 @@
 
   <!-- 批量操作栏 -->
   <view wx:if="{{watchlist.length > 0}}" class="batch-bar">
-    <text wx:if="{{updateTime}}" class="batch-time">更新于 {{updateTime}}</text>
+    <text wx:if="{{updateTime}}" class="batch-time">更新于 {{updateTime}}<text wx:if="{{stale}}" class="stale-badge" bind:tap="onPollRetry">更新失败</text></text>
     <text wx:if="{{!batchMode}}" class="batch-edit-btn" bind:tap="onToggleBatch">编辑</text>
     <block wx:else>
       <text class="batch-select-all" bind:tap="onSelectAll">全选</text>

@@ -90,24 +90,30 @@ Page({
   // ========== 截图导入 ==========
 
   onImportScreenshot() {
-    wx.showActionSheet({
-      itemList: ["从相册选择"],
-      success: () => {
-        wx.chooseMedia({
-          count: 1, mediaType: ["image"],
-          sourceType: ["album"], sizeType: ["compressed"],
-          success: (mr) => this.doOCR(mr.tempFiles[0].tempFilePath),
+    wx.chooseMedia({
+      count: 1, mediaType: ["image"],
+      sourceType: ["album", "camera"], sizeType: ["compressed"],
+      success: (mr) => {
+        const tempPath = mr.tempFiles[0].tempFilePath;
+        // 与加减仓页对齐：先压缩再上传（大截图直传慢且易 OCR 超时）
+        wx.compressImage({
+          src: tempPath,
+          quality: 50,
+          success: (cr) => this.doOCR(cr.tempFilePath),
+          fail: () => this.doOCR(tempPath),
         });
       },
     });
   },
 
   async doOCR(tempPath) {
+    if (this._ocrRunning) return; // 防重复触发
+    this._ocrRunning = true;
     this.setData({ ocrLoading: true, screenshotUrl: tempPath });
-    wx.showLoading({ title: "识别中..." });
+    wx.showLoading({ title: "识别中...", mask: true });
     try {
       const uploadRes = await wx.cloud.uploadFile({
-        cloudPath: `screenshots/${Date.now()}.jpg`,
+        cloudPath: `screenshots/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`, // 随机段防路径枚举
         filePath: tempPath,
       });
       const ocrRes = await api.ocrScreenshot(uploadRes.fileID);
@@ -146,29 +152,29 @@ Page({
         // 自动按名称匹配基金代码
         this.autoMatchCodes(funds);
       } else {
-        wx.showModal({
-          title: '识别失败',
-          content: '服务暂不可用，可搜索基金代码手动添加',
-          confirmText: '去搜索',
-          cancelText: '知道了',
-          success: (res) => {
-            if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
-          },
-        });
+        this._ocrFail(tempPath, '服务暂不可用');
       }
     } catch (e) {
       wx.hideLoading();
       this.setData({ ocrLoading: false });
-      wx.showModal({
-        title: '识别失败',
-        content: '网络异常，可搜索基金代码手动添加',
-        confirmText: '去搜索',
-        cancelText: '知道了',
-        success: (res) => {
-          if (res.confirm) wx.navigateTo({ url: '/pages/search/index' });
-        },
-      });
+      this._ocrFail(tempPath, '网络异常');
+    } finally {
+      this._ocrRunning = false;
     }
+  },
+
+  // 识别失败兜底：给「重试 / 去搜索」两条出路
+  _ocrFail(tempPath, reason) {
+    wx.showModal({
+      title: '识别失败',
+      content: reason + '，可重试识别或搜索基金代码手动添加',
+      confirmText: '重试识别',
+      cancelText: '去搜索',
+      success: (res) => {
+        if (res.confirm && tempPath) this.doOCR(tempPath);
+        else if (res.cancel) wx.navigateTo({ url: '/pages/search/index' });
+      },
+    });
   },
 
   async autoMatchCodes(funds) {
@@ -182,7 +188,14 @@ Page({
       while (idx < codesToSearch.length) {
         const f = codesToSearch[idx++];
         try {
-          f.fundCode = await this.searchFundCode(f.fundName);
+          const r = await this.searchFundCodeStrict(f.fundName);
+          if (r && r.confident) {
+            f.fundCode = r.code;
+          } else if (r && r.code) {
+            // 低置信匹配（兜底"取第一个结果"）不自动写入：错基金静默入库比留空更糟，
+            // 留空代码让用户在卡片上手动补（保存时无代码的卡片会被自然跳过）
+            f._needConfirm = true;
+          }
         } catch (e) {
           // 搜索失败不阻塞流程
         }
@@ -194,9 +207,15 @@ Page({
   },
 
   async searchFundCode(name) {
+    const r = await this.searchFundCodeStrict(name);
+    return r ? r.code : "";
+  },
+
+  // 返回 { code, confident }：confident=false 表示只有"取第一个结果"级别的弱匹配
+  async searchFundCodeStrict(name) {
     // 策略1：全名搜索
-    let code = await this.trySearch(name);
-    if (code) return code;
+    let r = await this.trySearch(name);
+    if (r) return r;
 
     // 策略2：去掉后缀搜索（ETF联接C / 股票C / 指数C / 混合A 等）
     const shortName = name.replace(/(?:ETF|LOF|QDII|FOF)?\s*联接\s*(?:\(QDII\))?\s*[AC]?\s*$/, "")
@@ -204,18 +223,18 @@ Page({
       .replace(/(?:混合|股票|指数|债券|货币)\s*$/, "")
       .trim();
     if (shortName && shortName !== name && shortName.length >= 3) {
-      code = await this.trySearch(shortName);
-      if (code) return code;
+      r = await this.trySearch(shortName);
+      if (r) return r;
     }
 
     // 策略3：只取前6个字搜索
     if (name.length > 6) {
       const short = name.replace(/[（(].*$/, "").slice(0, 6);
-      code = await this.trySearch(short);
-      if (code) return code;
+      r = await this.trySearch(short);
+      if (r) return r;
     }
 
-    return "";
+    return null;
   },
 
   async trySearch(keyword) {
@@ -238,9 +257,11 @@ Page({
       const prefix = kw.slice(0, 6);
       best = results.find((r) => clean(r.fundName || r.name).startsWith(prefix));
     }
-    // 最后取第一个
+    // 最后取第一个：这是弱匹配，调用方需让用户确认
+    const confident = !!best;
     if (!best) best = results[0];
-    return best ? (best.code || best.fundCode || "") : null;
+    const code = best ? (best.code || best.fundCode || "") : "";
+    return code ? { code, confident } : null;
   },
 
   async onSaveAll() {
@@ -374,6 +395,9 @@ Page({
 
       const group = h.group || "";
       this._rawHolding = h;
+      // DB 快照口径备份：预填的重算值只用于展示，用户未改字段时保存仍用快照（防口径漂移）
+      this._dbSnapshot = { marketValue: mv, holdingReturn: hr };
+      this._formDirty = false;
       this.setData({
 	        fundCode: h.fundCode, fundName: h.fundName,
 	        marketValue: String(mv || ""),
@@ -394,13 +418,15 @@ Page({
 
   onFundCodeInput(e) { this.setData({ fundCode: e.detail.value }); },
   onFundNameInput(e) { this.setData({ fundName: e.detail.value }); },
-  onMarketValueInput(e) { this.setData({ marketValue: e.detail.value }); },
+  onMarketValueInput(e) { this._formDirty = true; this.setData({ marketValue: e.detail.value }); },
   onHoldingReturnInput(e) {
+    this._formDirty = true;
     this.setData({ holdingReturnAbs: e.detail.value });
     const val = parseFloat(e.detail.value) || 0;
     this.setData({ holdingReturn: String(val * this.data.holdingSign) });
   },
   onToggleHoldingSign() {
+    this._formDirty = true;
     const newSign = this.data.holdingSign > 0 ? -1 : 1;
     const absVal = parseFloat(this.data.holdingReturnAbs) || 0;
     this.setData({ holdingSign: newSign, holdingReturn: String(absVal * newSign) });
@@ -408,11 +434,13 @@ Page({
   onDateChange(e) { this.setData({ buyDate: e.detail.value }); },
 
   onAdjustInput(e) {
+    this._formDirty = true;
     this.setData({ adjustAmountAbs: e.detail.value });
     const val = parseFloat(e.detail.value) || 0;
     this.setData({ adjustAmount: String(val * this.data.adjustSign) });
   },
   onToggleAdjustSign() {
+    this._formDirty = true;
     const newSign = this.data.adjustSign > 0 ? -1 : 1;
     const absVal = parseFloat(this.data.adjustAmountAbs) || 0;
     this.setData({ adjustSign: newSign, adjustAmount: String(absVal * newSign) });
@@ -428,15 +456,34 @@ Page({
   },
 
   async onSubmit() {
-    const { id, isEdit, fundCode, fundName, holdingReturn, marketValue, buyDate } = this.data;
+    const { id, isEdit, fundCode, fundName, marketValue, buyDate } = this.data;
+    let holdingReturn = this.data.holdingReturn;
     if (!fundCode.trim()) { wx.showToast({ title: "请输入基金代码", icon: "none" }); return; }
     if (!fundName.trim()) { wx.showToast({ title: "请输入基金名称", icon: "none" }); return; }
-      const mv = parseFloat(marketValue);
+      let mv = parseFloat(marketValue);
       const adjAmount = isEdit ? (parseFloat(this.data.adjustAmount) || 0) : 0;
       if (!adjAmount && (!mv || mv <= 0)) { wx.showToast({ title: "请输入有效持有金额", icon: "none" }); return; }
 
-    wx.showLoading({ title: "保存中..." });
+      // 编辑且用户未改任何字段 → 回用 DB 快照口径：预填的实时重算值只用于展示，
+      // 否则不改任何字段直接保存会把 DB 快照悄悄覆盖成估算值（口径漂移）
+      if (isEdit && !this._formDirty && this._dbSnapshot) {
+        if (this._dbSnapshot.marketValue > 0) mv = this._dbSnapshot.marketValue;
+        holdingReturn = String(this._dbSnapshot.holdingReturn || 0);
+      }
+
+    if (this._submitting) return; // 防双击并发重复入库
+    this._submitting = true;
+    wx.showLoading({ title: "保存中...", mask: true });
     try {
+      // 查重前置：原来放在取净值之后，重复添加要多等两次网络请求才发现
+      if (!isEdit) {
+        const chk = await api.holdingCheck(fundCode.trim());
+        if (chk.result && chk.result.code === 0 && chk.result.data) {
+          wx.hideLoading();
+          wx.showModal({ title: "重复添加", content: `基金 ${fundCode.trim()} 已在持仓中`, showCancel: false });
+          return;
+        }
+      }
       const estRes = await api.fetchFundEstimate(fundCode.trim());
       if (!estRes.result || estRes.result.code !== 0) {
         wx.hideLoading();
@@ -498,18 +545,16 @@ Page({
         if (shares <= 0) shares = parseFloat((mv / nav).toFixed(4));
         if (shares <= 0) shares = 0.01;
         buyPrice = parseFloat((nav - hr / shares).toFixed(4));
+        if (buyPrice <= 0) {
+          // 成本价为负会让后续收益展示全部失真：一般是持有收益输得比市值还大
+          wx.hideLoading();
+          wx.showToast({ title: "持有收益与金额矛盾，请核对输入", icon: "none" });
+          return;
+        }
         finalMV = mv;
         finalHR = hr;
       }
       const buyAmount = parseFloat((shares * buyPrice).toFixed(2));
-      if (!isEdit) {
-        const chk = await api.holdingCheck(fundCode.trim());
-        if (chk.result && chk.result.code === 0 && chk.result.data) {
-          wx.hideLoading();
-          wx.showModal({ title: "重复添加", content: `基金 ${fundCode.trim()} 已在持仓中`, showCancel: false });
-          return;
-        }
-      }
       const data = {
         fundCode: fundCode.trim(), fundName: fundName.trim(),
         buyPrice, shares,
@@ -546,6 +591,8 @@ Page({
     } catch (e) {
       wx.hideLoading();
       wx.showToast({ title: "保存失败，请重试", icon: "none" });
+    } finally {
+      this._submitting = false;
     }
   },
 

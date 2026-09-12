@@ -26,6 +26,8 @@
 .amount-toggle{position:absolute;right:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
 .share-toggle{position:absolute;left:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
 .share-toggle-icon{font-size:20rpx;margin-right:4rpx}
+/* 热区扩大 ≥80rpx：伪元素向外撑点击范围，视觉大小不变（padding 会把带底色的胶囊撑变形） */
+.amount-toggle::after,.share-toggle::after{content:'';position:absolute;top:-20rpx;left:-12rpx;right:-12rpx;bottom:-20rpx}
 .asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
 .asset-value{font-size:48rpx;font-weight:700;margin-bottom:12rpx}
@@ -36,13 +38,16 @@
 .asset-overview .up{color:#FFF}
 .asset-overview .down{color:#FFE082}
 
-/* 批量栏 */
-.batch-top-bar{display:flex;align-items:center;justify-content:space-between;padding:16rpx 0;margin-bottom:8rpx}
+/* 批量栏：fixed 吸顶（元素置于 scroll-view 外），下方内容用 .container.in-batch 补偿 */
+.batch-top-bar{position:fixed;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;justify-content:space-between;padding:16rpx 24rpx;background:#FFF;box-shadow:0 2rpx 8rpx rgba(0,0,0,.06)}
 .batch-top-cancel{font-size:26rpx;color:var(--primary)}
 .batch-top-title{font-size:28rpx;font-weight:600;color:#333}
 .batch-top-right{display:flex;gap:24rpx}
 .batch-top-link{font-size:26rpx;color:var(--primary)}
 .batch-top-delete{font-size:26rpx;color:var(--up)}
+
+/* 批量模式：顶栏吸顶后给列表容器留出高度，避免内容被盖 */
+.container.in-batch{padding-top:88rpx}
 
 /* 快捷操作 */
 .quick-actions{display:flex;justify-content:space-around;padding:22rpx 0;background:#FFF;border-radius:12rpx 12rpx 0 0;margin:0 4rpx;border-bottom:1rpx solid #F5F5F5}
@@ -79,7 +84,9 @@
 .alert-bar{display:flex;align-items:center;padding:14rpx 24rpx;background:#FFF8E1;margin:0 0 8rpx}
 .alert-icon{font-size:28rpx;margin-right:8rpx}
 .alert-text{flex:1;font-size:26rpx;color:#B8860B}
-.alert-close{font-size:28rpx;color:#CCC;padding:0 8rpx}
+.alert-close{font-size:28rpx;color:#CCC;padding:0 8rpx;position:relative}
+/* 热区扩大 ≥80rpx：伪元素向外撑，避免 padding 撑高提醒条 */
+.alert-close::after{content:'';position:absolute;top:-26rpx;left:-16rpx;right:-16rpx;bottom:-26rpx}
 .alert-field{display:flex;align-items:center;margin-top:20rpx}
 .alert-label{width:160rpx;font-size:26rpx;color:#666}
 .alert-input{flex:1;height:64rpx;border:1rpx solid #E5E5E5;border-radius:8rpx;padding:0 16rpx;font-size:28rpx;text-align:right}
@@ -106,7 +113,10 @@
 .t-head .t-name{flex-direction:row;justify-content:flex-start;align-items:center}
 /* 表头左格的设置入口（替代原「名称+长按排序」提示）：点击进入批量模式。
    不描边（描边会在图标外形成一个圈）；三横线自绘，尺寸按列标题字号(22rpx)配平 */
-.batch-btn{padding:16rpx 12rpx;display:flex;align-items:center}
+/* 热区 ≥80rpx：纵向 padding 撑起点击范围（22+30*2=82rpx） */
+.batch-btn{position:relative;padding:16rpx 12rpx;display:flex;align-items:center}
+/* 热区向外扩 20rpx（伪元素不影响布局，表头不再被撑高） */
+.batch-btn::after{content:'';position:absolute;left:-20rpx;top:-20rpx;right:-20rpx;bottom:-20rpx}
 .batch-bars{width:30rpx;display:flex;flex-direction:column;gap:5rpx}
 .batch-bar{height:4rpx;background:var(--primary);border-radius:2rpx}
 .t-cell:not(.t-name){width:204rpx;align-items:flex-end}
@@ -158,6 +168,8 @@
 
 /* 更新时间 */
 .update-time{text-align:center;font-size:22rpx;color:#BBB;padding:16rpx 0}
+/* 更新失败标记：点按重新拉取 */
+.stale-badge{font-size:20rpx;color:var(--up);margin-left:8rpx}
 
 /* 分组标签 */
 .group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0}

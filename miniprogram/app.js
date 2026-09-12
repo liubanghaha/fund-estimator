@@ -7,6 +7,15 @@ const track = require("./utils/track.js");
 
 const CHANGELOG = [
   {
+    version: '2.3.0',
+    date: '2026-07-08',
+    items: [
+      '📈 新增当天实时对比图，随时掌握变化趋势',
+      '⚡ 性能优化，加载更快体验更流畅',
+      '🔧 修复若干问题，展示更合理',
+    ]
+  },
+  {
     version: '2.2.0',
     date: '2026-09-10',
     items: [
@@ -45,15 +54,6 @@ const CHANGELOG = [
       '持仓新增占比、距一年高点参考列',
       '盈亏日历支持按周查看',
     ]
-  },
-  {
-    version: '2.3.0',
-    date: '2026-07-08',
-    items: [
-      '📈 新增当天实时对比图，随时掌握变化趋势',
-      '⚡ 性能优化，加载更快体验更流畅',
-      '🔧 修复若干问题，展示更合理',
-    ]
   }
 ];
 
@@ -84,6 +84,29 @@ App({
   onShow: function (options) {
     // 推送热启动落地（冷启动走 onLaunch）
     this._handlePushEntry(options, "warm");
+  },
+
+  // 全局异常上报（此前线上 JS 异常完全失明）：走统一埋点链路，静默不阻塞
+  onError: function (msg) {
+    try {
+      track.track("js_error", { msg: String(msg).slice(0, 500) });
+    } catch (e) { /* ignore */ }
+  },
+
+  onUnhandledRejection: function (res) {
+    try {
+      const r = res && res.reason;
+      const msg = r && r.message ? r.message : String(r);
+      track.track("js_error", { msg: ("unhandledrejection: " + msg).slice(0, 500) });
+    } catch (e) { /* ignore */ }
+  },
+
+  onPageNotFound: function (res) {
+    // 深链失效兜底：回首页
+    try {
+      track.track("page_not_found", { path: String((res && res.path) || "").slice(0, 120) });
+    } catch (e) { /* ignore */ }
+    wx.switchTab({ url: "/pages/index/index" });
   },
 
   // 推送落地追踪：所有推送 page 带 src=push&lid=日志ID，补 openedAt 供打开率统计

@@ -622,7 +622,7 @@ async function runTextFallback(fileID) {
   return { code: 0, data: { raw: text, method, holdings, debug } };
 }
 
-exports.main = async (event) => {
+const _run = async (event) => {
   const { fileID } = event;
   if (!fileID) return { code: 400, msg: "请提供截图" };
   const t0 = Date.now();
@@ -650,6 +650,15 @@ exports.main = async (event) => {
 
   // 百度不可用 → 文本兜底
   return runTextFallback(fileID);
+};
+
+exports.main = async (event) => {
+  const result = await _run(event);
+  // 截图含用户完整资产信息：OCR 结束即删（成功失败都删，失败重试由用户重新选图）
+  if (event && event.fileID) {
+    cloud.deleteFile({ fileList: [event.fileID] }).catch(() => {});
+  }
+  return result;
 };
 
 async function enrichCodes(holdings) {

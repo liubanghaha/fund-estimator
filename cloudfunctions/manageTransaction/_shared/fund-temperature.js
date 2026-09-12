@@ -6,7 +6,6 @@
 "use strict";
 
 const https = require("https");
-const http = require("http");
 
 const MIN_COVERAGE = 20;
 
@@ -330,9 +329,9 @@ async function _fetchLiveTencent(codes, timeoutMs) {
   for (let i = 0; i < codes.length; i += BATCH) {
     const batch = codes.slice(i, i + BATCH);
     const qtCodes = batch.map(toQtCode).join(",");
-    const url = `http://qt.gtimg.cn/q=${qtCodes}`;
+    const url = `https://qt.gtimg.cn/q=${qtCodes}`;
     await new Promise((resolve) => {
-      const req = http.get(url, (res) => {
+      const req = https.get(url, (res) => {
         const chunks = [];
         res.on("data", (c) => { chunks.push(c); });
         res.on("end", () => {
@@ -397,10 +396,13 @@ async function fetchStockLiveBatch(codes, opts = {}) {
 
 /**
  * 批量拉取历史 PE/PB 区间（限并发 15/批）
+ * opts.budgetMs：整体预算（毫秒）。批间检查，到点停止续批——已拉到的照常返回，
+ * 调用方对缺历史的数据走实时 PE 兜底（避免启动后冲破定时任务函数的 120s 超时被强杀）
  */
 async function fetchStockHistBatch(codes, opts = {}) {
-  const { timeoutMs = 10000, concurrent = 15 } = opts;
+  const { timeoutMs = 10000, concurrent = 15, budgetMs = 0 } = opts;
   const map = {};
+  const started = Date.now();
 
   const fetchOne = (code) => new Promise((resolve) => {
     const url = `https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_VALUE_ANALYSIS&columns=PEAVG,PEMAX,PEMIN,PBAVG,PBMAX,PBMIN&filter=(SECURITY_CODE=%22${code}%22)&pageSize=50&sortColumns=STARTDATE&sortTypes=1`;
@@ -435,6 +437,7 @@ async function fetchStockHistBatch(codes, opts = {}) {
   });
 
   for (let i = 0; i < codes.length; i += concurrent) {
+    if (budgetMs > 0 && Date.now() - started >= budgetMs) break; // 预算用尽：停止续批，用已拿到的部分
     const batch = codes.slice(i, i + concurrent);
     await Promise.all(batch.map(fetchOne));
     if (i + concurrent < codes.length) {

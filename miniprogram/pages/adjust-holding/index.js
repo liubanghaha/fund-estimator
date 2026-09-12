@@ -100,22 +100,17 @@ Page({
 
   // ==== 截图导入 ====
 	  onImportScreenshot() {
-	    wx.showActionSheet({
-	      itemList: ["从相册选择"],
-	      success: () => {
-	        wx.chooseMedia({
-	          count: 1, mediaType: ["image"],
-	          sourceType: ["album"],
-	          sizeType: ["compressed"],
-	          success: (mr) => {
-	            const tempPath = mr.tempFiles[0].tempFilePath;
-	            wx.compressImage({
-	              src: tempPath,
-	              quality: 50,
-	              success: (cr) => this.doOCR(cr.tempFilePath),
-	              fail: () => this.doOCR(tempPath),
-	            });
-	          },
+	    wx.chooseMedia({
+	      count: 1, mediaType: ["image"],
+	      sourceType: ["album", "camera"],
+	      sizeType: ["compressed"],
+	      success: (mr) => {
+	        const tempPath = mr.tempFiles[0].tempFilePath;
+	        wx.compressImage({
+	          src: tempPath,
+	          quality: 50,
+	          success: (cr) => this.doOCR(cr.tempFilePath),
+	          fail: () => this.doOCR(tempPath),
 	        });
 	      },
 	    });
@@ -166,7 +161,8 @@ Page({
       }
     }, 200);
     try {
-      const up = await wx.cloud.uploadFile({ cloudPath: `transactions/${Date.now()}.jpg`, filePath: tempPath });
+      // 随机段防路径枚举（fileID 可预测会被用于恶意删除）
+      const up = await wx.cloud.uploadFile({ cloudPath: `transactions/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`, filePath: tempPath });
       const res = await api.ocrTransaction(up.fileID);
 
       if (res.result && res.result.code === 0) {
@@ -246,19 +242,38 @@ Page({
       } else {
         clearInterval(this._loadTimer);
         this.setData({ ocrLoading: false });
-        wx.showToast({ title: '识别失败', icon: 'none' });
+        this._ocrFailRetry(tempPath);
       }
     } catch (e) {
       clearInterval(this._loadTimer);
       this.setData({ ocrLoading: false });
-      wx.showToast({ title: '识别失败', icon: 'none' });
+      this._ocrFailRetry(tempPath);
     }
+  },
+
+  // 识别失败兜底：给「重试 / 换图」出路，而不是一句 toast 让用户自己重新找入口
+  _ocrFailRetry(tempPath) {
+    wx.showModal({
+      title: '识别失败',
+      content: '可能是网络波动或截图不清晰，可重试或换张截图',
+      confirmText: '重试',
+      cancelText: '换图',
+      success: (r) => {
+        if (r.confirm && tempPath) this.doOCR(tempPath);
+        else if (r.confirm) this.onImportScreenshot();
+        else if (r.cancel) this.onImportScreenshot();
+      },
+    });
   },
 
   onAmountInput(e) {
     const idx = e.currentTarget.dataset.index;
     const results = [...this.data.ocrResults];
-    results[idx].amount = e.detail.value;
+    const amount = e.detail.value;
+    const amt = parseFloat(amount) || 0;
+    // 金额改动后同步重算确认份额，否则展示的份额与最终入库份额不一致
+    const price = parseFloat(results[idx].price) || parseFloat(results[idx]._liveNav) || 0;
+    results[idx] = { ...results[idx], amount, confirmShares: (amt > 0 && price > 0) ? (amt / price).toFixed(2) : "" };
     this.setData({ ocrResults: results });
   },
 
@@ -366,19 +381,35 @@ Page({
   },
 
   async onConfirmItem(e) {
-    const item = this.data.ocrResults[e.currentTarget.dataset.index];
+    const idx = e.currentTarget.dataset.index;
+    const item = this.data.ocrResults[idx];
     if (!item || !item.matched) return;
-    wx.showLoading({ title: "保存中..." });
+    if (this._savingItem) return; // 防双击重复入库
+    this._savingItem = true;
+    wx.showLoading({ title: "保存中...", mask: true });
     try {
       await this.processItem(item);
       wx.hideLoading();
-      wx.showToast({ title: "保存成功", icon: "success" });
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
-      setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
-    } catch (e) {
+      // 成功后留在本页继续确认剩余笔次（原实现强制跳回首页，剩余笔次得重新 OCR）
+      const remaining = this.data.ocrResults.filter((_, i) => i !== idx);
+      this.setData({
+        ocrResults: remaining,
+        matchedCount: remaining.filter((r) => r.matched).length,
+      });
+      this.loadHoldings(); // 份额已变，刷新底表供后续笔次计算
+      if (remaining.length === 0) {
+        wx.showToast({ title: "保存成功", icon: "success" });
+        setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
+      } else {
+        wx.showToast({ title: `保存成功，还有 ${remaining.length} 笔待确认`, icon: "none" });
+      }
+    } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: "保存失败，请重试", icon: "none" });
+    } finally {
+      this._savingItem = false;
     }
   },
 
@@ -399,26 +430,45 @@ Page({
     });
     if (!ok) return;
 
-    wx.showLoading({ title: "保存中..." });
+    if (this._confirming) return; // 防重入
+    this._confirming = true;
+    wx.showLoading({ title: "保存中...", mask: true });
+    const successSet = new Set();
     let done = 0;
     for (const item of matched) {
       try {
         await this.processItem(item);
+        successSet.add(item);
         done++;
       } catch (e) {
         console.error("保存交易失败:", item.fundName, e);
       }
     }
     wx.hideLoading();
-    if (done > 0) {
+    this._confirming = false;
+    const failed = matched.length - done;
+    if (failed === 0) {
       wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
       this.setData({ ocrResults: [] });
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
       setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
-    } else {
-      wx.showToast({ title: "保存失败，请重试", icon: "none" });
+      return;
     }
+    // 部分失败：只移除成功笔次，失败笔次留在列表里可改后重试（原来会被整体清空丢数据）
+    const remaining = this.data.ocrResults.filter((item) => !successSet.has(item));
+    this.setData({
+      ocrResults: remaining,
+      matchedCount: remaining.filter((r) => r.matched).length,
+    });
+    wx.removeStorageSync("portfolio_cache");
+    wx.setStorageSync("portfolio_force_refresh", true);
+    this.loadHoldings();
+    wx.showModal({
+      title: "部分保存失败",
+      content: `成功 ${done} 笔，失败 ${failed} 笔。失败笔次已保留在列表中，可修改后重试。`,
+      showCancel: false,
+    });
   },
 
   async processItem(item) {
@@ -431,8 +481,9 @@ Page({
     const shares = (amount / price).toFixed(2);
     const s = parseFloat(shares);
     const type = item.type || "buy";
-    let oldS = parseFloat(item.currentShares) || 0;
-    let oldP = parseFloat(item.currentBuyPrice) || 0;
+    // 优先用底表实时份额/成本（连续确认多笔时 OCR 时刻的快照已过期）
+    let oldS = parseFloat(h.shares || h.amount) || parseFloat(item.currentShares) || 0;
+    let oldP = parseFloat(h.buyPrice || h.nav) || parseFloat(item.currentBuyPrice) || 0;
 
     // OCR 导入兜底：shares/buyPrice 为 0 时反推
     if ((!oldS || !oldP) && h.marketValue && liveNav > 0) {
@@ -522,7 +573,7 @@ Page({
     const type = this.data.editTxType;
 
     if (addS <= 0) { this.setData({ editPreview: false, editValid: false }); return; }
-    if (type === "sell" && addS >= oldS) {
+    if (type === "sell" && addS > oldS) {
       this.setData({ editPreview: true, editNewShares: "超额", editValid: false, editError: "卖出份额不能超过当前份额" });
       return;
     }

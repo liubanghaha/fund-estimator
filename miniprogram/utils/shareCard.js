@@ -7,7 +7,7 @@ const CARD_W = 600;
 const CARD_H = 880;
 
 function _init(canvas, w, h) {
-  const dpr = wx.getSystemInfoSync().pixelRatio;
+  const dpr = wx.getWindowInfo().pixelRatio;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');

@@ -64,6 +64,10 @@ const api = {
     data.src = this._estimateSrc();
     return this.callFunction("getPortfolio", data);
   },
+  // 持仓重合度分析（资产分析页）：入参为持仓基金代码数组
+  computeCorrelation(fundCodes) {
+    return this.callFunction("computeCorrelation", { fundCodes });
+  },
   // 估值数据源偏好：sina=数据源一（新浪实时估值，默认）| self=数据源二（自算估值）；
   // 存储 key: estimate_src。老版本存的 em（原东财官方源，已停供）一并归一为数据源一
   _estimateSrc() {
@@ -206,6 +210,8 @@ const api = {
       wx.request({
         url,
         header: { Referer: "https://quote.eastmoney.com/" },
+        // 必须显式设超时：wx.request 默认 60s，一旦挂住页面会长时间假死
+        timeout: 8000,
         success(res) {
           try {
             const json = res.data;
@@ -265,6 +271,8 @@ const api = {
       wx.request({
         url: `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=1&fqt=1&end=20500101&lmt=250`,
         header: { Referer: "https://quote.eastmoney.com/" },
+        // 必须显式设超时：wx.request 默认 60s，一旦挂住页面会长时间假死
+        timeout: 8000,
         success(res) {
           try {
             const json = res.data;
@@ -354,6 +362,8 @@ const api = {
       wx.request({
         url: `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?_var=kline_dayqfq&param=${sym},day,,,${days},qfq`,
         header: { Referer: "https://gu.qq.com/" },
+        // 必须显式设超时：wx.request 默认 60s，一旦挂住页面会长时间假死
+        timeout: 8000,
         success(res) {
           try {
             const str = res.data.replace(/^(var\s+)?\w+\s*=\s*/, "").replace(/;?\s*$/, "");

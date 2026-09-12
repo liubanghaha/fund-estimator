@@ -27,13 +27,24 @@ const calculator = {
   calcPeriodReturns(history) {
     if (!history || history.length === 0) return { day: null, week: null, month: null, threeMonth: null, sixMonth: null, year: null };
     const latest = history[0].nav;
+    // 按日历日差找锚点：固定下标（4/19/64/129/249）在停牌/数据缺口时会错位。
+    // history[0] 最新，date 为 'YYYY-MM-DD' 可直接字符串比较；
+    // 目标日 = 最新日期往前 N 天，取 date <= 目标日的第一条；找不到（基金太新）返回 null
     const g = (days) => {
-      if (history.length <= days) return null;
-      const nav = history[days] && history[days].nav;
-      if (nav == null || isNaN(nav)) return null;
-      return parseFloat(((latest - nav) / nav * 100).toFixed(2));
+      const d = new Date(String(history[0].date).replace(/-/g, "/"));
+      if (isNaN(d.getTime())) return null;
+      d.setDate(d.getDate() - days);
+      const target = this.formatDate(d);
+      for (const item of history) {
+        if (item.date <= target) {
+          if (item.nav == null || isNaN(item.nav)) return null;
+          return parseFloat(((latest - item.nav) / item.nav * 100).toFixed(2));
+        }
+      }
+      return null;
     };
-    return { day: history[0].changeRate || 0, week: g(4), month: g(19), threeMonth: g(64), sixMonth: g(129), year: g(249), threeYear: g(749) };
+    // 三年（1095 日历日 ≈ 750 个交易日）：800 条历史下通常可命中
+    return { day: history[0].changeRate || 0, week: g(7), month: g(30), threeMonth: g(91), sixMonth: g(182), year: g(365), threeYear: g(1095) };
   },
   formatPercent(value) {
     const v = parseFloat(value);

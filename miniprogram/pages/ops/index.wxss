@@ -44,3 +44,4 @@
 .ops-mini-btn.primary{color:var(--primary);background:var(--primary-bg)}
 .ops-mini-btn.danger{color:var(--up);background:#FDECEC}
 .ops-channel-tip{font-size:20rpx;color:#CCC;text-align:center;margin-top:12rpx}
+.ops-register-link{margin-top:40rpx;font-size:24rpx;color:#bbb;text-decoration:underline;padding:20rpx 40rpx}

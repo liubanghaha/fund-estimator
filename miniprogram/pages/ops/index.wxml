@@ -9,6 +9,7 @@
   <view wx:elif="{{!isAdmin}}" class="ops-empty">
     <view class="ops-empty-icon">🔒</view>
     <view class="ops-empty-desc">该功能仅运营管理员可见</view>
+    <view class="ops-register-link" bind:tap="onAdminRegister">管理员注册</view>
   </view>
 
   <block wx:else>

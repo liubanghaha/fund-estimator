@@ -2,8 +2,17 @@
 <view wx:else class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
   <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
   <view class="search-bar">
-    <input class="search-input" placeholder="输入代码或名称搜索" value="{{keyword}}" bind:input="onInput" confirm-type="search" bind:confirm="onSearch"/>
+    <input class="search-input" placeholder="输入代码或名称搜索" value="{{keyword}}" bind:input="onInput" bind:focus="onInputFocus" bind:blur="onInputBlur" confirm-type="search" bind:confirm="onSearch"/>
     <button class="search-btn" bind:tap="onSearch">搜索</button>
+  </view>
+  <view wx:if="{{historyVisible && !keyword && history.length > 0}}" class="history">
+    <view class="history-header">
+      <text class="history-title">搜索历史</text>
+      <text class="history-clear" bind:tap="onClearHistory">清空</text>
+    </view>
+    <view class="history-list">
+      <view wx:for="{{history}}" wx:key="*this" class="history-item" bind:tap="onTapHistory" data-kw="{{item}}">{{item}}</view>
+    </view>
   </view>
   <view wx:if="{{errorMsg}}" class="error">
     <view class="error-text">{{errorMsg}}</view>
@@ -16,8 +25,9 @@
         <text class="item-name">{{item.fundName}}</text>
         <text class="item-code">{{item.fundCode}}</text>
       </view>
-      <view class="item-arrow">></view>
+      <button wx:if="{{fromAdd}}" class="item-add-btn" catch:tap="onAddHolding" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">添加持仓</button>
+      <view wx:else class="item-arrow">></view>
     </view>
   </view>
-  <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关内容</view>
+  <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关基金，试试直接输入 6 位基金代码</view>
 </view>

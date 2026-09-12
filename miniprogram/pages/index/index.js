@@ -17,11 +17,17 @@ const ALL_INDICES = [
 const CACHE_KEY = "portfolio_cache";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
+const POLL_INTERVAL = 30000; // 盘中轮询间隔 30 秒
+
+// 交易时段判断
+function isTradingTime() {
+  // 交易日时钟（含节假日表）：交易日 9:30~15:00 视作盘中，午休不轮询
+  return marketTime.marketPhase() === "trading" && !marketTime.isLunchBreak();
+}
 
 Page({
   data: {
     isLoggedIn: false,
-    loading: false,
     dataReady: false,
     holdings: [],
     displayHoldings: [],
@@ -32,12 +38,12 @@ Page({
     totalReturn: "0.00",
     totalReturnRate: "0.00",
     updateTime: "",
+    stale: false,
     indexCards: ALL_INDICES.slice(0, 6).map((idx) => ({
       name: idx.name, code: idx.code,
       price: "--", change: "--", changeRate: "--", isUp: true,
     })),
     indexExpanded: false,
-    indexLoading: false,
     showIndexEdit: false,
     ALL_INDICES,
     activeIndices: ALL_INDICES.slice(0, 6),
@@ -146,7 +152,7 @@ Page({
         }
       }
     } catch (e) { /* ignore */ }
-    const { windowHeight, windowWidth } = wx.getSystemInfoSync();
+    const { windowHeight, windowWidth } = wx.getWindowInfo();
     this._windowWidth = windowWidth;
     this.setData({ pageHeight: windowHeight });
     // 截屏时引导用分享卡片（含小程序码，可导流）
@@ -332,7 +338,10 @@ Page({
         }
       }
       if (!indexCached) this.fetchIndices();
+      // 盘中轮询：交易时段每 30s 静默刷新（onHide/onUnload 停止）
+      this._startPolling();
     } else {
+      this._stopPolling();
       this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
       this.applyIndexCache();
       this.fetchIndices();
@@ -340,6 +349,10 @@ Page({
       wx.removeStorageSync("profit_detail_cache");
     }
   },
+
+  onHide() { this._stopPolling(); },
+
+  onUnload() { this._stopPolling(); },
 
   applyCache() {
     try {
@@ -419,10 +432,6 @@ Page({
 
   onTempInfoTap() {
     this.setData({ showTempInfo: !this.data.showTempInfo });
-  },
-
-  onToggleAssetAlloc() {
-    this.setData({ showAssetAlloc: !this.data.showAssetAlloc });
   },
 
   // 列顺序调整入口：原为「长按表头」隐藏手势，现收进批量模式顶部栏的「列设置」
@@ -510,8 +519,19 @@ Page({
   onAlertPeToggle(e) { this.setData({ alertEditPeAlert: !this.data.alertEditPeAlert }); },
   onSaveAlert() {
     const { alertEditFundCode, alertEditUpper, alertEditLower, alertEditPeAlert } = this.data;
+    const upper = parseFloat(alertEditUpper);
+    const lower = parseFloat(alertEditLower);
+    // 非法输入直接拦截，不静默按 0（关闭）处理；留空视为不启用该方向提醒
+    if ((alertEditUpper !== '' && isNaN(upper)) || (alertEditLower !== '' && isNaN(lower))) {
+      wx.showToast({ title: "请输入有效的数字", icon: "none" });
+      return;
+    }
+    if (upper && lower && upper <= lower) {
+      wx.showToast({ title: "下限需小于上限", icon: "none" });
+      return;
+    }
     const settings = wx.getStorageSync('alertSettings') || {};
-    settings[alertEditFundCode] = { upper: parseFloat(alertEditUpper) || 0, lower: parseFloat(alertEditLower) || 0, peAlert: !!alertEditPeAlert };
+    settings[alertEditFundCode] = { upper: upper || 0, lower: lower || 0, peAlert: !!alertEditPeAlert };
     wx.setStorageSync('alertSettings', settings);
     // 开启PE提醒时记录当前signal作为基线
     if (alertEditPeAlert) {
@@ -588,24 +608,24 @@ Page({
     const now = Date.now();
     if (!isAuto && this._lastFetch && now - this._lastFetch < 5000) {
       this.setData({ refresherTriggered: false });
+      wx.showToast({ title: "刚刚已刷新", icon: "none" });
       return;
     }
     this._lastFetch = now;
     subscribe.silentDailyAuth("index_pull"); // 用户手势时机：已授权用户每天静默补一次推送额度
     this.setData({ refresherTriggered: true });
-    Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
+    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
     });
   },
 
-  async fetchPortfolio(showLoading = true) {
-    if (showLoading) this.setData({ loading: true });
+  async fetchPortfolio() {
     try {
       const res = await api.getPortfolio();
       if (res.result && res.result.code === 0) {
-        const d = res.result.data;
+        const d = res.result.data || {};
         let holdings = (d.holdings || []);
-        holdings = this.formatHoldings(holdings, d ? d.totalAmount : cached.totalAmount);
+        holdings = this.formatHoldings(holdings, d.totalAmount);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
@@ -625,7 +645,7 @@ Page({
         const groups = this._mergeGroups(d.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, d.groups || []);
         this.setData({
-          loading: false, loadError: false, dataReady: true,
+          loadError: false, stale: false, dataReady: true,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
           groupSummary,
           totalAmount: d.totalAmount,
@@ -651,37 +671,40 @@ Page({
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
         return true;
       }
+      // 业务失败（code!==0）也必须落地加载态，否则首次进入会永远停在“加载中...”
+      this.setData({ dataReady: true, loadError: this.data.holdings.length === 0, stale: this.data.holdings.length > 0 });
       return false;
     } catch (e) {
-      this.setData({ loading: false, dataReady: true, loadError: this.data.holdings.length === 0 });
+      this.setData({ dataReady: true, loadError: this.data.holdings.length === 0, stale: this.data.holdings.length > 0 });
       console.error("获取持仓失败:", e);
       return false;
     }
-  },
-
-  // 下拉刷新：绕过缓存直接拉最新数据，刷新过程有原生动画 + 导航栏 loading 感知
-  onPullDownRefresh() {
-    const now = Date.now();
-    // 用户连续下拉时 5s 防抖（自动刷新已改静默，不再走此入口）
-    if (this._lastFetch && now - this._lastFetch < 5000) {
-      wx.stopPullDownRefresh();
-      return;
-    }
-    this._lastFetch = now;
-    wx.showNavigationBarLoading();
-    this.fetchPortfolio(true).finally(() => {
-      wx.hideNavigationBarLoading();
-      wx.stopPullDownRefresh();
-    });
   },
 
   // 静默后台刷新：缓存已渲染，后台拉取最新数据完成后更新界面，不显示下拉动画/loading
   _silentRefresh() {
     if (this._silentFetching) return;
     this._silentFetching = true;
-    Promise.all([this.fetchPortfolio(false), this.fetchIndices()]).finally(() => {
+    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
       this._silentFetching = false;
     });
+  },
+
+  // ========== 盘中轮询 ==========
+
+  _startPolling() {
+    this._stopPolling();
+    if (!isTradingTime()) return;
+    this._pollTimer = setInterval(() => {
+      if (!isTradingTime()) { this._stopPolling(); return; }
+      // 批量模式暂停轮询；重入由 _silentRefresh 的 _silentFetching 兜底
+      if (this.data.batchMode) return;
+      this._silentRefresh();
+    }, POLL_INTERVAL);
+  },
+
+  _stopPolling() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
   },
 
   onSortTap(e) {
@@ -728,8 +751,8 @@ Page({
         navHigh: h.navHigh != null ? parseFloat(h.navHigh).toFixed(2) : null,
         navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
         _crCls: crCls, _tpCls: tpCls, _trCls: trCls, _trrCls: trrCls,
-        _crText: cr > 0 ? '+' + cr + '%' : cr + '%',
-        _trrText: trr > 0 ? '+' + trr + '%' : trr + '%',
+        _crText: (cr > 0 ? '+' : '') + cr.toFixed(2) + '%',
+        _trrText: (trr > 0 ? '+' : '') + trr.toFixed(2) + '%',
         _valCls: valCls, _valText: valText,
         _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',
         // 占比/距一年高点（新列预计算）
@@ -750,13 +773,31 @@ Page({
         return dir * ((parseFloat(a.todayProfitRate) || 0) - (parseFloat(b.todayProfitRate) || 0));
       });
     }
+    if (f === 'ratio') {
+      // 占比与市值同序（占比 = 市值/总资产）
+      return list.sort((a, b) => dir * ((parseFloat(a.marketValue) || 0) - (parseFloat(b.marketValue) || 0)));
+    }
+    if (f === 'drawdown') {
+      // 距一年高点：无数据沉底
+      const ddv = (h) => {
+        const hi = parseFloat(h.navHigh), cn = parseFloat(h.currentNav);
+        return (hi > 0 && cn > 0) ? (cn - hi) / hi : null;
+      };
+      return list.sort((a, b) => {
+        const da = ddv(a), db = ddv(b);
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return dir * (da - db);
+      });
+    }
     return list.sort((a, b) => dir * (parseFloat(a.totalReturn) - parseFloat(b.totalReturn)));
   },
 
   async fetchIndices() {
     const activeIndices = this.data.activeIndices;
     if (!activeIndices || activeIndices.length === 0) {
-      this.setData({ indexCards: [], indexLoading: false, indexBarHeight: 0 });
+      this.setData({ indexCards: [], indexBarHeight: 0 });
       return;
     }
     const FETCH_TIMEOUT = 3000;
@@ -811,7 +852,7 @@ Page({
       const old = this.data.indexCards.find(c => c.code === idx.code);
       return old ? { ...old } : { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
     });
-    this.setData({ indexCards: cards, indexLoading: true });
+    this.setData({ indexCards: cards });
 
     const promises = activeIndices.map((idx, i) =>
       fetchOne(idx).then((data) => {
@@ -824,9 +865,17 @@ Page({
       this.setData({ indexCards: cards });
       const codes = activeIndices.map((i) => i.code).join(",");
       wx.setStorage({ key: INDEX_CACHE_KEY, data: { codes, cards, ts: Date.now() } });
-    }).catch(() => {}).finally(() => {
-      this.setData({ indexLoading: false });
-    });
+    }).catch(() => {});
+  },
+
+  // 指数卡片失败显示 '--' 时点击重拉（复用整体刷新，值为 '--' 才响应）
+  onIndexCardTap(e) {
+    const { code } = e.currentTarget.dataset;
+    const card = this.data.indexCards.find((c) => c.code === code);
+    if (!card || card.price !== "--") return;
+    if (this._indexRetrying) return;
+    this._indexRetrying = true;
+    Promise.resolve(this.fetchIndices()).finally(() => { this._indexRetrying = false; });
   },
 
   onToggleIndex() {
@@ -841,7 +890,7 @@ Page({
   _measureIndexBar() {
     wx.createSelectorQuery().select('.index-bar').boundingClientRect((rect) => {
       if (rect && rect.height > 0) {
-        this.setData({ indexBarHeight: Math.round(rect.height / (wx.getSystemInfoSync().windowWidth / 750)) });
+        this.setData({ indexBarHeight: Math.round(rect.height / (wx.getWindowInfo().windowWidth / 750)) });
       }
     }).exec();
   },
@@ -898,7 +947,7 @@ Page({
 
   noop() {},
 
-  onLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
+  onGoLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onScreenshotAdd() {
     // 未登录先引导授权
@@ -906,30 +955,25 @@ Page({
       wx.navigateTo({ url: "/pages/login/index" });
       return;
     }
-    wx.showActionSheet({
-      itemList: ["从相册选择"],
-      success: () => {
-        wx.chooseMedia({
-          count: 1, mediaType: ["image"],
-          sourceType: ["album"], sizeType: ["compressed"],
-          success: (mediaRes) => {
-            const tempPath = mediaRes.tempFiles[0].tempFilePath;
-            // 二次压缩，确保不超过 1MB（OCR 服务限制）
-            wx.compressImage({
-              src: tempPath,
-              quality: 50,
-              success: (compressRes) => {
-                const app = getApp();
-                app.globalData._screenshotPath = compressRes.tempFilePath;
-                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
-              },
-              fail: () => {
-                // 压缩失败则使用原图
-                const app = getApp();
-                app.globalData._screenshotPath = tempPath;
-                wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
-              },
-            });
+    wx.chooseMedia({
+      count: 1, mediaType: ["image"],
+      sourceType: ["album", "camera"], sizeType: ["compressed"],
+      success: (mediaRes) => {
+        const tempPath = mediaRes.tempFiles[0].tempFilePath;
+        // 二次压缩，确保不超过 1MB（OCR 服务限制）
+        wx.compressImage({
+          src: tempPath,
+          quality: 50,
+          success: (compressRes) => {
+            const app = getApp();
+            app.globalData._screenshotPath = compressRes.tempFilePath;
+            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+          },
+          fail: () => {
+            // 压缩失败则使用原图
+            const app = getApp();
+            app.globalData._screenshotPath = tempPath;
+            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
           },
         });
       },
@@ -1000,18 +1044,26 @@ Page({
         wx.showLoading({ title: "删除中..." });
         // 写操作限并发 3，避免 N 条串行云函数调用拖慢批量删除
         const CONCURRENT = 3;
-        let done = 0, idx = 0;
+        let done = 0, fail = 0, idx = 0;
         const workers = [];
         const run = async () => {
           while (idx < selected.length) {
             const h = selected[idx++];
-            try { await api.holdingRemove(h._id); done++; } catch (e) { /* ignore */ }
+            try {
+              const r = await api.holdingRemove(h._id);
+              if (r.result && r.result.code === 0) done++; else fail++;
+            } catch (e) { fail++; }
           }
         };
         for (let i = 0; i < Math.min(CONCURRENT, selected.length); i++) workers.push(run());
         await Promise.all(workers);
         wx.hideLoading();
-        wx.showToast({ title: `已删除 ${done} 个`, icon: "success" });
+        // 部分失败如实提示（失败项刷新后仍在列表中，可重试）
+        if (fail > 0) {
+          wx.showModal({ title: "批量删除", content: `成功 ${done} 个，失败 ${fail} 个，失败项仍在列表中`, showCancel: false });
+        } else {
+          wx.showToast({ title: `已删除 ${done} 个`, icon: "success" });
+        }
         this.setData({ batchMode: false });
         wx.removeStorageSync("portfolio_cache");
         this.fetchPortfolio();
@@ -1275,13 +1327,10 @@ Page({
 
   onAddGroup() {
     this.showGroupInput((groupName) => {
-      wx.showToast({ title: `分组「${groupName}」已创建`, icon: "success", duration: 2000 });
+      wx.showToast({ title: `已创建分组「${groupName}」，长按持仓可移入分组`, icon: "none", duration: 2000 });
       this._saveGroupToCache(groupName);
       this.updateGroupCounts();
       wx.removeStorageSync("portfolio_cache");
-      setTimeout(() => {
-        wx.showToast({ title: "长按持仓可移入分组", icon: "none", duration: 2000 });
-      }, 2200);
     });
   },
 
@@ -1366,6 +1415,8 @@ Page({
       const res = await api.holdingSetGroup(codes, group);
       if (res.result && res.result.code === 0) {
         wx.showToast({ title: "已移动", icon: "success" });
+        // 移动后退出批量模式（与自选页一致），避免残留勾选状态
+        this.setData({ batchMode: false, selectedCount: 0, allSelected: false });
         wx.removeStorageSync("portfolio_cache");
         wx.setStorageSync("portfolio_force_refresh", true);
         this.fetchPortfolio();

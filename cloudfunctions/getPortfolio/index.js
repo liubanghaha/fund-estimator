@@ -9,20 +9,32 @@ const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
-  const { historyDays, testOpenid, withAnalysis, withNav60, src } = event || {};
+  const { historyDays, testOpenid, withAnalysis, withNav60, src, debug } = event || {};
   const estSrc = src === "self" ? "self" : "sina"; // sina=数据源一（新浪实时估值）优先；self=数据源二（自算）优先
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
   const _startTime = Date.now();
 
   try {
-    // 持仓查询：只取聚合所需字段（.field() 投影，避免全量文档传输）+ 1000 条上限（原默认 100 会截断大持仓用户）
-    const res = await db.collection("holdings")
-      .where({ _openid: uid })
-      .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, group: true })
-      .limit(1000)
-      .get();
-    const holdings = res.data || [];
+    // 持仓查询：游标分页读全（_id > lastId，100/批，与 computeFundTemperature.getUniqueFundCodes 同款），
+    // .limit(1000) 会静默截断超大持仓用户；.field() 投影避免全量文档传输
+    const holdings = [];
+    {
+      const PAGE = 100;
+      let lastId = "";
+      while (true) {
+        const res = await db.collection("holdings")
+          .where(lastId ? { _openid: uid, _id: _.gt(lastId) } : { _openid: uid })
+          .orderBy("_id", "asc") // 游标分页显式定序，不依赖底层默认序
+          .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, group: true })
+          .limit(PAGE)
+          .get();
+        const rows = res.data || [];
+        holdings.push(...rows);
+        if (rows.length < PAGE) break;
+        lastId = rows[rows.length - 1]._id;
+      }
+    }
 
     if (holdings.length === 0) {
       return {
@@ -223,24 +235,36 @@ exports.main = async (event) => {
     try {
       const _ = db.command;
       const tempCodes = [...new Set(enriched.map(h => h.fundCode))];
-      // 批量 where-in 单查 + 每基金取 date 最新（此前逐基金并发单查会间歇失败，
-      // 失败的基金走 position 兜底编出温度，导致列表与详情页温度对不上）
+      const TEMP_FIELDS = { fundCode: true, date: true, signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWith52w: true, totalStocks: true, detailPEs: true };
+      // 先按当日批量查（where-in 1-2 次覆盖全部持仓；原 while-skip 串行分页扫全部历史，
+      // 持仓多时要 3-20 轮查询）。缺哪只再逐只取 date 最新一条兜底（每基金取最新——
+      // 此前逐基金并发单查会间歇失败，失败的基金走 position 兜底编出温度，导致列表与详情页温度对不上）
       const tempRows = [];
+      const missingTemps = [];
       {
-        const PAGE = 100;
-        let skip = 0;
-        while (skip < 2000) {
+        const BATCH = 100;
+        for (let i = 0; i < tempCodes.length; i += BATCH) {
           const res = await db.collection("fund_temperatures")
-            .where({ fundCode: _.in(tempCodes) })
-            .orderBy("date", "desc").skip(skip).limit(PAGE)
-            .field({ fundCode: true, date: true, signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWith52w: true, totalStocks: true, detailPEs: true })
+            .where({ fundCode: _.in(tempCodes.slice(i, i + BATCH)), date: today })
+            .field(TEMP_FIELDS)
             .get();
           tempRows.push(...(res.data || []));
-          if ((res.data || []).length < PAGE) break;
-          skip += PAGE;
+        }
+        tempRows.forEach(t => { if (t && !tempMap[t.fundCode]) tempMap[t.fundCode] = t; });
+        for (const c of tempCodes) { if (!tempMap[c]) missingTemps.push(c); }
+        // 缺失的逐只补最新一条（凌晨任务偶发失败/未跑到该基金），单只失败不拖垮整体
+        for (const c of missingTemps) {
+          try {
+            const res = await db.collection("fund_temperatures")
+              .where({ fundCode: c })
+              .orderBy("date", "desc").limit(1)
+              .field(TEMP_FIELDS)
+              .get();
+            const t = (res.data || [])[0];
+            if (t) tempMap[t.fundCode] = t;
+          } catch (e) { /* 单只失败跳过 */ }
         }
       }
-      tempRows.forEach(t => { if (t && !tempMap[t.fundCode]) tempMap[t.fundCode] = t; });
       tempDebug.found = Object.keys(tempMap).length;
       // 缺失温度的基金不在请求内重计算（每只持仓股一个 HTTP，会拖垮用户请求）：
       // 首页有 position 兜底展示，凌晨定时任务会补全缺失温度
@@ -321,6 +345,8 @@ exports.main = async (event) => {
         }
       }
     } catch (e) { snapDebug = { error: e.message }; }
+    // 生产返回剥离 snapDebug（含 openid，改由日志观测）；event.debug===true 时才随返回携带
+    console.log("[getPortfolio] 快照 debug:", JSON.stringify(snapDebug));
 
     // 资产配置：按行业聚合持仓穿透（correlation-matrix 等仅需列表的调用可传 withAnalysis:false 跳过）
     let assetAllocation = null;
@@ -424,8 +450,11 @@ exports.main = async (event) => {
       const _inTrading = _day >= 1 && _day <= 5 && ((_min >= 570 && _min < 690) || (_min >= 780 && _min <= 900));
       if (_inTrading) {
         const _last = intradaySnapshots[intradaySnapshots.length - 1];
-        const _lastMin = _last ? parseInt(_last.time.slice(0, 2)) * 60 + parseInt(_last.time.slice(3, 5)) : -Infinity;
-        if (_min - _lastMin >= 1) {
+        // 时间解析防御：time 缺失/格式异常时 parseInt 得 NaN（.slice 对 null 会直接抛错）——NaN 时跳过本轮兜底写点
+        const _lastMin = _last && typeof _last.time === "string"
+          ? parseInt(_last.time.slice(0, 2)) * 60 + parseInt(_last.time.slice(3, 5))
+          : -Infinity;
+        if (!Number.isNaN(_lastMin) && _min - _lastMin >= 1) {
           const _time = `${String(_bj.getUTCHours()).padStart(2, "0")}:${String(_bj.getUTCMinutes()).padStart(2, "0")}`;
           const _rate = +todayProfitRate.toFixed(2);
           const _doc = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
@@ -464,7 +493,7 @@ exports.main = async (event) => {
         navHistoryMap: historyDays ? navHistoryMap : undefined,
         intradaySnapshots,
         snapDate,
-        snapDebug,
+        snapDebug: debug === true ? snapDebug : undefined,
         tempDebug,
         assetAllocation,
         healthScore,
@@ -578,6 +607,10 @@ async function computeSelfEstimates(codes, startTime) {
     // 3. 逐基金计算加权涨跌：指数基金优先用跟踪指数实时行情，否则持仓股加权
     // 3-前置：批量取跟踪指数（带 fund_index_cache 缓存，缺的补拉写回），一次请求完成，避免逐只 HTTP
     const trackMap = await fd.getTrackIndexBatchCached(db, codes);
+    // 3-前置2：指数行情批量拉取（原循环内逐只 await 串行，N 只指数基金 = N 轮 RTT）——
+    // 所有跟踪指数 code 去重并集，一次腾讯请求拉完，循环内从结果 map 取
+    const indexCodes = [...new Set(Object.values(trackMap).filter(t => t && t.indexCode).map(t => t.indexCode))];
+    const indexQuoteMap = indexCodes.length > 0 ? await fd.fetchIndexRealtimeBatch(indexCodes) : {};
     const timeStr = fd.formatBJTime();
     for (const code of codes) {
       // 3a) 指数优先：东财 INDEXCODE 覆盖所有指数基金（行业天然全覆盖），用指数实时涨跌幅估算
@@ -585,7 +618,8 @@ async function computeSelfEstimates(codes, startTime) {
       const track = trackMap[code];
       if (track && track.indexCode) {
         try {
-          const idx = await fd.fetchIndexRealtime(track.indexCode);
+          // 批量结果优先，批内未命中（网络丢包等）单拉兜底
+          const idx = indexQuoteMap[track.indexCode] || await fd.fetchIndexRealtime(track.indexCode);
           if (idx && idx.changeRate != null) estChange = idx.changeRate;
         } catch (e) { /* ignore */ }
       }

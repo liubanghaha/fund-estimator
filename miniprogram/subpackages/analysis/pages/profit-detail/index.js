@@ -30,6 +30,7 @@ Page({
       { code: "000300", name: "沪深300" },
     ],
     canvasHRpx: 0,
+    asOfTime: "",
     earliestDate: "",
     calendarView: "day",
     selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
@@ -67,7 +68,7 @@ Page({
         if (kind && kind.indexOf("recall_") === 0) this.setData({ showRecallOptOut: true });
       }).catch(() => {});
     }
-    const { windowWidth } = wx.getSystemInfoSync();
+    const { windowWidth } = wx.getWindowInfo();
     this._canvasW = windowWidth - 24;
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
@@ -79,7 +80,6 @@ Page({
     const c = wx.getStorageSync(CACHE);
     const hasCache = c && c.d && c.d.length && c.idx && c.idx.length;
     if (hasCache && !marketTime.isCacheFresh(c, { estimateTtl: 30000 })) {
-      this._lastFetch = Date.now();
       this._pendingAutoRefresh = true;
     }
   },
@@ -88,7 +88,7 @@ Page({
   onReady() {
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
-      // 静默刷新（与首页标准一致）：缓存已渲染，不拉起下拉动画——实时性由 15s 轮询兜底
+      // 静默刷新（与首页标准一致）：缓存已渲染，不拉起下拉动画——实时性由 30s 轮询兜底
       setTimeout(() => this._fetch(), 500);
     }
   },
@@ -100,9 +100,8 @@ Page({
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
-      // 过期改静默刷新（转圈动画仅保留用户手动下拉）——15s 轮询兜实时性，转圈属多余等待感
+      // 过期改静默刷新（转圈动画仅保留用户手动下拉）——30s 轮询兜实时性，转圈属多余等待感
       if (!marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
-        this._lastFetch = Date.now();
         this._fetch();
       }
     }
@@ -129,7 +128,6 @@ Page({
     try {
       const c = wx.getStorageSync(CACHE);
       if (c && c.d && c.d.length && c.idx && c.idx.length) {
-        this._lastFetch = c.ts || 0;
         this._allDaily = c.d;
         this._dailyChange = c.dc;
         // 当日条目只可能在真实交易日注入成功后才存在，属合法数据，留待 _fetch() 刷新验证
@@ -156,6 +154,16 @@ Page({
     } catch (e) { /* ignore */ }
     this._first = true;
     if (!this._cacheApplied) this._quickFirstPaint(); // 无缓存首屏：轻量接口先画当天图
+    // 缓存新鲜（盘中 30s TTL / 盘后净值发布即冻结 / 周末节假日全天）→ 免拉全量
+    // （getPortfolio 全年聚合重）；当天分时不在免拉之列——分时缺失当天图会空白，仍按需轻拉
+    if (this._cacheApplied &&
+        marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
+      if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
+      // 免拉全量但轻量补一笔 portfolioLight：_totalMarket 只由 _fetch/quickFirstPaint 赋值，
+      // 缓存命中直接 return 会让本页 30s 轮询的今日收益更新停摆（缺 _totalMarket 直接 return）
+      this._quickFirstPaint();
+      return;
+    }
     this._fetch();
   },
 
@@ -173,8 +181,16 @@ Page({
       const rate = parseFloat(d.todayProfitRate || 0);
       const ym = this._totalMarket > 0 ? this._totalMarket / (1 + rate / 100) : 0;
       this.setData({ loading: false, todayProfitRate: rate, todayProfit: (ym * rate / 100).toFixed(2) });
+      this._updateAsOf();
       this._draw();
     }).catch(() => {});
+  },
+
+  // 数据截至时间：取最新盘中快照的分钟（快照缺失则不显示，避免误导）
+  _updateAsOf() {
+    const snaps = this._profitSnapshots || [];
+    const t = snaps.length ? (snaps[snaps.length - 1].time || "") : "";
+    if (t && t !== this.data.asOfTime) this.setData({ asOfTime: t });
   },
 
   async _fetch() {
@@ -316,6 +332,7 @@ Page({
         weekProfitRate, monthProfitRate, yearProfitRate,
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => { this._draw(); this._cal(); });
+      this._updateAsOf();
       // 指数分时：交易时段实时拉新；非交易时段数据已定格，命中当天缓存即跳过（零网络）
       if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
 
@@ -339,7 +356,6 @@ Page({
       }
     } finally {
       this._fetching = false;
-      this._lastFetch = Date.now(); // 成败都更新，避免 onShow 无限重刷
     }
   },
 
@@ -455,7 +471,7 @@ Page({
     query.select('#profitCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
-      const dpr = wx.getSystemInfoSync().pixelRatio;
+      const dpr = wx.getWindowInfo().pixelRatio;
       const cw = res[0].width || w;
       const ch = res[0].height || h;
       const targetW = cw * dpr, targetH = ch * dpr;
@@ -674,15 +690,6 @@ Page({
       return { time: t, rate, indexRate: idxMap[t] != null ? idxMap[t] : null };
     });
 
-    // 曲线以最后一个真实快照点结束（末端不再补"当前收益率"点，避免与快照值不一致的人造悬崖）
-    const last = result[result.length - 1];
-    if (last && last.rate == null) {
-      const lastSnap = [...result].reverse().find(d => d.rate != null);
-      if (lastSnap && lastSnap !== last) {
-        result.splice(lastSnap + 1);
-      }
-    }
-
     // 平滑「我的收益」分钟线：快照率 = 持仓股实时价加权估算，分钟噪声大，直接连线呈锯齿折线
     this._smoothRate(result);
 
@@ -692,9 +699,7 @@ Page({
 
     // 末端口径对齐：快照分钟点与顶部「当天收益」卡（实时/盘后净值口径）天然存在时间差，
     // 差异明显时不替换会让图例与卡片对不上；用卡片当前值替换末端点使两处一致
-    this._alignEndWithOfficial(result);
-
-    return result;
+    return this._alignEndWithOfficial(result);
     } catch(e) {
       return [];
     }
@@ -702,15 +707,18 @@ Page({
 
   // 将曲线最后一个点替换为组合当前口径值（todayProfitRate），使图例与顶部摘要一致。
   // 盘中快照滞后 1~2 分钟、盘后快照=盘中估算 vs 卡片=正式净值，都靠此对齐；
-  // 卡片与快照值一致时（差异 < 0.02）不生效，保持曲线原生走势
+  // 卡片与快照值一致时（差异 < 0.02）不生效，保持曲线原生走势。
+  // 不可变：传入数组可能是 _todayCaches 的缓存对象，复制末端点生成新数组返回，不动缓存
   _alignEndWithOfficial(result) {
+    if (!result || !result.length) return result;
     const rate = parseFloat(this.data.todayProfitRate);
-    if (!(rate > -100 && rate < 100)) return;
+    if (!(rate > -100 && rate < 100)) return result;
     const pts = result.filter(p => p.rate != null);
-    if (!pts.length) return;
+    if (!pts.length) return result;
     const last = pts[pts.length - 1];
-    if (Math.abs(last.rate - rate) < 0.02) return;
-    last.rate = rate;
+    if (Math.abs(last.rate - rate) < 0.02) return result;
+    const idx = result.indexOf(last);
+    return result.slice(0, idx).concat([{ ...last, rate }]);
   },
 
   // 居中移动平均平滑（窗口 3 点）：首尾点保留原始值（首点是开盘基准，末点是最后一个真实快照）。
@@ -753,7 +761,7 @@ Page({
     const indexCode = this.data.compareIndex || '000001';
 
     // 盘中快照尚未产出（snapshotProfit 早盘首次跑需先补拉前日净值）：指数已就位但我的收益无数据。
-    // 只要"指数已就绪但快照为空"就轻拉一次快照（20 秒节流），让绿线尽快出现，不等 15s 轮询兜底。
+    // 只要"指数已就绪但快照为空"就轻拉一次快照（20 秒节流），让绿线尽快出现，不等 30s 轮询兜底。
     // 注：原条件限于 _isTradingNow()，非盘中/缓存快照晚到时会先画出一条孤零零的指数蓝线，
     //     与我的收益绿线错开 1~2 秒；放宽后两条线接近同步出现。
     if ((this._profitSnapshots || []).length === 0 && (this._intradayRaw || []).length > 0) {
@@ -766,6 +774,7 @@ Page({
           this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
           this._todayCaches = {};
           try { wx.removeStorageSync(INTRADAY_CACHE_PREFIX + indexCode); } catch (e) {}
+          this._updateAsOf();
           this._draw();
         }).catch(() => {});
       }
@@ -805,7 +814,7 @@ Page({
   _renderToday(w, h, data, compareLabel) {
     // 统一入口：无论数据来自内存缓存/存储缓存/_buildIntradayData，盘后都做末端口径对齐
     // （缓存里可能是盘中保存的估算末端 0.62%，不对齐则图例永远与摘要卡 0.55% 差 7bp）
-    this._alignEndWithOfficial(data);
+    data = this._alignEndWithOfficial(data);
     const query = wx.createSelectorQuery();
     query.select('#profitCanvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) {
@@ -833,6 +842,8 @@ Page({
         labelA: '我的收益', labelB: compareLabel,
         animate, duration: 1200,
       });
+      // 快照存页级：chart._lastIntradayDraw 是模块单例，页面栈里两个图表页会互相覆盖（十字线错位）
+      this._intradaySnap = chartUtil._lastIntradayDraw;
       // 预取其它指数分时：挂在"首次真正渲染"之后。原来挂在 fetchIntraday 尾部，
       // 但首屏命中分时缓存时不会走那里 → 预取静默失效 → 切指数仍要等请求
       if (!this._prefetchKicked) {
@@ -1062,12 +1073,12 @@ Page({
       query.select('#profitCanvas').fields({ node: true }).exec((res) => {
         if (!res || !res[0] || !res[0].node) return;
         const canvas = res[0].node;
-        const dpr = wx.getSystemInfoSync().pixelRatio;
-        // 不重建位图：setTransform 幂等重置变换（位图与 _lastIntradayDraw 快照尺寸一致）
+        const dpr = wx.getWindowInfo().pixelRatio;
+        // 不重建位图：setTransform 幂等重置变换（位图与页级快照 _intradaySnap 尺寸一致）
         const ctx = canvas.getContext('2d');
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        chartUtil._drawIntradayFast(ctx);
-        chartUtil.handleIntradayTouch(ctx, e);
+        chartUtil._drawIntradayFast(ctx, this._intradaySnap);
+        chartUtil.handleIntradayTouch(ctx, e, this._intradaySnap);
       });
       return;
     }
@@ -1106,7 +1117,7 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
       const ctx = canvas.getContext('2d');
-      const dpr = wx.getSystemInfoSync().pixelRatio;
+      const dpr = wx.getWindowInfo().pixelRatio;
       // 不重建位图：位图与 _chartDraw 快照尺寸一致，setTransform 幂等重置
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -1251,6 +1262,7 @@ Page({
         this._todayCaches = {};
         try { wx.removeStorageSync(INTRADAY_CACHE_PREFIX + (this.data.compareIndex || '000001')); } catch (e) {}
       }
+      this._updateAsOf();
       if (this.data.activeTab === 'today' && !animating) {
         this.fetchIntraday();
         this._prefetchIndices(); // 顺带补新过期的指数预取（内部有节流与过期判断）
@@ -1288,8 +1300,9 @@ Page({
       }
       return null;
     };
-    const r1 = await tryAll();
-    const rows = r1 || (await tryAll()) || [];
+    // 拉取失败不立即原样重试（大概率同样失败还双倍等待）：本轮直接放弃，
+    // 下一轮 30s 轮询/onShow 自然重试
+    const rows = (await tryAll()) || [];
     if (rows.length) {
       try {
         const all = wx.getStorageSync(IDX_HIST_CACHE) || {};

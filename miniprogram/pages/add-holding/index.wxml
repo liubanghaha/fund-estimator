@@ -35,8 +35,11 @@
 
       <view wx:for="{{ocrFunds}}" wx:key="index" class="fund-card {{item._saved ? 'saved' : ''}}">
         <view class="card-left">
-          <input wx:if="{{!item._saved}}" class="card-code-input" value="{{item.fundCode}}" placeholder="输入代码" bind:input="onOcrCodeInput" data-index="{{index}}"/>
-          <text wx:else class="card-code">{{item.fundCode || '--'}}</text>
+          <view class="card-code-row">
+            <input wx:if="{{!item._saved}}" class="card-code-input" value="{{item.fundCode}}" placeholder="输入代码" bind:input="onOcrCodeInput" data-index="{{index}}"/>
+            <text wx:else class="card-code">{{item.fundCode || '--'}}</text>
+            <text wx:if="{{item._needConfirm && !item._saved}}" class="card-confirm-tag">待确认</text>
+          </view>
           <text class="card-name">{{item.fundName}}</text>
           <view class="card-nums">
             <text wx:if="{{item.marketValue != null && item.marketValue !== ''}}" class="card-mv">持有金额 ¥{{item.marketValue}}</text>

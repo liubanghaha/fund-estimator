@@ -28,7 +28,8 @@ Page({
     // 缓存秒开：先渲染上次数据（日期分组标签按今天重算），后台拉最新
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
-      if (cached && cached.flashItems && cached.flashItems.length) {
+      // 缓存有效期 1 天：超期（或无 ts 的旧缓存）丢弃，走 loading 态拉最新
+      if (cached && cached.ts && Date.now() - cached.ts < 86400000 && cached.flashItems && cached.flashItems.length) {
         this.setData({
           flashItems: cached.flashItems,
           sortEnd: cached.sortEnd || "",

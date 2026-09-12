@@ -7,7 +7,7 @@ const db = cloud.database();
  *
  *  action:
  *    checkAdmin      校验当前用户是否管理员
- *    registerAdmin   首次调用自动登记为管理员（首个打开运营助手页的微信即管理员）
+ *    registerAdmin   凭 OPS_ADMIN_KEY（env.json）注册管理员，无密钥一律 403
  *    addAdmin        管理员添加其他管理员
  *    briefing        生成今日基金温度简报（低估/合理/高估分布 + 代表基金 + 可复制文案）
  *    listChannels    渠道列表（含各渠道访问数）
@@ -30,6 +30,13 @@ async function ensureCollection(name) {
     await db.createCollection(name);
   } catch (e) { /* 已存在 */ }
 }
+
+// 管理员注册密钥（仅存服务端：env.json 或环境变量，不进小程序包）
+let OPS_ADMIN_KEY = process.env.OPS_ADMIN_KEY || "";
+try {
+  const env = require("./env.json");
+  OPS_ADMIN_KEY = env.OPS_ADMIN_KEY || OPS_ADMIN_KEY;
+} catch (e) { /* env.json 不存在则使用环境变量 */ }
 
 async function isAdmin(openid) {
   if (!openid) return false;
@@ -77,14 +84,19 @@ exports.main = async (event) => {
     }
 
     if (action === "registerAdmin") {
+      // 安全：废弃“空集合时首个调用者自动成为管理员”（任何用户误入即得管理权限）。
+      // 注册必须持有 OPS_ADMIN_KEY，见 env.json（gitignore，仅部署到云函数侧）。
       if (!OPENID) return { code: 0, data: { isAdmin: false } };
+      if (!OPS_ADMIN_KEY || event.adminKey !== OPS_ADMIN_KEY) {
+        return { code: 403, msg: "管理员密钥不正确" };
+      }
       await ensureCollection("ops_admins");
-      const total = await db.collection("ops_admins").count();
-      if (total.total === 0) {
+      const exist = await db.collection("ops_admins").where({ openid: OPENID }).count();
+      if (exist.total === 0) {
         await db.collection("ops_admins").add({ data: { openid: OPENID, createTime: new Date() } });
         return { code: 0, data: { isAdmin: true, registered: true } };
       }
-      return { code: 0, data: { isAdmin: await isAdmin(OPENID), registered: false } };
+      return { code: 0, data: { isAdmin: true, registered: false } };
     }
 
     if (action === "addAdmin") {

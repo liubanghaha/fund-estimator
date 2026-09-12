@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const subscribe = require("../../utils/subscribe");
+const ADMIN_CACHE_KEY = "ops_admin_cache"; // 管理员标记缓存：true 缓存 7 天 / false 缓存 1 天
 
 Page({
   data: {
@@ -35,8 +36,22 @@ Page({
       estimateSrcText: api.estimateSrc() === "self" ? "数据源二" : "数据源一",
     });
     // 运营助手入口（仅管理员可见；页面本身另有管理员门禁）
+    this._checkOpsAdmin();
+  },
+
+  // checkAdmin 结果缓存：命中不发请求，避免每次 onShow 都打云函数
+  _checkOpsAdmin() {
+    try {
+      const cached = wx.getStorageSync(ADMIN_CACHE_KEY);
+      const ttl = cached && cached.isAdmin ? 7 * 24 * 3600000 : 24 * 3600000;
+      if (cached && cached.ts && Date.now() - cached.ts < ttl) {
+        this.setData({ isOpsAdmin: !!cached.isAdmin });
+        return;
+      }
+    } catch (e) { /* ignore */ }
     api.opsTool("checkAdmin").then((res) => {
       const isOpsAdmin = !!(res.result && res.result.data && res.result.data.isAdmin);
+      try { wx.setStorageSync(ADMIN_CACHE_KEY, { isAdmin: isOpsAdmin, ts: Date.now() }); } catch (e) { /* ignore */ }
       this.setData({ isOpsAdmin });
     }).catch(() => {});
   },
@@ -139,12 +154,17 @@ Page({
           wx.removeStorageSync("index_cache");
           wx.removeStorageSync("indexCodes");
           wx.removeStorageSync("amountVisible");
+          wx.removeStorageSync("estimate_src");
+          wx.removeStorageSync("holding_groups_cache");
+          wx.removeStorageSync("news_cache");
+          wx.removeStorageSync("track_queue_v1");
+          wx.removeStorageSync("ops_admin_cache");
           const app = getApp();
           if (app && app.globalData) {
             app.globalData._ocrFunds = null;
             app.globalData._screenshotPath = null;
           }
-          this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "" });
+          this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "", isOpsAdmin: false });
         }
       },
     });

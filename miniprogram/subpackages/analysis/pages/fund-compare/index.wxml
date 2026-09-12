@@ -79,18 +79,20 @@
           </view>
           <view wx:for="{{comparison.returns}}" wx:key="label" class="cmp-row">
             <view class="cmp-label">{{item.label}}</view>
-            <view class="cmp-val {{item.a > 0 ? 'up' : item.a < 0 ? 'down' : ''}}">{{item.a != null ? (item.a > 0 ? '+' : '') + item.a + '%' : '--'}}</view>
-            <view class="cmp-val {{item.b > 0 ? 'up' : item.b < 0 ? 'down' : ''}}">{{item.b != null ? (item.b > 0 ? '+' : '') + item.b + '%' : '--'}}</view>
+            <view class="cmp-val {{item.winA ? 'win ' : ''}}{{item.a > 0 ? 'up' : item.a < 0 ? 'down' : ''}}">{{item.a != null ? (item.a > 0 ? '+' : '') + item.a + '%' : '--'}}</view>
+            <view class="cmp-val {{item.winB ? 'win ' : ''}}{{item.b > 0 ? 'up' : item.b < 0 ? 'down' : ''}}">{{item.b != null ? (item.b > 0 ? '+' : '') + item.b + '%' : '--'}}</view>
           </view>
         </view>
       </view>
 
       <!-- Chart -->
-      <view wx:if="{{chartData.length > 1}}" class="section">
+      <view wx:if="{{fundB.code && comparison}}" class="section">
         <view class="section-title">走势对比（归一化）</view>
-        <view class="chart-card">
+        <view class="chart-note">同期累计涨跌幅对比，起点归一为 0</view>
+        <view wx:if="{{chartData.length > 1}}" class="chart-card">
           <canvas type="2d" id="compareCanvas" style="width:100%;height:424rpx" bindtouchstart="onCompareTouch" bindtouchmove="onCompareTouch" bindtouchend="onCompareTouch"></canvas>
         </view>
+        <view wx:else class="chart-empty">两只基金没有可对比的同段历史</view>
       </view>
 
       <!-- Info comparison -->

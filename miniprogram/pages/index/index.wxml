@@ -19,6 +19,18 @@
   module.exports = { money: money };
 </wxs>
 <view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}" style="height: {{pageHeight}}px">
+  <!-- 批量模式顶栏：fixed 吸顶（须放在 scroll-view 外，fixed 在 scroll-view 内会失效） -->
+  <view wx:if="{{batchMode}}" class="batch-top-bar">
+    <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
+    <text class="batch-top-title">已选 {{selectedCount}} 项</text>
+    <view class="batch-top-right">
+      <text class="batch-top-link" bind:tap="onOpenColEdit">列设置</text>
+      <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
+      <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
+      <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
+      <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
+    </view>
+  </view>
   <scroll-view
     scroll-y
     class="page-scroll"
@@ -27,7 +39,7 @@
     refresher-triggered="{{refresherTriggered}}"
     bindrefresherrefresh="onScrollRefresh"
   >
-    <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
+    <view class="container {{batchMode ? 'in-batch' : ''}}" style="padding-bottom: {{indexBarHeight}}rpx">
 
       <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
 
@@ -64,6 +76,14 @@
         </view>
       </view>
 
+      <!-- 未登录：优先于无持仓引导展示 -->
+      <view wx:elif="{{!isLoggedIn}}" class="empty-state">
+        <view class="empty-desc">登录后同步你的持仓与分组</view>
+        <view class="empty-btns">
+          <button class="login-btn" bind:tap="onGoLogin">去登录</button>
+        </view>
+      </view>
+
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
         <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
         <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
@@ -84,23 +104,12 @@
             {{amountVisible ? (groupSummary ? fmt.money(groupSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
           </view>
           <view class="asset-sub">
-            <text class="asset-sub-item">涨幅<text class="asset-sub-num">{{groupSummary ? (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate : (todayProfitRate > 0 ? '+' : '') + todayProfitRate}}%</text></text>
+            <text class="asset-sub-item">涨幅<text class="asset-sub-num">{{groupSummary ? (groupSummary.todayProfitRate == null ? '--' : (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate + '%') : (todayProfitRate == null ? '--' : (todayProfitRate > 0 ? '+' : '') + todayProfitRate + '%')}}</text></text>
             <text class="asset-sub-item">市值<text class="asset-sub-num">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text></text>
             <text class="asset-sub-item">累计<text class="asset-sub-num {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text></text>
           </view>
         </view>
 
-        <view wx:if="{{batchMode}}" class="batch-top-bar">
-          <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
-          <text class="batch-top-title">已选 {{selectedCount}} 项</text>
-          <view class="batch-top-right">
-            <text class="batch-top-link" bind:tap="onOpenColEdit">列设置</text>
-            <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
-            <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
-            <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
-            <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
-          </view>
-        </view>
         <view wx:if="{{batchMode}}" class="batch-alert-bar">
           <text class="batch-alert-label">全局涨跌提醒 · 全部基金按 ±3% 提醒</text>
           <view class="pe-switch {{alertGlobalOn ? 'on' : ''}}" bind:tap="onToggleGlobalAlert">
@@ -212,7 +221,7 @@
           <view class="empty-hint">长按持仓可移动到本分组</view>
         </view>
 
-        <view wx:if="{{updateTime}}" class="update-time">估算时间：{{updateTime}}</view>
+        <view wx:if="{{updateTime}}" class="update-time">估算时间：{{updateTime}}<text wx:if="{{stale}}" class="stale-badge" bind:tap="_silentRefresh">更新失败</text></view>
       </view>
     </view>
   </scroll-view>
@@ -221,7 +230,7 @@
     <view wx:if="{{showIndexEdit}}" class="index-edit-panel">
       <view class="idx-edit-header">
         <text class="idx-edit-title">选择显示的指数</text>
-        <view class="idx-edit-done" bind:tap="onToggleIndexEdit">完成</view>
+        <view class="idx-edit-done" bind:tap="onToggleIndexEdit">取消</view>
       </view>
       <view wx:for="{{ALL_INDICES}}" wx:key="code" class="idx-check-item" bind:tap="onToggleIndexItem" data-code="{{item.code}}">
         <view class="idx-checkbox {{editSelections[item.code] ? 'checked' : ''}}">{{editSelections[item.code] ? '✓' : ''}}</view>
@@ -244,7 +253,7 @@
         <text class="idx-collapse-arrow">▲</text>
       </view>
       <scroll-view scroll-x class="index-scroll" enhanced show-scrollbar="{{false}}" catch:tap="noop">
-        <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}">
+        <view wx:for="{{indexCards}}" wx:key="code" class="index-card {{item.isUp ? 'card-up' : 'card-down'}}" bind:tap="onIndexCardTap" data-code="{{item.code}}">
           <view class="ic-name">{{item.name}}</view>
           <view class="ic-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
           <view class="ic-change-row">
@@ -258,7 +267,7 @@
 
   <!-- 温度说明浮层（放在最外层，避免 scroll-view 内 fixed 失效） -->
   <view wx:if="{{showTempInfo}}" class="temp-tooltip-mask" bind:tap="onTempInfoTap">
-    <view class="temp-tooltip-card" catch:tap="">
+    <view class="temp-tooltip-card" catch:tap="noop">
       <view class="temp-tooltip-arrow"></view>
       <view class="temp-tooltip-formula">
         <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
@@ -272,7 +281,7 @@
 
   <!-- 列表头排序 -->
   <view wx:if="{{showColEdit}}" class="col-edit-mask" bind:tap="onCloseColEdit">
-    <view class="col-edit-card" catch:tap="">
+    <view class="col-edit-card" catch:tap="noop">
       <view class="col-edit-title">调整列表头顺序</view>
       <view wx:for="{{colOrder}}" wx:key="*this" class="col-edit-row">
         <text class="col-edit-name">{{colDefs[item].label}}</text>
@@ -303,7 +312,7 @@
 
   <!-- 移动分组选择器 -->
   <view wx:if="{{showGroupPicker}}" class="col-edit-mask" bind:tap="onCloseGroupPicker">
-    <view class="col-edit-card" catch:tap="">
+    <view class="col-edit-card" catch:tap="noop">
       <view class="col-edit-title">移动到分组</view>
       <scroll-view scroll-y style="max-height:480rpx;margin:16rpx 0">
         <view wx:if="{{groups.length === 0}}" class="group-picker-empty">暂无分组，请先新建</view>
@@ -317,7 +326,7 @@
 
   <!-- 分享卡片预览 -->
   <view wx:if="{{showShareCard}}" class="share-card-mask" bind:tap="onCloseShareCard">
-    <view class="share-card-panel" catch:tap="">
+    <view class="share-card-panel" catch:tap="noop">
       <view class="share-card-header">
         <text class="share-card-title">持仓分享卡片</text>
         <text class="share-card-close" bind:tap="onCloseShareCard">✕</text>

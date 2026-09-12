@@ -1,3 +1,4 @@
+const api = require("../../../../utils/api");
 const marketTime = require("../../../../utils/market-time");
 
 Page({
@@ -24,6 +25,13 @@ Page({
         this.fetchAll();
   },
 
+  onRetry() {
+    this.fetchAll();
+  },
+
+  // 空态引导：去首页添加持仓
+  onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
+
   toggleIndustries() {
     this.setData({ showAllIndustries: !this.data.showAllIndustries });
   },
@@ -40,7 +48,7 @@ Page({
       }
       if (!d) {
         // withNav60:false 跳过历史净值拉取（本页只需持仓列表 + 健康分），减小响应与耗时
-        const res = await wx.cloud.callFunction({ name: "getPortfolio", data: { historyDays: 0, withNav60: false, withAnalysis: true } });
+        const res = await api.getPortfolio(0, { withNav60: false, withAnalysis: true });
         d = res.result && res.result.data;
       }
       if (!d || !d.holdings || d.holdings.length === 0) {
@@ -71,37 +79,37 @@ Page({
           // 缓存命中：直接恢复
           this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [] });
         } else {
-          const corrRes = await wx.cloud.callFunction({
-            name: "computeCorrelation",
-            data: { fundCodes },
-          });
-          if (corrRes.result && corrRes.result.code === 0) {
-            const { pairs, sharedStocks, truncated } = corrRes.result.data;
-            const enrichStock = (s) => ({
-              ...s,
-              _open: false,
-              funds: (s.funds || []).map(f => ({
-                ...f,
-                fundName: fundNames[fundCodes.indexOf(f.fundCode)] || f.fundCode,
-              })),
-            });
-            const enrichedPairs = (pairs || []).map(p => ({
-              ...p,
-              key: `${p.fundA}_${p.fundB}`,
-              nameA: fundNames[fundCodes.indexOf(p.fundA)],
-              nameB: fundNames[fundCodes.indexOf(p.fundB)],
-            }));
-            this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
-            if (truncated) {
-              wx.showToast({ title: "持仓较多，仅分析前 20 只基金", icon: "none" });
-            }
-            // 写缓存
-            wx.setStorageSync('asset_analysis_cache', {
-              v: 4, codeKey, ts: Date.now(),
-              sharedStocks: (sharedStocks || []).map(enrichStock),
-              pairs: enrichedPairs,
-            });
+          const corrRes = await api.computeCorrelation(fundCodes);
+          if (!corrRes || !corrRes.result || corrRes.result.code !== 0) {
+            // 云函数失败：置错误态给 onRetry 重试，不再静默留空
+            this.setData({ loading: false, loadError: true });
+            return;
           }
+          const { pairs, sharedStocks, truncated } = corrRes.result.data;
+          const enrichStock = (s) => ({
+            ...s,
+            _open: false,
+            funds: (s.funds || []).map(f => ({
+              ...f,
+              fundName: fundNames[fundCodes.indexOf(f.fundCode)] || f.fundCode,
+            })),
+          });
+          const enrichedPairs = (pairs || []).map(p => ({
+            ...p,
+            key: `${p.fundA}_${p.fundB}`,
+            nameA: fundNames[fundCodes.indexOf(p.fundA)],
+            nameB: fundNames[fundCodes.indexOf(p.fundB)],
+          }));
+          this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
+          if (truncated) {
+            wx.showToast({ title: "持仓较多，仅分析前 20 只基金", icon: "none" });
+          }
+          // 写缓存
+          wx.setStorageSync('asset_analysis_cache', {
+            v: 4, codeKey, ts: Date.now(),
+            sharedStocks: (sharedStocks || []).map(enrichStock),
+            pairs: enrichedPairs,
+          });
         }
       }
 
@@ -124,7 +132,7 @@ Page({
         return;
       }
       const canvas = node;
-      const dpr = wx.getSystemInfoSync().pixelRatio;
+      const dpr = wx.getWindowInfo().pixelRatio;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       const ctx = canvas.getContext('2d');

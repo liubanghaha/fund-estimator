@@ -18,8 +18,9 @@ exports.main = async (event) => {
       if (result) return { code: 0, msg: "success", data: [result] };
       return { code: 404, msg: "未找到该基金", data: [] };
     } catch (e) {
+      // 超时/网络错误与"无结果"区分：degraded=true 时客户端提示"搜索服务暂时不可用"而非"无结果"
       console.error("搜索失败:", e.message || e);
-      return { code: 500, msg: "搜索失败，请重试", data: [] };
+      return { code: 0, data: [], degraded: true };
     }
   }
 
@@ -29,7 +30,7 @@ exports.main = async (event) => {
     return { code: 0, msg: "success", data: results };
   } catch (e) {
     console.error("名称搜索失败:", e.message || e);
-    return { code: 500, msg: "搜索失败，请重试", data: [] };
+    return { code: 0, data: [], degraded: true };
   }
 };
 
@@ -59,8 +60,9 @@ function searchByName(name) {
         }
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    // 超时/网络错误走 reject（与"无结果"的 resolve([]) 区分，由调用方转 degraded）
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error("timeout")); });
+    req.on("error", () => reject(new Error("network")));
   });
 }
 
@@ -93,7 +95,8 @@ function lookUpFund(fundCode) {
         }
       });
     });
-    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
-    req.on("error", () => resolve(null));
+    // 超时/网络错误走 reject（与"未找到"的 resolve(null) 区分，由调用方转 degraded）
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error("timeout")); });
+    req.on("error", () => reject(new Error("network")));
   });
 }

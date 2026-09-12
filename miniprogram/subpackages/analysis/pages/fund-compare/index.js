@@ -36,7 +36,10 @@ Page({
     const rawName = options.fundName ? decodeURIComponent(options.fundName) : "";
     const code = (rawCode && rawCode !== "undefined") ? rawCode : "";
     const name = (rawName && rawName !== "undefined") ? rawName : "";
-    const { windowWidth } = wx.getSystemInfoSync();
+    // 分享落地：fundB/fundBName 可选，带上则自动加载对比基金
+    const rawB = options.fundB || "";
+    const rawBName = options.fundBName ? decodeURIComponent(options.fundBName) : "";
+    const { windowWidth } = wx.getWindowInfo();
     const canvasW = windowWidth - 24;
     const canvasH = Math.round(canvasW * 0.62);
     this._canvasW = canvasW;
@@ -45,15 +48,35 @@ Page({
     if (code) {
       this.fetchFundAData();
       this.fetchWatchlist();
+      if (rawB && rawB !== "undefined" && rawB !== code) {
+        this._loadFundB(rawB, (rawBName && rawBName !== "undefined") ? rawBName : "");
+      }
     } else {
       this.setData({ loading: false });
     }
   },
 
+  onShareAppMessage() {
+    const a = this.data.fundA, b = this.data.fundB;
+    const nameA = a.name || a.code || "基金";
+    let path = `/subpackages/analysis/pages/fund-compare/index?fundCode=${a.code}&fundName=${encodeURIComponent(a.name || "")}`;
+    let title = `${nameA}的对比分析`;
+    if (b.code) {
+      path += `&fundB=${b.code}&fundBName=${encodeURIComponent(b.name || "")}`;
+      title = `${nameA} vs ${b.name || b.code} 谁更值得拿`;
+    }
+    return { title, path };
+  },
+
   async fetchFundAData() {
     try {
       const res = await api.fetchFundOverview(this.data.fundA.code);
-      const d = (res.result && res.result.code === 0) ? res.result.data : {};
+      if (!res.result || res.result.code !== 0) {
+        // 云函数失败：置错误态，不再按 d={} 渲染一屏 '--'
+        this.setData({ loading: false, loadError: true });
+        return;
+      }
+      const d = res.result.data || {};
 
       this.setData({
         "fundA.nav": d.actualNav || d.nav || null,
@@ -77,6 +100,8 @@ Page({
 
   onSearchInput(e) {
     const keyword = (e.detail.value || "").trim();
+    // 输入序号：新输入进来即失效旧请求的响应（防快速连续输入时旧结果覆盖新结果）
+    this._searchSeq = (this._searchSeq || 0) + 1;
     if (keyword.length < 2) {
       this.setData({ searchResults: [], hasSearched: false });
       return;
@@ -84,13 +109,14 @@ Page({
     if (this._searchTimer) clearTimeout(this._searchTimer);
     this.setData({ searching: true });
     this._searchTimer = setTimeout(() => {
-      this._doSearch(keyword);
+      this._doSearch(keyword, this._searchSeq);
     }, 400);
   },
 
-  async _doSearch(keyword) {
+  async _doSearch(keyword, seq) {
     try {
       const res = await api.searchFund(keyword);
+      if (seq !== this._searchSeq) return; // 已有更新的输入，丢弃过期响应
       if (res && res.result && res.result.code === 0) {
         const data = res.result.data || [];
         const list = data.filter(
@@ -107,8 +133,15 @@ Page({
     }
   },
 
-  async onSelectFundB(e) {
+  onSelectFundB(e) {
     const { code, name } = e.currentTarget.dataset;
+    this._loadFundB(code, name);
+  },
+
+  async _loadFundB(code, name) {
+    // 请求序号：快速连点/换选时，旧响应不得覆盖新选择
+    this._bSeq = (this._bSeq || 0) + 1;
+    const seq = this._bSeq;
     this._chartAnimated = false; // 换了对比基金 → 新数据集重播进场动画
     wx.showLoading({ title: "加载中..." });
     this.setData({
@@ -119,7 +152,13 @@ Page({
 
     try {
       const res = await api.fetchFundOverview(code);
-      const d = (res.result && res.result.code === 0) ? res.result.data : {};
+      if (seq !== this._bSeq) return; // 已换选其它基金，丢弃过期响应
+      if (!(res.result && res.result.code === 0)) {
+        // 与 fundA 同款失败反馈：不再静默渲染一屏 '--'
+        wx.showToast({ title: "加载失败，请重试", icon: "none" });
+        return;
+      }
+      const d = res.result.data || {};
 
       this.setData({
         "fundB.nav": d.actualNav || d.nav || null,
@@ -133,9 +172,10 @@ Page({
         this.drawChart();
       });
     } catch (e) {
+      if (seq !== this._bSeq) return;
       wx.showToast({ title: "加载失败", icon: "none" });
     } finally {
-      wx.hideLoading();
+      if (seq === this._bSeq) wx.hideLoading();
     }
   },
 
@@ -198,6 +238,7 @@ Page({
 
     this.setData({
       comparison: {
+        // 收益对比：数值更大的一方标记 win（相等/缺失都不标），WXML 据此加粗优胜侧
         returns: [
           { label: "日涨幅", a: retA.day, b: retB.day },
           { label: "近1周", a: retA.week, b: retB.week },
@@ -205,7 +246,11 @@ Page({
           { label: "近3月", a: retA.threeMonth, b: retB.threeMonth },
           { label: "近6月", a: retA.sixMonth, b: retB.sixMonth },
           { label: "近1年", a: retA.year, b: retB.year },
-        ],
+        ].map(r => ({
+          ...r,
+          winA: r.a != null && (r.b == null || r.a > r.b),
+          winB: r.b != null && (r.a == null || r.b > r.a),
+        })),
         infos: [
           { label: "基金类型", a: profileA.fundType || "--", b: profileB.fundType || "--" },
           { label: "基金规模", a: this.fmtSize(profileA.fundSize), b: this.fmtSize(profileB.fundSize) },
@@ -290,7 +335,12 @@ Page({
         w: opts.w, h: opts.h,
         plot: opts.padding,
         animate: !this._chartAnimated, duration: 1200,
-        draw: (c) => chartUtil.drawDualLineChart(c, opts),
+        draw: (c) => {
+          const ctx = chartUtil.drawDualLineChart(c, opts);
+          // 快照存页级：chart._lastDualDraw 是模块单例，页面栈里两个图表页会互相覆盖（十字线错位）
+          this._dualSnap = chartUtil._lastDualDraw;
+          return ctx;
+        },
       });
       this._chartAnimated = true;
       this._compareCanvas = canvas;
@@ -325,16 +375,16 @@ Page({
     if (this._ctT && now - this._ctT < 60) return;
     this._ctT = now;
 
-    // 轻量重绘：复用上次绘制的实测尺寸快照（drawChart 已存 _compareOpts），
+    // 轻量重绘：复用页级持有的绘制快照（drawChart 已存 _dualSnap），
     // 不重复设置 canvas.width（避免位图重建清空），直接用 _drawDualFast 覆盖
-    if (!chartUtil._lastDualDraw || !chartUtil._lastDualDraw.data || chartUtil._lastDualDraw.data.length < 2) return;
-    const dpr = wx.getSystemInfoSync().pixelRatio;
+    if (!this._dualSnap || !this._dualSnap.data || this._dualSnap.data.length < 2) return;
+    const dpr = wx.getWindowInfo().pixelRatio;
     const ctx = canvas.getContext('2d');
     // setTransform 幂等（scale 会累积，且不再重设 canvas.width 重置状态）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    chartUtil._drawDualFast(ctx, chartUtil._lastDualDraw);
-    chartUtil.handleDualTouch(ctx, e, chartUtil._lastDualDraw);
+    chartUtil._drawDualFast(ctx, this._dualSnap);
+    chartUtil.handleDualTouch(ctx, e, this._dualSnap);
   },
 
   onRetry() {

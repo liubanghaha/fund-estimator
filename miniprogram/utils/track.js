@@ -1,6 +1,7 @@
 /**
- * 统一埋点（产品规划 P0-0 埋点地基）：队列 + 批量直连写 events 集合。
- * 模式沿用 app.js _trackLaunch 的直连写库：不经云函数（不增加冷启动）、失败静默、不引第三方 SDK。
+ * 统一埋点（产品规划 P0-0 埋点地基）：队列 + 批量经 trackReport 云函数写入 events 集合。
+ * 2026-09 由直连写库改走云函数：直连要求 events 集合对所有用户开放写权限，可被刷量污染运营数据；
+ * 云函数侧做频控，events 集合权限可收紧。失败静默、不引第三方 SDK。
  *
  * 6 事件口径（产品规划 P0-0）：
  *   app_launch    存量直连保留（analytics_launches，不经本模块）
@@ -17,7 +18,6 @@
  * 客户端匿名不含 openid；直连写库时微信自动补 _openid，云端可关联到用户。
  */
 
-const COLLECTION = "events";
 const KEY_QUEUE = "track_queue_v1";
 const FLUSH_SIZE = 8;       // 攒够即发
 const FLUSH_DELAY = 15000;  // 不足一批 15s 后发
@@ -96,27 +96,35 @@ function _schedule(delay) {
 
 function _flush() {
   if (_flushing || !_queue.length) return;
-  if (!wx.cloud || !wx.cloud.database) { _schedule(FLUSH_DELAY); return; }
+  if (!wx.cloud || !wx.cloud.callFunction) { _schedule(FLUSH_DELAY); return; }
   _flushing = true;
   const batch = _queue.splice(0, FLUSH_BATCH);
-  const db = wx.cloud.database();
-  Promise.all(batch.map((e) =>
-    db.collection(COLLECTION).add({ data: e }).catch(() => { _queue.push(e); }) // 单条失败回队尾
-  )).then(() => {
-    _flushing = false;
-    _persist();
-    if (_queue.length >= FLUSH_SIZE) _flush();
-    else if (_queue.length) _schedule(FLUSH_DELAY);
-  }).catch(() => {
-    _flushing = false;
-    _schedule(FLUSH_DELAY);
-  });
+  // 经 trackReport 云函数落库（服务端频控防刷量）；失败整批回队尾
+  wx.cloud.callFunction({ name: "trackReport", data: { events: batch } })
+    .then(() => {
+      _flushing = false;
+      _persist();
+      if (_queue.length >= FLUSH_SIZE) _flush();
+      else if (_queue.length) _schedule(FLUSH_DELAY);
+    })
+    .catch(() => {
+      _flushing = false;
+      _queue.unshift(...batch);
+      if (_queue.length > MAX_QUEUE) _queue.splice(0, _queue.length - MAX_QUEUE);
+      _persist();
+      _schedule(FLUSH_DELAY);
+    });
 }
 
 // —— 业务事件封装（调用点一行可读，属性口径见产品规划 P0-0 事件表）——
 
 // 记一笔：加减仓成功。props: { source, direction, amount, amountBand, fundCode, fundName }
-function recordTrade(props) { track("record_trade", props); }
+// 隐私：精确金额不出端，只上报 amountBand 档位（个人金融行为数据最小化）
+function recordTrade(props) {
+  const p = Object.assign({}, props);
+  delete p.amount;
+  track("record_trade", p);
+}
 
 // 订阅授权。props: { src, mode, result }  src: index_pull|user_center|profit_calendar|scene_alert
 //                                            mode: prompt|silent   result: accept|reject|fail|dismiss_banner

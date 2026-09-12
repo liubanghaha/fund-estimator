@@ -23,7 +23,11 @@
       <text class="loading-text">加载中...</text>
     </view>
 
-    <block wx:if="{{!loading}}">
+    <view wx:if="{{loadError}}" class="error-wrap">
+      <view class="error-text">链接无效，请返回重进</view>
+    </view>
+
+    <block wx:if="{{!loading && !loadError}}">
     <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
@@ -36,7 +40,7 @@
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
             {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
           </view>
-          <view class="nav-badge">实时数据 <text wx:if="{{estSource == 'sina'}}" class="nav-badge-src">数据源一</text><text wx:elif="{{estSource == 'self'}}" class="nav-badge-src">数据源二</text></view>
+          <view class="nav-badge">盘中估算<text wx:if="{{estimateTime}}" class="nav-badge-src"> 估值 {{estimateTime}}</text></view>
         </view>
       </view>
     </view>
@@ -66,10 +70,11 @@
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
         <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
-          <view class="risk-label">温度<text class="risk-label-note">{{peTemp.normPE}}</text></view>
+          <view class="risk-label">温度</view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
         </view>
       </view>
+      <view class="risk-explain">最大回撤＝一年内从最高点最多跌了多少；夏普比率＝每承受一份波动换来多少收益（＞1 较好）</view>
     </view>
 
     <!-- 我的持仓 -->
@@ -145,8 +150,8 @@
           <view class="h-nav">{{item.nav}}</view>
           <view class="h-change {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.changeRate > 0 ? '+' : ''}}{{item.changeRate}}%</view>
         </view>
-        <view wx:if="{{navHistory.length > 10 && !showAllHistory}}" class="show-more" bind:tap="onShowMore">查看更多 (共{{navHistory.length}}条)</view>
-        <view wx:if="{{showAllHistory}}" class="show-more" bind:tap="onShowLess">收起</view>
+        <view wx:if="{{navHistory.length > displayCount}}" class="show-more" bind:tap="onShowMore">加载更多 (共{{navHistory.length}}条)</view>
+        <view wx:if="{{displayCount > 30}}" class="show-more" bind:tap="onShowLess">收起</view>
       </view>
     </view>
 
@@ -370,7 +375,7 @@
         <text class="btn-icon">📊</text>
         <text>对比</text>
       </button>
-      <button wx:if="{{hasHolding}}" class="btn-txn" bind:tap="onRefresh">
+      <button wx:if="{{hasHolding}}" class="btn-txn" bind:tap="onToggleTransactions">
         <text class="btn-icon">📋</text>
         <text>{{showTransactions ? '隐藏记录' : '交易记录'}}</text>
       </button>

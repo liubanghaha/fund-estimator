@@ -1,4 +1,6 @@
 page {
+  /* --primary 默认值兜底：主题类未挂载时（如页面 ready 前的 loading 转圈）引用不落空 */
+  --primary: #E4393C;
   --color-green: #2E8B57;
   --color-bg: #F5F5F5;
   --color-text: #333333;

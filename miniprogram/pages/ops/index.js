@@ -40,17 +40,41 @@ Page({
 
   async _checkAdmin() {
     try {
-      const res = await api.opsTool("registerAdmin");
+      // 只读校验；注册走 onAdminRegister（需管理员密钥），不再在 onShow 自动 registerAdmin
+      const res = await api.opsTool("checkAdmin");
       const d = res.result && res.result.data;
       const isAdmin = !!(d && d.isAdmin);
       this.setData({ isAdmin, checking: false });
-      if (d && d.registered) {
-        wx.showToast({ title: "已登记为运营管理员", icon: "none" });
-      }
       if (isAdmin) this._loadChannels();
     } catch (e) {
       this.setData({ checking: false });
     }
+  },
+
+  onAdminRegister() {
+    wx.showModal({
+      title: "管理员注册",
+      content: "请输入管理员密钥（OPS_ADMIN_KEY）",
+      editable: true,
+      placeholderText: "管理员密钥",
+      success: async (res) => {
+        if (!res.confirm) return;
+        const adminKey = (res.content || "").trim();
+        if (!adminKey) return;
+        try {
+          const r = await api.opsTool("registerAdmin", { adminKey });
+          if (r.result && r.result.code === 0 && r.result.data && r.result.data.isAdmin) {
+            wx.showToast({ title: "已登记为运营管理员", icon: "success" });
+            this.setData({ isAdmin: true });
+            this._loadChannels();
+          } else {
+            wx.showToast({ title: (r.result && r.result.msg) || "密钥不正确", icon: "none" });
+          }
+        } catch (e) {
+          wx.showToast({ title: "注册失败", icon: "none" });
+        }
+      },
+    });
   },
 
   onTab(e) {

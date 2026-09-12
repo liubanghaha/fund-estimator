@@ -89,6 +89,21 @@ function selectChangeRate(nav, actualNav, estimatedChangeRate, actualChangeRate)
   return estimatedChangeRate != null ? estimatedChangeRate : (actualChangeRate || 0);
 }
 
+// 东财最新净值分批限并发（8 只/批 + 150ms 间隔，与 getPortfolio 同款写法）：
+// 自选多时瞬发几十个请求易被东财风控，批间串行让瞬时压力可控
+async function fetchLatestNavsBatched(codes) {
+  const CONCURRENT = 8;
+  const out = [];
+  for (let i = 0; i < codes.length; i += CONCURRENT) {
+    const batch = codes.slice(i, i + CONCURRENT);
+    out.push(...await Promise.all(batch.map(code => fd.fetchLatestNavEastMoney(code))));
+    if (i + CONCURRENT < codes.length) {
+      await new Promise(r => setTimeout(r, 150));
+    }
+  }
+  return out;
+}
+
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
@@ -103,7 +118,7 @@ exports.main = async (event) => {
     const [sinaMap, estMap, emResults] = await Promise.all([
       fd.fetchSinaEstimates(codes, { budgetMs: 8000 }),
       computeSelfEstimates(codes),
-      Promise.all(codes.map(code => fd.fetchLatestNavEastMoney(code))),
+      fetchLatestNavsBatched(codes),
     ]);
 
     const data = {};

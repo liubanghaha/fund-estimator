@@ -61,41 +61,12 @@ async function fetchSelfEstimate(fundCode, src) {
     };
   }
 
-  // 2. 数据源一：新浪实时估值（盘中值，独立第三方估算）
-  const sn = await fetchSinaEstimate(fundCode);
-
-  // 3. 自主估算：指数基金优先用跟踪指数实时行情，否则持仓股加权兜底
-  let selfChangeRate = null;
-  if (fd.isBJWeekday()) {
-    // 2a) 指数优先：东财 INDEXCODE 覆盖所有指数基金（行业天然全覆盖），用指数实时涨跌幅估算。
-    //     带 fund_index_cache 缓存：命中直接用，未命中才调东财并写回。
-    try {
-      const track = await fd.getTrackIndexCached(db, fundCode);
-      if (track && track.indexCode) {
-        const idx = await fd.fetchIndexRealtime(track.indexCode);
-        if (idx && idx.changeRate != null) selfChangeRate = idx.changeRate;
-      }
-    } catch (e) { /* ignore */ }
-
-    // 2b) 持仓加权兜底：非指数基金 / 指数行情失败时，用持仓股实时涨跌加权
-    if (selfChangeRate == null) {
-      try {
-        const holdings = await fd.fetchTempHoldings(fundCode);
-        if (holdings && holdings.length > 0) {
-          const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
-          const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
-          let totalRatio = 0, weightedChange = 0;
-          for (const h of holdings) {
-            const p = prices[h.stockCode];
-            if (!p || p.changeRate == null) continue;
-            totalRatio += h.navRatio;
-            weightedChange += p.changeRate * h.navRatio;
-          }
-          if (totalRatio > 0) selfChangeRate = +(weightedChange / totalRatio).toFixed(2);
-        }
-      } catch (e) { /* ignore */ }
-    }
-  }
+  // 2+3. 新浪实时估值与自主估算互不依赖 → 并行拉取（原串行：新浪 → 指数 → 持仓 → 行情四轮叠加；
+  //      em 先行只为净值公布短路省请求，与两支无取值依赖）
+  const [sn, selfChangeRate] = await Promise.all([
+    fetchSinaEstimate(fundCode),
+    computeSelfChangeRate(fundCode),
+  ]);
 
   // 4. 组装（净值未公布）：按所选源优先（sina=数据源一优先、self=数据源二优先），互相兜底后回退昨日涨幅
   //    新浪对无覆盖标的（债券基金/968 互认）返回空，或数据非当日（停更标的）→ 视为不可用
@@ -127,6 +98,38 @@ async function fetchSelfEstimate(fundCode, src) {
     actualChangeRate: em.actualChangeRate,
     yesterdayNav: em.yesterdayNav,
   };
+}
+
+// 自主估算涨跌：指数基金优先用跟踪指数实时行情，否则持仓股加权兜底（仅工作日，失败返回 null）
+async function computeSelfChangeRate(fundCode) {
+  if (!fd.isBJWeekday()) return null;
+  // 2a) 指数优先：东财 INDEXCODE 覆盖所有指数基金（行业天然全覆盖），用指数实时涨跌幅估算。
+  //     带 fund_index_cache 缓存：命中直接用，未命中才调东财并写回。
+  try {
+    const track = await fd.getTrackIndexCached(db, fundCode);
+    if (track && track.indexCode) {
+      const idx = await fd.fetchIndexRealtime(track.indexCode);
+      if (idx && idx.changeRate != null) return idx.changeRate;
+    }
+  } catch (e) { /* ignore */ }
+
+  // 2b) 持仓加权兜底：非指数基金 / 指数行情失败时，用持仓股实时涨跌加权
+  try {
+    const holdings = await fd.fetchTempHoldings(fundCode);
+    if (holdings && holdings.length > 0) {
+      const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
+      const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
+      let totalRatio = 0, weightedChange = 0;
+      for (const h of holdings) {
+        const p = prices[h.stockCode];
+        if (!p || p.changeRate == null) continue;
+        totalRatio += h.navRatio;
+        weightedChange += p.changeRate * h.navRatio;
+      }
+      if (totalRatio > 0) return +(weightedChange / totalRatio).toFixed(2);
+    }
+  } catch (e) { /* ignore */ }
+  return null;
 }
 
 async function fetchTemperature(fundCode) {

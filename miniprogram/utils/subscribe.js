@@ -9,6 +9,8 @@ const SCENE = "closing_brief";
 const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7 天频控）
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
 const KEY_SILENT_DAY = "brief_silent_day"; // 最近一次静默授权日期（每天最多一次）
+const KEY_SILENT_POPUP = "brief_silent_popup_at"; // 最近一次弹窗式静默授权时间（未勾「总是允许」会弹窗，7 天降频）
+const KEY_ALWAYS_ALLOW = "brief_always_allow";    // 「总是保持以上选择」勾选状态探测缓存（getSetting withSubscriptions）
 const KEY_ALERT_DAY = "alert_auth_day";   // 提醒类授权的请求日期（每天最多弹一次授权窗）
 const DECLINE_COOLDOWN = 7 * 24 * 3600 * 1000;
 const track = require("./track.js"); // P0-0 sub_authorize 事件
@@ -107,11 +109,18 @@ function requestAlertAuth(src) {
   return requestAuth(src);
 }
 
-// 已授权用户的静默攒额度：每天最多一次，必须挂在用户手势回调中
-// （如首页下拉刷新 onScrollRefresh）。勾了「总是保持以上选择」的用户无感 accept；
-// 未勾的用户会再弹一次授权弹窗，失败静默无副作用。
+// 已授权用户的静默攒额度：必须挂在用户手势回调中（如首页下拉刷新 onScrollRefresh）。
+// 勾了「总是保持以上选择」的用户无感 accept，保持每天一次；
+// 未勾的用户调用会弹授权弹窗，降频为 7 天最多一次（避免每次下拉都被打扰）。
 function silentDailyAuth(src) {
   if (!hasAuthed()) return;
+  try {
+    // 未勾「总是允许」时调用必弹窗：距上次弹窗不足 7 天则跳过
+    if (!wx.getStorageSync(KEY_ALWAYS_ALLOW)) {
+      const lastPopup = wx.getStorageSync(KEY_SILENT_POPUP) || 0;
+      if (lastPopup && Date.now() - lastPopup < 7 * 24 * 3600 * 1000) return;
+    }
+  } catch (e) { /* ignore */ }
   try {
     const today = new Date().toDateString();
     if (wx.getStorageSync(KEY_SILENT_DAY) === today) return;
@@ -129,10 +138,29 @@ function silentDailyAuth(src) {
         }).catch(() => {});
         try { track.subAuthorize({ src: src || "", mode: "silent", result: "accept" }); } catch (e) { /* ignore */ }
       }
+      _probeAlwaysAllow();
     },
     fail() {
       try { track.subAuthorize({ src: src || "", mode: "silent", result: "fail" }); } catch (e) { /* ignore */ }
+      _probeAlwaysAllow();
     },
+  });
+}
+
+// 探测「总是保持以上选择」勾选状态并缓存：itemSettings 仅在用户勾选后返回。
+// 勾选了（accept）→ 静默场景保持每天；未勾选 → 记弹窗时间戳走 7 天降频。
+function _probeAlwaysAllow() {
+  wx.getSetting({
+    withSubscriptions: true,
+    success(res) {
+      try {
+        const itemSettings = (res.subscriptionsSetting && res.subscriptionsSetting.itemSettings) || {};
+        const alwaysAllow = itemSettings[TEMPLATE_ID] === "accept";
+        wx.setStorageSync(KEY_ALWAYS_ALLOW, alwaysAllow);
+        if (!alwaysAllow) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
+      } catch (e) { /* ignore */ }
+    },
+    fail() { /* 探测失败保持现状：下次仍按未勾选场景降频 */ },
   });
 }
 

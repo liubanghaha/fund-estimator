@@ -32,6 +32,7 @@
 .summary-value.up{color:var(--up)}
 .summary-value.down{color:#2E8B57}
 .summary-rate{font-size:18rpx;color:#999;margin-top:2rpx}
+.summary-asof{font-size:16rpx;color:#CCC;margin-top:2rpx}
 .summary-rate.up{color:var(--up)}
 .summary-rate.down{color:#2E8B57}
 .summary-item.active .summary-rate{color:var(--primary)}

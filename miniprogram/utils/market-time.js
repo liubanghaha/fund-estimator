@@ -118,10 +118,19 @@ function isCacheFresh(cache, opts) {
   return now - ts < idleTtl;
 }
 
+// 午休 11:30~13:00（交易时段内估值不变化，轮询可休息；marketPhase 保持三态不动，
+// 缓存 TTL 等既有调用方语义不受影响）
+function isLunchBreak() {
+  const bj = _bjNow();
+  const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+  return min >= 690 && min < 780;
+}
+
 module.exports = {
   isTradingDay,
   lastTradingDay,
   marketPhase,
+  isLunchBreak,
   bjDateStr,
   isCacheFresh,
   HOLIDAYS,
