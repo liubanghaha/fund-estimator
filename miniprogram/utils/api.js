@@ -175,6 +175,10 @@ const api = {
   transactionList(fundCode) {
     return this.callFunction("manageTransaction", { action: "list", fundCode });
   },
+  // 影子账户：卖出记录 × 最新官方净值的"如果没卖"演算（服务端算好逐笔与汇总）
+  transactionShadow() {
+    return this.callFunction("manageTransaction", { action: "shadow" });
+  },
   batchFetchEstimate(codes) {
     return this.callFunction("batchFetchEstimate", { codes, src: this._estimateSrc() });
   },

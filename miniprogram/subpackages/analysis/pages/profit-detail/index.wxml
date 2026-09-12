@@ -76,6 +76,19 @@
       </view>
     </view>
 
+    <!-- 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，纯数据陈述 -->
+    <view wx:if="{{showShadow}}" class="shadow-card">
+      <view class="shadow-head">
+        <text class="shadow-title">影子账户 · 如果没卖</text>
+        <text class="shadow-total {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{shadowTotal > 0 ? '+' : ''}}{{shadowTotal}}元</text>
+      </view>
+      <view class="shadow-item" wx:for="{{shadowTop}}" wx:key="index" data-code="{{item.fundCode}}" data-name="{{item.fundName}}" bind:tap="onShadowFundTap">
+        <text class="shadow-desc">{{item.dateShort}}卖出的 {{item.fundName}}（{{item.shares}}份）</text>
+        <text class="shadow-val {{item.shadow > 0 ? 'up' : item.shadow < 0 ? 'down' : ''}}">{{item.shadow > 0 ? '+' : ''}}{{item.shadow}}元</text>
+      </view>
+      <view class="shadow-tip">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成任何操作建议</view>
+    </view>
+
     <!-- 走势图 -->
     <view class="chart-card">
       <view class="chart-header">

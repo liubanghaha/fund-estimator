@@ -107,3 +107,13 @@
 .jtbd-survey{flex-direction:column;align-items:flex-start;gap:12rpx}
 .jtbd-options{display:flex;flex-wrap:wrap;gap:12rpx}
 .jtbd-option{font-size:24rpx;color:#666;background:#FFF;border:1rpx solid #E5E5E5;border-radius:24rpx;padding:8rpx 24rpx}
+/* 影子账户（A2 最小版） */
+.shadow-card{background:#FFF;border-radius:var(--radius-card);padding:24rpx;margin:16rpx 24rpx;box-shadow:var(--shadow-card)}
+.shadow-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12rpx}
+.shadow-title{font-size:28rpx;font-weight:700;color:#333}
+.shadow-total{font-size:30rpx;font-weight:700}
+.shadow-item{display:flex;align-items:center;justify-content:space-between;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
+.shadow-item:last-of-type{border-bottom:none}
+.shadow-desc{font-size:24rpx;color:#666;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shadow-val{font-size:26rpx;font-weight:600;margin-left:16rpx}
+.shadow-tip{font-size:20rpx;color:#BBB;margin-top:10rpx;line-height:1.5}

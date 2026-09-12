@@ -33,6 +33,7 @@ Page({
     ],
     canvasHRpx: 0,
     asOfTime: "",
+    showShadowCard: false, shadowTotal: null, shadowTop: [],
     earliestDate: "",
     calendarView: "day",
     selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
@@ -98,6 +99,7 @@ Page({
     this._canvasH = Math.round(this._canvasW * 0.59);
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
+    this._loadShadow(); // 影子账户：独立轻查询，不阻塞主流程
         this._fromCache();
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
@@ -209,6 +211,24 @@ Page({
       this._updateAsOf();
       this._draw();
     }).catch(() => {});
+  },
+
+  // 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，拉取失败静默不阻塞主流程
+  _loadShadow() {
+    api.transactionShadow().then((res) => {
+      const d = res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.hasData || !d.items) return;
+      const top = d.items.filter((i) => i.shadow != null)
+        .sort((a, b) => Math.abs(b.shadow) - Math.abs(a.shadow)).slice(0, 3)
+        .map((i) => ({ ...i, dateShort: i.date ? i.date.slice(5).replace("-", "/") : "" }));
+      this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTop: top });
+    }).catch(() => { /* ignore */ });
+  },
+  onShadowFundTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (!code) return;
+    const url = "/subpackages/analysis/pages/fund-detail/index?fundCode=" + code + (name ? "&fundName=" + encodeURIComponent(name) : "");
+    wx.navigateTo({ url });
   },
 
   // 数据截至时间：取最新盘中快照的分钟（快照缺失则不显示，避免误导）
