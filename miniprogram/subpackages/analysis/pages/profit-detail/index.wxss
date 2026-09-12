@@ -126,3 +126,21 @@
 .review-label{font-size:20rpx;color:#BBB;margin-top:4rpx}
 .review-vs{font-size:22rpx;color:#CCC}
 .review-line{font-size:24rpx;color:#666;padding:6rpx 0}
+/* 周签 */
+.weekly-entry-row{display:flex;justify-content:flex-end;margin:0 24rpx 4rpx}
+.weekly-entry{font-size:24rpx;color:var(--primary);padding:8rpx 12rpx}
+.weekly-canvas{width:600rpx;height:880rpx;margin:0 auto}
+.weekly-actions{display:flex;gap:20rpx;padding:20rpx 10rpx 8rpx}
+.weekly-save-btn,.weekly-share-btn{flex:1;font-size:28rpx;border-radius:40rpx;line-height:2.6;padding:0}
+.weekly-save-btn{color:#FFF;background:var(--primary)}
+.weekly-share-btn{color:var(--primary);background:#FFF;border:1rpx solid var(--primary)}
+/* 弹层复用（与行情页同款样式，跨页各自定义） */
+.idx-modal-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center}
+.idx-modal{width:640rpx;background:#FFF;border-radius:20rpx;padding:28rpx 24rpx 16rpx}
+.idx-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
+.idx-modal-title{font-size:30rpx;font-weight:700;color:#333}
+.idx-modal-close{font-size:40rpx;color:#CCC;padding:0 8rpx;line-height:1}
+.idx-modal-canvas{width:100%;height:320rpx}
+.idx-modal-foot{font-size:20rpx;color:#CCC;text-align:center;padding-top:12rpx}
+.mk-loading{padding:80rpx 0;text-align:center}
+.mk-loading-text{font-size:26rpx;color:#BBB}

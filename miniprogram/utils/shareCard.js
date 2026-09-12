@@ -340,4 +340,136 @@ function drawEventCard(canvas, opts = {}) {
   });
 }
 
-module.exports = { drawShareCard, drawEventCard, CARD_W, CARD_H };
+/**
+ * 绘制周签（每周五收盘后/周末可生成，产品规划 NEXT：年度报告的工艺热身）
+ * 纯数据陈述：本周收益 vs 沪深300、操作笔数、覆盖信息
+ * @param {Object} opts - { rangeText, weekProfit, weekProfitRate, hsRate, opText, fundCount, earliestDate }
+ */
+function drawWeeklyCard(canvas, opts = {}) {
+  const w = CARD_W, h = CARD_H;
+  const ctx = _init(canvas, w, h);
+  const theme = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'red';
+
+  const weekRate = parseFloat(opts.weekProfitRate) || 0;
+  const weekProfit = parseFloat(opts.weekProfit) || 0;
+  const isUp = weekRate >= 0;
+  const mainColor = isUp ? '#E4393C' : '#2E8B57';
+  const amountVisible = opts.amountVisible !== false;
+
+  // === 背景 / 装饰 / 头部（与收益卡同款） ===
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, w, h);
+  const topGrad = ctx.createLinearGradient(0, 0, w, 0);
+  topGrad.addColorStop(0, theme === 'red' ? '#E4393C' : '#1976D2');
+  topGrad.addColorStop(1, theme === 'red' ? '#FF6B6B' : '#42A5F5');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, w, 6);
+  ctx.fillStyle = '#1A1A1A';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('🌿 韭菜估值宝', 40, 40);
+  ctx.fillStyle = '#999';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('估值有数 · 心中有底', 40, 70);
+  ctx.strokeStyle = '#F0F0F0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, 96);
+  ctx.lineTo(w - 40, 96);
+  ctx.stroke();
+
+  // === 主视觉 ===
+  ctx.fillStyle = '#666';
+  ctx.font = '18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('本周收益 · ' + (opts.rangeText || ''), w / 2, 150);
+
+  ctx.fillStyle = mainColor;
+  ctx.font = 'bold 96px sans-serif';
+  ctx.fillText((isUp ? '+' : '') + weekRate + '%', w / 2, 264);
+
+  ctx.fillStyle = amountVisible ? mainColor : '#CCC';
+  ctx.font = '22px sans-serif';
+  ctx.fillText(amountVisible ? ((weekProfit > 0 ? '+' : '') + '¥' + weekProfit) : '****', w / 2, 300);
+
+  // === 沪深300 对比 ===
+  const cmpY = 370;
+  ctx.strokeStyle = '#F0F0F0';
+  ctx.beginPath();
+  ctx.moveTo(40, cmpY - 10);
+  ctx.lineTo(w - 40, cmpY - 10);
+  ctx.stroke();
+  if (opts.hsRate != null) {
+    const diff = +(weekRate - opts.hsRate).toFixed(2);
+    const diffText = diff >= 0 ? '跑赢沪深300 ' + diff + ' 个百分点' : '跑输沪深300 ' + Math.abs(diff) + ' 个百分点';
+    ctx.fillStyle = '#666';
+    ctx.font = '18px sans-serif';
+    ctx.fillText(diffText, w / 2, cmpY + 26);
+  } else {
+    ctx.fillStyle = '#BBB';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('本周沪深300：--', w / 2, cmpY + 26);
+  }
+
+  // === 信息行 ===
+  const infoY = cmpY + 76;
+  const drawInfo = (y, label, value) => {
+    ctx.fillStyle = '#999';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, w / 2 - 70, y);
+    ctx.fillStyle = '#1A1A1A';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(value, w / 2 + 70, y);
+  };
+  drawInfo(infoY, '持有基金', (opts.fundCount || 0) + ' 只');
+  drawInfo(infoY + 34, '本周操作', opts.opText || '0 笔');
+  if (opts.earliestDate) drawInfo(infoY + 68, '收益自', opts.earliestDate + ' 起计');
+
+  // === 分隔 + 二维码 ===
+  const qrY = infoY + 120;
+  const qrSize = 140;
+  const qrX = w / 2 - qrSize / 2;
+  ctx.fillStyle = '#999';
+  ctx.font = '15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('微信扫码查看你的收益走势', w / 2, qrY + qrSize + 32);
+  ctx.fillStyle = '#CCC';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('纯数据陈述，不构成投资建议', w / 2, qrY + qrSize + 60);
+
+  ctx.fillStyle = '#F5F5F5';
+  ctx.fillRect(0, h - 40, w, 40);
+  ctx.fillStyle = '#BBB';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('韭菜估值宝 · 估值有数', w / 2, h - 14);
+
+  return new Promise((resolve) => {
+    const qrcodePath = opts.qrcodePath || '/images/qrcode.jpg';
+    const img = canvas.createImage();
+    img.onload = () => {
+      ctx.save();
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.clip();
+      ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+      ctx.restore();
+      resolve({ w, h });
+    };
+    img.onerror = () => {
+      ctx.fillStyle = '#F8F8F8';
+      ctx.strokeStyle = '#E0E0E0';
+      ctx.lineWidth = 1.5;
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#CCC';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('小程序码', w / 2, qrY + qrSize / 2);
+      resolve({ w, h });
+    };
+    img.src = qrcodePath;
+  });
+}
+
+module.exports = { drawShareCard, drawEventCard, drawWeeklyCard, CARD_W, CARD_H };

@@ -36,6 +36,7 @@ Page({
     amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
     showShadowCard: false, shadowTotal: null, shadowTop: [],
     showTodayReview: false, todayReview: null,
+    weeklyAvailable: false, showWeeklyModal: false, weeklyRendering: false,
     earliestDate: "",
     calendarView: "day",
     selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
@@ -130,6 +131,10 @@ Page({
     this.setData({ theme });
     // 金额隐藏开关也同步（首页切换后返回本页立即生效）
     try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
+    // 周签入口：周五 15:00 收盘后及周末可见（年度报告的工艺热身）
+    const bj = new Date(Date.now() + 8 * 3600000);
+    const day = bj.getUTCDay();
+    this.setData({ weeklyAvailable: (day === 5 && bj.getUTCHours() >= 15) || day === 6 || day === 0 });
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
@@ -279,6 +284,71 @@ Page({
     if (!code) return;
     const url = "/subpackages/analysis/pages/fund-detail/index?fundCode=" + code + (name ? "&fundName=" + encodeURIComponent(name) : "");
     wx.navigateTo({ url });
+  },
+
+  // ==== 周签（年度报告工艺热身）：周五收盘后/周末生成当周数据卡 ====
+  onShowWeeklyCard() {
+    this.setData({ showWeeklyModal: true, weeklyRendering: true });
+    const bj = new Date(Date.now() + 8 * 3600000);
+    const mondayStr = new Date(bj.getTime() - 86400000 * ((bj.getUTCDay() + 6) % 7)).toISOString().slice(0, 10);
+    this._idx("000300", 10).then((rows) => {
+      const last5 = (rows || []).slice(-5);
+      const hsRate = last5.length >= 2 && last5[0].close > 0
+        ? +((last5[last5.length - 1].close / last5[0].close - 1) * 100).toFixed(2) : null;
+      const rangeText = last5.length
+        ? last5[0].date.slice(5).replace("-", "/") + " ~ " + last5[last5.length - 1].date.slice(5).replace("-", "/")
+        : "";
+      api.transactionList().then((res) => {
+        const txs = (res.result && res.result.code === 0 && res.result.data) || [];
+        const ops = txs.filter((t) => t.date && t.date >= mondayStr).length;
+        const query0 = wx.getStorageSync("portfolio_cache");
+        const fundCount = query0 && query0.holdings ? query0.holdings.filter((h) => parseFloat(h.shares || h.amount || 0) > 0).length : 0;
+        // 先收起 loading 让 canvas 挂载，再查询节点绘制（查询时 canvas 尚未渲染会拿到空节点）
+        this.setData({ weeklyRendering: false }, () => {
+          wx.nextTick(() => {
+            const query = wx.createSelectorQuery();
+            query.select("#weeklyCanvas").fields({ node: true, size: true }).exec((cres) => {
+              if (!cres || !cres[0] || !cres[0].node) return;
+              this._weeklyCanvas = cres[0].node;
+              const shareCard = require("../../../../utils/shareCard");
+              shareCard.drawWeeklyCard(cres[0].node, {
+                rangeText,
+                weekProfit: this.data.weekProfit,
+                weekProfitRate: this.data.weekProfitRate,
+                hsRate,
+                opText: ops + " 笔",
+                fundCount,
+                earliestDate: this.data.earliestDate,
+                amountVisible: this.data.amountVisible,
+              }).then(() => this.setData({ weeklyRendering: false }))
+                .catch(() => this.setData({ weeklyRendering: false }));
+            });
+          });
+        });
+      }).catch(() => { this.setData({ weeklyRendering: false }); });
+    }).catch(() => { this.setData({ weeklyRendering: false }); wx.showToast({ title: "生成失败，请重试", icon: "none" }); });
+  },
+  onWeeklyClose() {
+    this.setData({ showWeeklyModal: false });
+  },
+  onSaveWeekly() {
+    if (!this._weeklyCanvas) return;
+    wx.canvasToTempFilePath({
+      canvas: this._weeklyCanvas,
+      success: (res) => {
+        wx.saveImageToPhotosAlbum({
+          filePath: res.tempFilePath,
+          success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
+          fail: () => wx.showToast({ title: "保存失败，请授权相册权限", icon: "none" }),
+        });
+      },
+      fail: () => wx.showToast({ title: "生成图片失败", icon: "none" }),
+    });
+  },
+  noop() {},
+  onShareAppMessage() {
+    track.share({ sharePage: "profit" });
+    return { title: "我的收益走势 · 韭菜估值宝", path: "/subpackages/analysis/pages/profit-detail/index" };
   },
 
   // 数据截至时间：取最新盘中快照的分钟（快照缺失则不显示，避免误导）
