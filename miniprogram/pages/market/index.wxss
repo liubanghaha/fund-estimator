@@ -1,0 +1,34 @@
+/* 行情中心 V1·合规整改版：港美股敞口 + 港/美/亚指数 */
+.page{min-height:100vh;background:#F5F5F5;padding:16rpx 24rpx 40rpx;box-sizing:border-box}
+.disclaimer{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 0 4rpx}
+.mk-card{background:#FFF;border-radius:var(--radius-card);padding:28rpx 24rpx;margin-bottom:20rpx;box-shadow:var(--shadow-card);}
+.mk-sec-title{font-size:28rpx;font-weight:700;color:#333;margin-bottom:20rpx}
+.mk-loading{padding:120rpx 0;text-align:center}
+.mk-loading-text{font-size:26rpx;color:#BBB}
+.mk-updated{font-size:20rpx;color:#CCC;text-align:center;padding-top:16rpx}
+
+/* 涨跌色（红涨绿跌，与全站一致） */
+.up{color:var(--up)}
+.down{color:#2E8B57}
+
+/* ===== 持仓港美股敞口 ===== */
+.exp-row{display:flex;gap:24rpx;margin-bottom:16rpx}
+.exp-item{flex:1;background:#F8F8F8;border-radius:14rpx;padding:20rpx}
+.exp-pct{font-size:40rpx;font-weight:700;color:#333}
+.exp-pct.up-text{color:var(--primary,var(--up))}
+.exp-label{font-size:22rpx;color:#999;margin-top:6rpx}
+.exp-cnt{font-size:20rpx;color:#BBB}
+.exp-note{font-size:24rpx;color:#666;line-height:1.6;margin-bottom:8rpx}
+.exp-tip{font-size:20rpx;color:#BBB}
+
+/* ===== 核心指数横滑 ===== */
+.idx-scroll{white-space:nowrap}
+.idx-card{display:inline-block;vertical-align:top;min-width:200rpx;margin-right:16rpx;border-radius:14rpx;padding:20rpx;box-sizing:border-box;background:#F8F8F8}
+.idx-name{font-size:24rpx;color:#666}
+.idx-price{font-size:34rpx;font-weight:700;margin-top:8rpx}
+.idx-rate{font-size:24rpx;margin-top:4rpx}
+
+/* 指数分类切换（港/美/亚太） */
+.idx-tabs{display:flex;gap:14rpx;margin-bottom:18rpx}
+.idx-tab{font-size:24rpx;color:#666;background:#F2F2F2;border-radius:26rpx;padding:8rpx 26rpx}
+.idx-tab.active{color:#FFF;background:var(--primary,var(--up));font-weight:600}

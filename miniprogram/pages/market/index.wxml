@@ -1,0 +1,49 @@
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
+
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="mk-loading"><text class="mk-loading-text">加载中...</text></view>
+
+  <!-- 加载失败 -->
+  <view wx:elif="{{loadError}}" class="mk-loading">
+    <text class="mk-loading-text">行情加载失败，下拉重试</text>
+  </view>
+
+  <block wx:else>
+    <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述） -->
+    <view wx:if="{{exposure && exposure.hasData}}" class="mk-card">
+      <view class="mk-sec-title">你的持仓港美股敞口</view>
+      <view class="exp-row">
+        <view class="exp-item">
+          <view class="exp-pct up-text">{{exposure.hkPct == null ? '--' : exposure.hkPct}}%</view>
+          <view class="exp-label">重仓港股<text class="exp-cnt" wx:if="{{exposure.hkCount}}">（{{exposure.hkCount}} 只基金）</text></view>
+        </view>
+        <view class="exp-item">
+          <view class="exp-pct">{{exposure.usPct == null ? '--' : exposure.usPct}}%</view>
+          <view class="exp-label">重仓美股<text class="exp-cnt" wx:if="{{exposure.usCount}}">（{{exposure.usCount}} 只基金）</text></view>
+        </view>
+      </view>
+      <view wx:if="{{exposure.topText}}" class="exp-note">{{exposure.topText}}</view>
+      <view class="exp-tip">按持仓基金最新公布的重仓股占比与市值加权估算</view>
+    </view>
+
+    <!-- 核心指数：港股 / 美股 / 亚太 -->
+    <view class="mk-card">
+      <view class="mk-sec-title">核心指数</view>
+      <view class="idx-tabs">
+        <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
+      </view>
+      <scroll-view scroll-x class="idx-scroll" enable-flex>
+        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code">
+          <view class="idx-name">{{item.name}}</view>
+          <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
+          <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
+        </view>
+      </scroll-view>
+      <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+    </view>
+
+    <!-- 空数据 -->
+    <view wx:if="{{emptyData}}" class="mk-loading"><text class="mk-loading-text">行情数据暂不可用，请稍后再试</text></view>
+  </block>
+</view>

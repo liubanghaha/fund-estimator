@@ -181,9 +181,9 @@ const api = {
   fetchMarketIndex(indexCode, days) {
     return this.callFunction("fetchMarketIndex", { indexCode, days });
   },
-  // 行情中心快照：两市成交额/涨跌家数 + 行业板块（登录用户持仓行业置顶）
-  fetchMarketOverview() {
-    return this.callFunction("fetchMarketOverview", {});
+  // 行情中心：action=exposure 为持仓港美股敞口（合规整改版行情页用）；缺省为旧概览/行业口径
+  fetchMarketOverview(data) {
+    return this.callFunction("fetchMarketOverview", data || {});
   },
   // 资讯聚合：快讯 7×24（东财+金十，sortEnd 翻页游标）+ 要闻
   fetchNews(params = {}) {

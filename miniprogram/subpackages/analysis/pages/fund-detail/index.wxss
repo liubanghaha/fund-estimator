@@ -238,7 +238,7 @@
 .turnover-formula{font-size:20rpx}
 
 /* 数据校准 */
-.mh-calibrate{float:right;font-size:22rpx;color:#BBB;font-weight:400;padding:0 8rpx}
+.mh-calibrate{float:right;font-size:22rpx;font-weight:600;color:var(--primary);border:1rpx solid currentColor;border-radius:999rpx;padding:2rpx 16rpx;line-height:1.6}
 .cal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center}
 .cal-card{width:600rpx;background:#FFF;border-radius:20rpx;padding:36rpx 32rpx 28rpx}
 .cal-title{font-size:32rpx;font-weight:700;color:#333;text-align:center}

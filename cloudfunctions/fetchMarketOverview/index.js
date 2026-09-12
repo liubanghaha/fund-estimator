@@ -39,6 +39,10 @@ async function saveDbShared(payload) {
 exports.main = async (event = {}) => {
   try {
     const { OPENID } = cloud.getWXContext();
+    // 港美股敞口（合规整改版行情页）：独立 action，不走 A 股概览/行业链路
+    if (event.action === "exposure") {
+      return await handleExposure(OPENID);
+    }
     let overview, sectors, flows;
     if (_sharedCache && Date.now() - _sharedTs < SHARED_TTL) {
       ({ overview, sectors, flows } = _sharedCache);
@@ -279,6 +283,102 @@ async function fetchSectors() {
   }
   // clist 按 f3 降序返回，out 已有序
   return out;
+}
+
+// 持仓港美股敞口：detailPEs 重仓股代码分类（港股=5位数字 / 美股=字母代码），市值加权。
+// 持仓/温度数据获取逻辑与 fetchUserIndustries 同构（独立部署目录，刻意复制不共享，改口径时两处同步）
+async function handleExposure(openid) {
+  try {
+    if (!openid) return { code: 0, data: { hasData: false } };
+    const hRes = await db.collection("holdings").where({ _openid: openid })
+      .field({ fundCode: true, fundName: true, marketValue: true, shares: true, nav: true, amount: true, buyPrice: true })
+      .limit(200).get();
+    const holdings = hRes.data || [];
+    if (!holdings.length) return { code: 0, data: { hasData: false } };
+    const codes = [...new Set(holdings.map((h) => h.fundCode).filter(Boolean))];
+    if (!codes.length) return { code: 0, data: { hasData: false } };
+
+    // 市值口径与 fetchUserIndustries/getPortfolio 一致：最新净值 × 份额
+    const navMap = {};
+    {
+      const CONCURRENT = 8;
+      for (let i = 0; i < codes.length; i += CONCURRENT) {
+        const batch = codes.slice(i, i + CONCURRENT);
+        const batchResults = await Promise.all(batch.map(async (code) => {
+          try {
+            const r = await fd.fetchLatestNavEastMoney(code);
+            return [code, r && r.actualNav > 0 ? r.actualNav : null];
+          } catch (e) { return [code, null]; }
+        }));
+        batchResults.forEach(([code, nav]) => { if (nav != null) navMap[code] = nav; });
+        if (i + CONCURRENT < codes.length) await new Promise(r => setTimeout(r, 150));
+      }
+    }
+    const weighted = holdings.map((h) => {
+      let shares = parseFloat(h.shares) || 0;
+      const buyPrice = parseFloat(h.buyPrice) || parseFloat(h.nav) || 0;
+      if (!shares && h.amount && buyPrice > 0) shares = parseFloat(h.amount) / buyPrice;
+      if (!(shares > 0)) return null;
+      const nav = navMap[h.fundCode];
+      const mv = nav != null && nav > 0 ? nav * shares : (parseFloat(h.marketValue) || 0);
+      return { fundCode: h.fundCode, fundName: h.fundName, fundValue: mv };
+    }).filter((h) => h.fundValue > 0);
+
+    // 各基金最新一次温度明细（detailPEs 含重仓股代码/占比），date 降序分页后取每基金首条
+    const temps = [];
+    {
+      const PAGE = 100;
+      let skip = 0;
+      while (skip < 5000) {
+        const res = await db.collection("fund_temperatures")
+          .where({ fundCode: _.in(codes) })
+          .field({ fundCode: true, date: true, detailPEs: true })
+          .orderBy("date", "desc").skip(skip).limit(PAGE).get();
+        temps.push(...(res.data || []));
+        if ((res.data || []).length < PAGE) break;
+        skip += PAGE;
+      }
+    }
+    const latest = {};
+    for (const t of temps) {
+      if (!latest[t.fundCode]) latest[t.fundCode] = t;
+    }
+
+    let totalValue = 0, hkValue = 0, usValue = 0;
+    const hkFunds = [], usFunds = [];
+    for (const h of weighted) {
+      const fundValue = h.fundValue;
+      totalValue += fundValue;
+      const t = latest[h.fundCode];
+      if (!t || !t.detailPEs || !t.detailPEs.length) continue;
+      let hk = 0, us = 0;
+      for (const pe of t.detailPEs) {
+        const code = String(pe.code || "");
+        const r = (parseFloat(pe.ratio) || 0) / 100;
+        if (/^\d{5}$/.test(code)) hk += r;              // 港股：5 位数字代码
+        else if (/^[A-Za-z]/.test(code)) us += r;       // 美股：字母代码
+      }
+      if (hk > 0) hkFunds.push({ name: h.fundName || h.fundCode, pct: +(hk * 100).toFixed(1) });
+      if (us > 0) usFunds.push({ name: h.fundName || h.fundCode, pct: +(us * 100).toFixed(1) });
+      hkValue += fundValue * hk;
+      usValue += fundValue * us;
+    }
+    if (!(totalValue > 0)) return { code: 0, data: { hasData: false } };
+    const fmtPct = (v) => v > 0 ? +(v / totalValue * 100).toFixed(1) : null;
+    const top2 = (arr) => arr.sort((a, b) => b.pct - a.pct).slice(0, 2).map((f) => `${f.name} ${f.pct}%`);
+    return { code: 0, data: {
+      hasData: !!(hkValue > 0 || usValue > 0),
+      hkPct: fmtPct(hkValue),
+      usPct: fmtPct(usValue),
+      hkCount: hkFunds.length || null,
+      usCount: usFunds.length || null,
+      hkTop: top2(hkFunds),
+      usTop: top2(usFunds),
+    } };
+  } catch (e) {
+    console.error("[fetchMarketOverview] exposure 失败:", e.message || e);
+    return { code: 0, data: { hasData: false } };
+  }
 }
 
 // 用户持仓行业权重（市值加权，口径同 getPortfolio 资产配置）

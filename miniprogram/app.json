@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/watchlist/index",
+    "pages/market/index",
     "pages/user-center/index",
     "pages/search/index",
     "pages/add-holding/index",
@@ -45,6 +46,10 @@
       {
         "pagePath": "pages/index/index",
         "text": "持仓"
+      },
+      {
+        "pagePath": "pages/market/index",
+        "text": "行情"
       },
       {
         "pagePath": "pages/watchlist/index",
