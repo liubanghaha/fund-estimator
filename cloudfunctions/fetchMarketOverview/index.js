@@ -346,26 +346,56 @@ async function handleExposure(openid) {
 
     let totalValue = 0, hkValue = 0, usValue = 0;
     const hkFunds = [], usFunds = [];
+    // 重仓股明细：同一股票跨基金占比相加（组合内总权重 ≈ Σ 基金权重 × 个股占比）
+    const stockMap = {};
     for (const h of weighted) {
       const fundValue = h.fundValue;
       totalValue += fundValue;
       const t = latest[h.fundCode];
       if (!t || !t.detailPEs || !t.detailPEs.length) continue;
+      const wPct = (fundValue / totalValue) * 100; // 该基金占组合权重（%）
       let hk = 0, us = 0;
       for (const pe of t.detailPEs) {
-        const code = String(pe.code || "");
-        const r = (parseFloat(pe.ratio) || 0) / 100;
-        if (/^\d{5}$/.test(code)) hk += r;              // 港股：5 位数字代码
-        else if (/^[A-Za-z]/.test(code)) us += r;       // 美股：字母代码
+        const raw = String(pe.code || "");
+        if (!raw) continue;
+        const isHk = /^\d{5}$/.test(raw);
+        const isUs = /^[A-Za-z]/.test(raw);
+        if (!isHk && !isUs) continue; // A 股重仓不进港美股敞口
+        // 美股去 .OQ/.N 交易所后缀（qt.gtimg.cn 用无后缀 ticker，实测 usAAPL 有数据、usAAPL.OQ 无）
+        const code = isUs ? raw.split(".")[0].toUpperCase() : raw;
+        const key = (isHk ? "hk" : "us") + code;
+        const w = (parseFloat(pe.ratio) || 0) * wPct / 100; // 折算占组合 %
+        if (!stockMap[key]) stockMap[key] = { code, name: pe.name || code, market: isHk ? "hk" : "us", weight: 0 };
+        stockMap[key].weight += w;
+        if (isHk) hk += parseFloat(pe.ratio) || 0; else us += parseFloat(pe.ratio) || 0;
       }
-      if (hk > 0) hkFunds.push({ name: h.fundName || h.fundCode, pct: +(hk * 100).toFixed(1) });
-      if (us > 0) usFunds.push({ name: h.fundName || h.fundCode, pct: +(us * 100).toFixed(1) });
-      hkValue += fundValue * hk;
-      usValue += fundValue * us;
+      const fundName = h.fundName || h.fundCode;
+      if (hk > 0) hkFunds.push({ name: fundName, pct: +(hk).toFixed(1) });
+      if (us > 0) usFunds.push({ name: fundName, pct: +(us).toFixed(1) });
+      hkValue += fundValue * hk / 100;
+      usValue += fundValue * us / 100;
     }
     if (!(totalValue > 0)) return { code: 0, data: { hasData: false } };
     const fmtPct = (v) => v > 0 ? +(v / totalValue * 100).toFixed(1) : null;
     const top2 = (arr) => arr.sort((a, b) => b.pct - a.pct).slice(0, 2).map((f) => `${f.name} ${f.pct}%`);
+    // 重仓股实时行情（qt.gtimg.cn 批量，toQtCode 已支持 hk/us 映射）；失败留 null，前端显示 --
+    const allStocks = Object.values(stockMap).sort((a, b) => b.weight - a.weight);
+    const hkStocks = allStocks.filter((s) => s.market === "hk").slice(0, 8);
+    const usStocks = allStocks.filter((s) => s.market === "us").slice(0, 8);
+    const quoteCodes = [...hkStocks, ...usStocks].map((s) => s.code);
+    let quotes = {};
+    if (quoteCodes.length) {
+      try { quotes = await fd.fetchStockPricesTencent(quoteCodes, { timeoutMs: 6000 }); } catch (e) { quotes = {}; }
+    }
+    const withQuote = (s) => {
+      const q = quotes[s.code] || {};
+      return {
+        code: s.code, name: s.name,
+        weight: +s.weight.toFixed(2), // 占组合净值 %
+        price: q.price != null ? +q.price.toFixed(2) : null,
+        changeRate: q.changeRate != null ? q.changeRate : null,
+      };
+    };
     return { code: 0, data: {
       hasData: !!(hkValue > 0 || usValue > 0),
       hkPct: fmtPct(hkValue),
@@ -374,6 +404,8 @@ async function handleExposure(openid) {
       usCount: usFunds.length || null,
       hkTop: top2(hkFunds),
       usTop: top2(usFunds),
+      hkStocks: hkStocks.map(withQuote),
+      usStocks: usStocks.map(withQuote),
     } };
   } catch (e) {
     console.error("[fetchMarketOverview] exposure 失败:", e.message || e);

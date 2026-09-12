@@ -10,7 +10,7 @@
   </view>
 
   <block wx:else>
-    <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述） -->
+    <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述）+ 重仓股实时行情 -->
     <view wx:if="{{exposure && exposure.hasData}}" class="mk-card">
       <view class="mk-sec-title">你的持仓港美股敞口</view>
       <view class="exp-row">
@@ -23,24 +23,72 @@
           <view class="exp-label">重仓美股<text class="exp-cnt" wx:if="{{exposure.usCount}}">（{{exposure.usCount}} 只基金）</text></view>
         </view>
       </view>
-      <view wx:if="{{exposure.topText}}" class="exp-note">{{exposure.topText}}</view>
       <view class="exp-tip">按持仓基金最新公布的重仓股占比与市值加权估算</view>
     </view>
 
-    <!-- 核心指数：港股 / 美股 / 亚太 -->
+    <!-- 重仓股实时行情（你的基金底仓视角，他处不可见） -->
+    <view wx:if="{{exposure && (exposure.hkStocks.length || exposure.usStocks.length)}}" class="mk-card">
+      <view wx:if="{{exposure.hkStocks.length}}" class="stock-sec">
+        <view class="stock-sec-title">重仓港股<text class="stock-sec-note">按占仓权重排序</text></view>
+        <view class="stock-row" wx:for="{{exposure.hkStocks}}" wx:key="code">
+          <view class="stock-name">
+            <view class="stock-name-text">{{item.name}}</view>
+            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
+          </view>
+          <view class="stock-quote">
+            <view class="stock-price">{{item.price != null ? item.price : '--'}}</view>
+            <view class="stock-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : 'dim'}}">{{item.changeRate != null ? (item.changeRate > 0 ? '+' : '') + item.changeRate + '%' : '--'}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{exposure.usStocks.length}}" class="stock-sec">
+        <view class="stock-sec-title">重仓美股<text class="stock-sec-note">按占仓权重排序</text></view>
+        <view class="stock-row" wx:for="{{exposure.usStocks}}" wx:key="code">
+          <view class="stock-name">
+            <view class="stock-name-text">{{item.name}}</view>
+            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
+          </view>
+          <view class="stock-quote">
+            <view class="stock-price">{{item.price != null ? item.price : '--'}}</view>
+            <view class="stock-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : 'dim'}}">{{item.changeRate != null ? (item.changeRate > 0 ? '+' : '') + item.changeRate + '%' : '--'}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="exp-tip">行情为腾讯实时报价（可能有 15 分钟延迟，以交易所为准）</view>
+    </view>
+
+    <!-- 核心指数 -->
     <view class="mk-card">
-      <view class="mk-sec-title">核心指数</view>
+      <view class="mk-sec-title-row">
+        <view class="mk-sec-title">核心指数</view>
+        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}}</text>
+      </view>
       <view class="idx-tabs">
         <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
       </view>
       <scroll-view scroll-x class="idx-scroll" enable-flex>
-        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code">
+        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code" data-code="{{item.code}}" data-name="{{item.name}}" bind:tap="onIdxCardTap">
           <view class="idx-name">{{item.name}}</view>
           <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
           <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
+          <view class="idx-more">近5日走势 ›</view>
         </view>
       </scroll-view>
       <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+    </view>
+
+    <!-- 指数近 5 日走势弹层 -->
+    <view wx:if="{{showIdxModal}}" class="idx-modal-mask" bind:tap="onIdxModalClose">
+      <view class="idx-modal" catch:tap="noop">
+        <view class="idx-modal-head">
+          <text class="idx-modal-title">{{idxModalName}} · 近5日走势</text>
+          <view class="idx-modal-close" bind:tap="onIdxModalClose">×</view>
+        </view>
+        <view wx:if="{{idxModalLoading}}" class="mk-loading"><text class="mk-loading-text">加载中...</text></view>
+        <view wx:elif="{{idxModalError}}" class="mk-loading"><text class="mk-loading-text">走势加载失败，请重试</text></view>
+        <canvas wx:else type="2d" id="idxModalCanvas" class="idx-modal-canvas"></canvas>
+        <view class="idx-modal-foot">数据来源：公开市场数据，仅供参考</view>
+      </view>
     </view>
 
     <!-- 空数据 -->

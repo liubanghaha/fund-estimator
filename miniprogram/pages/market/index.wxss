@@ -32,3 +32,26 @@
 .idx-tabs{display:flex;gap:14rpx;margin-bottom:18rpx}
 .idx-tab{font-size:24rpx;color:#666;background:#F2F2F2;border-radius:26rpx;padding:8rpx 26rpx}
 .idx-tab.active{color:#FFF;background:var(--primary,var(--up));font-weight:600}
+
+/* ===== 重仓股实时榜 ===== */
+.stock-sec{margin-bottom:20rpx}
+.stock-sec:last-of-type{margin-bottom:8rpx}
+.stock-sec-title{font-size:26rpx;font-weight:600;color:#444;margin-bottom:12rpx}
+.stock-sec-note{font-size:20rpx;color:#BBB;font-weight:400;margin-left:12rpx}
+.stock-row{display:flex;align-items:center;justify-content:space-between;padding:14rpx 0;border-bottom:1rpx solid #F5F5F5}
+.stock-row:last-child{border-bottom:none}
+.stock-name{flex:1;min-width:0}
+.stock-name-text{font-size:26rpx;color:#333;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stock-code{font-size:20rpx;color:#BBB;margin-top:2rpx}
+.stock-quote{display:flex;align-items:center;gap:20rpx}
+.stock-price{font-size:26rpx;color:#333;font-weight:600;min-width:110rpx;text-align:right}
+.stock-rate{font-size:24rpx;min-width:90rpx;text-align:right}
+
+/* ===== 指数 5 日走势弹层 ===== */
+.idx-modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center}
+.idx-modal{width:640rpx;background:#FFF;border-radius:20rpx;padding:28rpx 24rpx 16rpx}
+.idx-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
+.idx-modal-title{font-size:30rpx;font-weight:700;color:#333}
+.idx-modal-close{font-size:40rpx;color:#CCC;padding:0 8rpx;line-height:1}
+.idx-modal-canvas{width:100%;height:320rpx}
+.idx-modal-foot{font-size:20rpx;color:#CCC;text-align:center;padding-top:12rpx}

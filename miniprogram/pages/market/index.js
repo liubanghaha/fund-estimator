@@ -1,6 +1,7 @@
 const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
 const track = require("../../utils/track");
+const chart = require("../../utils/chart");
 
 // 行情中心 V1·合规整改版（2026-09）：仅港股/美股/亚太指数 + 持仓港美股敞口。
 // A 股内容（市场概览/行业板块/主力资金流/A 股指数）已按审核整改方案清除，AppID 持「股票信息服务平台(港股/美股)」资质。
@@ -32,8 +33,12 @@ Page({
     loading: true,
     loadError: false,
     emptyData: false,
-    // 持仓港美股敞口（数据陈述）
+    // 持仓港美股敞口（数据陈述）+ 重仓股实时行情榜
     exposure: null,
+    // 指数 5 日走势弹层
+    showIdxModal: false, idxModalName: "", idxModalLoading: false, idxModalError: false,
+    // 各市场开闭市状态（本地推算）
+    hkStatus: "", usStatus: "",
     // 核心指数（港/美/亚太 三类切换）
     idxTabs: IDX_TABS,
     idxTab: "hk",
@@ -142,6 +147,7 @@ Page({
       exposure: cache.exposure || null,
       indexCards: [],
       indexLoading: false,
+      ...this._marketStatus(),
       // 秒开（旧缓存）时显示缓存保存时刻，标注诚实；拉新成功后显示当前时刻
       updatedAt: new Date((fromCache ? (cache.ts || 0) : Date.now()) + 8 * 3600000)
         .toISOString().slice(11, 16),
@@ -156,6 +162,53 @@ Page({
     data.indexCards = grouped[this.data.idxTab] || [];
     this.setData(data);
   },
+
+  // 各市场开闭市状态（北京时间本地推算，纯状态展示）：港股 9:30-12:00/13:00-16:00；
+  // 美股取宽口径 21:15~次日 5:00（夏冬令差异 1h，误差可接受）；周末休市（美股周日晚盘不计，误差 ≤1.5h）
+  _marketStatus() {
+    const d = new Date(Date.now() + 8 * 3600000);
+    const day = d.getUTCDay();
+    const weekend = day === 0 || day === 6;
+    const min = d.getUTCHours() * 60 + d.getUTCMinutes();
+    const hkOpen = !weekend && ((min >= 570 && min < 720) || (min >= 780 && min < 960));
+    const usOpen = !weekend && (min >= 1275 || min < 300);
+    return { hkStatus: hkOpen ? "交易中" : "已收盘", usStatus: usOpen ? "交易中" : "已收盘" };
+  },
+
+  // 指数卡点击 → 近 5 日走势弹层
+  onIdxCardTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (!code) return;
+    this.setData({ showIdxModal: true, idxModalName: name || "", idxModalLoading: true, idxModalError: false });
+    this._fetchIndexKline(code, 5).then((data) => {
+      if (!data || data.length < 2) {
+        this.setData({ idxModalLoading: false, idxModalError: true });
+        return;
+      }
+      const items = data.map((d) => ({ date: d.date, value: d.close }));
+      this.setData({ idxModalLoading: false });
+      // 等弹层 canvas 完成布局后再绘制（drawChart 异步查询节点）
+      setTimeout(() => this._drawIdxModal(items), 150);
+    }).catch(() => this.setData({ idxModalLoading: false, idxModalError: true }));
+  },
+  _drawIdxModal(items) {
+    const query = wx.createSelectorQuery();
+    query.select("#idxModalCanvas").fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return;
+      const canvas = res[0].node;
+      const w = res[0].width || 320, h = res[0].height || 160;
+      const last = items[items.length - 1].value, first = items[0].value;
+      chart.drawLineChart(canvas, {
+        w, h, data: items, isReturn: false,
+        color: last >= first ? "#E4393C" : "#2E8B57",
+        padding: { top: 16, right: 16, bottom: 24, left: 56 },
+      });
+    });
+  },
+  onIdxModalClose() {
+    this.setData({ showIdxModal: false });
+  },
+  noop() {},
 
   // 指数分类切换（港/美/亚太）
   onIdxTab(e) {
@@ -172,30 +225,35 @@ Page({
     }).catch(() => null);
   },
 
-  // 核心指数：与首页 fetchIndices 同源同口径（腾讯日K → 东财客户端 → 云函数）
-  _fetchIndices() {
-    // 腾讯映射缺失的代码（SPX/IXIC/N225/KS11）跳过腾讯直试东财客户端 K 线，避免浪费一轮竞速
+  // 单指数 K 线：与首页 fetchIndices 同源同口径（腾讯日K → 东财客户端 → 云函数）
+  _fetchIndexKline(code, days) {
     const TENCENT_OK = { HSTECH: 1, HSI: 1 };
-    const fetchOne = async (idx) => {
-      if (TENCENT_OK[idx.code]) {
+    const idx = INDICES.find((i) => i.code === code) || { code };
+    // 腾讯映射缺失的代码（SPX/IXIC/N225/KS11）跳过腾讯直试东财客户端 K 线，避免浪费一轮竞速
+    const fetchOne = async () => {
+      if (TENCENT_OK[code]) {
         const tRes = await Promise.race([
-          api.fetchMarketIndexTencent(idx.code, 2).catch(() => null),
+          api.fetchMarketIndexTencent(code, days).catch(() => null),
           new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
         ]);
         if (tRes && tRes.code === 0 && tRes.data && tRes.data.length > 0) return tRes.data;
       }
       const clientRes = await Promise.race([
-        api.fetchMarketIndexClient(idx.code, 2).catch(() => null),
+        api.fetchMarketIndexClient(code, days).catch(() => null),
         new Promise((r) => setTimeout(() => r(null), FETCH_TIMEOUT)),
       ]);
       if (clientRes && clientRes.code === 0 && clientRes.data && clientRes.data.length > 0) return clientRes.data;
       // 云函数多源兜底（美股/亚太走多源竞速，放宽到 12s）
       const res = await Promise.race([
-        api.fetchMarketIndex(idx.code, 2).catch(() => null),
+        api.fetchMarketIndex(code, days).catch(() => null),
         new Promise((r) => setTimeout(() => r(null), CLOUD_FETCH_TIMEOUT)),
       ]);
       return (res && res.result && res.result.code === 0 && res.result.data) || [];
     };
+    return fetchOne().catch(() => []);
+  },
+
+  _fetchIndices() {
     const buildCard = (idx, data) => {
       if (data && data.length >= 1) {
         const latest = data[data.length - 1];
@@ -211,7 +269,7 @@ Page({
       }
       return { name: idx.name, code: idx.code, price: "--", rateText: "--", isUp: true };
     };
-    return Promise.all(INDICES.map((idx) => fetchOne(idx).catch(() => []))).then((datas) =>
+    return Promise.all(INDICES.map((idx) => this._fetchIndexKline(idx.code, 2).catch(() => []))).then((datas) =>
       INDICES.map((idx, i) => buildCard(idx, datas[i])));
   },
 
