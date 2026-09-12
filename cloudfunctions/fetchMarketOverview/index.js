@@ -43,6 +43,10 @@ exports.main = async (event = {}) => {
     if (event.action === "exposure") {
       return await handleExposure(OPENID);
     }
+    // 全市场温度分布（当日）：事件分享卡数据源，三次计数查询
+    if (event.action === "tempDist") {
+      return await handleTempDist();
+    }
     let overview, sectors, flows;
     if (_sharedCache && Date.now() - _sharedTs < SHARED_TTL) {
       ({ overview, sectors, flows } = _sharedCache);
@@ -424,6 +428,23 @@ async function handleExposure(openid) {
   } catch (e) {
     console.error("[fetchMarketOverview] exposure 失败:", e.message || e);
     return { code: 0, data: { hasData: false } };
+  }
+}
+
+// 全市场温度分布（当日）：事件驱动分享卡的数据源。按 signal 三次计数（date 走索引），
+// 无建议语义，纯分布统计
+async function handleTempDist() {
+  try {
+    const date = fd.formatBJDate();
+    const countBy = async (signal) => {
+      const r = await db.collection("fund_temperatures").where({ date, signal }).count();
+      return r.total || 0;
+    };
+    const [low, mid, high] = await Promise.all([countBy("low"), countBy("mid"), countBy("high")]);
+    return { code: 0, data: { date, low, mid, high, total: low + mid + high } };
+  } catch (e) {
+    console.error("[fetchMarketOverview] tempDist 失败:", e.message || e);
+    return { code: 0, data: null };
   }
 }
 

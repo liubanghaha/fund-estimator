@@ -101,6 +101,8 @@ Page({
     // 分享卡片
     showShareCard: false,
     shareCardRendered: false,
+    cardVariant: "profit", // 分享卡变体：profit=收益卡 | temp=温度数据卡（极值日自动切换）
+    tempDist: null, eventDay: false, eventHeadline: "",
     // 添加到我的小程序轻引导（卡片保存/分享后触发）
     showAddGuide: false,
     // 分享落地横幅 + 渠道来源
@@ -117,7 +119,10 @@ Page({
     const hasHolding = this.data.holdings && this.data.holdings.length > 0;
     const p = parseFloat(this.data.todayProfit);
     let title = "韭菜估值宝 · 估值有数";
-    if (token && hasHolding && p !== 0) {
+    if (this.data.eventDay && this.data.eventHeadline) {
+      // 极值日转发文案自动换公共数据卡标题（合规：纯温度分布陈述）
+      title = this.data.eventHeadline;
+    } else if (token && hasHolding && p !== 0) {
       title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
     }
     // 分享确认埋点：onShareAppMessage 触发即用户已确认转发；带 token 与否是渠道归因的关键分叉
@@ -270,6 +275,7 @@ Page({
   // 首次渲染完成后自动刷新（静默后台拉取，缓存已渲染，不拉起下拉动画）
   onReady() {
     this._ready = true;
+    this._loadTempDist(); // 温度分布（事件分享卡判定，1h 缓存）
     if (this._pendingAutoRefresh) {
       this._pendingAutoRefresh = false;
       // 延迟等页面完全就绪（onLoad 时机页面未就绪）
@@ -1098,6 +1104,42 @@ Page({
     wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
   },
 
+  // ==== 事件驱动分享卡 ====
+  // 全市场温度分布 1h 缓存；极值判定：偏高或偏低占比 ≥65% → 分享卡自动切温度数据卡
+  _loadTempDist() {
+    try {
+      const c = wx.getStorageSync("temp_dist_cache");
+      if (c && c.ts && Date.now() - c.ts < 3600000 && c.dist && c.dist.total > 0) {
+        this._applyTempDist(c.dist);
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    api.fetchMarketOverview({ action: "tempDist" }).then((res) => {
+      const d = res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.total) return;
+      try { wx.setStorageSync("temp_dist_cache", { ts: Date.now(), dist: d }); } catch (e) { /* ignore */ }
+      this._applyTempDist(d);
+    }).catch(() => { /* ignore */ });
+  },
+  _applyTempDist(d) {
+    const highPct = Math.round(d.high / d.total * 100);
+    const lowPct = Math.round(d.low / d.total * 100);
+    const eventDay = highPct >= 65 || lowPct >= 65;
+    this.setData({
+      tempDist: d,
+      eventDay,
+      eventHeadline: eventDay ? `今日 ${highPct >= lowPct ? highPct : lowPct}% 偏股基金温度${highPct >= lowPct ? "偏高" : "偏低"}` : "",
+      cardVariant: eventDay ? "temp" : this.data.cardVariant, // 极值日默认展示温度卡
+    });
+  },
+  onCardVariant(e) {
+    const variant = e.currentTarget.dataset.variant;
+    if (!variant || variant === this.data.cardVariant) return;
+    this.setData({ cardVariant: variant, shareCardRendered: false }, () => {
+      wx.nextTick(() => this._renderShareCard());
+    });
+  },
+
   // ==== 分享卡片 ====
   onShareCard() {
     const holdings = this.data.holdings;
@@ -1120,6 +1162,15 @@ Page({
       const canvas = res[0].node;
       this._shareCanvas = canvas;
       const shareCard = require('../../utils/shareCard');
+      if (this.data.cardVariant === "temp" && this.data.tempDist) {
+        // 温度数据卡：极值日的公共数据分享（他处无法生成，因为别人不知道全市场分布）
+        shareCard.drawEventCard(canvas, { ...this.data.tempDist }).then(() => {
+          this.setData({ shareCardRendered: true });
+        }).catch(() => {
+          wx.showToast({ title: '渲染失败', icon: 'none' });
+        });
+        return;
+      }
       const { todayProfit, todayProfitRate, totalAmount, totalReturn, totalReturnRate, holdings, amountVisible } = this.data;
       shareCard.drawShareCard(canvas, {
         todayProfit, todayProfitRate, totalAmount, totalReturn, totalReturnRate,

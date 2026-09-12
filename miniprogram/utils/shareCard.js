@@ -206,4 +206,138 @@ function drawShareCard(canvas, opts = {}) {
   });
 }
 
-module.exports = { drawShareCard, CARD_W, CARD_H };
+/**
+ * 绘制事件驱动温度卡（温度极值日自动切换的公共数据卡，产品规划"传播线"）
+ * 纯数据陈述：只有温度分布数字，不含任何建议语义
+ * @param {Object} opts - { date, low, mid, high, total }
+ */
+function drawEventCard(canvas, opts = {}) {
+  const w = CARD_W, h = CARD_H;
+  const ctx = _init(canvas, w, h);
+  const theme = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'red';
+
+  const { low = 0, mid = 0, high = 0, total = 0 } = opts;
+  const pct = (n) => (total > 0 ? Math.round(n / total * 100) : 0);
+  const highPct = pct(high), lowPct = pct(low);
+  // 极值侧定主色：偏高红 / 偏低绿
+  const extremeHigh = highPct >= lowPct;
+  const mainColor = extremeHigh ? '#E4393C' : '#2E8B57';
+  const extremePct = extremeHigh ? highPct : lowPct;
+  const extremeText = extremeHigh ? '偏股基金温度偏高' : '偏股基金温度偏低';
+
+  // === 背景与装饰 ===
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, w, h);
+  const topGrad = ctx.createLinearGradient(0, 0, w, 0);
+  topGrad.addColorStop(0, theme === 'red' ? '#E4393C' : '#1976D2');
+  topGrad.addColorStop(1, theme === 'red' ? '#FF6B6B' : '#42A5F5');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, w, 6);
+
+  // === 头部 ===
+  ctx.fillStyle = '#1A1A1A';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('🌿 韭菜估值宝', 40, 40);
+  ctx.fillStyle = '#999';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('估值有数 · 心中有底', 40, 70);
+  ctx.strokeStyle = '#F0F0F0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, 96);
+  ctx.lineTo(w - 40, 96);
+  ctx.stroke();
+
+  // === 主视觉：极值占比 ===
+  ctx.fillStyle = '#666';
+  ctx.font = '18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('今日市场温度分布', w / 2, 150);
+
+  ctx.fillStyle = mainColor;
+  ctx.font = 'bold 110px sans-serif';
+  ctx.fillText(extremePct + '%', w / 2, 268);
+
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText(extremeText, w / 2, 310);
+
+  // === 分布条：偏低 / 适中 / 偏高 三段 ===
+  const barY = 360, barH = 36, barW = w - 120;
+  const wLow = total ? low / total * barW : 0;
+  const wMid = total ? mid / total * barW : 0;
+  const wHigh = total ? high / total * barW : 0;
+  let x = 60;
+  ctx.fillStyle = '#2E8B57';
+  ctx.fillRect(x, barY, wLow, barH);
+  x += wLow;
+  ctx.fillStyle = '#D8D8D8';
+  ctx.fillRect(x, barY, wMid, barH);
+  x += wMid;
+  ctx.fillStyle = '#E4393C';
+  ctx.fillRect(x, barY, wHigh, barH);
+
+  // 三段数值标签
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#2E8B57';
+  ctx.fillText('偏低 ' + lowPct + '%', 60, barY + 70);
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'center';
+  ctx.fillText('适中 ' + pct(mid) + '%', w / 2, barY + 70);
+  ctx.fillStyle = '#E4393C';
+  ctx.textAlign = 'right';
+  ctx.fillText('偏高 ' + highPct + '%', w - 60, barY + 70);
+
+  // === 说明区 ===
+  ctx.fillStyle = '#BBB';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(opts.date + ' · 覆盖 ' + total + ' 只偏股基金', w / 2, barY + 110);
+  ctx.fillText('温度为历史分位统计，不代表未来收益', w / 2, barY + 134);
+
+  // === 二维码区 ===
+  const qrY = barY + 170;
+  const qrSize = 140;
+  const qrX = w / 2 - qrSize / 2;
+  ctx.fillStyle = '#999';
+  ctx.font = '15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('微信扫码查看你持有基金的温度', w / 2, qrY + qrSize + 32);
+
+  ctx.fillStyle = '#F5F5F5';
+  ctx.fillRect(0, h - 40, w, 40);
+  ctx.fillStyle = '#BBB';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('韭菜估值宝 · 估值有数', w / 2, h - 14);
+
+  return new Promise((resolve) => {
+    const qrcodePath = opts.qrcodePath || '/images/qrcode.jpg';
+    const img = canvas.createImage();
+    img.onload = () => {
+      ctx.save();
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.clip();
+      ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+      ctx.restore();
+      resolve({ w, h });
+    };
+    img.onerror = () => {
+      ctx.fillStyle = '#F8F8F8';
+      ctx.strokeStyle = '#E0E0E0';
+      ctx.lineWidth = 1.5;
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#CCC';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('小程序码', w / 2, qrY + qrSize / 2);
+      resolve({ w, h });
+    };
+    img.src = qrcodePath;
+  });
+}
+
+module.exports = { drawShareCard, drawEventCard, CARD_W, CARD_H };
