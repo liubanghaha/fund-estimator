@@ -36,6 +36,13 @@
         <input class="rc-amount-input" type="digit" value="{{item.amount}}" placeholder="金额" bind:input="onAmountInput" data-index="{{index}}"/>
       </view>
     </view>
+    <!-- 操作归因（可选，纯记录） -->
+    <view class="reason-wrap">
+      <text class="reason-label">操作归因（可选）</text>
+      <view class="reason-chips">
+        <view wx:for="{{reasons}}" wx:key="*this" class="reason-chip {{reason === item ? 'active' : ''}}" bind:tap="onReasonTap" data-value="{{item}}">{{item}}</view>
+      </view>
+    </view>
     <button wx:if="{{ocrResults.length > 0}}" class="submit-all-btn" bind:tap="onConfirmAll">确认</button>
   </view>
 

@@ -195,6 +195,12 @@
 .tx-item .tx-row{border-bottom:none}
 .tx-note-row{font-size:22rpx;color:#999;padding:0 0 14rpx 80rpx;line-height:1.5}
 
+/* 当时为什么买/卖：交易记录面板顶部时间线（小字灰色，日期等宽对齐） */
+.note-timeline{margin-bottom:8rpx;padding-bottom:16rpx;border-bottom:1rpx solid #F5F5F5}
+.nt-row{display:flex;align-items:baseline;padding:6rpx 0;font-size:22rpx;color:#999;line-height:1.5}
+.nt-date{width:160rpx;flex-shrink:0;font-family:Menlo,Consolas,monospace;color:#BBB}
+.nt-text{flex:1;min-width:0;word-break:break-all}
+
 /* 定投回测 */
 .dca-section{margin:16rpx 24rpx;background:#FFF;border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card);}
 .dca-header{display:flex;justify-content:space-between;align-items:center;padding:20rpx 24rpx;border-bottom:1rpx solid #F5F5F5}

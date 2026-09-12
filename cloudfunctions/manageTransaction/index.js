@@ -2,6 +2,9 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
+// 操作归因枚举（可选单选，纯记录无建议）：白名单校验，非法值存空串防脏数据
+const REASONS = ["跌怕了", "涨急了", "要用钱", "按计划", "没忍住"];
+
 exports.main = async (event) => {
   const { action, data, fundCode } = event;
   const { OPENID } = cloud.getWXContext();
@@ -12,7 +15,7 @@ exports.main = async (event) => {
       case "add": {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少参数" };
         await db.collection("transactions").add({
-          data: { ...data, _openid: OPENID, createTime: new Date() },
+          data: { ...data, reason: REASONS.includes(data.reason) ? data.reason : "", _openid: OPENID, createTime: new Date() },
         });
         return { code: 0, msg: "success" };
       }

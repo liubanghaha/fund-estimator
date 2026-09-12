@@ -1,5 +1,18 @@
 const api = require("../../utils/api");
 const track = require("../../utils/track");
+
+// 操作归因枚举（可选单选，纯记录无建议，默认不选）：与云函数 manageTransaction 白名单保持一致
+const REASONS = ["跌怕了", "涨急了", "要用钱", "按计划", "没忍住"];
+
+// 已持有天数（卖出提示用）：按自然日计算，buyDate 缺失/非法返回 null（不显示）
+function heldDays(buyDate) {
+  if (!buyDate) return null;
+  const buy = new Date(String(buyDate).replace(/-/g, "/"));
+  if (isNaN(buy.getTime())) return null;
+  const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+}
+
 Page({
   data: {
     mode: "",
@@ -21,6 +34,10 @@ Page({
     adjustAmount: '', adjustAmountAbs: '', adjustSign: 1,
     adjustDate: '', adjustNote: '',
     showAdjustPicker: false,
+    // 操作归因（可选单选，默认不选）
+    reason: "", reasons: REASONS,
+    // 卖出持有期提示：调整金额为负且 buyDate 存在时计算（null 不显示）
+    sellHoldDays: null, sellHoldWarn: false,
   },
 
   onShow() {
@@ -438,12 +455,14 @@ Page({
     this.setData({ adjustAmountAbs: e.detail.value });
     const val = parseFloat(e.detail.value) || 0;
     this.setData({ adjustAmount: String(val * this.data.adjustSign) });
+    this._updateSellHold();
   },
   onToggleAdjustSign() {
     this._formDirty = true;
     const newSign = this.data.adjustSign > 0 ? -1 : 1;
     const absVal = parseFloat(this.data.adjustAmountAbs) || 0;
     this.setData({ adjustSign: newSign, adjustAmount: String(absVal * newSign) });
+    this._updateSellHold();
   },
   onAdjustFocus() {
     this.setData({ showAdjustPicker: true });
@@ -453,6 +472,23 @@ Page({
   },
   onAdjustNoteInput(e) {
     this.setData({ adjustNote: e.detail.value });
+  },
+
+  // 选择操作归因（单选可取消：再点一次取消选择）
+  onReasonTap(e) {
+    const val = e.currentTarget.dataset.value || "";
+    this.setData({ reason: this.data.reason === val ? "" : val });
+  },
+
+  // 卖出持有期提示：调整金额为负时按 _rawHolding.buyDate 计算已持有天数（buyDate 缺失不显示）
+  _updateSellHold() {
+    const adjAmount = parseFloat(this.data.adjustAmount) || 0;
+    if (adjAmount >= 0) {
+      this.setData({ sellHoldDays: null, sellHoldWarn: false });
+      return;
+    }
+    const days = heldDays(this._rawHolding && this._rawHolding.buyDate);
+    this.setData({ sellHoldDays: days, sellHoldWarn: days !== null && days < 7 });
   },
 
   async onSubmit() {
@@ -533,8 +569,9 @@ Page({
           fundCode: fundCode.trim(), fundName: fundName.trim(),
           type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
           note: this.data.adjustNote.trim() || '',
+          reason: this.data.reason || '',
         });
-        track.recordTrade({ source: "add_submit", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: fundCode.trim() });
+        track.recordTrade({ source: "add_submit", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: fundCode.trim(), reason: this.data.reason || '' });
 
         shares = ns;
         buyPrice = np;
@@ -573,7 +610,7 @@ Page({
 
       wx.removeStorageSync('portfolio_cache');
       wx.setStorageSync('portfolio_force_refresh', true);
-      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', showAdjustPicker: false });
+      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', showAdjustPicker: false, reason: '', sellHoldDays: null, sellHoldWarn: false });
 
       if (this.data._editIdx >= 0 && !isEdit) {
         const funds = [...this.data.ocrFunds];

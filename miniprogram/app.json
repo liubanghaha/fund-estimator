@@ -8,7 +8,8 @@
     "pages/adjust-holding/index",
     "pages/login/index",
     "pages/ops/index",
-    "pages/news/index"
+    "pages/news/index",
+    "pages/holding-check/index"
   ],
   "subpackages": [
     {

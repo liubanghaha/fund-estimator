@@ -95,6 +95,11 @@
                  bind:input="onAdjustInput" bind:focus="onAdjustFocus" placeholder="0.00"/>
         </view>
       </view>
+      <!-- 卖出持有期提示（纯事实+免责，buyDate 缺失不显示） -->
+      <view wx:if="{{sellHoldDays !== null}}" class="sell-hold-tip">
+        <text class="sell-hold-days">已持有 {{sellHoldDays}} 天</text>
+        <text wx:if="{{sellHoldWarn}}" class="sell-hold-warn">持有不足 7 天，赎回费率通常较高（常见 1.5%），以基金公告为准</text>
+      </view>
       <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
         <text class="label">交易日期</text>
         <picker mode="date" value="{{adjustDate}}" bind:change="onAdjustDateChange">
@@ -105,6 +110,13 @@
         <text class="label">备注</text>
         <input class="input" value="{{adjustNote}}" bind:input="onAdjustNoteInput"
                placeholder="选填：操作理由" maxlength="100"/>
+      </view>
+      <!-- 操作归因（可选，纯记录） -->
+      <view wx:if="{{isEdit && showAdjustPicker}}" class="reason-block">
+        <text class="reason-label">操作归因（可选）</text>
+        <view class="reason-chips">
+          <view wx:for="{{reasons}}" wx:for-item="r" wx:key="*this" class="reason-chip {{reason === r ? 'active' : ''}}" bind:tap="onReasonTap" data-value="{{r}}">{{r}}</view>
+        </view>
       </view>
       <view class="form-item">
         <text class="label">买入日期</text>

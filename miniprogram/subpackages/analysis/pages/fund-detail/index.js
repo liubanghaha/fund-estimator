@@ -25,6 +25,7 @@ Page({
     chartPeriod: '1M',
     chartTxMap: {},
     transactionList: [],
+    noteTimeline: [],
     showTransactions: false,
     scrollToTx: "",
     quarterNet: 0,
@@ -47,7 +48,8 @@ Page({
     }
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
-        wx.setNavigationBarTitle({ title: fundName });
+    // 导航栏标题用"基金名(代码)"：微信搜一搜按页面标题收录，基金名+代码是搜索主词
+    wx.setNavigationBarTitle({ title: `${fundName}(${options.fundCode})` });
     this._firstLoad = true;
     const { windowWidth } = wx.getWindowInfo();
     const canvasW = windowWidth - 24;
@@ -885,7 +887,17 @@ Page({
         else if (tx.type === "sell") map[tx.date].sells++;
       });
       txns = [...txns].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-      this.setData({ chartTxMap: map, transactionList: txns, quarterNet });
+      // "当时为什么买/卖"时间线：最近 3 条带理由的交易（note 优先，其次 reason 归因枚举文字）
+      const noteOf = (tx) => (tx.note || "").trim() || (tx.reason || "").trim();
+      const noteTimeline = txns
+        .filter((tx) => tx.date && noteOf(tx))
+        .slice(0, 3)
+        .map((tx) => ({
+          date: tx.date, type: tx.type,
+          typeText: tx.type === "buy" ? "买入" : "卖出",
+          text: noteOf(tx),
+        }));
+      this.setData({ chartTxMap: map, transactionList: txns, quarterNet, noteTimeline });
     } catch (e) { console.error("获取交易记录失败:", e); }
   },
 

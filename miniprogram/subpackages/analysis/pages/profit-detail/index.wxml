@@ -10,6 +10,14 @@
     <view class="brief-banner-btn" bind:tap="onRecallOptOut">关闭</view>
     <view class="brief-banner-close" bind:tap="onRecallOptOutClose">×</view>
   </view>
+  <!-- JTBD 主 Job 验证（一次性）：回答或关闭都记 done，不再打扰 -->
+  <view wx:if="{{showJtbdSurvey}}" class="brief-banner jtbd-survey">
+    <text class="brief-banner-text">你打开韭菜估值宝，主要想解决什么？</text>
+    <view class="jtbd-options">
+      <view wx:for="{{jtbdOptions}}" wx:key="*this" class="jtbd-option" bind:tap="onJtbdAnswer" data-answer="{{item}}">{{item}}</view>
+    </view>
+    <view class="brief-banner-close" bind:tap="onJtbdDismiss">×</view>
+  </view>
   <view wx:if="{{loading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
   <view wx:elif="{{loadError}}" class="empty-wrap">
     <view class="empty-icon">😵</view>

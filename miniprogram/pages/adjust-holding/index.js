@@ -2,6 +2,18 @@ const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
 const track = require("../../utils/track");
 
+// 操作归因枚举（可选单选，纯记录无建议，默认不选）：与云函数 manageTransaction 白名单保持一致
+const REASONS = ["跌怕了", "涨急了", "要用钱", "按计划", "没忍住"];
+
+// 已持有天数（卖出提示用）：按自然日计算，buyDate 缺失/非法返回 null（不显示）
+function heldDays(buyDate) {
+  if (!buyDate) return null;
+  const buy = new Date(String(buyDate).replace(/-/g, "/"));
+  if (isNaN(buy.getTime())) return null;
+  const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+}
+
 Page({
   data: {
     holdings: [],
@@ -19,6 +31,8 @@ Page({
     editPreview: false, editNewShares: "", editNewBuyPrice: "",
     editValid: false, editError: "",
     showManualHint: false,
+    // 操作归因（可选单选，默认不选）
+    reason: "", reasons: REASONS,
   },
 
   onShow() {
@@ -286,6 +300,12 @@ Page({
     });
   },
 
+  // 选择操作归因（单选可取消：再点一次取消选择）
+  onReasonTap(e) {
+    const val = e.currentTarget.dataset.value || "";
+    this.setData({ reason: this.data.reason === val ? "" : val });
+  },
+
   showManualSheet() {
     const holdings = this.data.holdings;
     if (holdings.length === 0) {
@@ -388,7 +408,7 @@ Page({
     this._savingItem = true;
     wx.showLoading({ title: "保存中...", mask: true });
     try {
-      await this.processItem(item);
+      await this.processItem(item, this.data.reason);
       wx.hideLoading();
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
@@ -419,11 +439,25 @@ Page({
       wx.showToast({ title: "请先将代码加入持仓", icon: "none" });
       return;
     }
-    const lines = matched.map((item) => `${item.fundName} ${item.type === 'buy' ? '买入' : '卖出'} ${item.amount}元`);
+    // 组装确认内容：卖出笔次附带已持有天数（buyDate 缺失不显示），不足 7 天追加赎回费率提示（纯事实+免责）
+    const lines = [];
+    const sellWarns = [];
+    for (const item of matched) {
+      let line = `${item.fundName} ${item.type === 'buy' ? '买入' : '卖出'} ${item.amount}元`;
+      if (item.type !== 'buy') {
+        const h = this.data.holdings[item._idx];
+        const days = heldDays(h && h.buyDate);
+        if (days !== null) {
+          line += `（已持有 ${days} 天）`;
+          if (days < 7) sellWarns.push(`${item.fundName} 持有不足 7 天，赎回费率通常较高（常见 1.5%），以基金公告为准`);
+        }
+      }
+      lines.push(line);
+    }
     const ok = await new Promise((r) => {
       wx.showModal({
         title: `确认全部（${matched.length}笔）`,
-        content: lines.join("\n"),
+        content: lines.join("\n") + (sellWarns.length ? `\n\n${sellWarns.join("\n")}` : ""),
         success: (res) => r(res.confirm),
         fail: () => r(false),
       });
@@ -437,7 +471,7 @@ Page({
     let done = 0;
     for (const item of matched) {
       try {
-        await this.processItem(item);
+        await this.processItem(item, this.data.reason);
         successSet.add(item);
         done++;
       } catch (e) {
@@ -449,7 +483,7 @@ Page({
     const failed = matched.length - done;
     if (failed === 0) {
       wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
-      this.setData({ ocrResults: [] });
+      this.setData({ ocrResults: [], reason: "" });
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
       setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
@@ -471,7 +505,7 @@ Page({
     });
   },
 
-  async processItem(item) {
+  async processItem(item, reason) {
     const h = this.data.holdings[item._idx];
     if (!h || !h._id) throw new Error("持仓数据异常");
     const amount = parseFloat(item.amount) || 0;
@@ -500,8 +534,9 @@ Page({
       fundCode: h.fundCode, fundName: h.fundName,
       type, shares: s, price, amount,
       date: item.date || today,
+      reason: reason || "",
     });
-    track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode });
+    track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode, reason: reason || "" });
 
     let ns, np;
     const oldMV = parseFloat(h.marketValue) || 0;

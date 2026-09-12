@@ -190,8 +190,9 @@ async function handleTrackOpen(logId) {
 // ---- action: recallPush ----
 // P0-1 老用户召回发送：opsTool.recallSend（管理员校验）服务端委托，同 alertPush 安全模型。
 // targets: [{ openid, bucket }]，bucket ∈ 7d|14d|30d（决定 push_logs kind=recall_{bucket} 供频控与报表）
+// variant: 'a'=通用文案（默认）| 'b'=个性化文案（最早买入基金+最新温度，构造失败自动回退 a）
 // 文案走模板「温度数据通知」，纯数据陈述（合规红线 #2/#6：不含投资/收益/建议字样）
-async function handleRecallPush({ targets }) {
+async function handleRecallPush({ targets, variant }) {
   const { OPENID } = cloud.getWXContext();
   if (OPENID) return { code: -1, msg: "拒绝客户端调用" };
   if (!Array.isArray(targets) || targets.length === 0) return { code: 0, sent: 0, failed: 0 };
@@ -205,11 +206,15 @@ async function handleRecallPush({ targets }) {
   const eligible = targets.filter(t => !t.recallOptOut && (quotaMap[t.openid] || 0) >= 2);
   let skipped = targets.length - eligible.length;
   let sent = 0, failed = 0;
+  const useB = variant === "b";
+  const tempCache = new Map(); // fundCode → normPE|null：B 文案同基金温度只查一次
   for (const t of eligible.slice(0, 200)) {
+    // B 变体逐人构造个性化 thing3（≤20 字符由构造函数保证）；查不到买入/温度或异常统一回退 A 文案
+    const thing3 = (useB && await buildRecallTextB(t.openid, tempCache)) || RECALL_TEXT_A;
     const brief = {
       thing1: { value: "韭菜估值宝" },
       thing2: { value: "你的持仓组合" },
-      thing3: { value: "持仓温度有更新，来看看最新数据" },
+      thing3: { value: thing3 },
       time4: { value: _bjTimeStr() },
     };
     const kind = "recall_" + (["7d", "14d", "30d"].indexOf(t.bucket) !== -1 ? t.bucket : "7d");
@@ -234,6 +239,49 @@ async function handleRecallPush({ targets }) {
     }
   }
   return { code: 0, sent, failed, skipped };
+}
+
+// 召回 A 文案（通用，默认）：纯数据陈述（合规红线 #2/#6）
+const RECALL_TEXT_A = "持仓温度有更新，来看看最新数据";
+
+// 召回 B 文案（个性化）构造：取该用户最早一笔买入（transactions type=buy 按 date 升序，date 为
+// YYYY-MM-DD 串，多取 5 条兜底缺 date 的脏数据），查该基金最新温度（fund_temperatures 按 date
+// 降序第一条，normPE 归一化估值温度），拼「你M月买入的XX温度0.62」。
+// 微信 thing 上限 20 字符：全拼超长先截 fundName 保留前 4 字+"…"再拼，仍超限返回 ""。
+// 查不到买入/月份非法/无温度/任何异常都返回 ""（调用方回退 A 文案）。内部全兜底不 reject。
+async function buildRecallTextB(openid, tempCache) {
+  try {
+    const bought = await db.collection("transactions")
+      .where({ _openid: openid, type: "buy" })
+      .orderBy("date", "asc").limit(5).get();
+    const tx = (bought.data || []).find(x => x && x.fundCode && x.date);
+    if (!tx) return "";
+    const month = parseInt(String(tx.date).slice(5, 7), 10);
+    if (!(month >= 1 && month <= 12)) return "";
+    // 温度按 fundCode 查最新一条（写侧 _id=fundCode_date 幂等 upsert，date 降序即最新）
+    let normPE;
+    if (tempCache && tempCache.has(tx.fundCode)) {
+      normPE = tempCache.get(tx.fundCode);
+    } else {
+      const temps = await db.collection("fund_temperatures")
+        .where({ fundCode: tx.fundCode }).orderBy("date", "desc").limit(1).get();
+      const row = temps.data && temps.data[0];
+      normPE = row && isFinite(parseFloat(row.normPE)) ? parseFloat(row.normPE) : null;
+      if (tempCache) tempCache.set(tx.fundCode, normPE); // 含 null 负缓存，同基金不再重查
+    }
+    if (normPE == null) return "";
+    const prefix = `你${month}月买入的`;       // 6-7 字
+    const suffix = `温度${normPE.toFixed(2)}`; // 通常 6-7 字
+    const name = String(tx.fundName || tx.fundCode || "").trim();
+    if (!name) return "";
+    const full = prefix + name + suffix;
+    if (full.length <= 20) return full;
+    const short = prefix + name.slice(0, 4) + "…" + suffix; // 截名后上限 7+5+7=19 字
+    return short.length <= 20 ? short : ""; // 仍超限（极端数值）→ 回退 A
+  } catch (e) {
+    console.warn("[dailyBriefing] 召回 B 文案构造失败，回退通用文案:", e.message);
+    return "";
+  }
 }
 
 // ---- action: recallOptOut ----
@@ -425,6 +473,7 @@ async function runNavBrief(force, dryRun) {
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
   let sent = 0, failed = 0, skipped = 0;
+  const devSamples = []; // 估算偏差样本（P1-6）：循环内收集，结束后 saveEstimateDeviation 汇总落库
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
     const list = byUser[sub._openid] || [];
@@ -447,6 +496,13 @@ async function runNavBrief(force, dryRun) {
     // 最终收益 = 已发布真实 + 未发布部分按组合估算兜底
     const finalProfit = real + (estRate != null ? (totalBase - pubBase) * estRate / 100 : 0);
     if (isNaN(finalProfit)) { skipped++; continue; }
+    // 估算偏差样本（P1-6）：仅收「全部可计算基金官方净值均已发布」（pubBase==totalBase>0）的用户，
+    // 此时官方加权实际率 real/pubBase 与组合估算率 estRate 同为组合级、可同口径对比；
+    // 968 互认基金 T+1 不发布 → pubBase<totalBase 自然不入样；未全发布时官方组合率不可知，不硬比
+    const estNum = Number(estRate);
+    if (estRate != null && isFinite(estNum) && pubBase > 0 && pubBase === totalBase && isFinite(real)) {
+      devSamples.push({ est: estNum, actual: real / pubBase * 100 });
+    }
     let text = `最终${finalProfit >= 0 ? "+" : ""}${finalProfit.toFixed(0)}元`;
     if (estRate != null) {
       const estProfit = totalBase * estRate / 100;
@@ -485,8 +541,42 @@ async function runNavBrief(force, dryRun) {
       failed++;
     }
   }
+  // 估算偏差落库（P1-6 信任线底座）：确认流程完成后 fire-and-forget，不阻塞播报返回；dryRun 不落库
+  if (!dryRun) saveEstimateDeviation(dataDay, devSamples)
+    .catch(e => console.error("[dailyBriefing][navBrief] estimate_deviation 异常:", e.message));
   console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
   return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
+}
+
+// ---- 估算偏差落库（P1-6 信任线底座）----
+// 组合级口径，每日一条：_id=dataDay（数据所属交易日）doc.set 幂等 upsert（存在覆盖/不存在创建）。
+// estRate=profit_snapshots 末点组合估算率（与收盘小结同口径）；actualRate=该用户全部可计算基金
+// 官方净值加权实际率；仅收全发布（pubBase==totalBase）用户样本等权平均。逐基金估算率当日流程
+// 不可得（快照只存组合级 rate），故不做逐基金口径；968 互认基金 T+1 不发布自然不入样。
+// 内部全兜底不 reject，失败仅记日志；调用方 fire-and-forget 不阻塞播报返回。
+async function saveEstimateDeviation(dataDay, samples) {
+  try {
+    if (!Array.isArray(samples) || samples.length === 0) return;
+    const n = samples.length;
+    const sum = samples.reduce((a, s) => ({ est: a.est + s.est, act: a.act + s.actual }), { est: 0, act: 0 });
+    const estRate = +(sum.est / n).toFixed(2);
+    const actualRate = +(sum.act / n).toFixed(2);
+    // 集合可能不存在：先建（仿 opsTool.ensureCollection，已存在时报错忽略）
+    try { await db.createCollection("estimate_deviation"); } catch (e) { /* 已存在 */ }
+    await db.collection("estimate_deviation").doc(dataDay).set({
+      data: {
+        date: dataDay,
+        estRate,
+        actualRate,
+        deviation: +(estRate - actualRate).toFixed(2), // 估算 - 官方（百分点）
+        sampleNote: `组合级口径：全持仓已发布官方净值加权实际率 vs 收盘组合估算率（profit_snapshots 末点，与收盘小结同口径），${n} 个全发布用户等权平均；逐基金估算率当日不可得`,
+        ts: Date.now(),
+      },
+    });
+    console.log(`[dailyBriefing][navBrief] estimate_deviation upsert ${dataDay} samples=${n} dev=${(estRate - actualRate).toFixed(2)}`);
+  } catch (e) {
+    console.error("[dailyBriefing][navBrief] estimate_deviation 写入失败:", e.message);
+  }
 }
 
 // ---- 周度小结（周六 10:00）：本周收益（五日复利）+ 操作笔数，每周一条 ----

@@ -302,6 +302,13 @@
     </view>
 
     <view wx:if="{{showTransactions}}" class="tx-list-card" id="txSection">
+      <view wx:if="{{noteTimeline.length > 0}}" class="note-timeline">
+        <view class="section-title">当时为什么买/卖</view>
+        <view wx:for="{{noteTimeline}}" wx:key="date" class="nt-row">
+          <text class="nt-date">{{item.date}}</text>
+          <text class="nt-text">{{item.typeText}}｜{{item.text}}</text>
+        </view>
+      </view>
       <view class="section-title">交易记录</view>
       <view wx:if="{{transactionList.length === 0}}" class="empty-text">暂无交易记录</view>
       <view wx:if="{{transactionList.length > 0}}" class="tx-row tx-header">

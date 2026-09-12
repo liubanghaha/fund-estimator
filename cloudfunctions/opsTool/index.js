@@ -73,6 +73,49 @@ async function readAllByDate(collection, date, cap = 2000) {
   return out.slice(0, cap);
 }
 
+// 召回通用文案（A 变体，默认）——与 dailyBriefing.RECALL_TEXT_A 同串（跨函数目录无法共享模块，各自维护）
+const RECALL_TEXT_A = "持仓温度有更新，来看看最新数据";
+
+// 召回 B 文案（个性化）构造，口径与 dailyBriefing.buildRecallTextB 一致（跨函数目录无法共享模块）：
+// 取该用户最早一笔买入（transactions type=buy 按 date 升序，date 为 YYYY-MM-DD 串，多取 5 条兜底
+// 缺 date 的脏数据），查该基金最新温度（fund_temperatures 按 date 降序第一条，normPE 归一化估值温度），
+// 拼「你M月买入的XX温度0.62」。微信 thing 上限 20 字符：全拼超长先截 fundName 保留前 4 字+"…"再拼，
+// 仍超限或查不到买入/温度/任何异常返回 ""（调用方回退 A 文案）。内部全兜底不 reject。
+async function buildRecallTextB(openid, tempCache) {
+  try {
+    const bought = await db.collection("transactions")
+      .where({ _openid: openid, type: "buy" })
+      .orderBy("date", "asc").limit(5).get();
+    const tx = (bought.data || []).find(x => x && x.fundCode && x.date);
+    if (!tx) return "";
+    const month = parseInt(String(tx.date).slice(5, 7), 10);
+    if (!(month >= 1 && month <= 12)) return "";
+    // 温度按 fundCode 查最新一条（写侧 _id=fundCode_date 幂等 upsert，date 降序即最新）
+    let normPE;
+    if (tempCache && tempCache.has(tx.fundCode)) {
+      normPE = tempCache.get(tx.fundCode);
+    } else {
+      const temps = await db.collection("fund_temperatures")
+        .where({ fundCode: tx.fundCode }).orderBy("date", "desc").limit(1).get();
+      const row = temps.data && temps.data[0];
+      normPE = row && isFinite(parseFloat(row.normPE)) ? parseFloat(row.normPE) : null;
+      if (tempCache) tempCache.set(tx.fundCode, normPE); // 含 null 负缓存，同基金不再重查
+    }
+    if (normPE == null) return "";
+    const prefix = `你${month}月买入的`;       // 6-7 字
+    const suffix = `温度${normPE.toFixed(2)}`; // 通常 6-7 字
+    const name = String(tx.fundName || tx.fundCode || "").trim();
+    if (!name) return "";
+    const full = prefix + name + suffix;
+    if (full.length <= 20) return full;
+    const short = prefix + name.slice(0, 4) + "…" + suffix; // 截名后上限 7+5+7=19 字
+    return short.length <= 20 ? short : ""; // 仍超限（极端数值）→ 回退 A
+  } catch (e) {
+    console.warn("[opsTool] 召回 B 文案构造失败，回退通用文案:", e.message);
+    return "";
+  }
+}
+
 exports.main = async (event) => {
   const { action } = event || {};
   const { OPENID } = cloud.getWXContext();
@@ -237,11 +280,13 @@ exports.main = async (event) => {
 
     // ===== P0-1 老用户召回 =====
     // 目标筛选 → 50/50 send/control 分组落库 recall_state → 委托 dailyBriefing.recallPush 发送
+    // variant: 'a'=通用文案（默认，ops 页面无需传）| 'b'=个性化文案（dailyBriefing 逐人构造）
     if (action === "recallSend") {
       if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
       const bucket = ["7d", "14d", "30d"].indexOf(event.bucket) !== -1 ? event.bucket : "7d";
       const limit = Math.min(Math.max(parseInt(event.limit) || 100, 10), 500);
       const dryRun = !!event.dryRun;
+      const variant = event.variant === "b" ? "b" : "a";
       const minDays = parseInt(bucket);
       const now = Date.now();
       const _ = db.command;
@@ -303,12 +348,23 @@ exports.main = async (event) => {
       const controlList = selected.slice(half);
 
       if (dryRun) {
-        return { code: 0, data: {
-          dryRun: true, bucket, pool: pool.length, eligible: targets.length,
+        const data = {
+          dryRun: true, bucket, variant, pool: pool.length, eligible: targets.length,
           sendCount: sendList.length, controlCount: controlList.length,
           sample: targets.slice(0, 5),
-          briefPreview: { thing1: "韭菜估值宝", thing2: "你的持仓组合", thing3: "持仓温度有更新，来看看最新数据" },
-        } };
+          briefPreview: { thing1: "韭菜估值宝", thing2: "你的持仓组合", thing3: RECALL_TEXT_A },
+        };
+        // B 变体预览：对前 2 个实际发送目标真实构造个性化文案（构造口径同 dailyBriefing.buildRecallTextB），
+        // 构造不出时展示回退提示；helper 内部全兜底，预览失败不影响 dryRun 返回
+        if (variant === "b") {
+          data.briefPreviewB = [];
+          const tempCache = new Map();
+          for (const t of sendList.slice(0, 2)) {
+            const txt = await buildRecallTextB(t.openid, tempCache);
+            data.briefPreviewB.push({ openid: t.openid, thing3: txt || `（回退A）${RECALL_TEXT_A}` });
+          }
+        }
+        return { code: 0, data };
       }
 
       if (sendList.length === 0) return { code: 0, data: { bucket, selected: 0, msg: "无符合条件用户" } };
@@ -325,10 +381,10 @@ exports.main = async (event) => {
       // 6) 委托 dailyBriefing 发送（跨函数调用无 OPENID，符合其"仅服务端"校验）
       const sendRes = await cloud.callFunction({
         name: "dailyBriefing",
-        data: { action: "recallPush", targets: sendList },
+        data: { action: "recallPush", targets: sendList, variant },
       });
       const r = sendRes.result || {};
-      return { code: 0, data: { bucket, selected: selected.length, sendCount: sendList.length, controlCount: controlList.length, sent: r.sent || 0, failed: r.failed || 0, batchTs } };
+      return { code: 0, data: { bucket, variant, selected: selected.length, sendCount: sendList.length, controlCount: controlList.length, sent: r.sent || 0, failed: r.failed || 0, batchTs } };
     }
 
     // 召回对照报表：send vs control 的 7 日回访率（回访 = 批次后 7 日内 analytics_launches 有记录）

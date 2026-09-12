@@ -2,6 +2,7 @@
 const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
 const marketTime = require("../../../../utils/market-time");
+const track = require("../../../../utils/track.js");
 
 const CACHE = "profit_detail_cache_v2";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
@@ -18,6 +19,7 @@ Page({
     loadError: false,
     empty: false,
     showBriefBanner: false,
+    showJtbdSurvey: false, jtbdOptions: [],
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
     weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
@@ -60,6 +62,21 @@ Page({
     this.setData({ showRecallOptOut: false });
   },
 
+  // JTBD 问卷：回答走统一埋点（trackReport 云函数），关闭也记 done 防打扰
+  _jtbdDone() {
+    this.setData({ showJtbdSurvey: false });
+    try { wx.setStorageSync("jtbd_survey_done", Date.now()); } catch (e) { /* ignore */ }
+  },
+  onJtbdAnswer(e) {
+    const answer = e.currentTarget.dataset.answer;
+    track.track("jtbd_survey", { answer });
+    this._jtbdDone();
+  },
+  onJtbdDismiss() {
+    track.track("jtbd_survey", { answer: "dismissed" });
+    this._jtbdDone();
+  },
+
   onLoad(options) {
     this.setData({ showBriefBanner: subscribe.canPrompt() && !subscribe.hasAuthed() });
     // 召回推送落地：查推送类型，召回类显示一键退订横幅（双条播报不受影响）
@@ -67,6 +84,14 @@ Page({
       subscribe.getPushKind(options.lid).then((kind) => {
         if (kind && kind.indexOf("recall_") === 0) this.setData({ showRecallOptOut: true });
       }).catch(() => {});
+    }
+    // JTBD 主 Job 验证（产品规划指标表）：仅在推送落地时机问一次，答/关都记 done 不再打扰
+    if (options && options.src === "push") {
+      try {
+        if (!wx.getStorageSync("jtbd_survey_done")) {
+          this.setData({ showJtbdSurvey: true, jtbdOptions: ["看盘中估值", "缓解看盘焦虑", "记录和管理持仓"] });
+        }
+      } catch (e) { /* ignore */ }
     }
     const { windowWidth } = wx.getWindowInfo();
     this._canvasW = windowWidth - 24;

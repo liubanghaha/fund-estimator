@@ -1,0 +1,46 @@
+<view class="container {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <!-- 加载态 -->
+  <view wx:if="{{status === 'loading'}}" class="center-state">
+    <view class="loading-inline"><text class="loading-text">正在体检...</text></view>
+  </view>
+
+  <!-- 失败态 -->
+  <view wx:elif="{{status === 'error'}}" class="center-state">
+    <view class="error-text">体检失败，请检查网络后重试</view>
+    <button class="retry-btn" bind:tap="onRetry">重试</button>
+  </view>
+
+  <!-- 空持仓 -->
+  <view wx:elif="{{status === 'empty'}}" class="center-state">
+    <view class="empty-icon">📋</view>
+    <view class="empty-title">暂无持仓</view>
+    <view class="empty-tip">添加持仓后可在这里做数据体检</view>
+  </view>
+
+  <!-- 体检结果 -->
+  <block wx:else>
+    <!-- 顶部摘要 -->
+    <view class="summary-card {{issueCount === 0 ? 'pass' : ''}}">
+      <view class="summary-icon">{{issueCount === 0 ? '✅' : '⚠️'}}</view>
+      <view class="summary-text">
+        <view class="summary-title">{{issueCount === 0 ? '体检通过' : '发现 ' + issueCount + ' 个问题'}}</view>
+        <view class="summary-sub">{{total}} 项持仓{{issueCount === 0 ? '全部正常' : '，建议逐项校准'}}</view>
+      </view>
+    </view>
+
+    <!-- 问题列表 -->
+    <view class="issue-item" wx:for="{{issues}}" wx:key="index">
+      <view class="issue-head">
+        <text class="issue-tag tag-{{item.type}}">{{item.label}}</text>
+        <text class="issue-name">{{item.fundName}}</text>
+        <text class="issue-code">{{item.fundCode}}</text>
+      </view>
+      <view class="issue-desc">{{item.desc}}</view>
+      <view class="issue-meta" wx:if="{{item.meta}}">{{item.meta}}</view>
+      <view class="calibrate-btn" data-code="{{item.fundCode}}" data-name="{{item.fundName}}" bind:tap="onGoCalibrate">去校准 ></view>
+    </view>
+  </block>
+
+  <!-- 底部固定说明 -->
+  <view class="fixed-note">体检只读取数据做一致性检查，不会修改任何数据；校准请到详情页「校准」入口</view>
+</view>
