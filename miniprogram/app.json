@@ -10,7 +10,8 @@
     "pages/login/index",
     "pages/ops/index",
     "pages/news/index",
-    "pages/holding-check/index"
+    "pages/holding-check/index",
+    "pages/alert-manage/index"
   ],
   "subpackages": [
     {

@@ -1,0 +1,39 @@
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <view class="disclaimer">提醒触发时以首页顶部横幅展示，当日已读当日不再重复。</view>
+
+  <view wx:if="{{loading}}" class="am-loading"><text>加载中...</text></view>
+
+  <block wx:else>
+    <!-- 全局开关 -->
+    <view class="am-card">
+      <view class="am-row">
+        <view class="am-row-main">
+          <view class="am-name">全部提醒</view>
+          <view class="am-sub">关闭后所有涨跌与温度变化提醒暂停</view>
+        </view>
+        <switch checked="{{globalOn}}" color="#E4393C" bindchange="onToggleGlobal"/>
+      </view>
+    </view>
+
+    <!-- 规则列表 -->
+    <view class="am-card" wx:if="{{rules.length}}">
+      <view class="am-card-head">提醒规则（{{rules.length}}）</view>
+      <view class="am-rule {{item.enabled ? '' : 'disabled'}}" wx:for="{{rules}}" wx:key="fundCode">
+        <view class="am-rule-main">
+          <view class="am-name">{{item.fundName}}</view>
+          <view class="am-sub">涨到 {{item.upperText}} · 跌到 {{item.lowerText}}<text wx:if="{{item.peAlert}}"> · 温度变化提醒</text></view>
+        </view>
+        <switch checked="{{item.enabled}}" color="#E4393C" bindchange="onToggleRule" data-code="{{item.fundCode}}"/>
+        <view class="am-del" bind:tap="onDeleteRule" data-code="{{item.fundCode}}">删除</view>
+      </view>
+    </view>
+
+    <!-- 空态 -->
+    <view wx:if="{{!rules.length}}" class="am-empty">
+      <view class="am-empty-icon">🔔</view>
+      <view class="am-empty-text">暂无提醒规则</view>
+      <view class="am-empty-hint">在首页持仓列表的「提醒」入口可按基金设置涨跌与温度变化提醒</view>
+      <button class="am-home-btn" bind:tap="onGoHome">去首页设置</button>
+    </view>
+  </block>
+</view>

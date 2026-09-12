@@ -531,7 +531,7 @@ Page({
       return;
     }
     const settings = wx.getStorageSync('alertSettings') || {};
-    settings[alertEditFundCode] = { upper: upper || 0, lower: lower || 0, peAlert: !!alertEditPeAlert };
+    settings[alertEditFundCode] = { upper: upper || 0, lower: lower || 0, peAlert: !!alertEditPeAlert, enabled: true };
     wx.setStorageSync('alertSettings', settings);
     // 开启PE提醒时记录当前signal作为基线
     if (alertEditPeAlert) {
@@ -574,6 +574,8 @@ Page({
     this.data.holdings.forEach(h => {
       const s = settings[h.fundCode];
       if (!s) return;
+      // 单条规则停用（提醒管理页开关）则跳过；旧数据无 enabled 字段视为启用
+      if (s.enabled === false) return;
       // 今天已解除过的不再触发
       if (dismissed[h.fundCode] && (Date.now() - dismissed[h.fundCode] < 86400000)) return;
       // 涨跌幅提醒

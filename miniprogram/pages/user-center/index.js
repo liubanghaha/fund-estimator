@@ -173,6 +173,7 @@ Page({
   onSearchFund() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
   onHoldingCheck() { wx.navigateTo({ url: "/pages/holding-check/index" }); },
+  onAlertManage() { wx.navigateTo({ url: "/pages/alert-manage/index" }); },
 
   // ========== 数据迁移（输入迁移码认领旧数据） ==========
 
