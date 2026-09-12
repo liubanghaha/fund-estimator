@@ -76,6 +76,27 @@
       </view>
     </view>
 
+    <!-- 今日复盘：组合 vs 沪深300 + 持仓强弱 + 今日操作（当天 tab 显示） -->
+    <view wx:if="{{activeTab === 'today' && showTodayReview && todayReview}}" class="review-card">
+      <view class="review-title">今日复盘</view>
+      <view class="review-combo">
+        <view class="review-cell">
+          <view class="review-num {{todayReview.comboRate > 0 ? 'up' : todayReview.comboRate < 0 ? 'down' : ''}}">{{todayReview.comboRate > 0 ? '+' : ''}}{{todayReview.comboRate}}%</view>
+          <view class="review-label">你的组合</view>
+        </view>
+        <block wx:if="{{todayReview.hsRate != null}}">
+          <view class="review-vs">vs</view>
+          <view class="review-cell">
+            <view class="review-num {{todayReview.hsRate > 0 ? 'up' : todayReview.hsRate < 0 ? 'down' : ''}}">{{todayReview.hsRate > 0 ? '+' : ''}}{{todayReview.hsRate}}%</view>
+            <view class="review-label">沪深300</view>
+          </view>
+        </block>
+      </view>
+      <view class="review-line" wx:if="{{todayReview.best}}">最强：{{todayReview.best.name}} {{todayReview.best.rate > 0 ? '+' : ''}}{{todayReview.best.rate}}%</view>
+      <view class="review-line" wx:if="{{todayReview.worst && todayReview.worst.name !== todayReview.best.name}}">最弱：{{todayReview.worst.name}} {{todayReview.worst.rate > 0 ? '+' : ''}}{{todayReview.worst.rate}}%</view>
+      <view class="review-line" wx:if="{{todayReview.opText}}">{{todayReview.opText}}</view>
+    </view>
+
     <!-- 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，纯数据陈述 -->
     <view wx:if="{{showShadow}}" class="shadow-card">
       <view class="shadow-head">

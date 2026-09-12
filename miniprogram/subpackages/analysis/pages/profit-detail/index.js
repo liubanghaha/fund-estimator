@@ -34,6 +34,7 @@ Page({
     canvasHRpx: 0,
     asOfTime: "",
     showShadowCard: false, shadowTotal: null, shadowTop: [],
+    showTodayReview: false, todayReview: null,
     earliestDate: "",
     calendarView: "day",
     selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
@@ -189,6 +190,7 @@ Page({
       // 免拉全量但轻量补一笔 portfolioLight：_totalMarket 只由 _fetch/quickFirstPaint 赋值，
       // 缓存命中直接 return 会让本页 30s 轮询的今日收益更新停摆（缺 _totalMarket 直接 return）
       this._quickFirstPaint();
+      this._buildTodayReview(); // 复盘卡自给自足数据链，冻结期（周末/盘后）恰恰是它的主场景
       return;
     }
     this._fetch();
@@ -211,6 +213,49 @@ Page({
       this._updateAsOf();
       this._draw();
     }).catch(() => {});
+  },
+
+  // 今日复盘（盘后复盘卡）：组合 vs 沪深300、持仓当日强弱、今日操作笔数。
+  // 自给自足数据链——组合利率取当前已渲染值；沪深300 走 _idx（带缓存）；强弱优先本轮 hs，
+  // 周末/盘后冻结跳过 _fetch 时回退首页缓存。播报落地（21:30）的第二次消费内容
+  _buildTodayReview(hs) {
+    const finish = (best, worst) => {
+      const review = {
+        comboRate: +(parseFloat(this.data.todayProfitRate) || 0).toFixed(2),
+        hsRate: null, best, worst, opText: "",
+      };
+      this.setData({ todayReview: review, showTodayReview: true });
+      this._idx("000300", 3).then((rows) => {
+        if (rows && rows.length >= 2 && rows[rows.length - 2].close > 0) {
+          const hsRate = +((rows[rows.length - 1].close / rows[rows.length - 2].close - 1) * 100).toFixed(2);
+          this.setData({ "todayReview.hsRate": hsRate });
+        }
+      }).catch(() => { /* 对比基准缺失时仅不显示该格 */ });
+      api.transactionList().then((res) => {
+        const txs = (res.result && res.result.code === 0 && res.result.data) || [];
+        const todayStr = calc.formatDate(new Date());
+        const todayTxs = txs.filter((t) => t.date === todayStr);
+        if (todayTxs.length) {
+          const buys = todayTxs.filter((t) => t.type === "buy").length;
+          this.setData({ "todayReview.opText": `今日操作 ${todayTxs.length} 笔（加仓 ${buys} / 减仓 ${todayTxs.length - buys}）` });
+        }
+      }).catch(() => { /* ignore */ });
+    };
+    const toRated = (list) => (list || [])
+      .filter((h) => h.todayChangeRate != null && parseFloat(h.shares || h.amount || 0) > 0)
+      .map((h) => ({ name: h.fundName, rate: +(parseFloat(h.todayChangeRate) || 0).toFixed(2) }))
+      .sort((a, b) => b.rate - a.rate);
+    try {
+      if (hs) {
+        const rated = toRated(hs);
+        finish(rated[0] || null, rated.length > 1 ? rated[rated.length - 1] : null);
+        return;
+      }
+      // 无本轮明细（周末/盘后冻结跳过 _fetch）：回退首页缓存
+      const pc = wx.getStorageSync("portfolio_cache");
+      const rated = toRated(pc && pc.holdings);
+      finish(rated[0] || null, rated.length > 1 ? rated[rated.length - 1] : null);
+    } catch (e) { /* 复盘卡数据异常不影响主页面 */ }
   },
 
   // 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，拉取失败静默不阻塞主流程
@@ -254,7 +299,7 @@ Page({
         api.getPortfolio(historyDays),
         ...idxTasks,
       ]);
-      this.data.availableIndices.forEach((i, n) => { idxMap[i.code] = idxResults[n] || []; });
+    this.data.availableIndices.forEach((i, n) => { idxMap[i.code] = idxResults[n] || []; });
       this._idxMap = idxMap;
       if (!pfRes.result || pfRes.result.code !== 0) {
         // 已有数据时静默失败并保留当前展示，避免刷新失败把页面打成全屏错误
@@ -284,6 +329,7 @@ Page({
       const totalCost = hs.reduce((s, h) => s + h.buyPrice * h.shares, 0);
       const navMap = d.navHistoryMap || {};
       const today = calc.formatDate(now);
+      this._buildTodayReview(hs); // 盘后复盘卡数据（组合 vs 沪深300 / 持仓强弱 / 今日操作）
 
       // 日变动
       const dc = {};
