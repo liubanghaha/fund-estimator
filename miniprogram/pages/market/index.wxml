@@ -29,8 +29,8 @@
     <!-- 重仓股实时行情（你的基金底仓视角，他处不可见） -->
     <view wx:if="{{exposure && (exposure.hkStocks.length || exposure.usStocks.length)}}" class="mk-card">
       <view wx:if="{{exposure.hkStocks.length}}" class="stock-sec">
-        <view class="stock-sec-title">重仓港股<text class="stock-sec-note">按占仓权重排序</text></view>
-        <view class="stock-row" wx:for="{{exposure.hkStocks}}" wx:key="code">
+        <view class="stock-sec-title">重仓港股<text class="stock-sec-note">按占仓权重排序 · 点击看详情</text></view>
+        <view class="stock-row" wx:for="{{exposure.hkStocks}}" wx:key="code" data-code="{{item.code}}" data-market="hk" bind:tap="onStockTap">
           <view class="stock-name">
             <view class="stock-name-text">{{item.name}}</view>
             <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
@@ -42,8 +42,8 @@
         </view>
       </view>
       <view wx:if="{{exposure.usStocks.length}}" class="stock-sec">
-        <view class="stock-sec-title">重仓美股<text class="stock-sec-note">按占仓权重排序</text></view>
-        <view class="stock-row" wx:for="{{exposure.usStocks}}" wx:key="code">
+        <view class="stock-sec-title">重仓美股<text class="stock-sec-note">按占仓权重排序 · 点击看详情</text></view>
+        <view class="stock-row" wx:for="{{exposure.usStocks}}" wx:key="code" data-code="{{item.code}}" data-market="us" bind:tap="onStockTap">
           <view class="stock-name">
             <view class="stock-name-text">{{item.name}}</view>
             <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
@@ -61,7 +61,7 @@
     <view class="mk-card">
       <view class="mk-sec-title-row">
         <view class="mk-sec-title">核心指数</view>
-        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}}</text>
+        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}} · 亚太{{apStatus}}</text>
       </view>
       <view class="idx-tabs">
         <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
@@ -77,17 +77,46 @@
       <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
     </view>
 
-    <!-- 指数近 5 日走势弹层 -->
+    <!-- 指数走势弹层（近5日/近1月/近3月可切） -->
     <view wx:if="{{showIdxModal}}" class="idx-modal-mask" bind:tap="onIdxModalClose">
       <view class="idx-modal" catch:tap="noop">
         <view class="idx-modal-head">
-          <text class="idx-modal-title">{{idxModalName}} · 近5日走势</text>
+          <text class="idx-modal-title">{{idxModalName}} · 走势</text>
           <view class="idx-modal-close" bind:tap="onIdxModalClose">×</view>
+        </view>
+        <view class="idx-period-chips">
+          <text class="idx-period-chip {{idxPeriod === 5 ? 'active' : ''}}" data-days="5" bind:tap="onIdxPeriod">近5日</text>
+          <text class="idx-period-chip {{idxPeriod === 22 ? 'active' : ''}}" data-days="22" bind:tap="onIdxPeriod">近1月</text>
+          <text class="idx-period-chip {{idxPeriod === 66 ? 'active' : ''}}" data-days="66" bind:tap="onIdxPeriod">近3月</text>
         </view>
         <view wx:if="{{idxModalLoading}}" class="mk-loading"><text class="mk-loading-text">加载中...</text></view>
         <view wx:elif="{{idxModalError}}" class="mk-loading"><text class="mk-loading-text">走势加载失败，请重试</text></view>
         <canvas wx:else type="2d" id="idxModalCanvas" class="idx-modal-canvas"></canvas>
         <view class="idx-modal-foot">数据来源：公开市场数据，仅供参考</view>
+      </view>
+    </view>
+
+    <!-- 重仓股详情弹层：报价 + 估值信息 + 港股附5日走势 -->
+    <view wx:if="{{showStockModal}}" class="idx-modal-mask" bind:tap="onStockModalClose">
+      <view class="idx-modal" catch:tap="noop">
+        <view class="idx-modal-head">
+          <text class="idx-modal-title">{{stockModal.name}}（{{stockModal.code}}）</text>
+          <view class="idx-modal-close" bind:tap="onStockModalClose">×</view>
+        </view>
+        <view class="sm-quote-row">
+          <view class="sm-price {{stockModal.changeRate > 0 ? 'up' : stockModal.changeRate < 0 ? 'down' : ''}}">{{stockModal.price != null ? stockModal.price : '--'}}</view>
+          <view class="sm-rate {{stockModal.changeRate > 0 ? 'up' : stockModal.changeRate < 0 ? 'down' : 'dim'}}">{{stockModal.changeRate != null ? (stockModal.changeRate > 0 ? '+' : '') + stockModal.changeRate + '%' : '--'}}</view>
+          <view class="sm-weight">占你的组合 {{stockModal.weight}}%</view>
+        </view>
+        <view class="sm-meta">
+          <view class="sm-meta-item"><text class="sm-meta-label">市盈率PE</text><text class="sm-meta-val">{{stockModal.pe != null ? stockModal.pe : '--'}}</text></view>
+          <view class="sm-meta-item"><text class="sm-meta-label">市净率PB</text><text class="sm-meta-val">{{stockModal.pb != null ? stockModal.pb : '--'}}</text></view>
+          <view class="sm-meta-item"><text class="sm-meta-label">行业</text><text class="sm-meta-val">{{stockModal.industry || '--'}}</text></view>
+        </view>
+        <view wx:if="{{stockModal.fundsText}}" class="sm-funds">持有该股的基金：{{stockModal.fundsText}}</view>
+        <block wx:if="{{stockKlineLoading}}"><view class="mk-loading"><text class="mk-loading-text">加载走势...</text></view></block>
+        <block wx:elif="{{stockKlineOk}}"><canvas type="2d" id="stockModalCanvas" class="idx-modal-canvas"></canvas></block>
+        <view class="idx-modal-foot">数据来源：公开市场数据（可能有延迟），仅供参考</view>
       </view>
     </view>
 

@@ -36,9 +36,12 @@ Page({
     // 持仓港美股敞口（数据陈述）+ 重仓股实时行情榜
     exposure: null,
     // 指数 5 日走势弹层
-    showIdxModal: false, idxModalName: "", idxModalLoading: false, idxModalError: false,
+    showIdxModal: false, idxModalName: "", idxModalCode: "", idxModalLoading: false, idxModalError: false,
+    idxPeriod: 5,
+    // 个股弹层
+    showStockModal: false, stockModal: null, stockKlineLoading: false, stockKlineOk: false,
     // 各市场开闭市状态（本地推算）
-    hkStatus: "", usStatus: "",
+    hkStatus: "", usStatus: "", apStatus: "",
     // 核心指数（港/美/亚太 三类切换）
     idxTabs: IDX_TABS,
     idxTab: "hk",
@@ -163,8 +166,8 @@ Page({
     this.setData(data);
   },
 
-  // 各市场开闭市状态（北京时间本地推算，纯状态展示）：港股 9:30-12:00/13:00-16:00；
-  // 美股取宽口径 21:15~次日 5:00（夏冬令差异 1h，误差可接受）；周末休市（美股周日晚盘不计，误差 ≤1.5h）
+  // 各市场开闭市状态（北京时间本地推算，纯状态展示）：港股 9:30-12:00/13:00-16:00；美股宽口径
+  // 21:15~次日 5:00（夏冬令差异 1h）；日经（亚太）8:00-14:00；周末休市（美股周日晚盘不计，误差 ≤1.5h）
   _marketStatus() {
     const d = new Date(Date.now() + 8 * 3600000);
     const day = d.getUTCDay();
@@ -172,15 +175,28 @@ Page({
     const min = d.getUTCHours() * 60 + d.getUTCMinutes();
     const hkOpen = !weekend && ((min >= 570 && min < 720) || (min >= 780 && min < 960));
     const usOpen = !weekend && (min >= 1275 || min < 300);
-    return { hkStatus: hkOpen ? "交易中" : "已收盘", usStatus: usOpen ? "交易中" : "已收盘" };
+    const apOpen = !weekend && min >= 480 && min < 840;
+    const st = (open) => (open ? "交易中" : "已收盘");
+    return { hkStatus: st(hkOpen), usStatus: st(usOpen), apStatus: st(apOpen) };
   },
 
-  // 指数卡点击 → 近 5 日走势弹层
+  // 指数卡点击 → 走势弹层（近5日/近1月/近3月可切）
   onIdxCardTap(e) {
     const { code, name } = e.currentTarget.dataset;
     if (!code) return;
-    this.setData({ showIdxModal: true, idxModalName: name || "", idxModalLoading: true, idxModalError: false });
-    this._fetchIndexKline(code, 5).then((data) => {
+    this.setData({ showIdxModal: true, idxModalName: name || "", idxModalCode: code, idxPeriod: 5 });
+    this._loadIdxModalKline(5);
+  },
+  onIdxPeriod(e) {
+    const days = +e.currentTarget.dataset.days;
+    if (!days || days === this.data.idxPeriod) return;
+    this.setData({ idxPeriod: days });
+    this._loadIdxModalKline(days);
+  },
+  _loadIdxModalKline(days) {
+    const code = this.data.idxModalCode;
+    this.setData({ idxModalLoading: true, idxModalError: false });
+    this._fetchIndexKline(code, days).then((data) => {
       if (!data || data.length < 2) {
         this.setData({ idxModalLoading: false, idxModalError: true });
         return;
@@ -188,12 +204,12 @@ Page({
       const items = data.map((d) => ({ date: d.date, value: d.close }));
       this.setData({ idxModalLoading: false });
       // 等弹层 canvas 完成布局后再绘制（drawChart 异步查询节点）
-      setTimeout(() => this._drawIdxModal(items), 150);
+      setTimeout(() => this._drawModalChart("#idxModalCanvas", items), 150);
     }).catch(() => this.setData({ idxModalLoading: false, idxModalError: true }));
   },
-  _drawIdxModal(items) {
+  _drawModalChart(selector, items) {
     const query = wx.createSelectorQuery();
-    query.select("#idxModalCanvas").fields({ node: true, size: true }).exec((res) => {
+    query.select(selector).fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
       const w = res[0].width || 320, h = res[0].height || 160;
@@ -207,6 +223,29 @@ Page({
   },
   onIdxModalClose() {
     this.setData({ showIdxModal: false });
+  },
+  // 重仓股行点击 → 个股弹层：报价/占仓/PE/PB/行业 + 港股附 5 日走势（ifzq 个股 K 线不支持美股个股）
+  onStockTap(e) {
+    const { code, market } = e.currentTarget.dataset;
+    const list = market === "hk" ? (this.data.exposure && this.data.exposure.hkStocks) : (this.data.exposure && this.data.exposure.usStocks);
+    const item = (list || []).find((s) => s.code === code);
+    if (!item) return;
+    // WXML 不支持 .join() 方法调用，富文本拼好在 JS 侧完成
+    const stockModal = { ...item, fundsText: (item.funds || []).join("、") };
+    this.setData({ showStockModal: true, stockModal, stockKlineLoading: market === "hk", stockKlineOk: false });
+    if (market !== "hk") return;
+    api.fetchStockKlineTencent("hk" + code, 5).then((rows) => {
+      if (!this.data.showStockModal || rows.length < 2) {
+        this.setData({ stockKlineLoading: false, stockKlineOk: false });
+        return;
+      }
+      const items = rows.map((d) => ({ date: d.date, value: d.close }));
+      this.setData({ stockKlineLoading: false, stockKlineOk: true });
+      setTimeout(() => this._drawModalChart("#stockModalCanvas", items), 150);
+    }).catch(() => this.setData({ stockKlineLoading: false, stockKlineOk: false }));
+  },
+  onStockModalClose() {
+    this.setData({ showStockModal: false });
   },
   noop() {},
 

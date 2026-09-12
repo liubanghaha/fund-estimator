@@ -364,10 +364,17 @@ async function handleExposure(openid) {
         // 美股去 .OQ/.N 交易所后缀（qt.gtimg.cn 用无后缀 ticker，实测 usAAPL 有数据、usAAPL.OQ 无）
         const code = isUs ? raw.split(".")[0].toUpperCase() : raw;
         const key = (isHk ? "hk" : "us") + code;
-        const w = (parseFloat(pe.ratio) || 0) * wPct / 100; // 折算占组合 %
-        if (!stockMap[key]) stockMap[key] = { code, name: pe.name || code, market: isHk ? "hk" : "us", weight: 0 };
-        stockMap[key].weight += w;
-        if (isHk) hk += parseFloat(pe.ratio) || 0; else us += parseFloat(pe.ratio) || 0;
+        const ratio = parseFloat(pe.ratio) || 0;
+        const w = ratio * wPct / 100; // 折算占组合 %
+        if (!stockMap[key]) stockMap[key] = { code, name: pe.name || code, market: isHk ? "hk" : "us", weight: 0, pe: null, pb: null, industry: "", funds: {} };
+        const st = stockMap[key];
+        st.weight += w;
+        // PE/PB/行业：同股票跨基金同源，取首个带数据的值
+        if (st.pe == null && pe.pe != null) st.pe = pe.pe;
+        if (st.pb == null && pe.pb != null) st.pb = pe.pb;
+        if (!st.industry && pe.industry) st.industry = pe.industry;
+        if (ratio > 0) st.funds[h.fundName || h.fundCode] = Math.max(st.funds[h.fundName || h.fundCode] || 0, ratio);
+        if (isHk) hk += ratio; else us += ratio;
       }
       const fundName = h.fundName || h.fundCode;
       if (hk > 0) hkFunds.push({ name: fundName, pct: +(hk).toFixed(1) });
@@ -389,11 +396,18 @@ async function handleExposure(openid) {
     }
     const withQuote = (s) => {
       const q = quotes[s.code] || {};
+      const funds = Object.entries(s.funds || {}).sort((a, b) => b[1] - a[1]).slice(0, 2)
+        .map(([name, pct]) => `${name} ${+(pct).toFixed(1)}%`);
       return {
         code: s.code, name: s.name,
         weight: +s.weight.toFixed(2), // 占组合净值 %
         price: q.price != null ? +q.price.toFixed(2) : null,
         changeRate: q.changeRate != null ? q.changeRate : null,
+        // PE/PB 钳制：温度明细偶发脏值（实测出现 PB=9156035），超界视为无效
+        pe: s.pe != null && s.pe > 0 && s.pe < 2000 ? s.pe : null,
+        pb: s.pb != null && s.pb > 0 && s.pb < 200 ? s.pb : null,
+        industry: s.industry || "",
+        funds, // 持有该股的基金 top2（基金内重仓占比）
       };
     };
     return { code: 0, data: {

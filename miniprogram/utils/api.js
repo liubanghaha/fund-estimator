@@ -185,6 +185,23 @@ const api = {
   fetchMarketOverview(data) {
     return this.callFunction("fetchMarketOverview", data || {});
   },
+  // 个股/指数日K（腾讯 ifzq，白名单域名）：港股个股与 hk/us 指数可用，美股个股该端点不可用（返回异常数据）
+  fetchStockKlineTencent(qtCode, days) {
+    return new Promise((resolve, reject) => {
+      wx.request({
+        url: `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${qtCode},day,,,${days}`,
+        timeout: 8000,
+        success: (res) => {
+          try {
+            const rows = (((res.data || {}).data || {})[qtCode] || {}).day || [];
+            // 行格式 [date, open, close, high, low, volume]
+            resolve(rows.map((r) => ({ date: r[0], close: parseFloat(r[2]) })).filter((d) => d.close > 0));
+          } catch (e) { resolve([]); }
+        },
+        fail: () => reject(new Error("kline request failed")),
+      });
+    });
+  },
   // 资讯聚合：快讯 7×24（东财+金十，sortEnd 翻页游标）+ 要闻
   fetchNews(params = {}) {
     return this.callFunction("fetchNews", params);
