@@ -13,16 +13,57 @@ Page({
     loading: true,
     loadError: false,
     showAllIndustries: false,
+    amountVisible: true,
+    feeCard: null,
+    showShadowCard: false, shadowTotal: null, shadowTop: [],
   },
 
   onShow() {
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
   },
 
   onLoad() {
         this.fetchAll();
+        this._loadFee();    // 费用账单（从收益页迁入：成本结构属深度洞察）
+        this._loadShadow(); // 影子账户（从收益页迁入：行为复盘属深度洞察）
+  },
+
+  // 费用账单：持仓加权综合费率 + 预计年费用（云侧费率缓存 30 天 + 本地 7 天）
+  _loadFee() {
+    try {
+      const c = wx.getStorageSync("fee_cache_v1");
+      if (c && c.ts && Date.now() - c.ts < 7 * 86400000 && c.data && c.data.hasData) {
+        this.setData({ feeCard: c.data });
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    api.feeSummary().then((res) => {
+      const d = res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.hasData) return;
+      try { wx.setStorageSync("fee_cache_v1", { ts: Date.now(), data: d }); } catch (e) { /* ignore */ }
+      this.setData({ feeCard: d });
+    }).catch(() => { /* ignore */ });
+  },
+
+  // 影子账户：卖出记录的"如果没卖"事实演算
+  _loadShadow() {
+    api.transactionShadow().then((res) => {
+      const d = res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.hasData || !d.items) return;
+      const top = d.items.filter((i) => i.shadow != null)
+        .sort((a, b) => Math.abs(b.shadow) - Math.abs(a.shadow)).slice(0, 3)
+        .map((i) => ({ ...i, dateShort: i.date ? i.date.slice(5).replace("-", "/") : "" }));
+      this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTop: top });
+    }).catch(() => { /* ignore */ });
+  },
+  onShadowFundTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (!code) return;
+    const url = "/subpackages/analysis/pages/fund-detail/index?fundCode=" + code + (name ? "&fundName=" + encodeURIComponent(name) : "");
+    wx.navigateTo({ url });
   },
 
   // 行业集中度提示（再平衡视角的数据现实版：基金组合无股债大类数据，以行业集中度替代）。

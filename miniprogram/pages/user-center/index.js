@@ -4,7 +4,10 @@ const ADMIN_CACHE_KEY = "ops_admin_cache"; // 管理员标记缓存：true 缓�
 
 Page({
   data: {
-    annualYear: new Date(Date.now() + 8 * 3600000).getUTCFullYear(), // 年度报告入口年份（北京时间）
+    // 年度报告入口：仅 12 月起展示（产品规划"12 月第一周上线"，踩年终社交季；
+    // 提前暴露会稀释年终传播时机，且数据尚未完整一年）
+    annualYear: new Date(Date.now() + 8 * 3600000).getUTCFullYear(),
+    showAnnualEntry: (new Date(Date.now() + 8 * 3600000)).getUTCMonth() === 11,
     isLoggedIn: false, avatarUrl: "", nickName: "",
     showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
