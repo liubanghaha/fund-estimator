@@ -93,29 +93,42 @@
     <!-- 费用账单（自收益页迁入：成本结构属深度洞察） -->
     <view wx:if="{{feeCard}}" class="card">
       <view class="card-title">💸 费用账单</view>
-      <view class="fee-head-row">
-        <text class="fee-rate-big">{{feeCard.totalRate}}%</text>
-        <text class="fee-rate-label">综合费率 / 年</text>
+      <view class="hero-block">
+        <view class="hero-label">预计年持有费用</view>
+        <view class="hero-num">{{amountVisible ? ('¥' + feeCard.annualFee) : '¥****'}}</view>
+        <view class="hero-sub">综合费率 {{feeCard.totalRate}}%/年 · 按 {{feeCard.fundCount}} 只持仓市值估算</view>
       </view>
-      <view class="fee-main">按当前 {{feeCard.fundCount}} 只持仓，每年支付管理费+托管费<text wx:if="{{feeCard.hasSales}}">（含销售服务费）</text>约 <text class="fee-num">{{amountVisible ? feeCard.annualFee : '****'}} 元</text></view>
-      <view class="fee-item" wx:for="{{feeCard.items}}" wx:key="fundName">
-        <text class="fee-item-name">{{item.fundName}}</text>
-        <text class="fee-item-val">{{item.rate}}%/年 · 约 {{amountVisible ? item.fee : '****'}} 元</text>
+      <view class="fee-list-title">费率最高的持仓<text wx:if="{{feeCard.hasSales}}" class="fee-list-note">含销售服务费</text></view>
+      <view class="fee-row" wx:for="{{feeCard.items}}" wx:key="fundName">
+        <view class="fee-row-top">
+          <text class="fee-row-name">{{item.fundName}}</text>
+          <text class="fee-row-rate">{{item.rate}}%</text>
+        </view>
+        <view class="fee-row-bottom">
+          <view class="fee-track"><view class="fee-fill" style="width:{{item.barPct}}%"></view></view>
+          <text class="fee-row-fee">约 {{amountVisible ? item.fee : '****'}} 元/年</text>
+        </view>
       </view>
-      <view class="fee-note">当前收益为名义收益，未扣除上述持有费用；费率取自基金公告，不含申赎费用</view>
+      <view class="card-footnote">收益为名义口径，未扣除上述持有费用；费率取自基金公告，不含申赎费用</view>
     </view>
 
     <!-- 影子账户（自收益页迁入：行为复盘属深度洞察） -->
     <view wx:if="{{showShadowCard}}" class="card">
-      <view class="card-title-row">
-        <text class="card-title" style="margin-bottom:0">🔄 影子账户 · 如果没卖</text>
-        <text class="shadow-total {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{amountVisible ? (shadowTotal > 0 ? '+' : '') + shadowTotal + '元' : '****'}}</text>
+      <view class="card-title">🔄 影子账户</view>
+      <view class="hero-block">
+        <view class="hero-label">卖出的部分，如果一直没卖</view>
+        <view class="hero-num {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{amountVisible ? (shadowTotal > 0 ? '+' : '') + shadowTotal + ' 元' : '****'}}</view>
       </view>
-      <view class="shadow-item" wx:for="{{shadowTop}}" wx:key="dateShort" data-code="{{item.fundCode}}" data-name="{{item.fundName}}" bind:tap="onShadowFundTap">
-        <text class="shadow-desc">{{item.dateShort}}卖出的 {{item.fundName}}（{{item.shares}}份）</text>
-        <text class="shadow-val {{item.shadow > 0 ? 'up' : item.shadow < 0 ? 'down' : ''}}">{{amountVisible ? (item.shadow > 0 ? '+' : '') + item.shadow + '元' : '****'}}</text>
+      <view class="shadow-row" wx:for="{{shadowTop}}" wx:key="dateShort" data-code="{{item.fundCode}}" data-name="{{item.fundName}}" bind:tap="onShadowFundTap">
+        <view class="shadow-date">{{item.dateShort}}</view>
+        <view class="shadow-main">
+          <view class="shadow-name">{{item.fundName}}</view>
+          <view class="shadow-meta">卖出 {{item.shares}} 份</view>
+        </view>
+        <view class="shadow-val {{item.shadow > 0 ? 'up' : item.shadow < 0 ? 'down' : ''}}">{{amountVisible ? (item.shadow > 0 ? '+' : '') + item.shadow : '****'}}</view>
+        <view class="shadow-arrow">›</view>
       </view>
-      <view class="fee-note">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成任何操作建议</view>
+      <view class="card-footnote">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成投资建议</view>
     </view>
 
     <view wx:if="{{!feeCard && !showShadowCard}}" class="empty">

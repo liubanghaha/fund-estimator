@@ -44,6 +44,9 @@ Page({
     api.feeSummary().then((res) => {
       const d = res.result && res.result.code === 0 && res.result.data;
       if (!d || !d.hasData) return;
+      const maxRate = (d.items || []).reduce((m, i) => Math.max(m, i.rate || 0), 0) || 1;
+      // 相对条宽在 JS 侧算好（wxml 不便做除法）
+      d.items = (d.items || []).map((i) => ({ ...i, barPct: Math.round((i.rate || 0) / maxRate * 100) }));
       try { wx.setStorageSync("fee_cache_v1", { ts: Date.now(), data: d }); } catch (e) { /* ignore */ }
       this.setData({ feeCard: d });
     }).catch(() => { /* ignore */ });

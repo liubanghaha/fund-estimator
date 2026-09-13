@@ -84,24 +84,40 @@
 /* 行业集中度提示 */
 .conc-tip{font-size:22rpx;color:#8a6d3b;background:#FCF4E3;border-radius:10rpx;padding:12rpx 16rpx;margin-bottom:14rpx;line-height:1.5}
 
-/* 费用账单 / 影子账户（自收益页迁入） */
-.card-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx}
-.fee-head-row{display:flex;align-items:baseline;gap:12rpx;margin-bottom:12rpx}
-.fee-rate-big{font-size:52rpx;font-weight:700;color:var(--primary)}
-.fee-rate-label{font-size:22rpx;color:#BBB}
-.fee-main{font-size:26rpx;color:#333;line-height:1.6;margin-bottom:12rpx}
-.fee-num{font-size:30rpx;font-weight:700;color:var(--primary)}
-.fee-item{display:flex;align-items:center;justify-content:space-between;padding:10rpx 0;border-bottom:1rpx solid #F5F5F5}
-.fee-item-name{font-size:24rpx;color:#666;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fee-item-val{font-size:24rpx;color:#888}
-.fee-note{font-size:20rpx;color:#BBB;margin-top:10rpx;line-height:1.5}
-.shadow-total{font-size:30rpx;font-weight:700}
-.shadow-item{display:flex;align-items:center;justify-content:space-between;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
-.shadow-desc{font-size:24rpx;color:#666;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.shadow-val{font-size:26rpx;font-weight:600;margin-left:16rpx}
+/* ===== 费用账单 / 影子账户（hero 块 + 明细行） ===== */
+.hero-block{background:#F7F8FA;border-radius:16rpx;padding:28rpx 24rpx;margin-bottom:8rpx}
+.hero-label{font-size:22rpx;color:#999;margin-bottom:10rpx}
+.hero-num{font-size:56rpx;font-weight:700;color:var(--primary);line-height:1.15;letter-spacing:-1rpx}
+.hero-num.up{color:var(--up)}
+.hero-num.down{color:#2E8B57}
+.hero-sub{font-size:22rpx;color:#999;margin-top:10rpx}
+
+/* 费用构成行：名称/费率 + 相对条 + 金额 */
+.fee-list-title{font-size:24rpx;color:#666;font-weight:600;margin:22rpx 0 6rpx}
+.fee-list-note{font-size:20rpx;color:#BBB;font-weight:400;margin-left:10rpx}
+.fee-row{padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
+.fee-row:last-of-type{border-bottom:none}
+.fee-row-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10rpx}
+.fee-row-name{font-size:26rpx;color:#333;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fee-row-rate{font-size:26rpx;color:#333;font-weight:600;margin-left:16rpx}
+.fee-row-bottom{display:flex;align-items:center;gap:16rpx}
+.fee-track{flex:1;height:10rpx;background:#F0F0F0;border-radius:5rpx;overflow:hidden}
+.fee-fill{height:100%;background:var(--primary);border-radius:5rpx;opacity:.75}
+.fee-row-fee{font-size:22rpx;color:#999;min-width:150rpx;text-align:right}
+.card-footnote{font-size:20rpx;color:#BBB;margin-top:14rpx;line-height:1.6}
+
+/* 影子明细行：日期徽标 + 名称/份额 + 金额 + 箭头 */
+.shadow-row{display:flex;align-items:center;gap:18rpx;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
+.shadow-row:last-of-type{border-bottom:none}
+.shadow-date{font-size:22rpx;color:#999;background:#F2F3F5;border-radius:8rpx;padding:6rpx 12rpx;flex-shrink:0}
+.shadow-main{flex:1;min-width:0}
+.shadow-name{font-size:26rpx;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shadow-meta{font-size:20rpx;color:#BBB;margin-top:4rpx}
+.shadow-val{font-size:28rpx;font-weight:700;flex-shrink:0}
+.shadow-arrow{font-size:28rpx;color:#CCC;flex-shrink:0}
 
 /* Tab：持仓分析 | 费用与复盘（与详情页 tab-bar 同款） */
-.tab-bar{display:flex;background:#FFF;margin:16rpx 24rpx 0;border-radius:20rpx;overflow:hidden}
-.tab-item{flex:1;text-align:center;padding:24rpx 0;font-size:28rpx;color:#999}
-.tab-item.active{color:var(--primary);font-weight:600;border-bottom:4rpx solid var(--primary)}
+.tab-bar{display:flex;background:#EDEEF0;margin:16rpx 24rpx 0;border-radius:16rpx;padding:6rpx;box-sizing:border-box}
+.tab-item{flex:1;text-align:center;padding:16rpx 0;font-size:26rpx;color:#888;border-radius:12rpx;transition:all .2s}
+.tab-item.active{background:#FFF;color:var(--primary);font-weight:600;box-shadow:0 2rpx 8rpx rgba(0,0,0,.06)}
 .empty-hint{font-size:22rpx;color:#BBB;margin-top:10rpx;line-height:1.6}
