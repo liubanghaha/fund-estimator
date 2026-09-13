@@ -35,6 +35,7 @@ Page({
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
     turnoverRates: [],
+    sameTypeRank: null,
     showTurnover: false,
     scrollRefreshing: false,
     showExited: false,
@@ -326,8 +327,13 @@ Page({
         // 否则缓存秒开时点档案 tab 不触发拉取、profileLoaded 恒为 false → 档案页空白
         profile: cached.profile && cached.profile.fundSizeText ? cached.profile : null,
         manager: cached.manager || null,
+        sameTypeRank: cached.sameTypeRank || null,
         profileLoaded: !!(cached.profile && cached.profile.fundSizeText),
       }, () => {
+        // 老缓存（本次新增字段前写入）没有 rankFetched 标记：标脏让切档案 tab 补拉一次，拉回后由 _saveCache 持久化。
+        // 不这样做的话，缓存命中的页面（profile 已存在 → onTabTap 守卫跳过请求）永远拿不到该字段。
+        // 用 rankFetched 而非 sameTypeRank 判空：区分「老缓存缺字段」与「该基金确实无排名（返回 null）」后者不该反复重拉
+        if (cached.profile && cached.profile.fundSizeText && !cached.rankFetched) this._profileStale = true;
         this.calcReturns(cached.history);
         this.updateDisplay();
         // 缓存含原始持仓时直接用缓存数据计算持仓区，避免等 checkHolding 网络请求出现空白窗口
@@ -381,6 +387,8 @@ Page({
         holdings: this.data.holdings, exited: this.data.exited,
         quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
         turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
+        sameTypeRank: this.data.sameTypeRank,
+        rankFetched: true, // 本版客户端已能取到同类排名：老缓存缺此标记即补拉一次，之后不再重复
         dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),
       });
