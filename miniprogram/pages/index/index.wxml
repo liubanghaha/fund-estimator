@@ -347,7 +347,7 @@
   <view wx:if="{{showGuide}}" class="guide-mask">
     <view class="guide-panel" catch:tap="noop">
       <swiper class="guide-swiper" current="{{guideIdx}}" bindchange="onGuideChange">
-        <swiper-item wx:for="{{guidePages}}" wx:key="index">
+        <swiper-item wx:for="{{guidePages}}" wx:key="title">
           <view class="guide-page">
             <view class="guide-icon">{{item.icon}}</view>
             <view class="guide-title">{{item.title}}</view>
@@ -356,7 +356,7 @@
         </swiper-item>
       </swiper>
       <view class="guide-dots">
-        <view class="guide-dot {{guideIdx === index ? 'active' : ''}}" wx:for="{{guidePages}}" wx:key="index" data-i="{{index}}" bind:tap="onGuideDot"></view>
+        <view class="guide-dot {{guideIdx === index ? 'active' : ''}}" wx:for="{{guidePages}}" wx:key="title" data-i="{{index}}" bind:tap="onGuideDot"></view>
       </view>
       <button class="guide-btn" bind:tap="onGuideNext">{{guideIdx === guidePages.length - 1 ? '开始使用' : '下一页'}}</button>
     </view>

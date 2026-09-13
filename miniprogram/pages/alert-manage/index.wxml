@@ -8,8 +8,8 @@
     <view class="am-card">
       <view class="am-row">
         <view class="am-row-main">
-          <view class="am-name">全部提醒</view>
-          <view class="am-sub">关闭后所有涨跌与温度变化提醒暂停</view>
+          <view class="am-name">默认涨跌提醒</view>
+          <view class="am-sub">没有单独设置规则的持仓，涨跌超 ±3% 时提醒；下方逐基金规则不受此开关影响</view>
         </view>
         <switch checked="{{globalOn}}" color="#E4393C" bindchange="onToggleGlobal"/>
       </view>

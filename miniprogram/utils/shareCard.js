@@ -352,8 +352,9 @@ function drawWeeklyCard(canvas, opts = {}) {
 
   const weekRate = parseFloat(opts.weekProfitRate) || 0;
   const weekProfit = parseFloat(opts.weekProfit) || 0;
-  const isUp = weekRate >= 0;
-  const mainColor = isUp ? '#E4393C' : '#2E8B57';
+  const isUp = weekRate > 0;
+  // 0 用中性色，与页面"0 为中性"的约定一致
+  const mainColor = weekRate === 0 ? '#666666' : (isUp ? '#E4393C' : '#2E8B57');
   const amountVisible = opts.amountVisible !== false;
 
   // === 背景 / 装饰 / 头部（与收益卡同款） ===
@@ -409,7 +410,7 @@ function drawWeeklyCard(canvas, opts = {}) {
   } else {
     ctx.fillStyle = '#BBB';
     ctx.font = '18px sans-serif';
-    ctx.fillText('本周沪深300：--', w / 2, cmpY + 26);
+    ctx.fillText((opts.benchLabel || '本周沪深300') + '：--', w / 2, cmpY + 26);
   }
 
   // === 信息行 ===
@@ -561,7 +562,7 @@ function drawAnnualCard(canvas, opts = {}) {
     ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(value, w - 60, y);
   };
-  drawGridRow(gridY, '最大回撤（年内）', opts.maxDD != null ? '-' + opts.maxDD + ' 元' : '--');
+  drawGridRow(gridY, '最大回撤（年内）', opts.maxDD != null ? (amountVisible ? '-' + opts.maxDD + ' 元' : '-**** 元') : '--');
   drawGridRow(gridY + 38, '全年操作', opts.opText || '0 笔');
   drawGridRow(gridY + 76, '持有基金', (opts.fundCount || 0) + ' 只');
   drawGridRow(gridY + 114, '收益起点', opts.earliest || '--');
@@ -572,14 +573,15 @@ function drawAnnualCard(canvas, opts = {}) {
     ctx.fillStyle = '#666'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
     ctx.fillText('💸 持有费用', 60, gridY);
     ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
-    ctx.fillText(opts.feeText, w - 60, gridY);
+    // 金额隐藏时只留费率、抹去金额（feeText 形如"年费约 X 元（综合费率 Y%）"）
+    ctx.fillText(amountVisible ? opts.feeText : opts.feeText.replace(/约 [\d,]+ 元/, '约 **** 元'), w - 60, gridY);
     gridY += 36;
   }
   if (opts.shadowText) {
     ctx.fillStyle = '#666'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
     ctx.fillText('🔄 影子账户', 60, gridY);
     ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
-    ctx.fillText(opts.shadowText, w - 60, gridY);
+    ctx.fillText(amountVisible ? opts.shadowText : '****', w - 60, gridY);
     gridY += 36;
   }
 

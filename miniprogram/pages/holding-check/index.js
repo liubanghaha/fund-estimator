@@ -5,9 +5,14 @@ const api = require("../../utils/api");
 // 问题项结构：{ type, label, fundCode, fundName, id, desc, meta }
 
 // 规则①：负成本 —— 有份额但成本价 <= 0（历史 OCR 导入、旧版本 bug 写入过的脏数据）
+// 老 schema 兜底：与 add-holding/adjust-holding 同口径（shares||amount、buyPrice||nav），
+// 否则老记录会被误报"负成本/份额矛盾"
+function _sharesOf(h) { return Number(h.shares || h.amount) || 0; }
+function _buyPriceOf(h) { return Number(h.buyPrice || h.nav) || 0; }
+
 function checkNegativeCost(h) {
-  const shares = Number(h.shares) || 0;
-  const buyPrice = Number(h.buyPrice) || 0;
+  const shares = _sharesOf(h);
+  const buyPrice = _buyPriceOf(h);
   if (!(shares > 0 && buyPrice <= 0)) return null;
   return {
     type: "cost",
@@ -48,8 +53,8 @@ function checkDuplicate(list) {
 
 // 规则③：份额/市值矛盾 —— 份额为 0 却有市值，或有份额有成本却没有市值
 function checkSharesMismatch(h) {
-  const shares = Number(h.shares) || 0;
-  const buyPrice = Number(h.buyPrice) || 0;
+  const shares = _sharesOf(h);
+  const buyPrice = _buyPriceOf(h);
   const marketValue = Number(h.marketValue) || 0;
   if (shares <= 0 && marketValue > 0) {
     return {

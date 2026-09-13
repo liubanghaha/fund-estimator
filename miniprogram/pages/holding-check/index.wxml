@@ -29,7 +29,7 @@
     </view>
 
     <!-- 问题列表 -->
-    <view class="issue-item" wx:for="{{issues}}" wx:key="index">
+    <view class="issue-item" wx:for="{{issues}}" wx:key="id">
       <view class="issue-head">
         <text class="issue-tag tag-{{item.type}}">{{item.label}}</text>
         <text class="issue-name">{{item.fundName}}</text>

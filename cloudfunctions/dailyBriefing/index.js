@@ -541,9 +541,13 @@ async function runNavBrief(force, dryRun) {
       failed++;
     }
   }
-  // 估算偏差落库（P1-6 信任线底座）：确认流程完成后 fire-and-forget，不阻塞播报返回；dryRun 不落库
-  if (!dryRun) saveEstimateDeviation(dataDay, devSamples)
-    .catch(e => console.error("[dailyBriefing][navBrief] estimate_deviation 异常:", e.message));
+  // 估算偏差落库（P1-6 信任线底座）：dryRun 不落库。
+  // 用 await 而非 fire-and-forget——云函数 main 返回后实例可能被冻结，未完成的异步写不保证执行
+  // （表现：偏差样本随机丢失且无感知），单文档 upsert 仅毫秒级不阻塞可接受的返回时机
+  if (!dryRun) {
+    try { await saveEstimateDeviation(dataDay, devSamples); }
+    catch (e) { console.error("[dailyBriefing][navBrief] estimate_deviation 异常:", e.message); }
+  }
   console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
   return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
 }
@@ -710,6 +714,11 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
     (byUser[sub._openid] || []).forEach(h => {
       const s = settings[h.fundCode];
       if (!s || !s.peAlert) return;
+      // 单条规则停用（提醒管理页开关）：不发推送并清基线（重开时避免拿旧基线误报）
+      if (s.enabled === false) {
+        if (peCache[h.fundCode] !== undefined) { delete peCache[h.fundCode]; cacheChanged = true; }
+        return;
+      }
       const cur = todaySigs.get(h.fundCode);
       if (!cur || cur === "nodata") return;
       const base = peCache[h.fundCode];

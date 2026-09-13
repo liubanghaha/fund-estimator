@@ -38,7 +38,8 @@ Page({
     }).sort((a, b) => (a.fundName > b.fundName ? 1 : -1));
     this.setData({
       rules,
-      globalOn: globalOn !== "" && globalOn !== undefined ? !!globalOn : true,
+      // 初值与首页 data / 云端默认一致（false）；"" 表示从未设置过
+      globalOn: globalOn !== "" && globalOn !== undefined ? !!globalOn : false,
       loading: false,
     });
   },

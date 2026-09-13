@@ -28,8 +28,11 @@ Page({
   // 行业集中度提示（再平衡视角的数据现实版：基金组合无股债大类数据，以行业集中度替代）。
   // 阈值：单一行业 ≥45% 或前三行业 ≥70%。纯事实陈述，无调整建议（合规红线 #2）
   _concentrationTip(assetAllocation) {
-    const items = assetAllocation && assetAllocation.items;
-    if (!items || !items.length) return "";
+    const raw = assetAllocation && assetAllocation.items;
+    if (!raw || !raw.length) return "";
+    // "其他"（无法归类的残差）不参与集中度判断：全是"其他"时提示"其他占仓 100%"会误导
+    const items = raw.filter((i) => i.industry !== "其他");
+    if (!items.length) return "";
     const top1 = items[0];
     if (top1.percent >= 45) return `单一行业集中度：${top1.industry} 占仓 ${top1.percent}%`;
     const top3 = items.slice(0, 3).reduce((s, i) => s + i.percent, 0);

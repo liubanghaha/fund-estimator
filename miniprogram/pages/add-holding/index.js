@@ -10,7 +10,9 @@ function heldDays(buyDate) {
   const buy = new Date(String(buyDate).replace(/-/g, "/"));
   if (isNaN(buy.getTime())) return null;
   const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  return Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+  const days = Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+  if (days < 0) return null; // 未来日期（误填）不计算持有天数
+  return days;
 }
 
 Page({
@@ -318,6 +320,7 @@ Page({
         const remaining = funds.filter(f => !f._saved).length;
         this.setData({ ocrFunds: funds, unsavedCount: remaining });
         wx.removeStorageSync("portfolio_cache");
+      wx.removeStorageSync("fee_cache_v1"); // 持仓变化→费用账单（市值口径）需重算
         wx.setStorageSync("portfolio_force_refresh", true);
 
         const totalSkipped = (d.skippedList || []).length || d.skipped || 0;
@@ -614,8 +617,9 @@ Page({
       if (isEdit) {
         await api.holdingUpdate(id, data);
       } else {
-        await api.holdingAdd(data);
-        this._markFirstHolding(); // 激活指标：生涯首次添加持仓
+        const addRes = await api.holdingAdd(data);
+        // 只有真正写入成功才算激活（api 层业务失败不 reject，需显式判 code）
+        if (addRes && addRes.result && addRes.result.code === 0) this._markFirstHolding();
       }
       if (!isEdit) {
         api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});

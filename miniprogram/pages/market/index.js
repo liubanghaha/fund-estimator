@@ -6,7 +6,7 @@ const chart = require("../../utils/chart");
 // 行情中心 V1·合规整改版（2026-09）：仅港股/美股/亚太指数 + 持仓港美股敞口。
 // A 股内容（市场概览/行业板块/主力资金流/A 股指数）已按审核整改方案清除，AppID 持「股票信息服务平台(港股/美股)」资质。
 // 缓存说明：港美亚交易时段与 A 股不同，不适用 A 股 15:00 冻结（finalAtClose）——
-// 用 60s TTL + 全局空窗跳过（北京时间 6:00~8:59 无主要市场交易，数据不会变），周末由轮询/刷新条件兜底。
+// 用 60s TTL + 全局空窗跳过（北京时间 6:00~7:59：美股收盘后、日经 8:00 开盘前，数据不会变）。
 
 const CACHE_KEY = "market_center_cache";
 const CACHE_VERSION = 3; // v3：口径改为港美亚 + 敞口，旧缓存作废
@@ -72,7 +72,7 @@ Page({
   _pollActive() {
     const d = new Date(Date.now() + 8 * 3600000);
     const hour = d.getUTCHours();
-    if (hour >= 6 && hour < 9) return false; // 全球闭市空窗
+    if (hour >= 6 && hour < 8) return false; // 全球闭市空窗（日经/KOSPI 北京时间 8:00 开盘）
     const today = marketTime.bjDateStr();
     return marketTime.isTradingDay(today) || (hour < 6 && marketTime.isTradingDay(marketTime.lastTradingDay(today)));
   },
@@ -101,9 +101,10 @@ Page({
     const cachedOk = cachedCards.filter((c) => c.price !== "--").length >= 4;
     const cacheUpToDate = cached && cached.v === CACHE_VERSION;
     const fresh = cached && cacheUpToDate && cachedOk && Date.now() - (cached.ts || 0) < TTL;
-    // 非强制的静默刷新：全球闭市空窗（6:00~8:59）数据不可能变化，直接用缓存跳过外呼
-    if (!force && this._pollActive() === false && !fresh && this._inNightWindow()) {
-      if (cached && cacheUpToDate) this._render(cached, true);
+    // 非强制的静默刷新：全球闭市空窗（6:00~7:59）数据不可能变化，直接用缓存跳过外呼。
+    // 仅在已有可用缓存时跳过——首次打开无缓存必须真拉，否则指数区空白
+    if (!force && cacheUpToDate && cachedOk && this._inNightWindow()) {
+      this._render(cached, true);
       this._refreshing = false;
       this.setData({ loading: false });
       return Promise.resolve();
@@ -119,8 +120,9 @@ Page({
     return Promise.all([this._fetchExposure(), this._fetchIndices()]).then(([exposure, indexCards]) => {
       const now = Date.now();
       // 部分失败兜底：指数卡全"--"或敞口为空时保留上次好缓存（外源限流是分钟级的，恢复后自然更新）
-      const effIndexCards = indexCards.some((c) => c.price !== "--") ? indexCards : ((cached && cached.indexCards) || indexCards);
-      const effExposure = exposure || (cached && cached.exposure) || null;
+      // 兜底回退必须校验缓存版本：用户残留的 v1/v2 缓存含 A 股指数卡，混入会破坏合规整改口径
+      const effIndexCards = indexCards.some((c) => c.price !== "--") ? indexCards : ((cacheUpToDate && cached && cached.indexCards) || indexCards);
+      const effExposure = exposure || (cacheUpToDate && cached && cached.exposure) || null;
       const cache = {
         ts: now,
         v: CACHE_VERSION,
@@ -129,7 +131,9 @@ Page({
         empty: !indexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
-      this._render(cache);
+      // 指数卡整体回退旧缓存时按 fromCache 渲染：updatedAt 沿用缓存时间，不谎称"刚刚更新"
+      const usedStale = !indexCards.some((c) => c.price !== "--") && !!(cacheUpToDate && cached);
+      this._render(cache, usedStale);
       this._refreshing = false;
     }).catch(() => {
       this._refreshing = false;
@@ -140,7 +144,7 @@ Page({
 
   _inNightWindow() {
     const h = new Date(Date.now() + 8 * 3600000).getUTCHours();
-    return h >= 6 && h < 9;
+    return h >= 6 && h < 8;
   },
 
   _render(cache, fromCache) {
@@ -203,9 +207,14 @@ Page({
   },
   _loadIdxModalChart(mode) {
     const code = this.data.idxModalCode;
+    // 请求序号：快速切换周期时，慢响应不得覆盖新周期的图
+    this._idxSeq = (this._idxSeq || 0) + 1;
+    const seq = this._idxSeq;
+    const stale = () => seq !== this._idxSeq;
     this.setData({ idxModalLoading: true, idxModalError: false });
-    const fail = () => this.setData({ idxModalLoading: false, idxModalError: true });
+    const fail = () => { if (stale()) return; this.setData({ idxModalLoading: false, idxModalError: true }); };
     const done = (items, isRate) => {
+      if (stale()) return;
       if (!items || items.length < 2) { fail(); return; }
       this.setData({ idxModalLoading: false });
       // 等弹层 canvas 完成布局后再绘制（drawChart 异步查询节点）

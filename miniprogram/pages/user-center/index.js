@@ -4,6 +4,7 @@ const ADMIN_CACHE_KEY = "ops_admin_cache"; // 管理员标记缓存：true 缓�
 
 Page({
   data: {
+    annualYear: new Date(Date.now() + 8 * 3600000).getUTCFullYear(), // 年度报告入口年份（北京时间）
     isLoggedIn: false, avatarUrl: "", nickName: "",
     showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
@@ -175,7 +176,7 @@ Page({
   onHoldingCheck() { wx.navigateTo({ url: "/pages/holding-check/index" }); },
   onAlertManage() { wx.navigateTo({ url: "/pages/alert-manage/index" }); },
   onAnnualReport() {
-    const year = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
+    const year = this.data.annualYear;
     wx.navigateTo({ url: "/pages/annual-report/index?year=" + year });
   },
 

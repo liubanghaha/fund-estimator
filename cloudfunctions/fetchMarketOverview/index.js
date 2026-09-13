@@ -289,11 +289,20 @@ async function fetchSectors() {
   return out;
 }
 
+// exposure 重活缓存（per-openid，5 分钟）：holdings+净值+温度表扫描是慢路径，
+// 行情页 30s 轮询期间重复执行会撞东财限流；实时报价（quoteBatch）不吃缓存、每轮都刷
+const _expCache = {}; // { [openid]: { ts, base } }
+const EXP_TTL = 5 * 60 * 1000;
+
 // 持仓港美股敞口：detailPEs 重仓股代码分类（港股=5位数字 / 美股=字母代码），市值加权。
 // 持仓/温度数据获取逻辑与 fetchUserIndustries 同构（独立部署目录，刻意复制不共享，改口径时两处同步）
 async function handleExposure(openid) {
   try {
     if (!openid) return { code: 0, data: { hasData: false } };
+    const cached = _expCache[openid];
+    if (cached && Date.now() - cached.ts < EXP_TTL) {
+      return await finalizeExposure(cached.base);
+    }
     const hRes = await db.collection("holdings").where({ _openid: openid })
       .field({ fundCode: true, fundName: true, marketValue: true, shares: true, nav: true, amount: true, buyPrice: true })
       .limit(200).get();
@@ -348,13 +357,15 @@ async function handleExposure(openid) {
       if (!latest[t.fundCode]) latest[t.fundCode] = t;
     }
 
-    let totalValue = 0, hkValue = 0, usValue = 0;
+    // 先预累加总市值再进明细循环：wPct 的分母必须是完整组合市值。
+    // 循环内边加边算会让首只基金的权重按自身 100% 计，多基金用户重仓股占比整体虚高
+    const totalValue = weighted.reduce((s, h) => s + (h.fundValue || 0), 0);
+    let hkValue = 0, usValue = 0;
     const hkFunds = [], usFunds = [];
     // 重仓股明细：同一股票跨基金占比相加（组合内总权重 ≈ Σ 基金权重 × 个股占比）
     const stockMap = {};
     for (const h of weighted) {
       const fundValue = h.fundValue;
-      totalValue += fundValue;
       const t = latest[h.fundCode];
       if (!t || !t.detailPEs || !t.detailPEs.length) continue;
       const wPct = (fundValue / totalValue) * 100; // 该基金占组合权重（%）
@@ -387,48 +398,56 @@ async function handleExposure(openid) {
       usValue += fundValue * us / 100;
     }
     if (!(totalValue > 0)) return { code: 0, data: { hasData: false } };
-    const fmtPct = (v) => v > 0 ? +(v / totalValue * 100).toFixed(1) : null;
-    const top2 = (arr) => arr.sort((a, b) => b.pct - a.pct).slice(0, 2).map((f) => `${f.name} ${f.pct}%`);
-    // 重仓股实时行情（qt.gtimg.cn 批量，toQtCode 已支持 hk/us 映射）；失败留 null，前端显示 --
-    const allStocks = Object.values(stockMap).sort((a, b) => b.weight - a.weight);
-    const hkStocks = allStocks.filter((s) => s.market === "hk").slice(0, 8);
-    const usStocks = allStocks.filter((s) => s.market === "us").slice(0, 8);
-    const quoteCodes = [...hkStocks, ...usStocks].map((s) => s.code);
-    let quotes = {};
-    if (quoteCodes.length) {
-      try { quotes = await fd.fetchStockPricesTencent(quoteCodes, { timeoutMs: 6000 }); } catch (e) { quotes = {}; }
-    }
-    const withQuote = (s) => {
-      const q = quotes[s.code] || {};
-      const funds = Object.entries(s.funds || {}).sort((a, b) => b[1] - a[1]).slice(0, 2)
-        .map(([name, pct]) => `${name} ${+(pct).toFixed(1)}%`);
-      return {
-        code: s.code, name: s.name,
-        weight: +s.weight.toFixed(2), // 占组合净值 %
-        price: q.price != null ? +q.price.toFixed(2) : null,
-        changeRate: q.changeRate != null ? q.changeRate : null,
-        // PE/PB 钳制：温度明细偶发脏值（实测出现 PB=9156035），超界视为无效
-        pe: s.pe != null && s.pe > 0 && s.pe < 2000 ? s.pe : null,
-        pb: s.pb != null && s.pb > 0 && s.pb < 200 ? s.pb : null,
-        industry: s.industry || "",
-        funds, // 持有该股的基金 top2（基金内重仓占比）
-      };
-    };
-    return { code: 0, data: {
-      hasData: !!(hkValue > 0 || usValue > 0),
-      hkPct: fmtPct(hkValue),
-      usPct: fmtPct(usValue),
-      hkCount: hkFunds.length || null,
-      usCount: usFunds.length || null,
-      hkTop: top2(hkFunds),
-      usTop: top2(usFunds),
-      hkStocks: hkStocks.map(withQuote),
-      usStocks: usStocks.map(withQuote),
-    } };
+    // 重活到此为止：结果进缓存，报价交给 finalizeExposure 每轮现拉
+    const base = { totalValue, hkValue, usValue, hkFunds, usFunds, stockMap };
+    _expCache[openid] = { ts: Date.now(), base };
+    return await finalizeExposure(base);
   } catch (e) {
     console.error("[fetchMarketOverview] exposure 失败:", e.message || e);
     return { code: 0, data: { hasData: false } };
   }
+}
+
+// exposure 报价层：重活结果（含 stockMap）→ 实时报价 → 组装返回。每轮都执行（轻：一次批量外呼）
+async function finalizeExposure(base) {
+  const { totalValue, hkValue, usValue, hkFunds = [], usFunds = [], stockMap = {} } = base;
+  const fmtPct = (v) => v > 0 ? +(v / totalValue * 100).toFixed(1) : null;
+  const top2 = (arr) => arr.slice().sort((a, b) => b.pct - a.pct).slice(0, 2).map((f) => `${f.name} ${f.pct}%`);
+  const allStocks = Object.values(stockMap).sort((a, b) => b.weight - a.weight);
+  const hkStocks = allStocks.filter((s) => s.market === "hk").slice(0, 8);
+  const usStocks = allStocks.filter((s) => s.market === "us").slice(0, 8);
+  const quoteCodes = [...hkStocks, ...usStocks].map((s) => s.code);
+  let quotes = {};
+  if (quoteCodes.length) {
+    try { quotes = await fd.fetchStockPricesTencent(quoteCodes, { timeoutMs: 6000 }); } catch (e) { quotes = {}; }
+  }
+  const withQuote = (s) => {
+    const q = quotes[s.code] || {};
+    const funds = Object.entries(s.funds || {}).sort((a, b) => b[1] - a[1]).slice(0, 2)
+      .map(([name, pct]) => `${name} ${+(pct).toFixed(1)}%`);
+    return {
+      code: s.code, name: s.name,
+      weight: +s.weight.toFixed(2), // 占组合净值 %
+      price: q.price != null ? +q.price.toFixed(2) : null,
+      changeRate: q.changeRate != null ? q.changeRate : null,
+      // PE/PB 钳制：温度明细偶发脏值（实测出现 PB=9156035），超界视为无效
+      pe: s.pe != null && s.pe > 0 && s.pe < 2000 ? s.pe : null,
+      pb: s.pb != null && s.pb > 0 && s.pb < 200 ? s.pb : null,
+      industry: s.industry || "",
+      funds, // 持有该股的基金 top2（基金内重仓占比）
+    };
+  };
+  return { code: 0, data: {
+    hasData: !!(hkValue > 0 || usValue > 0),
+    hkPct: fmtPct(hkValue),
+    usPct: fmtPct(usValue),
+    hkCount: hkFunds.length || null,
+    usCount: usFunds.length || null,
+    hkTop: top2(hkFunds),
+    usTop: top2(usFunds),
+    hkStocks: hkStocks.map(withQuote),
+    usStocks: usStocks.map(withQuote),
+  } };
 }
 
 // 全市场温度分布（当日）：事件驱动分享卡的数据源。按 signal 三次计数（date 走索引），

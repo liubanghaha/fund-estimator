@@ -712,6 +712,8 @@ async function handleFeeSummary(openid) {
     const codes = [...new Set(held.map((h) => h.fundCode).filter(Boolean))];
     if (!codes.length) return { code: 0, data: { hasData: false } };
 
+    // 集合可能不存在（首次使用）：先建通道，否则读抛错→全量现拉且缓存永不生效
+    try { await db.createCollection("fund_fees"); } catch (e) { /* 已存在 */ }
     // 费率缓存 30 天，缺失现拉（并发 6，单基金失败费率记 0 不塌缩）
     const feeMap = {};
     const missing = [];
@@ -744,8 +746,13 @@ async function handleFeeSummary(openid) {
       if (!shares && h.amount && buyPrice > 0) shares = parseFloat(h.amount) / buyPrice;
       let mv = parseFloat(h.marketValue) || 0;
       try {
-        const r = navGetCache[h.fundCode] || (navGetCache[h.fundCode] = await fd.fetchLatestNavEastMoney(h.fundCode));
-        const nav = r && r.actualNav > 0 ? r.actualNav : null;
+        let hit = navGetCache[h.fundCode];
+        if (!hit || Date.now() - hit.ts > NAV_CACHE_TTL) {
+          const r = await fd.fetchLatestNavEastMoney(h.fundCode);
+          if (r && r.actualNav > 0) { hit = { ts: Date.now(), data: r }; navGetCache[h.fundCode] = hit; }
+          else { hit = null; } // 失败不缓存，下次重试
+        }
+        const nav = hit && hit.data.actualNav > 0 ? hit.data.actualNav : null;
         if (nav != null && shares > 0) mv = nav * shares;
       } catch (e) { /* 回退存储市值 */ }
       if (!(mv > 0)) continue;
@@ -772,8 +779,10 @@ async function handleFeeSummary(openid) {
   }
 }
 
-// 费率查询（模块级缓存：同实例内同基金只打一次外呼）
-const navGetCache = {};
+// 费率查询（模块级缓存：同实例内同基金只打一次外呼；10 分钟 TTL，且只缓存成功结果——
+// 失败时 fetchLatestNavEastMoney resolve({}) 是 truthy，永久缓存会让市值跨天用陈旧值）
+const navGetCache = {}; // { [code]: { ts, data } }
+const NAV_CACHE_TTL = 10 * 60 * 1000;
 async function fetchFundFees(code) {
   return new Promise((resolve) => {
     const req = https.get(`https://fundmobapi.eastmoney.com/FundMApi/FundDetailInformation.ashx?FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {

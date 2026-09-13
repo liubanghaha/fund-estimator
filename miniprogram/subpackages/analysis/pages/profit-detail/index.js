@@ -135,6 +135,7 @@ Page({
     this.setData({ theme });
     // 金额隐藏开关也同步（首页切换后返回本页立即生效）
     try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
+    this._loadShadow(); // 卖出/减仓后返回本页，影子数据即时刷新
     // 周期签入口：周/月/年 tab 显示对应签（当天 tab 无签），签数据为"至今"口径
     this.setData({ signVisible: this.data.activeTab !== "today" });
     if (this._first) { this._first = false; }
@@ -216,7 +217,7 @@ Page({
     api.portfolioLight().then((r) => {
       const d = r.result && r.result.data;
       if (!d) return;
-      // 非交易时段 portfolioLight 返回占位值 todayProfitRate:0（无真实数据语义），
+      // 非交易时段 portfolioLight 返回空占位（todayProfitRate:null，无真实数据语义），
       // 直接应用会把冻结期缓存里正确的收益值（如周五收盘 -1.31%）洗成 0，
       // 并连锁污染图例与曲线末端对齐点（末端被对齐到 0 后画在 Y 轴顶端外，视觉上成"翘尾"）
       if (d.inTrading === false) return;
@@ -237,10 +238,9 @@ Page({
   // 周末/盘后冻结跳过 _fetch 时回退首页缓存。播报落地（21:30）的第二次消费内容
   // 周期复盘（随 tab）：组合同期收益 vs 沪深300 同期、当日强弱（仅今日）、期间操作笔数。
   // 数据链自给自足：沪深300 走 _idx 独立缓存；强弱优先本轮 hs，冻结期回退首页缓存。
-  // 每周期结果缓存（_reviewCache），_fetch 拉到新数据时清缓存重建
+  // 异步回调带 activeTab 守卫，快速切 tab 时迟到响应不覆盖新周期
   _ensureReview(tab, hs) {
     if (!tab) return;
-    this._reviewCache = this._reviewCache || {};
     const RATES = { today: "todayProfitRate", week: "weekProfitRate", month: "monthProfitRate", year: "yearProfitRate" };
     const TAB_LABELS = { today: "今日", week: "本周", month: "本月", year: "本年" };
     const TAB_DAYS = { today: 3, week: 7, month: 25, year: 260 };
@@ -250,8 +250,10 @@ Page({
         comboRate: +(parseFloat(this.data[RATES[tab]]) || 0).toFixed(2),
         hsRate: null, diffText: "", best, worst, opText: "",
       };
+      const stale = () => this.data.activeTab !== tab; // 快速切 tab：迟到回调不得覆盖新周期复盘
       this.setData({ reviewCard: review });
       const applyHs = (rows) => {
+        if (stale()) return;
         const seg = (rows || []).slice(-(TAB_DAYS[tab] + 2));
         if (seg.length < 2 || !seg[0].close) return;
         const hsRate = +((seg[seg.length - 1].close / seg[0].close - 1) * 100).toFixed(2);
@@ -266,13 +268,13 @@ Page({
         this._idx("000300", TAB_DAYS[tab] + 2).then(applyHs).catch(() => { /* 基准缺失仅不显示对比 */ });
       }
       api.transactionList().then((res) => {
+        if (stale()) return;
         const txs = (res.result && res.result.code === 0 && res.result.data) || [];
         const n = txs.filter((t) => t.date && t.date >= this._periodStart(tab)).length;
         review.opText = n ? `${TAB_LABELS[tab]}操作 ${n} 笔` : "";
-        this._reviewCache[tab] = review;
         this.setData({ reviewCard: { ...review } });
       }).catch(() => {
-        this._reviewCache[tab] = review;
+        if (stale()) return;
         this.setData({ reviewCard: { ...review } });
       });
     };
@@ -293,7 +295,7 @@ Page({
     } catch (e) { /* 复盘数据异常不影响主页面 */ }
   },
   _periodStart(tab) {
-    if (tab === "today") return calc.formatDate(new Date());
+    if (tab === "today") return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
     const bj = new Date(Date.now() + 8 * 3600000);
     if (tab === "week") return new Date(bj.getTime() - 86400000 * ((bj.getUTCDay() + 6) % 7)).toISOString().slice(0, 10);
     if (tab === "month") return bj.toISOString().slice(0, 7) + "-01";
@@ -342,6 +344,7 @@ Page({
     const titles = { week: "本周收益", month: "本月收益", year: "本年收益" };
     const profits = { week: this.data.weekProfit, month: this.data.monthProfit, year: this.data.yearProfit };
     const rates = { week: this.data.weekProfitRate, month: this.data.monthProfitRate, year: this.data.yearProfitRate };
+    this._signCanvas = null; // 新签作废旧 canvas：本张失败时不能保存到上一张
     this.setData({ showSignModal: true, signRendering: true, signPeriod: period, signTitle: TABS[period] || "周签" });
     const days = this.data.signDays[period] || 10;
     const start = this._periodStart(period);
@@ -365,7 +368,11 @@ Page({
           wx.nextTick(() => {
             const query = wx.createSelectorQuery();
             query.select("#signCanvas").fields({ node: true, size: true }).exec((cres) => {
-              if (!cres || !cres[0] || !cres[0].node) return;
+              if (!cres || !cres[0] || !cres[0].node) {
+                this._signCanvas = null;
+                wx.showToast({ title: "生成失败，请重试", icon: "none" });
+                return;
+              }
               this._signCanvas = cres[0].node;
               const shareCard = require("../../../../utils/shareCard");
               shareCard.drawWeeklyCard(cres[0].node, {
@@ -469,8 +476,6 @@ Page({
       const totalCost = hs.reduce((s, h) => s + h.buyPrice * h.shares, 0);
       const navMap = d.navHistoryMap || {};
       const today = calc.formatDate(now);
-      this._reviewCache = {}; // 新数据到达，各周期复盘缓存作废重建
-      this._ensureReview("today", hs); // 盘后复盘卡数据（组合 vs 沪深300 / 持仓强弱 / 今日操作）
 
       // 日变动
       const dc = {};
@@ -563,7 +568,11 @@ Page({
         weekProfit: w, monthProfit: m, yearProfit: y,
         weekProfitRate, monthProfitRate, yearProfitRate,
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
-      }, () => { this._draw(); this._cal(); });
+      }, () => {
+        this._draw(); this._cal();
+        // 复盘卡在利率写入 data 之后再构建，否则 comboRate 读到上一轮的旧值
+        if (this.data.activeTab === "today") this._ensureReview("today", hs);
+      });
       this._updateAsOf();
       // 指数分时：交易时段实时拉新；非交易时段数据已定格，命中当天缓存即跳过（零网络）
       if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();

@@ -71,3 +71,10 @@
 .sm-meta-label{font-size:20rpx;color:#BBB}
 .sm-meta-val{font-size:26rpx;color:#333;font-weight:600;margin-top:4rpx;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sm-funds{font-size:22rpx;color:#888;margin-bottom:10rpx;line-height:1.6}
+
+/* 补充：标题行 / 灰字 / 卡片引导（此前引用未定义） */
+.mk-sec-title-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20rpx}
+.mk-sec-title-row .mk-sec-title{margin-bottom:0}
+.mk-sec-note{font-size:20rpx;color:#BBB;font-weight:400}
+.dim{color:#BBB}
+.idx-more{font-size:20rpx;color:#BBB;margin-top:8rpx}

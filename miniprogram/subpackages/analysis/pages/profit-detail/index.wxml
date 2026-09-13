@@ -77,7 +77,7 @@
     </view>
 
     <!-- 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，纯数据陈述 -->
-    <view wx:if="{{showShadow}}" class="shadow-card">
+    <view wx:if="{{showShadowCard}}" class="shadow-card">
       <view class="shadow-head">
         <text class="shadow-title">影子账户 · 如果没卖</text>
         <text class="shadow-total {{shadowTotal > 0 ? 'up' : shadowTotal < 0 ? 'down' : ''}}" wx:if="{{shadowTotal != null}}">{{amountVisible ? (shadowTotal > 0 ? '+' : '') + shadowTotal + '元' : '****'}}</text>
@@ -149,7 +149,7 @@
       <view class="fee-main">按当前 {{feeCard.fundCount}} 只持仓，每年支付管理费+托管费<text wx:if="{{feeCard.hasSales}}">（含销售服务费）</text>约 <text class="fee-num">{{amountVisible ? feeCard.annualFee : '****'}} 元</text></view>
       <view class="fee-item" wx:for="{{feeCard.items}}" wx:key="fundName">
         <text class="fee-item-name">{{item.fundName}}</text>
-        <text class="fee-item-val">{{item.rate}}%/年 · 约 {{item.fee}} 元</text>
+        <text class="fee-item-val">{{item.rate}}%/年 · 约 {{amountVisible ? item.fee : '****'}} 元</text>
       </view>
       <view class="fee-note">当前收益为名义收益，未扣除上述持有费用；费率取自基金公告，不含申赎费用</view>
     </view>

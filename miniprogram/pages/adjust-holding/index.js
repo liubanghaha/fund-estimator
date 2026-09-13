@@ -11,7 +11,9 @@ function heldDays(buyDate) {
   const buy = new Date(String(buyDate).replace(/-/g, "/"));
   if (isNaN(buy.getTime())) return null;
   const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  return Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+  const days = Math.floor((dayStart(new Date()) - dayStart(buy)) / 86400000);
+  if (days < 0) return null; // 未来日期（误填）不计算持有天数
+  return days;
 }
 
 Page({
@@ -411,12 +413,14 @@ Page({
       await this.processItem(item, this.data.reason);
       wx.hideLoading();
       wx.removeStorageSync("portfolio_cache");
+      wx.removeStorageSync("fee_cache_v1"); // 持仓变化→费用账单（市值口径）需重算
       wx.setStorageSync("portfolio_force_refresh", true);
       // 成功后留在本页继续确认剩余笔次（原实现强制跳回首页，剩余笔次得重新 OCR）
       const remaining = this.data.ocrResults.filter((_, i) => i !== idx);
       this.setData({
         ocrResults: remaining,
         matchedCount: remaining.filter((r) => r.matched).length,
+        reason: "", // 归因随该笔消费，下一批重新选择（否则沿用上一笔）
       });
       this.loadHoldings(); // 份额已变，刷新底表供后续笔次计算
       if (remaining.length === 0) {
