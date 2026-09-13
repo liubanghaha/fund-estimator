@@ -19,18 +19,6 @@
   module.exports = { money: money };
 </wxs>
 <view class="page-wrap {{theme === 'red' ? 'theme-red' : 'theme-blue'}}" style="height: {{pageHeight}}px">
-  <!-- 批量模式顶栏：fixed 吸顶（须放在 scroll-view 外，fixed 在 scroll-view 内会失效） -->
-  <view wx:if="{{batchMode}}" class="batch-top-bar">
-    <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
-    <text class="batch-top-title">已选 {{selectedCount}} 项</text>
-    <view class="batch-top-right">
-      <text class="batch-top-link" bind:tap="onOpenColEdit">列设置</text>
-      <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
-      <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
-      <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
-      <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
-    </view>
-  </view>
   <scroll-view
     scroll-y
     class="page-scroll"
@@ -39,7 +27,7 @@
     refresher-triggered="{{refresherTriggered}}"
     bindrefresherrefresh="onScrollRefresh"
   >
-    <view class="container {{batchMode ? 'in-batch' : ''}}" style="padding-bottom: {{indexBarHeight}}rpx">
+    <view class="container" style="padding-bottom: {{indexBarHeight}}rpx">
 
       <view class="disclaimer">数据来源：公开市场数据，仅供参考，不构成投资建议。</view>
 
@@ -110,6 +98,17 @@
           </view>
         </view>
 
+        <view wx:if="{{batchMode}}" class="batch-top-bar">
+          <text class="batch-top-cancel" bind:tap="onToggleBatch">取消</text>
+          <text class="batch-top-title">已选 {{selectedCount}} 项</text>
+          <view class="batch-top-right">
+            <text class="batch-top-link" bind:tap="onOpenColEdit">列设置</text>
+            <text wx:if="{{!allSelected}}" class="batch-top-link" bind:tap="onSelectAll">全选</text>
+            <text wx:else class="batch-top-link" bind:tap="onSelectAll">取消全选</text>
+            <text class="batch-top-link" bind:tap="onBatchMoveToGroup">移动分组</text>
+            <text class="batch-top-delete" bind:tap="onBatchDelete">删除</text>
+          </view>
+        </view>
         <view wx:if="{{batchMode}}" class="batch-alert-bar">
           <text class="batch-alert-label">全局涨跌提醒 · 全部基金按 ±3% 提醒</text>
           <view class="pe-switch {{alertGlobalOn ? 'on' : ''}}" bind:tap="onToggleGlobalAlert">
