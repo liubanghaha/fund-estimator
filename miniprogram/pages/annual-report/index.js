@@ -16,11 +16,14 @@ Page({
     saved: false,
   },
 
-  onLoad() {
-    const year = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
+  onLoad(options) {
+    // 年度报告每年 1/1 放开，展示"刚结束的那一年"（年度账单式节奏）：
+    // 默认 reportYear = 当前年 - 1（2027-01-01 首次放开 → 展示 2026 年度报告）
+    const bjYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
+    const year = parseInt(options && options.year, 10) || (bjYear - 1);
     this.setData({ theme: wx.getStorageSync("theme") || "red", year });
     try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
-    track.track("annual_report_open");
+    track.track("annual_report_open", { year });
     this._load(year);
   },
   onShareAppMessage() {
@@ -33,7 +36,9 @@ Page({
     const yearStart = new Date(year, 0, 1);
     const now = new Date(Date.now() + 8 * 3600000);
     const calendarDays = Math.ceil((now - yearStart) / 86400000);
-    const historyDays = Math.min(260, Math.ceil(calendarDays * 5 / 7) + 10);
+    // 上限 800（服务端钳制值）：报告年可能是"往年"，查看时点在次年甚至更晚，
+    // 260 交易日只够覆盖近期约 12 个月，会漏掉往年年初的数据
+    const historyDays = Math.min(800, Math.ceil(calendarDays * 5 / 7) + 10);
     Promise.all([
       api.getPortfolio(historyDays),
       api.transactionList().catch(() => ({ result: { code: 0, data: [] } })),

@@ -4,10 +4,13 @@ const ADMIN_CACHE_KEY = "ops_admin_cache"; // 管理员标记缓存：true 缓�
 
 Page({
   data: {
-    // 年度报告入口：仅 12 月起展示（产品规划"12 月第一周上线"，踩年终社交季；
-    // 提前暴露会稀释年终传播时机，且数据尚未完整一年）
-    annualYear: new Date(Date.now() + 8 * 3600000).getUTCFullYear(),
-    showAnnualEntry: (new Date(Date.now() + 8 * 3600000)).getUTCMonth() === 11,
+    // 年度报告入口：每年 1/1 放开，展示刚结束的那一年（年度账单式节奏）。
+    // 首次放开 2027-01-01（展示 2026 年度报告）；在此之前入口隐藏
+    annualYear: (() => {
+      const bj = new Date(Date.now() + 8 * 3600000);
+      return bj.getUTCFullYear() - 1;
+    })(),
+    showAnnualEntry: new Date(Date.now() + 8 * 3600000).getUTCFullYear() >= 2027,
     isLoggedIn: false, avatarUrl: "", nickName: "",
     showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
