@@ -292,6 +292,7 @@ Page({
     const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
+    this.maybeShowGuide(); // 新手导览（首笔持仓后一次性）
 
     // 恢复缓存的分组列表
     const cachedGroups = this._getCachedGroups();
@@ -1102,6 +1103,35 @@ Page({
       return;
     }
     wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
+  },
+
+  // ==== 新手导览（首笔持仓后一次性）====
+  maybeShowGuide() {
+    try {
+      if (wx.getStorageSync("guide_pending_v1") && !wx.getStorageSync("guide_done_v1")) {
+        this.setData({
+          showGuide: true, guideIdx: 0,
+          guidePages: [
+            { icon: "📊", title: "持仓一目了然", desc: "点击表头排序；左上角 ☰ 进入管理：分组、批量操作、列自定义、全局提醒" },
+            { icon: "🔔", title: "提醒与隐私", desc: "涨跌与温度变化提醒按基金设置，「我的 → 我的提醒」统一管理；右上「隐藏」一键隐藏金额" },
+            { icon: "🧰", title: "更多工具", desc: "行情中心看港美股指数与你的重仓股实时行情；收益页可生成本周周签；「我的 → 持仓体检」检查持仓数据" },
+          ],
+        });
+      }
+    } catch (e) { /* ignore */ }
+  },
+  onGuideChange(e) { this.setData({ guideIdx: e.detail.current }); },
+  onGuideDot(e) { this.setData({ guideIdx: +e.currentTarget.dataset.i }); },
+  onGuideNext() {
+    if (this.data.guideIdx < this.data.guidePages.length - 1) {
+      this.setData({ guideIdx: this.data.guideIdx + 1 });
+      return;
+    }
+    this.setData({ showGuide: false });
+    try {
+      wx.setStorageSync("guide_done_v1", Date.now());
+      wx.removeStorageSync("guide_pending_v1");
+    } catch (e) { /* ignore */ }
   },
 
   // ==== 事件驱动分享卡 ====

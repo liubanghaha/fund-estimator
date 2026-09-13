@@ -316,3 +316,15 @@
 .share-variant-chips{display:flex;justify-content:center;gap:14rpx;margin-bottom:14rpx}
 .svc-chip{font-size:24rpx;color:#888;background:#F2F2F2;border-radius:24rpx;padding:8rpx 28rpx}
 .svc-chip.active{color:#FFF;background:var(--primary);font-weight:600}
+/* 新手导览（首笔持仓后一次性） */
+.guide-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1200;display:flex;align-items:center;justify-content:center}
+.guide-panel{width:600rpx;background:#FFF;border-radius:24rpx;padding:36rpx 32rpx 28rpx}
+.guide-swiper{height:440rpx}
+.guide-page{display:flex;flex-direction:column;align-items:center;text-align:center;padding:20rpx 10rpx}
+.guide-icon{font-size:90rpx}
+.guide-title{font-size:34rpx;font-weight:700;color:#333;margin-top:24rpx}
+.guide-desc{font-size:26rpx;color:#666;line-height:1.8;margin-top:20rpx}
+.guide-dots{display:flex;justify-content:center;gap:14rpx;padding:8rpx 0 20rpx}
+.guide-dot{width:14rpx;height:14rpx;border-radius:50%;background:#E0E0E0}
+.guide-dot.active{background:var(--primary);width:32rpx;border-radius:8rpx}
+.guide-btn{font-size:28rpx;color:#FFF;background:var(--primary);border-radius:40rpx;line-height:2.6}

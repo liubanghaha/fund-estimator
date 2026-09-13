@@ -356,6 +356,7 @@ Page({
       if (!wx.getStorageSync("add_first_holding_done")) {
         track.track("add_first_holding");
         wx.setStorageSync("add_first_holding_done", Date.now());
+        wx.setStorageSync("guide_pending_v1", 1); // 首笔持仓后引导首页弹新手导览
       }
     } catch (e) { /* ignore */ }
   },
