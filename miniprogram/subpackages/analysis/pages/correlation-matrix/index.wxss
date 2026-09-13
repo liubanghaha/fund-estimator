@@ -117,7 +117,8 @@
 .shadow-arrow{font-size:28rpx;color:#CCC;flex-shrink:0}
 
 /* Tab：持仓分析 | 费用与复盘（与详情页 tab-bar 同款） */
-.tab-bar{display:flex;background:#EDEEF0;margin:16rpx 24rpx 0;border-radius:16rpx;padding:6rpx;box-sizing:border-box}
+/* 横向不设 margin：页容器 .page-wrap 已有 24rpx padding，再加会让 tab 比卡片窄 */
+.tab-bar{display:flex;background:#EDEEF0;margin:0 0 16rpx;border-radius:16rpx;padding:6rpx;box-sizing:border-box}
 .tab-item{flex:1;text-align:center;padding:16rpx 0;font-size:26rpx;color:#888;border-radius:12rpx;transition:all .2s}
 .tab-item.active{background:#FFF;color:var(--primary);font-weight:600;box-shadow:0 2rpx 8rpx rgba(0,0,0,.06)}
 .empty-hint{font-size:22rpx;color:#BBB;margin-top:10rpx;line-height:1.6}
