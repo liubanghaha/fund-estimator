@@ -25,6 +25,21 @@ Page({
         this.fetchAll();
   },
 
+  // 行业集中度提示（再平衡视角的数据现实版：基金组合无股债大类数据，以行业集中度替代）。
+  // 阈值：单一行业 ≥45% 或前三行业 ≥70%。纯事实陈述，无调整建议（合规红线 #2）
+  _concentrationTip(assetAllocation) {
+    const items = assetAllocation && assetAllocation.items;
+    if (!items || !items.length) return "";
+    const top1 = items[0];
+    if (top1.percent >= 45) return `单一行业集中度：${top1.industry} 占仓 ${top1.percent}%`;
+    const top3 = items.slice(0, 3).reduce((s, i) => s + i.percent, 0);
+    if (top3 >= 70) {
+      const names = items.slice(0, 3).map((i) => i.industry).join("/");
+      return `前三行业（${names}）合计占仓 ${+top3.toFixed(1)}%`;
+    }
+    return "";
+  },
+
   onRetry() {
     this.fetchAll();
   },
@@ -58,10 +73,12 @@ Page({
 
       // 先收起 loading 再渲染数据：健康分圆环是 canvas，处于 loading 的 wx:else 分支之外，
       // 若先 setData 数据后收 loading，绘制时 canvas 节点尚未挂载 → 圆环空白
+      const concTip = this._concentrationTip(d.assetAllocation);
       this.setData({
         loading: false,
         healthScore: d.healthScore || null,
         assetAllocation: d.assetAllocation || null,
+        concentrationTip: concTip,
       }, () => {
         if (d.healthScore) this._drawHealthRing(d.healthScore.score);
       });

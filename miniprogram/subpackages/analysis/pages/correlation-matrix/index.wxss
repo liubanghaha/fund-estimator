@@ -78,3 +78,5 @@
 .legend-dot.high{background:var(--up)}
 .legend-dot.mid{background:#FF9800}
 .legend-dot.low{background:#4CAF50}
+/* 行业集中度提示 */
+.conc-tip{font-size:22rpx;color:#8a6d3b;background:#FCF4E3;border-radius:10rpx;padding:12rpx 16rpx;margin-bottom:14rpx;line-height:1.5}
