@@ -22,19 +22,19 @@
 
 /* 仪表盘 */
 .dashboard{padding:0 24rpx}
-.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 28rpx 30rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
+.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:32rpx 28rpx 26rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
 .amount-toggle{position:absolute;right:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
 .share-toggle{position:absolute;left:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
 .share-toggle-icon{font-size:20rpx;margin-right:4rpx}
 /* 热区扩大 ≥80rpx：伪元素向外撑点击范围，视觉大小不变（padding 会把带底色的胶囊撑变形） */
 .amount-toggle::after,.share-toggle::after{content:'';position:absolute;top:-20rpx;left:-12rpx;right:-12rpx;bottom:-20rpx}
-.asset-label{font-size:26rpx;opacity:.85;margin-bottom:10rpx}
+.asset-label{font-size:24rpx;opacity:.85;margin-bottom:8rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
-.asset-value{font-size:72rpx;font-weight:700;line-height:1.15;margin-bottom:14rpx;letter-spacing:-1rpx}
-.asset-sub{font-size:26rpx;display:flex;flex-wrap:wrap;gap:26rpx;justify-content:center;align-items:baseline;margin-top:6rpx}
+.asset-value{font-size:60rpx;font-weight:700;line-height:1.15;margin-bottom:12rpx}
+.asset-sub{font-size:24rpx;display:flex;flex-wrap:wrap;gap:26rpx;justify-content:center;align-items:baseline;margin-top:4rpx}
 /* 标签弱、数值强：原来三者同色同重，「市值 675,022.91」会盖住涨幅和累计 */
 .asset-sub-item{color:rgba(255,255,255,.72)}
-.asset-sub-num{color:#FFF;font-weight:600;font-size:28rpx;margin-left:4rpx}
+.asset-sub-num{color:#FFF;font-weight:600;font-size:26rpx;margin-left:4rpx}
 .asset-overview .up{color:#FFF}
 .asset-overview .down{color:#FFE082}
 
