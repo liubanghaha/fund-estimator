@@ -13,12 +13,13 @@ exports.main = async (event) => {
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 
 	    // 4 个请求全部并行，减少一轮网络往返
-	    const [profile, manager, holdingsData, prevHoldingsData, turnoverRates] = await Promise.all([
+	    const [profile, manager, holdingsData, prevHoldingsData, turnoverRates, sameTypeRank] = await Promise.all([
 	      fetchProfile(fundCode),
 	      fetchManager(fundCode),
 	      fetchHoldings(fundCode, curY, curM),
 	      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null, ok: false })),
 	      fetchTurnoverRate(fundCode).catch(() => []),
+	      fetchSameTypeRank(fundCode).catch(() => null),
 	    ]);
     let holdings = holdingsData.holdings || [];
     let prevHoldings = prevHoldingsData.holdings || [];
@@ -96,12 +97,45 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
   } catch (e) {
     console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
   }
 };
+
+// 同类排名（业绩排名时间序列取最新一条）：pingzhongdata 约 200KB，仅提取排名/总数/超越百分位
+// beatPct = 100 − 排名/总数×100，即"超越同类 X% 的基金"
+function fetchSameTypeRank(fundCode) {
+  const https = require("https");
+  return new Promise((resolve) => {
+    const req = https.get(`https://fund.eastmoney.com/pingzhongdata/${fundCode}.js`, { headers: { Referer: "https://fund.eastmoney.com/" } }, (res) => {
+      res.setEncoding("utf8");
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          // 值为 JS 数组字面量（内含嵌套 []），以分号为界提取后 JSON.parse
+          const rankMatch = body.match(/Data_rateInSimilarType\s*=\s*([^;]+);/);
+          const pctMatch = body.match(/Data_rateInSimilarPersent\s*=\s*([^;]+);/);
+          let rank = null, total = null, beatPct = null;
+          if (rankMatch) {
+            const arr = JSON.parse(rankMatch[1]);
+            if (arr.length) { rank = arr[arr.length - 1].y; total = arr[arr.length - 1].sc; }
+          }
+          if (pctMatch) {
+            const arr = JSON.parse(pctMatch[1]);
+            if (arr.length) beatPct = +arr[arr.length - 1][1].toFixed(2);
+          }
+          if (rank != null && total > 0) resolve({ rank, total, beatPct });
+          else resolve(null);
+        } catch (e) { resolve(null); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+  });
+}
 
 function fetchProfile(fundCode) {
   const https = require("https");

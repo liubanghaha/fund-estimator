@@ -556,7 +556,7 @@ Page({
           const holdings = res.result.data.holdings || [];
           // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
           const exited = res.result.data.exited || [];
-          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [] };
+          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: res.result.data.sameTypeRank || null };
           if (p) patch.profile = p;
           this.setData(patch);
           // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
