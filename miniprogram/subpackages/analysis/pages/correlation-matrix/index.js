@@ -13,6 +13,7 @@ Page({
     loading: true,
     loadError: false,
     showAllIndustries: false,
+    activeTab: "holding", // holding=持仓分析（健康/穿透/重合） | cost=费用与复盘（费用账单/影子）
     amountVisible: true,
     feeCard: null,
     showShadowCard: false, shadowTotal: null, shadowTop: [],
@@ -58,6 +59,15 @@ Page({
         .map((i) => ({ ...i, dateShort: i.date ? i.date.slice(5).replace("-", "/") : "" }));
       this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTop: top });
     }).catch(() => { /* ignore */ });
+  },
+  onTabTap(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (!tab || tab === this.data.activeTab) return;
+    this.setData({ activeTab: tab }, () => {
+      // 切回持仓分析时补画健康分圆环：canvas 用 hidden 保持挂载，
+      // 但若首屏默认落费用 tab（无持仓分析数据时）圆环未曾绘制
+      if (tab === "holding" && this.data.healthScore && !this._ringDrawn) this._drawHealthRing(this.data.healthScore.score);
+    });
   },
   onShadowFundTap(e) {
     const { code, name } = e.currentTarget.dataset;
@@ -125,6 +135,10 @@ Page({
         concentrationTip: concTip,
       }, () => {
         if (d.healthScore) this._drawHealthRing(d.healthScore.score);
+        // 无持仓分析内容（健康/穿透均空）时默认落费用与复盘 tab，避免首屏空态
+        if (!d.healthScore && (!d.assetAllocation || !d.assetAllocation.items || !d.assetAllocation.items.length)) {
+          this.setData({ activeTab: "cost" });
+        }
       });
 
       const fundCodes = d.holdings.map(h => h.fundCode);
@@ -182,6 +196,7 @@ Page({
   },
 
   _drawHealthRing(score, attempt = 0) {
+    this._ringDrawn = true;
     const query = wx.createSelectorQuery();
     query.select('#healthCanvas').fields({ node: true, size: true }).exec((res) => {
       const node = res && res[0] && res[0].node;

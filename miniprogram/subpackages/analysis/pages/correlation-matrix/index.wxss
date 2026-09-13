@@ -99,3 +99,9 @@
 .shadow-item{display:flex;align-items:center;justify-content:space-between;padding:12rpx 0;border-bottom:1rpx solid #F5F5F5}
 .shadow-desc{font-size:24rpx;color:#666;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shadow-val{font-size:26rpx;font-weight:600;margin-left:16rpx}
+
+/* Tab：持仓分析 | 费用与复盘（与详情页 tab-bar 同款） */
+.tab-bar{display:flex;background:#FFF;margin:16rpx 24rpx 0;border-radius:20rpx;overflow:hidden}
+.tab-item{flex:1;text-align:center;padding:24rpx 0;font-size:28rpx;color:#999}
+.tab-item.active{color:var(--primary);font-weight:600;border-bottom:4rpx solid var(--primary)}
+.empty-hint{font-size:22rpx;color:#BBB;margin-top:10rpx;line-height:1.6}

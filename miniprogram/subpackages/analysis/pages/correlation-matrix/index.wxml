@@ -11,6 +11,14 @@
 
   <!-- 内容 -->
   <view wx:else>
+    <!-- Tab：持仓分析（健康/穿透/重合） | 费用与复盘（费用账单/影子账户） -->
+    <view class="tab-bar">
+      <view class="tab-item {{activeTab === 'holding' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="holding">持仓分析</view>
+      <view class="tab-item {{activeTab === 'cost' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="cost">费用与复盘</view>
+    </view>
+
+    <!-- ===== Tab 1：持仓分析 ===== -->
+    <view hidden="{{activeTab !== 'holding'}}">
     <!-- 1. 持仓健康分 -->
     <view wx:if="{{healthScore}}" class="card">
       <view class="card-title">📊 持仓健康分</view>
@@ -74,6 +82,14 @@
       <!-- 基金对重合（空状态占位，已移除功能） -->
     </view>
 
+    <view wx:if="{{!healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">
+      <view>暂无持仓分析数据</view>
+      <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>
+    </view>
+    </view>
+
+    <!-- ===== Tab 2：费用与复盘 ===== -->
+    <view hidden="{{activeTab !== 'cost'}}">
     <!-- 费用账单（自收益页迁入：成本结构属深度洞察） -->
     <view wx:if="{{feeCard}}" class="card">
       <view class="card-title">💸 费用账单</view>
@@ -102,9 +118,11 @@
       <view class="fee-note">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成任何操作建议</view>
     </view>
 
-    <view wx:if="{{!healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">
-      <view>暂无数据</view>
+    <view wx:if="{{!feeCard && !showShadowCard}}" class="empty">
+      <view>暂无费用与复盘数据</view>
+      <view class="empty-hint">持有基金后可查看费用账单；有过卖出记录后会生成影子账户</view>
       <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>
+    </view>
     </view>
   </view>
 </view>
