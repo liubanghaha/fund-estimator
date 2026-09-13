@@ -473,4 +473,160 @@ function drawWeeklyCard(canvas, opts = {}) {
   });
 }
 
-module.exports = { drawShareCard, drawEventCard, drawWeeklyCard, CARD_W, CARD_H };
+/**
+ * 年度持仓报告长卡（产品规划 P1-4 前置 MVP）：全年收益 + 月度柱状 + 回撤/操作/费用/影子
+ * 合规：标题与文案无"投资"字样；收益为名义口径，注明"历史演算不代表未来"
+ * @param {Object} opts - { year, yearProfit, yearRate, hsRate, months:[{label,profit}], maxDD, opText, fundCount, feeText, shadowText, earliest, amountVisible }
+ */
+function drawAnnualCard(canvas, opts = {}) {
+  const w = CARD_W, h = 1560;
+  const ctx = _init(canvas, w, h);
+  const theme = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'red';
+  const amountVisible = opts.amountVisible !== false;
+  const year = opts.year || 2026;
+  const isUp = (opts.yearRate || 0) >= 0;
+  const mainColor = isUp ? '#E4393C' : '#2E8B57';
+
+  // 背景与头部
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, w, h);
+  const topGrad = ctx.createLinearGradient(0, 0, w, 0);
+  topGrad.addColorStop(0, theme === 'red' ? '#E4393C' : '#1976D2');
+  topGrad.addColorStop(1, theme === 'red' ? '#FF6B6B' : '#42A5F5');
+  ctx.fillRect(0, 0, w, 120);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 34px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('🌿 韭菜估值宝', 40, 52);
+  ctx.font = '18px sans-serif';
+  ctx.fillText('估值有数 · 心中有底', 40, 84);
+  ctx.font = 'bold 40px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(year + ' 年度持仓报告', w - 40, 72);
+
+  // 全年收益大字
+  ctx.fillStyle = '#666';
+  ctx.font = '18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('全年收益（名义口径）', w / 2, 190);
+  ctx.fillStyle = mainColor;
+  ctx.font = 'bold 96px sans-serif';
+  ctx.fillText((isUp ? '+' : '') + (opts.yearRate != null ? opts.yearRate : '--') + '%', w / 2, 300);
+  ctx.font = '22px sans-serif';
+  ctx.fillText(amountVisible ? ((opts.yearProfit > 0 ? '+' : '') + '¥' + (opts.yearProfit != null ? opts.yearProfit : '--')) : '¥****', w / 2, 340);
+
+  // vs 沪深300
+  if (opts.hsRate != null) {
+    const diff = +((opts.yearRate || 0) - opts.hsRate).toFixed(2);
+    ctx.fillStyle = '#666';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('沪深300 同期 ' + (opts.hsRate > 0 ? '+' : '') + opts.hsRate + '%' + (diff !== 0 ? ' · ' + (diff >= 0 ? '跑赢 ' : '跑输 ') + Math.abs(diff) + ' 个百分点' : ' · 持平'), w / 2, 378);
+  }
+
+  // 月度收益柱状图
+  const chartTop = 430, chartH = 380, chartBottom = chartTop + chartH;
+  const months = opts.months || [];
+  ctx.fillStyle = '#999';
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('月度盈亏（元）', 40, chartTop - 16);
+  if (months.length) {
+    const vals = months.map(m => m.profit);
+    const maxV = Math.max(...vals, 0), minV = Math.min(...vals, 0);
+    const range = (maxV - minV) || 1;
+    const zeroY = chartTop + (maxV / range) * chartH;
+    ctx.strokeStyle = '#E5E5E5';
+    ctx.beginPath(); ctx.moveTo(50, zeroY); ctx.lineTo(w - 50, zeroY); ctx.stroke();
+    const bw = (w - 120) / months.length;
+    months.forEach((m, i) => {
+      const bh = Math.abs(m.profit) / range * chartH;
+      const bx = 60 + i * bw + bw * 0.18;
+      ctx.fillStyle = m.profit >= 0 ? '#E4393C' : '#2E8B57';
+      if (m.profit >= 0) ctx.fillRect(bx, zeroY - bh, bw * 0.64, bh);
+      else ctx.fillRect(bx, zeroY, bw * 0.64, bh);
+      ctx.fillStyle = '#999';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(m.label, bx + bw * 0.32, chartBottom + 24);
+    });
+  }
+
+  // 数字网格
+  let gridY = chartBottom + 70;
+  ctx.strokeStyle = '#F0F0F0';
+  ctx.beginPath(); ctx.moveTo(40, gridY - 30); ctx.lineTo(w - 40, gridY - 30); ctx.stroke();
+  const drawGridRow = (y, label, value) => {
+    ctx.fillStyle = '#999'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(label, 60, y);
+    ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(value, w - 60, y);
+  };
+  drawGridRow(gridY, '最大回撤（年内）', opts.maxDD != null ? '-' + opts.maxDD + ' 元' : '--');
+  drawGridRow(gridY + 38, '全年操作', opts.opText || '0 笔');
+  drawGridRow(gridY + 76, '持有基金', (opts.fundCount || 0) + ' 只');
+  drawGridRow(gridY + 114, '收益起点', opts.earliest || '--');
+  gridY += 150;
+
+  // 费用 / 影子（有数据才显示）
+  if (opts.feeText) {
+    ctx.fillStyle = '#666'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('💸 持有费用', 60, gridY);
+    ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(opts.feeText, w - 60, gridY);
+    gridY += 36;
+  }
+  if (opts.shadowText) {
+    ctx.fillStyle = '#666'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('🔄 影子账户', 60, gridY);
+    ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(opts.shadowText, w - 60, gridY);
+    gridY += 36;
+  }
+
+  // 二维码区
+  const qrY = gridY + 20;
+  const qrSize = 140;
+  const qrX = w / 2 - qrSize / 2;
+  ctx.fillStyle = '#999';
+  ctx.font = '15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('微信扫码生成你的年度报告', w / 2, qrY + qrSize + 32);
+  ctx.fillStyle = '#CCC';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('收益为名义口径的历史演算，不构成投资建议', w / 2, qrY + qrSize + 60);
+
+  ctx.fillStyle = '#F5F5F5';
+  ctx.fillRect(0, h - 40, w, 40);
+  ctx.fillStyle = '#BBB';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('韭菜估值宝 · 估值有数', w / 2, h - 14);
+
+  return new Promise((resolve) => {
+    const qrcodePath = opts.qrcodePath || '/images/qrcode.jpg';
+    const img = canvas.createImage();
+    img.onload = () => {
+      ctx.save();
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.clip();
+      ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+      ctx.restore();
+      resolve({ w, h });
+    };
+    img.onerror = () => {
+      ctx.fillStyle = '#F8F8F8';
+      ctx.strokeStyle = '#E0E0E0';
+      ctx.lineWidth = 1.5;
+      _roundRect(ctx, qrX, qrY, qrSize, qrSize, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#CCC';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('小程序码', w / 2, qrY + qrSize / 2);
+      resolve({ w, h });
+    };
+    img.src = qrcodePath;
+  });
+}
+
+module.exports = { drawShareCard, drawEventCard, drawWeeklyCard, drawAnnualCard, CARD_W, CARD_H };

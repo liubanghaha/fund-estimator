@@ -174,6 +174,10 @@ Page({
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
   onHoldingCheck() { wx.navigateTo({ url: "/pages/holding-check/index" }); },
   onAlertManage() { wx.navigateTo({ url: "/pages/alert-manage/index" }); },
+  onAnnualReport() {
+    const year = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
+    wx.navigateTo({ url: "/pages/annual-report/index?year=" + year });
+  },
 
   // ========== 数据迁移（输入迁移码认领旧数据） ==========
 

@@ -1,0 +1,10 @@
+.page{min-height:100vh;background:#F5F5F5;padding:16rpx 24rpx 60rpx;box-sizing:border-box}
+.disclaimer{font-size:20rpx;color:#BBB;text-align:center;padding:8rpx 0 4rpx}
+.ar-loading{padding:160rpx 0;text-align:center;font-size:26rpx;color:#BBB}
+.ar-hint{font-size:22rpx;color:#CCC;margin-top:16rpx}
+.ar-canvas{width:600rpx;height:1560rpx;margin:0 auto;display:block;background:#FFF;border-radius:16rpx;box-shadow:var(--shadow-card)}
+.ar-actions{display:flex;gap:20rpx;padding:24rpx 10rpx 8rpx}
+.ar-save-btn,.ar-share-btn{flex:1;font-size:28rpx;border-radius:40rpx;line-height:2.6;padding:0}
+.ar-save-btn{color:#FFF;background:var(--primary)}
+.ar-share-btn{color:var(--primary);background:#FFF;border:1rpx solid var(--primary)}
+.ar-tip{font-size:20rpx;color:#BBB;text-align:center;line-height:1.6}

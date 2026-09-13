@@ -11,7 +11,8 @@
     "pages/ops/index",
     "pages/news/index",
     "pages/holding-check/index",
-    "pages/alert-manage/index"
+    "pages/alert-manage/index",
+    "pages/annual-report/index"
   ],
   "subpackages": [
     {
