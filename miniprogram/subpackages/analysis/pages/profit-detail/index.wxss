@@ -144,3 +144,9 @@
 .idx-modal-foot{font-size:20rpx;color:#CCC;text-align:center;padding-top:12rpx}
 .mk-loading{padding:80rpx 0;text-align:center}
 .mk-loading-text{font-size:26rpx;color:#BBB}
+.review-diff{font-size:22rpx;color:#888;background:#F8F8F8;border-radius:10rpx;padding:6rpx 14rpx}
+.sign-canvas{width:600rpx;height:880rpx;margin:0 auto}
+.sign-actions{display:flex;gap:20rpx;padding:20rpx 10rpx 8rpx}
+.sign-save-btn,.sign-share-btn{flex:1;font-size:28rpx;border-radius:40rpx;line-height:2.6;padding:0}
+.sign-save-btn{color:#FFF;background:var(--primary)}
+.sign-share-btn{color:var(--primary);background:#FFF;border:1rpx solid var(--primary)}

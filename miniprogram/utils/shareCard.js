@@ -379,10 +379,11 @@ function drawWeeklyCard(canvas, opts = {}) {
   ctx.stroke();
 
   // === 主视觉 ===
+  const cardTitle = opts.title || '本周收益';
   ctx.fillStyle = '#666';
   ctx.font = '18px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('本周收益 · ' + (opts.rangeText || ''), w / 2, 150);
+  ctx.fillText(cardTitle + ' · ' + (opts.rangeText || ''), w / 2, 150);
 
   ctx.fillStyle = mainColor;
   ctx.font = 'bold 96px sans-serif';
@@ -423,7 +424,7 @@ function drawWeeklyCard(canvas, opts = {}) {
     ctx.fillText(value, w / 2 + 70, y);
   };
   drawInfo(infoY, '持有基金', (opts.fundCount || 0) + ' 只');
-  drawInfo(infoY + 34, '本周操作', opts.opText || '0 笔');
+  drawInfo(infoY + 34, opts.opLabel || '本周操作', opts.opText || '0 笔');
   if (opts.earliestDate) drawInfo(infoY + 68, '收益自', opts.earliestDate + ' 起计');
 
   // === 分隔 + 二维码 ===

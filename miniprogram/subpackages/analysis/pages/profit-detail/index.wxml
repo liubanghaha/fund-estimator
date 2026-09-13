@@ -76,32 +76,6 @@
       </view>
     </view>
 
-    <!-- 周签入口：周五收盘后/周末 -->
-    <view wx:if="{{weeklyAvailable}}" class="weekly-entry-row">
-      <text class="weekly-entry" bind:tap="onShowWeeklyCard">📈 生成本周周签</text>
-    </view>
-
-    <!-- 今日复盘：组合 vs 沪深300 + 持仓强弱 + 今日操作（当天 tab 显示） -->
-    <view wx:if="{{activeTab === 'today' && showTodayReview && todayReview}}" class="review-card">
-      <view class="review-title">今日复盘</view>
-      <view class="review-combo">
-        <view class="review-cell">
-          <view class="review-num {{todayReview.comboRate > 0 ? 'up' : todayReview.comboRate < 0 ? 'down' : ''}}">{{todayReview.comboRate > 0 ? '+' : ''}}{{todayReview.comboRate}}%</view>
-          <view class="review-label">你的组合</view>
-        </view>
-        <block wx:if="{{todayReview.hsRate != null}}">
-          <view class="review-vs">vs</view>
-          <view class="review-cell">
-            <view class="review-num {{todayReview.hsRate > 0 ? 'up' : todayReview.hsRate < 0 ? 'down' : ''}}">{{todayReview.hsRate > 0 ? '+' : ''}}{{todayReview.hsRate}}%</view>
-            <view class="review-label">沪深300</view>
-          </view>
-        </block>
-      </view>
-      <view class="review-line" wx:if="{{todayReview.best}}">最强：{{todayReview.best.name}} {{todayReview.best.rate > 0 ? '+' : ''}}{{todayReview.best.rate}}%</view>
-      <view class="review-line" wx:if="{{todayReview.worst && todayReview.worst.name !== todayReview.best.name}}">最弱：{{todayReview.worst.name}} {{todayReview.worst.rate > 0 ? '+' : ''}}{{todayReview.worst.rate}}%</view>
-      <view class="review-line" wx:if="{{todayReview.opText}}">{{todayReview.opText}}</view>
-    </view>
-
     <!-- 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，纯数据陈述 -->
     <view wx:if="{{showShadow}}" class="shadow-card">
       <view class="shadow-head">
@@ -138,6 +112,32 @@
       </view>
       <view wx:if="{{activeTab === 'today' && asOfTime}}" class="dd-tip">数据截至 {{asOfTime}}</view>
       <view wx:if="{{activeTab !== 'today'}}" class="dd-tip">回撤 = 从历史最高点到当前的最大跌幅，衡量最坏情况下的亏损幅度</view>
+    </view>
+
+    <!-- 周期复盘条：组合 vs 沪深300 + 操作（随 tab 变化：今日/本周/本月/本年） -->
+    <view wx:if="{{reviewCard}}" class="review-card">
+      <view class="review-combo">
+        <view class="review-cell">
+          <view class="review-num {{reviewCard.comboRate > 0 ? 'up' : reviewCard.comboRate < 0 ? 'down' : ''}}">{{reviewCard.comboRate > 0 ? '+' : ''}}{{reviewCard.comboRate}}%</view>
+          <view class="review-label">{{reviewCard.tabLabel}}你的组合</view>
+        </view>
+        <block wx:if="{{reviewCard.hsRate != null}}">
+          <view class="review-vs">vs</view>
+          <view class="review-cell">
+            <view class="review-num {{reviewCard.hsRate > 0 ? 'up' : reviewCard.hsRate < 0 ? 'down' : ''}}">{{reviewCard.hsRate > 0 ? '+' : ''}}{{reviewCard.hsRate}}%</view>
+            <view class="review-label">沪深300</view>
+          </view>
+        </block>
+        <view class="review-diff" wx:if="{{reviewCard.diffText}}">{{reviewCard.diffText}}</view>
+      </view>
+      <view class="review-line" wx:if="{{reviewCard.best}}">最强：{{reviewCard.best.name}} {{reviewCard.best.rate > 0 ? '+' : ''}}{{reviewCard.best.rate}}%</view>
+      <view class="review-line" wx:if="{{reviewCard.worst}}">最弱：{{reviewCard.worst.name}} {{reviewCard.worst.rate > 0 ? '+' : ''}}{{reviewCard.worst.rate}}%</view>
+      <view class="review-line" wx:if="{{reviewCard.opText}}">{{reviewCard.opText}}</view>
+    </view>
+
+    <!-- 签入口：周/月/年 tab 显示对应签（当天 tab 无签） -->
+    <view wx:if="{{signVisible}}" class="weekly-entry-row">
+      <text class="weekly-entry" bind:tap="onShowSignCard" data-period="{{activeTab}}">📈 生成本{{activeTab === 'week' ? '周' : activeTab === 'month' ? '月' : '年'}}签</text>
     </view>
 
     <!-- 盈亏日历 -->
@@ -219,18 +219,19 @@
     </block>
 
     <!-- 周签弹层 -->
-    <view wx:if="{{showWeeklyModal}}" class="idx-modal-mask" bind:tap="onWeeklyClose">
+    <!-- 周期签弹层（周签/月签/年签） -->
+    <view wx:if="{{showSignModal}}" class="idx-modal-mask" bind:tap="onSignClose">
       <view class="idx-modal" catch:tap="noop">
         <view class="idx-modal-head">
-          <text class="idx-modal-title">本周周签</text>
-          <view class="idx-modal-close" bind:tap="onWeeklyClose">×</view>
+          <text class="idx-modal-title">{{signTitle}}</text>
+          <view class="idx-modal-close" bind:tap="onSignClose">×</view>
         </view>
-        <view wx:if="{{weeklyRendering}}" class="mk-loading"><text class="mk-loading-text">生成中...</text></view>
+        <view wx:if="{{signRendering}}" class="mk-loading"><text class="mk-loading-text">生成中...</text></view>
         <block wx:else>
-          <canvas type="2d" id="weeklyCanvas" class="weekly-canvas"></canvas>
-          <view class="weekly-actions">
-            <button class="weekly-save-btn" bind:tap="onSaveWeekly">保存到相册</button>
-            <button class="weekly-share-btn" open-type="share">分享给好友</button>
+          <canvas type="2d" id="signCanvas" class="sign-canvas"></canvas>
+          <view class="sign-actions">
+            <button class="sign-save-btn" bind:tap="onSaveSign">保存到相册</button>
+            <button class="sign-share-btn" open-type="share">分享给好友</button>
           </view>
         </block>
       </view>

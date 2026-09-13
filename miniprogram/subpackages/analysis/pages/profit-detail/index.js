@@ -35,8 +35,10 @@ Page({
     asOfTime: "",
     amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
     showShadowCard: false, shadowTotal: null, shadowTop: [],
-    showTodayReview: false, todayReview: null,
-    weeklyAvailable: false, showWeeklyModal: false, weeklyRendering: false,
+    reviewCard: null, // 当前 tab 的周期复盘（组合 vs 沪深300/强弱/操作）
+    signVisible: false, showSignModal: false, signRendering: false, signPeriod: "week", signTitle: "周签",
+    signTabLabel: { today: "今日", week: "本周", month: "本月", year: "本年" },
+    signDays: { today: 3, week: 7, month: 25, year: 260 },
     earliestDate: "",
     calendarView: "day",
     selectedMonth: "", availableMonths: [], dayCalendar: [], weekCalendar: [],
@@ -131,10 +133,8 @@ Page({
     this.setData({ theme });
     // 金额隐藏开关也同步（首页切换后返回本页立即生效）
     try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
-    // 周签入口：周五 15:00 收盘后及周末可见（年度报告的工艺热身）
-    const bj = new Date(Date.now() + 8 * 3600000);
-    const day = bj.getUTCDay();
-    this.setData({ weeklyAvailable: (day === 5 && bj.getUTCHours() >= 15) || day === 6 || day === 0 });
+    // 周期签入口：周/月/年 tab 显示对应签（当天 tab 无签），签数据为"至今"口径
+    this.setData({ signVisible: this.data.activeTab !== "today" });
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
@@ -201,7 +201,7 @@ Page({
       // 冻结期（周末/盘后）portfolioLight 返回空占位，quickFirstPaint 会直接 return 不动
       // 已渲染的正确值（_totalMarket 保持未定义 → 轮询被守卫挡住，冻结期本就不该变数）
       this._quickFirstPaint();
-      this._buildTodayReview();
+      this._ensureReview(this.data.activeTab); // 周期复盘（冻结期用首页缓存兜底数据链）
       return;
     }
     this._fetch();
@@ -233,28 +233,46 @@ Page({
   // 今日复盘（盘后复盘卡）：组合 vs 沪深300、持仓当日强弱、今日操作笔数。
   // 自给自足数据链——组合利率取当前已渲染值；沪深300 走 _idx（带缓存）；强弱优先本轮 hs，
   // 周末/盘后冻结跳过 _fetch 时回退首页缓存。播报落地（21:30）的第二次消费内容
-  _buildTodayReview(hs) {
+  // 周期复盘（随 tab）：组合同期收益 vs 沪深300 同期、当日强弱（仅今日）、期间操作笔数。
+  // 数据链自给自足：沪深300 走 _idx 独立缓存；强弱优先本轮 hs，冻结期回退首页缓存。
+  // 每周期结果缓存（_reviewCache），_fetch 拉到新数据时清缓存重建
+  _ensureReview(tab, hs) {
+    if (!tab) return;
+    this._reviewCache = this._reviewCache || {};
+    const RATES = { today: "todayProfitRate", week: "weekProfitRate", month: "monthProfitRate", year: "yearProfitRate" };
+    const TAB_LABELS = { today: "今日", week: "本周", month: "本月", year: "本年" };
+    const TAB_DAYS = { today: 3, week: 7, month: 25, year: 260 };
     const finish = (best, worst) => {
       const review = {
-        comboRate: +(parseFloat(this.data.todayProfitRate) || 0).toFixed(2),
-        hsRate: null, best, worst, opText: "",
+        tabLabel: TAB_LABELS[tab] || "",
+        comboRate: +(parseFloat(this.data[RATES[tab]]) || 0).toFixed(2),
+        hsRate: null, diffText: "", best, worst, opText: "",
       };
-      this.setData({ todayReview: review, showTodayReview: true });
-      this._idx("000300", 3).then((rows) => {
-        if (rows && rows.length >= 2 && rows[rows.length - 2].close > 0) {
-          const hsRate = +((rows[rows.length - 1].close / rows[rows.length - 2].close - 1) * 100).toFixed(2);
-          this.setData({ "todayReview.hsRate": hsRate });
-        }
-      }).catch(() => { /* 对比基准缺失时仅不显示该格 */ });
+      this.setData({ reviewCard: review });
+      const applyHs = (rows) => {
+        const seg = (rows || []).slice(-(TAB_DAYS[tab] + 2));
+        if (seg.length < 2 || !seg[0].close) return;
+        const hsRate = +((seg[seg.length - 1].close / seg[0].close - 1) * 100).toFixed(2);
+        review.hsRate = hsRate;
+        const diff = +(review.comboRate - hsRate).toFixed(2);
+        review.diffText = (diff >= 0 ? "跑赢沪深300 " : "跑输沪深300 ") + Math.abs(diff) + " 个百分点";
+        this.setData({ reviewCard: { ...review } });
+      };
+      if (this._idxMap && (this._idxMap["000300"] || []).length >= 2) {
+        applyHs(this._idxMap["000300"]);
+      } else {
+        this._idx("000300", TAB_DAYS[tab] + 2).then(applyHs).catch(() => { /* 基准缺失仅不显示对比 */ });
+      }
       api.transactionList().then((res) => {
         const txs = (res.result && res.result.code === 0 && res.result.data) || [];
-        const todayStr = calc.formatDate(new Date());
-        const todayTxs = txs.filter((t) => t.date === todayStr);
-        if (todayTxs.length) {
-          const buys = todayTxs.filter((t) => t.type === "buy").length;
-          this.setData({ "todayReview.opText": `今日操作 ${todayTxs.length} 笔（加仓 ${buys} / 减仓 ${todayTxs.length - buys}）` });
-        }
-      }).catch(() => { /* ignore */ });
+        const n = txs.filter((t) => t.date && t.date >= this._periodStart(tab)).length;
+        review.opText = n ? `${TAB_LABELS[tab]}操作 ${n} 笔` : "";
+        this._reviewCache[tab] = review;
+        this.setData({ reviewCard: { ...review } });
+      }).catch(() => {
+        this._reviewCache[tab] = review;
+        this.setData({ reviewCard: { ...review } });
+      });
     };
     const toRated = (list) => (list || [])
       .filter((h) => h.todayChangeRate != null && parseFloat(h.shares || h.amount || 0) > 0)
@@ -266,11 +284,18 @@ Page({
         finish(rated[0] || null, rated.length > 1 ? rated[rated.length - 1] : null);
         return;
       }
-      // 无本轮明细（周末/盘后冻结跳过 _fetch）：回退首页缓存
+      // 无本轮明细（冻结期跳过 _fetch / 切 tab）：当日强弱回退首页缓存，其余字段不依赖明细
       const pc = wx.getStorageSync("portfolio_cache");
       const rated = toRated(pc && pc.holdings);
-      finish(rated[0] || null, rated.length > 1 ? rated[rated.length - 1] : null);
-    } catch (e) { /* 复盘卡数据异常不影响主页面 */ }
+      finish(tab === "today" ? (rated[0] || null) : null, tab === "today" && rated.length > 1 ? rated[rated.length - 1] : null);
+    } catch (e) { /* 复盘数据异常不影响主页面 */ }
+  },
+  _periodStart(tab) {
+    if (tab === "today") return calc.formatDate(new Date());
+    const bj = new Date(Date.now() + 8 * 3600000);
+    if (tab === "week") return new Date(bj.getTime() - 86400000 * ((bj.getUTCDay() + 6) % 7)).toISOString().slice(0, 10);
+    if (tab === "month") return bj.toISOString().slice(0, 7) + "-01";
+    return bj.toISOString().slice(0, 4) + "-01-01";
   },
 
   // 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，拉取失败静默不阻塞主流程
@@ -291,55 +316,71 @@ Page({
     wx.navigateTo({ url });
   },
 
-  // ==== 周签（年度报告工艺热身）：周五收盘后/周末生成当周数据卡 ====
-  onShowWeeklyCard() {
-    this.setData({ showWeeklyModal: true, weeklyRendering: true });
-    const bj = new Date(Date.now() + 8 * 3600000);
-    const mondayStr = new Date(bj.getTime() - 86400000 * ((bj.getUTCDay() + 6) % 7)).toISOString().slice(0, 10);
-    this._idx("000300", 10).then((rows) => {
-      const last5 = (rows || []).slice(-5);
-      const hsRate = last5.length >= 2 && last5[0].close > 0
-        ? +((last5[last5.length - 1].close / last5[0].close - 1) * 100).toFixed(2) : null;
-      const rangeText = last5.length
-        ? last5[0].date.slice(5).replace("-", "/") + " ~ " + last5[last5.length - 1].date.slice(5).replace("-", "/")
+  // ==== 周期签（周签/月签/年签）：对应 tab 内生成"至今"数据卡，年度报告的工艺热身 ====
+  onShowSignCard(e) {
+    const period = (e && e.currentTarget && e.currentTarget.dataset.period) || "week";
+    const TABS = { week: "周签", month: "月签", year: "年签" };
+    const titles = { week: "本周收益", month: "本月收益", year: "本年收益" };
+    const profits = { week: this.data.weekProfit, month: this.data.monthProfit, year: this.data.yearProfit };
+    const rates = { week: this.data.weekProfitRate, month: this.data.monthProfitRate, year: this.data.yearProfitRate };
+    this.setData({ showSignModal: true, signRendering: true, signPeriod: period, signTitle: TABS[period] || "周签" });
+    const days = this.data.signDays[period] || 10;
+    const start = this._periodStart(period);
+    const applyRows = (rows) => {
+      // 区间与基线按周期起点锚定：基线 = 起点前最后一个收盘（否则漏掉周期首日涨幅）
+      const inRange = (rows || []).filter((r) => r.date >= start);
+      const prev = (rows || []).filter((r) => r.date < start).pop();
+      const base = prev || inRange[0];
+      const hsRate = (base && inRange.length && base.close > 0)
+        ? +((inRange[inRange.length - 1].close / base.close - 1) * 100).toFixed(2) : null;
+      const rangeText = inRange.length
+        ? inRange[0].date.slice(5).replace("-", "/") + " ~ " + inRange[inRange.length - 1].date.slice(5).replace("-", "/")
         : "";
       api.transactionList().then((res) => {
         const txs = (res.result && res.result.code === 0 && res.result.data) || [];
-        const ops = txs.filter((t) => t.date && t.date >= mondayStr).length;
-        const query0 = wx.getStorageSync("portfolio_cache");
-        const fundCount = query0 && query0.holdings ? query0.holdings.filter((h) => parseFloat(h.shares || h.amount || 0) > 0).length : 0;
+        const ops = txs.filter((t) => t.date && t.date >= start).length;
+        const pc = wx.getStorageSync("portfolio_cache");
+        const fundCount = pc && pc.holdings ? pc.holdings.filter((h) => parseFloat(h.shares || h.amount || 0) > 0).length : 0;
         // 先收起 loading 让 canvas 挂载，再查询节点绘制（查询时 canvas 尚未渲染会拿到空节点）
-        this.setData({ weeklyRendering: false }, () => {
+        this.setData({ signRendering: false }, () => {
           wx.nextTick(() => {
             const query = wx.createSelectorQuery();
-            query.select("#weeklyCanvas").fields({ node: true, size: true }).exec((cres) => {
+            query.select("#signCanvas").fields({ node: true, size: true }).exec((cres) => {
               if (!cres || !cres[0] || !cres[0].node) return;
-              this._weeklyCanvas = cres[0].node;
+              this._signCanvas = cres[0].node;
               const shareCard = require("../../../../utils/shareCard");
               shareCard.drawWeeklyCard(cres[0].node, {
+                title: titles[period] || "本周收益",
                 rangeText,
-                weekProfit: this.data.weekProfit,
-                weekProfitRate: this.data.weekProfitRate,
+                weekProfit: profits[period],
+                weekProfitRate: rates[period],
                 hsRate,
                 opText: ops + " 笔",
+                opLabel: `本${{ week: "周", month: "月", year: "年" }[period]}操作`,
                 fundCount,
                 earliestDate: this.data.earliestDate,
                 amountVisible: this.data.amountVisible,
-              }).then(() => this.setData({ weeklyRendering: false }))
-                .catch(() => this.setData({ weeklyRendering: false }));
+              }).then(() => this.setData({ signRendering: false }))
+                .catch(() => this.setData({ signRendering: false }));
             });
           });
         });
-      }).catch(() => { this.setData({ weeklyRendering: false }); });
-    }).catch(() => { this.setData({ weeklyRendering: false }); wx.showToast({ title: "生成失败，请重试", icon: "none" }); });
+      }).catch(() => { this.setData({ signRendering: false }); });
+    };
+    // 沪深300 同期日线：优先 _fetch 已拉的 _idxMap（全年），冻结期回退 _idx 独立缓存
+    if (this._idxMap && (this._idxMap["000300"] || []).length >= 2) {
+      applyRows(this._idxMap["000300"]);
+    } else {
+      this._idx("000300", days + 2).then(applyRows).catch(() => { this.setData({ signRendering: false }); wx.showToast({ title: "生成失败，请重试", icon: "none" }); });
+    }
   },
-  onWeeklyClose() {
-    this.setData({ showWeeklyModal: false });
+  onSignClose() {
+    this.setData({ showSignModal: false });
   },
-  onSaveWeekly() {
-    if (!this._weeklyCanvas) return;
+  onSaveSign() {
+    if (!this._signCanvas) return;
     wx.canvasToTempFilePath({
-      canvas: this._weeklyCanvas,
+      canvas: this._signCanvas,
       success: (res) => {
         wx.saveImageToPhotosAlbum({
           filePath: res.tempFilePath,
@@ -409,7 +450,8 @@ Page({
       const totalCost = hs.reduce((s, h) => s + h.buyPrice * h.shares, 0);
       const navMap = d.navHistoryMap || {};
       const today = calc.formatDate(now);
-      this._buildTodayReview(hs); // 盘后复盘卡数据（组合 vs 沪深300 / 持仓强弱 / 今日操作）
+      this._reviewCache = {}; // 新数据到达，各周期复盘缓存作废重建
+      this._ensureReview("today", hs); // 盘后复盘卡数据（组合 vs 沪深300 / 持仓强弱 / 今日操作）
 
       // 日变动
       const dc = {};
@@ -1116,7 +1158,14 @@ Page({
 
   // ============ 事件 ============
 
-  onSummaryTap(e) { const tab = e.currentTarget.dataset.tab; if (tab === 'today') this._todayAnimated = false; else this._histAnimated = false; this.setData({ activeTab: tab }, () => { this._draw(); }); },
+  onSummaryTap(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === 'today') this._todayAnimated = false; else this._histAnimated = false;
+    this.setData({ activeTab: tab, signVisible: tab !== 'today' }, () => {
+      this._draw();
+      this._ensureReview(tab); // 切 tab 重建对应周期的复盘
+    });
+  },
   onCalendarTab(e) { this._cal(); this.setData({ calendarView: e.currentTarget.dataset.tab }); },
   onGoHome() { wx.switchTab({ url: "/pages/index/index" }); },
   onMonthChange(e) { const m = this.data.availableMonths[e.detail.value]; const c = this._calCached(); if (!c) return; this.setData({ selectedMonth: m, dayCalendar: this._days(this._dailyChange, m, this._calDm()), weekCalendar: this._weeks(this._dailyChange, m, this._calDm()) }); },
