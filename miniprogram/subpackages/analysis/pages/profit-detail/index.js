@@ -197,10 +197,11 @@ Page({
     if (this._cacheApplied &&
         marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
       if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
-      // 免拉全量但轻量补一笔 portfolioLight：_totalMarket 只由 _fetch/quickFirstPaint 赋值，
-      // 缓存命中直接 return 会让本页 30s 轮询的今日收益更新停摆（缺 _totalMarket 直接 return）
+      // 免拉全量但轻量补一笔 portfolioLight：补 _totalMarket 供 30s 轮询换算今日收益。
+      // 冻结期（周末/盘后）portfolioLight 返回空占位，quickFirstPaint 会直接 return 不动
+      // 已渲染的正确值（_totalMarket 保持未定义 → 轮询被守卫挡住，冻结期本就不该变数）
       this._quickFirstPaint();
-      this._buildTodayReview(); // 复盘卡自给自足数据链，冻结期（周末/盘后）恰恰是它的主场景
+      this._buildTodayReview();
       return;
     }
     this._fetch();
@@ -213,6 +214,10 @@ Page({
     api.portfolioLight().then((r) => {
       const d = r.result && r.result.data;
       if (!d) return;
+      // 非交易时段 portfolioLight 返回占位值 todayProfitRate:0（无真实数据语义），
+      // 直接应用会把冻结期缓存里正确的收益值（如周五收盘 -1.31%）洗成 0，
+      // 并连锁污染图例与曲线末端对齐点（末端被对齐到 0 后画在 Y 轴顶端外，视觉上成"翘尾"）
+      if (d.inTrading === false) return;
       if (d.intradaySnapshots && d.intradaySnapshots.length) {
         this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
       }

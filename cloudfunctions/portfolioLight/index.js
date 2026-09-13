@@ -17,10 +17,11 @@ exports.main = async (event) => {
     const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
     const time = `${String(bjHours).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
 
-    // 非交易时段返回空快照
+    // 非交易时段返回空快照。todayProfitRate 必须为 null（而非占位 0）：
+    // 0 是"确认为零收益"的真值语义，占位 0 曾把客户端冻结期缓存里的正确收益洗成 0
     const inTrading = bjDay >= 1 && bjDay <= 5 && ((totalMin >= 570 && totalMin < 690) || (totalMin >= 780 && totalMin <= 900));
     if (!inTrading) {
-      return { code: 0, data: { intradaySnapshots: [], todayProfitRate: 0, updateTime: "", inTrading: false } };
+      return { code: 0, data: { intradaySnapshots: [], todayProfitRate: null, updateTime: "", inTrading: false } };
     }
 
     // 读取当日快照
