@@ -13,6 +13,12 @@ exports.main = async (event) => {
   const estSrc = src === "self" ? "self" : "sina"; // sina=数据源一（新浪实时估值）优先；self=数据源二（自算）优先
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
+
+  // 费用账单（收益页"费用后收益"卡）：独立轻 action，不进入主链路的估值聚合
+  if (event && event.action === "feeSummary") {
+    return await handleFeeSummary(uid);
+  }
+
   const _startTime = Date.now();
 
   try {
@@ -678,4 +684,110 @@ function addDays(dateStr, n) {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+// ========== 费用账单（收益页"费用后收益"卡）==========
+// 口径：持有费用 = Σ(持仓市值 × 综合费率[管理+托管+销售])；加权费率 = 年费用 / 总市值。
+// 费率来源：东财 FundDetailInformation（MGREXP/TRUSTEXP/SALESEXP），fund_fees 集合缓存 30 天（费率静态）
+async function handleFeeSummary(openid) {
+  try {
+    const holdings = [];
+    {
+      const PAGE = 100;
+      let lastId = "";
+      while (true) {
+        const res = await db.collection("holdings")
+          .where(lastId ? { _openid: openid, _id: _.gt(lastId) } : { _openid: openid })
+          .orderBy("_id", "asc")
+          .field({ fundCode: true, fundName: true, shares: true, amount: true, nav: true, buyPrice: true, marketValue: true })
+          .limit(PAGE).get();
+        const rows = res.data || [];
+        holdings.push(...rows);
+        if (rows.length < PAGE) break;
+        lastId = rows[rows.length - 1]._id;
+      }
+    }
+    const held = holdings.filter((h) => (parseFloat(h.shares) || parseFloat(h.amount) || 0) > 0);
+    if (!held.length) return { code: 0, data: { hasData: false } };
+    const codes = [...new Set(held.map((h) => h.fundCode).filter(Boolean))];
+    if (!codes.length) return { code: 0, data: { hasData: false } };
+
+    // 费率缓存 30 天，缺失现拉（并发 6，单基金失败费率记 0 不塌缩）
+    const feeMap = {};
+    const missing = [];
+    try {
+      const res = await db.collection("fund_fees").where({ fundCode: _.in(codes) }).get();
+      const now = Date.now();
+      (res.data || []).forEach((r) => {
+        if (r.ts && now - r.ts < 30 * 86400000) feeMap[r.fundCode] = r;
+        else missing.push(r.fundCode);
+      });
+    } catch (e) { missing.push(...codes); }
+    codes.forEach((c) => { if (!feeMap[c] && missing.indexOf(c) < 0) missing.push(c); });
+    const CONCURRENT = 6;
+    for (let i = 0; i < missing.length; i += CONCURRENT) {
+      const batch = missing.slice(i, i + CONCURRENT);
+      await Promise.all(batch.map(async (code) => {
+        const fees = await fetchFundFees(code);
+        const doc = { fundCode: code, mgmt: fees.mgmt, trust: fees.trust, sales: fees.sales, ts: Date.now() };
+        feeMap[code] = doc;
+        try { await db.collection("fund_fees").doc(code).set({ data: doc }); } catch (e2) { /* 写缓存失败下次重拉 */ }
+      }));
+    }
+
+    // 市值口径与主链路一致：最新净值 × 份额（无净值回退存储市值）
+    let totalValue = 0, annualFee = 0;
+    const items = [];
+    for (const h of held) {
+      let shares = parseFloat(h.shares) || 0;
+      const buyPrice = parseFloat(h.buyPrice) || parseFloat(h.nav) || 0;
+      if (!shares && h.amount && buyPrice > 0) shares = parseFloat(h.amount) / buyPrice;
+      let mv = parseFloat(h.marketValue) || 0;
+      try {
+        const r = navGetCache[h.fundCode] || (navGetCache[h.fundCode] = await fd.fetchLatestNavEastMoney(h.fundCode));
+        const nav = r && r.actualNav > 0 ? r.actualNav : null;
+        if (nav != null && shares > 0) mv = nav * shares;
+      } catch (e) { /* 回退存储市值 */ }
+      if (!(mv > 0)) continue;
+      const f = feeMap[h.fundCode] || {};
+      const rate = (parseFloat(f.mgmt) || 0) + (parseFloat(f.trust) || 0) + (parseFloat(f.sales) || 0);
+      const fee = mv * rate / 100;
+      totalValue += mv;
+      annualFee += fee;
+      if (rate > 0) items.push({ fundName: h.fundName || h.fundCode, rate: +rate.toFixed(2), fee: +fee.toFixed(0), hasSales: (parseFloat(f.sales) || 0) > 0 });
+    }
+    if (!(totalValue > 0)) return { code: 0, data: { hasData: false } };
+    items.sort((a, b) => b.fee - a.fee);
+    return { code: 0, data: {
+      hasData: annualFee > 0,
+      totalRate: +(annualFee / totalValue * 100).toFixed(2), // 加权综合费率 %/年
+      annualFee: +annualFee.toFixed(0),                      // 预计年费用（元）
+      hasSales: items.some((i) => i.hasSales) || false,
+      items: items.slice(0, 3),
+      fundCount: held.length,
+    } };
+  } catch (e) {
+    console.error("[getPortfolio] feeSummary 失败:", e.message || e);
+    return { code: 0, data: { hasData: false } };
+  }
+}
+
+// 费率查询（模块级缓存：同实例内同基金只打一次外呼）
+const navGetCache = {};
+async function fetchFundFees(code) {
+  return new Promise((resolve) => {
+    const req = https.get(`https://fundmobapi.eastmoney.com/FundMApi/FundDetailInformation.ashx?FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0`, { headers: { Referer: "https://m.fund.eastmoney.com/" } }, (res) => {
+      res.setEncoding("utf8");
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => {
+        try {
+          const d = JSON.parse(body).Datas || {};
+          resolve({ mgmt: parseFloat(d.MGREXP) || 0, trust: parseFloat(d.TRUSTEXP) || 0, sales: parseFloat(d.SALESEXP) || 0 });
+        } catch (e) { resolve({ mgmt: 0, trust: 0, sales: 0 }); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); resolve({ mgmt: 0, trust: 0, sales: 0 }); });
+    req.on("error", () => resolve({ mgmt: 0, trust: 0, sales: 0 }));
+  });
 }

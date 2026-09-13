@@ -15,6 +15,7 @@ const INDICES = [
   { code: "HSI", name: "恒生指数", group: "hk" },
   { code: "SPX", name: "标普500", group: "us" },
   { code: "IXIC", name: "纳斯达克", group: "us" },
+  { code: "DJIA", name: "道琼斯", group: "us" },
   { code: "N225", name: "日经225", group: "ap" },
   { code: "KS11", name: "韩国KOSPI", group: "ap" },
 ];
@@ -35,9 +36,9 @@ Page({
     emptyData: false,
     // 持仓港美股敞口（数据陈述）+ 重仓股实时行情榜
     exposure: null,
-    // 指数 5 日走势弹层
+    // 指数走势弹层（分时仅腾讯已映射指数：HSTECH/HSI）
     showIdxModal: false, idxModalName: "", idxModalCode: "", idxModalLoading: false, idxModalError: false,
-    idxPeriod: 5,
+    idxPeriod: 5, idxModalIntradayOk: false,
     // 个股弹层
     showStockModal: false, stockModal: null, stockKlineLoading: false, stockKlineOk: false,
     // 各市场开闭市状态（本地推算）
@@ -180,42 +181,58 @@ Page({
     return { hkStatus: st(hkOpen), usStatus: st(usOpen), apStatus: st(apOpen) };
   },
 
-  // 指数卡点击 → 走势弹层（近5日/近1月/近3月可切）
+  // 指数卡点击 → 走势弹层（港股指数支持分时；近5日/近1月/近3月全指数可用）
   onIdxCardTap(e) {
     const { code, name } = e.currentTarget.dataset;
     if (!code) return;
-    this.setData({ showIdxModal: true, idxModalName: name || "", idxModalCode: code, idxPeriod: 5 });
-    this._loadIdxModalKline(5);
+    const INTRADAY_OK = { HSTECH: 1, HSI: 1 }; // ifzq 分时仅覆盖腾讯已映射指数
+    const intradayOk = !!INTRADAY_OK[code];
+    this.setData({
+      showIdxModal: true, idxModalName: name || "", idxModalCode: code,
+      idxModalIntradayOk: intradayOk,
+      idxPeriod: intradayOk ? "intraday" : 5,
+    });
+    this._loadIdxModalChart(intradayOk ? "intraday" : 5);
   },
   onIdxPeriod(e) {
-    const days = +e.currentTarget.dataset.days;
-    if (!days || days === this.data.idxPeriod) return;
-    this.setData({ idxPeriod: days });
-    this._loadIdxModalKline(days);
+    const mode = e.currentTarget.dataset.days;
+    const norm = mode === "intraday" ? "intraday" : +mode;
+    if (!norm || norm === this.data.idxPeriod) return;
+    this.setData({ idxPeriod: norm });
+    this._loadIdxModalChart(norm);
   },
-  _loadIdxModalKline(days) {
+  _loadIdxModalChart(mode) {
     const code = this.data.idxModalCode;
     this.setData({ idxModalLoading: true, idxModalError: false });
-    this._fetchIndexKline(code, days).then((data) => {
-      if (!data || data.length < 2) {
-        this.setData({ idxModalLoading: false, idxModalError: true });
-        return;
-      }
-      const items = data.map((d) => ({ date: d.date, value: d.close }));
+    const fail = () => this.setData({ idxModalLoading: false, idxModalError: true });
+    const done = (items, isRate) => {
+      if (!items || items.length < 2) { fail(); return; }
       this.setData({ idxModalLoading: false });
       // 等弹层 canvas 完成布局后再绘制（drawChart 异步查询节点）
-      setTimeout(() => this._drawModalChart("#idxModalCanvas", items), 150);
-    }).catch(() => this.setData({ idxModalLoading: false, idxModalError: true }));
+      setTimeout(() => this._drawModalChart("#idxModalCanvas", items, isRate), 150);
+    };
+    if (mode === "intraday") {
+      // 分时：ifzq 分钟线（changeRate 相对昨收），仅港股指数有映射
+      api.fetchIndexIntradayTencent(code).then((res) => {
+        if (!res || res.code !== 0 || !res.data || res.data.length < 2) { fail(); return; }
+        done(res.data.map((d) => ({ date: d.time, value: d.changeRate })), true);
+      }).catch(fail);
+      return;
+    }
+    this._fetchIndexKline(code, mode).then((data) => {
+      if (!data || data.length < 2) { fail(); return; }
+      done(data.map((d) => ({ date: d.date, value: d.close })), false);
+    }).catch(fail);
   },
-  _drawModalChart(selector, items) {
+  _drawModalChart(selector, items, isRate) {
     const query = wx.createSelectorQuery();
     query.select(selector).fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return;
       const canvas = res[0].node;
       const w = res[0].width || 320, h = res[0].height || 160;
-      const last = items[items.length - 1].value, first = items[0].value;
+      const last = items[items.length - 1].value, first = isRate ? 0 : items[0].value;
       chart.drawLineChart(canvas, {
-        w, h, data: items, isReturn: false,
+        w, h, data: items, isReturn: !!isRate,
         color: last >= first ? "#E4393C" : "#2E8B57",
         padding: { top: 16, right: 16, bottom: 24, left: 56 },
       });

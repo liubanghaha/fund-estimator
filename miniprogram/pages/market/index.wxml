@@ -85,6 +85,7 @@
           <view class="idx-modal-close" bind:tap="onIdxModalClose">×</view>
         </view>
         <view class="idx-period-chips">
+          <text wx:if="{{idxModalIntradayOk}}" class="idx-period-chip {{idxPeriod === 'intraday' ? 'active' : ''}}" data-days="intraday" bind:tap="onIdxPeriod">分时</text>
           <text class="idx-period-chip {{idxPeriod === 5 ? 'active' : ''}}" data-days="5" bind:tap="onIdxPeriod">近5日</text>
           <text class="idx-period-chip {{idxPeriod === 22 ? 'active' : ''}}" data-days="22" bind:tap="onIdxPeriod">近1月</text>
           <text class="idx-period-chip {{idxPeriod === 66 ? 'active' : ''}}" data-days="66" bind:tap="onIdxPeriod">近3月</text>

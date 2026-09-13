@@ -34,6 +34,7 @@ Page({
     canvasHRpx: 0,
     asOfTime: "",
     amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
+    feeCard: null,
     showShadowCard: false, shadowTotal: null, shadowTop: [],
     reviewCard: null, // 当前 tab 的周期复盘（组合 vs 沪深300/强弱/操作）
     signVisible: false, showSignModal: false, signRendering: false, signPeriod: "week", signTitle: "周签",
@@ -107,6 +108,7 @@ Page({
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
     this._loadShadow(); // 影子账户：独立轻查询，不阻塞主流程
+    this._loadFee(); // 费用账单：费率云端 30 天缓存 + 本地 7 天，不阻塞主流程
         this._fromCache();
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
@@ -296,6 +298,23 @@ Page({
     if (tab === "week") return new Date(bj.getTime() - 86400000 * ((bj.getUTCDay() + 6) % 7)).toISOString().slice(0, 10);
     if (tab === "month") return bj.toISOString().slice(0, 7) + "-01";
     return bj.toISOString().slice(0, 4) + "-01-01";
+  },
+
+  // 费用账单（费用后收益前置）：持仓加权综合费率 + 预计年费用。本地缓存 7 天，失败静默
+  _loadFee() {
+    try {
+      const c = wx.getStorageSync("fee_cache_v1");
+      if (c && c.ts && Date.now() - c.ts < 7 * 86400000 && c.data && c.data.hasData) {
+        this.setData({ feeCard: c.data });
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    api.feeSummary().then((res) => {
+      const d = res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.hasData) return;
+      try { wx.setStorageSync("fee_cache_v1", { ts: Date.now(), data: d }); } catch (e) { /* ignore */ }
+      this.setData({ feeCard: d });
+    }).catch(() => { /* ignore */ });
   },
 
   // 影子账户（A2 最小版）：卖出记录的"如果没卖"事实演算，拉取失败静默不阻塞主流程

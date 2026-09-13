@@ -140,6 +140,20 @@
       <text class="weekly-entry" bind:tap="onShowSignCard" data-period="{{activeTab}}">📈 生成本{{activeTab === 'week' ? '周' : activeTab === 'month' ? '月' : '年'}}签</text>
     </view>
 
+    <!-- 费用账单（费用后收益前置）：持有费用的事实陈述 -->
+    <view wx:if="{{feeCard}}" class="fee-card">
+      <view class="fee-head">
+        <text class="fee-title">费用账单</text>
+        <text class="fee-rate">综合费率 {{feeCard.totalRate}}%/年</text>
+      </view>
+      <view class="fee-main">按当前 {{feeCard.fundCount}} 只持仓，每年支付管理费+托管费<text wx:if="{{feeCard.hasSales}}">（含销售服务费）</text>约 <text class="fee-num">{{amountVisible ? feeCard.annualFee : '****'}} 元</text></view>
+      <view class="fee-item" wx:for="{{feeCard.items}}" wx:key="fundName">
+        <text class="fee-item-name">{{item.fundName}}</text>
+        <text class="fee-item-val">{{item.rate}}%/年 · 约 {{item.fee}} 元</text>
+      </view>
+      <view class="fee-note">当前收益为名义收益，未扣除上述持有费用；费率取自基金公告，不含申赎费用</view>
+    </view>
+
     <!-- 盈亏日历 -->
     <view class="cal-top-row">
       <view class="cal-title">盈亏日历</view>

@@ -175,6 +175,10 @@ const api = {
   transactionList(fundCode) {
     return this.callFunction("manageTransaction", { action: "list", fundCode });
   },
+  // 费用账单：持仓加权综合费率 + 预计年费用（费率云端缓存 30 天）
+  feeSummary() {
+    return this.getPortfolio(0, { action: "feeSummary" });
+  },
   // 影子账户：卖出记录 × 最新官方净值的"如果没卖"演算（服务端算好逐笔与汇总）
   transactionShadow() {
     return this.callFunction("manageTransaction", { action: "shadow" });
@@ -222,6 +226,7 @@ const api = {
       "SPX": "100.SPX",
       "N225": "100.N225",
       "KS11": "100.KS11",
+      "DJIA": "100.DJIA",
     };
     const secid = INDEX_SECID[indexCode] || "";
     // 未映射代码早退（避免空 secid 拉回错误数据），由调用方走云函数多源路径
