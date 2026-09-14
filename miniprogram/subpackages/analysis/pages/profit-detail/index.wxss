@@ -110,11 +110,13 @@
 /* 周期复盘卡 */
 .review-card{background:#FFF;border-radius:var(--radius-card);padding:24rpx;margin:16rpx 24rpx 20rpx;box-shadow:var(--shadow-card)}
 .review-title{font-size:28rpx;font-weight:700;color:#333;margin-bottom:16rpx}
-.review-combo{display:flex;align-items:center;gap:24rpx;margin-bottom:14rpx}
-.review-cell{display:flex;flex-direction:column;align-items:center}
-.review-num{font-size:38rpx;font-weight:700}
-.review-label{font-size:20rpx;color:#BBB;margin-top:4rpx}
-.review-vs{font-size:22rpx;color:#CCC}
+.review-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16rpx;margin-bottom:14rpx}
+.review-combo{display:flex;align-items:center;gap:20rpx}
+/* 三个块都不换行、不被压缩：数字长短随行情变化（0% → -0.3% → +13.99%），一挤就折行破坏对齐 */
+.review-cell{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.review-num{font-size:38rpx;font-weight:700;white-space:nowrap}
+.review-label{font-size:20rpx;color:#BBB;margin-top:4rpx;white-space:nowrap}
+.review-vs{font-size:22rpx;color:#CCC;flex-shrink:0}
 .review-line{font-size:24rpx;color:#666;padding:6rpx 0}
 /* 周签 */
 .weekly-entry-row{display:flex;justify-content:flex-end;margin:0 24rpx 4rpx}
@@ -134,7 +136,7 @@
 .idx-modal-foot{font-size:20rpx;color:#CCC;text-align:center;padding-top:12rpx}
 .mk-loading{padding:80rpx 0;text-align:center}
 .mk-loading-text{font-size:26rpx;color:#BBB}
-.review-diff{font-size:22rpx;color:#888;background:#F8F8F8;border-radius:10rpx;padding:6rpx 14rpx}
+.review-diff{font-size:28rpx;font-weight:700;color:#666;background:#F5F5F5;border-radius:12rpx;padding:10rpx 20rpx;white-space:nowrap;flex-shrink:0}
 .sign-canvas{width:600rpx;height:880rpx;margin:0 auto}
 .sign-actions{display:flex;gap:20rpx;padding:20rpx 10rpx 8rpx}
 .sign-save-btn,.sign-share-btn{flex:1;font-size:28rpx;border-radius:40rpx;line-height:2.6;padding:0}

@@ -50,28 +50,28 @@
 		      <view class="summary-item {{activeTab === 'week' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="week">
         <view class="summary-label">本周收益</view>
         <view class="summary-value {{weekProfit > 0 ? 'up' : weekProfit < 0 ? 'down' : ''}}">
-          {{amountVisible ? (weekProfit > 0 ? '+' : '') + weekProfit : '****'}}
+          {{!weekHasData ? '--' : (amountVisible ? (weekProfit > 0 ? '+' : '') + weekProfit : '****')}}
         </view>
         <view class="summary-rate {{weekProfitRate > 0 ? 'up' : weekProfitRate < 0 ? 'down' : ''}}">
-          {{weekProfitRate > 0 ? '+' : ''}}{{weekProfitRate}}%
+          {{!weekHasData ? '--' : (weekProfitRate > 0 ? '+' : '') + weekProfitRate + '%'}}
         </view>
       </view>
       <view class="summary-item {{activeTab === 'month' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="month">
         <view class="summary-label">本月收益</view>
         <view class="summary-value {{monthProfit > 0 ? 'up' : monthProfit < 0 ? 'down' : ''}}">
-          {{amountVisible ? (monthProfit > 0 ? '+' : '') + monthProfit : '****'}}
+          {{!monthHasData ? '--' : (amountVisible ? (monthProfit > 0 ? '+' : '') + monthProfit : '****')}}
         </view>
         <view class="summary-rate {{monthProfitRate > 0 ? 'up' : monthProfitRate < 0 ? 'down' : ''}}">
-          {{monthProfitRate > 0 ? '+' : ''}}{{monthProfitRate}}%
+          {{!monthHasData ? '--' : (monthProfitRate > 0 ? '+' : '') + monthProfitRate + '%'}}
         </view>
       </view>
       <view class="summary-item {{activeTab === 'year' ? 'active' : ''}}" bind:tap="onSummaryTap" data-tab="year">
         <view class="summary-label">本年收益</view>
         <view class="summary-value {{yearProfit > 0 ? 'up' : yearProfit < 0 ? 'down' : ''}}">
-          {{amountVisible ? (yearProfit > 0 ? '+' : '') + yearProfit : '****'}}
+          {{!yearHasData ? '--' : (amountVisible ? (yearProfit > 0 ? '+' : '') + yearProfit : '****')}}
         </view>
         <view class="summary-rate {{yearProfitRate > 0 ? 'up' : yearProfitRate < 0 ? 'down' : ''}}">
-          {{yearProfitRate > 0 ? '+' : ''}}{{yearProfitRate}}%
+          {{!yearHasData ? '--' : (yearProfitRate > 0 ? '+' : '') + yearProfitRate + '%'}}
         </view>
       </view>
     </view>
@@ -103,18 +103,21 @@
 
     <!-- 周期复盘条：组合 vs 沪深300 + 操作（随 tab 变化：今日/本周/本月/本年） -->
     <view wx:if="{{reviewCard}}" class="review-card">
-      <view class="review-combo">
-        <view class="review-cell">
-          <view class="review-num {{reviewCard.comboRate > 0 ? 'up' : reviewCard.comboRate < 0 ? 'down' : ''}}">{{reviewCard.comboRate > 0 ? '+' : ''}}{{reviewCard.comboRate}}%</view>
-          <view class="review-label">{{reviewCard.tabLabel}}你的组合</view>
-        </view>
-        <block wx:if="{{reviewCard.hsRate != null}}">
-          <view class="review-vs">vs</view>
+      <view class="review-top">
+        <view class="review-combo">
           <view class="review-cell">
-            <view class="review-num {{reviewCard.hsRate > 0 ? 'up' : reviewCard.hsRate < 0 ? 'down' : ''}}">{{reviewCard.hsRate > 0 ? '+' : ''}}{{reviewCard.hsRate}}%</view>
-            <view class="review-label">沪深300</view>
+            <view class="review-num {{reviewCard.comboRate > 0 ? 'up' : reviewCard.comboRate < 0 ? 'down' : ''}}">{{reviewCard.comboRate == null ? '--' : (reviewCard.comboRate > 0 ? '+' : '') + reviewCard.comboRate + '%'}}</view>
+            <view class="review-label">{{reviewCard.tabLabel}}组合</view>
           </view>
-        </block>
+          <block wx:if="{{reviewCard.hsRate != null}}">
+            <view class="review-vs">vs</view>
+            <view class="review-cell">
+              <view class="review-num {{reviewCard.hsRate > 0 ? 'up' : reviewCard.hsRate < 0 ? 'down' : ''}}">{{reviewCard.hsRate > 0 ? '+' : ''}}{{reviewCard.hsRate}}%</view>
+              <view class="review-label">沪深300</view>
+            </view>
+          </block>
+        </view>
+        <!-- 结论固定在卡片右上角 -->
         <view class="review-diff" wx:if="{{reviewCard.diffText}}">{{reviewCard.diffText}}</view>
       </view>
       <view class="review-line" wx:if="{{reviewCard.best}}">最强：{{reviewCard.best.name}} {{reviewCard.best.rate > 0 ? '+' : ''}}{{reviewCard.best.rate}}%</view>

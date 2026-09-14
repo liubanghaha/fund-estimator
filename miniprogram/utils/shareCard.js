@@ -403,7 +403,7 @@ function drawWeeklyCard(canvas, opts = {}) {
   ctx.stroke();
   if (opts.hsRate != null) {
     const diff = +(weekRate - opts.hsRate).toFixed(2);
-    const diffText = diff >= 0 ? '跑赢沪深300 ' + diff + ' 个百分点' : '跑输沪深300 ' + Math.abs(diff) + ' 个百分点';
+    const diffText = diff >= 0 ? '跑赢沪深300 ' + diff + '%' : '跑输沪深300 ' + Math.abs(diff) + '%';
     ctx.fillStyle = '#666';
     ctx.font = '18px sans-serif';
     ctx.fillText(diffText, w / 2, cmpY + 26);
@@ -521,7 +521,7 @@ function drawAnnualCard(canvas, opts = {}) {
     const diff = +((opts.yearRate || 0) - opts.hsRate).toFixed(2);
     ctx.fillStyle = '#666';
     ctx.font = '18px sans-serif';
-    ctx.fillText('沪深300 同期 ' + (opts.hsRate > 0 ? '+' : '') + opts.hsRate + '%' + (diff !== 0 ? ' · ' + (diff >= 0 ? '跑赢 ' : '跑输 ') + Math.abs(diff) + ' 个百分点' : ' · 持平'), w / 2, 378);
+    ctx.fillText('沪深300 同期 ' + (opts.hsRate > 0 ? '+' : '') + opts.hsRate + '%' + (diff !== 0 ? ' · ' + (diff >= 0 ? '跑赢 ' : '跑输 ') + Math.abs(diff) + '%' : ' · 持平'), w / 2, 378);
   }
 
   // 月度收益柱状图

@@ -156,6 +156,7 @@ Page({
           wx.removeStorageSync("watchlist_cache");
           wx.removeStorageSync("portfolio_cache");
           wx.removeStorageSync("portfolio_force_refresh");
+          wx.removeStorageSync("profit_detail_cache_v3");
           wx.removeStorageSync("profit_detail_cache_v2");
           wx.removeStorageSync("profit_detail_cache");
           wx.removeStorageSync("index_cache");

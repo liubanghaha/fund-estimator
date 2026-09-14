@@ -4,7 +4,8 @@ const calc = require("../../../../utils/calculator");
 const marketTime = require("../../../../utils/market-time");
 const track = require("../../../../utils/track.js");
 
-const CACHE = "profit_detail_cache_v2";
+// v3：周/月/年收益改为「含当天」口径（旧算法写的周/月/年数字直接作废重算），并与首页当天收益对齐
+const CACHE = "profit_detail_cache_v3";
 const INTRADAY_CACHE_PREFIX = "intraday_v2_";
 const IDX_HIST_CACHE = "idx_hist_cache";
 const chartUtil = require("../../../../utils/chart");
@@ -23,6 +24,8 @@ Page({
     totalCost: 0,
     todayProfit: "0.00", todayProfitRate: "0.00",
     weekProfit: "0.00", monthProfit: "0.00", yearProfit: "0.00",
+    // 周期内是否已有收盘数据（false → 摘要格显示 --，见 _periodFlags）
+    weekHasData: false, monthHasData: false, yearHasData: false,
     weekProfitRate: "0.00", monthProfitRate: "0.00", yearProfitRate: "0.00",
     compareIndex: "000001", compareLabel: "上证指数",
     availableIndices: [
@@ -106,6 +109,7 @@ Page({
     this._canvasHRpx = Math.round(this._canvasH * 750 / windowWidth);
     this.setData({ canvasW: this._canvasW, canvasH: this._canvasH, canvasHRpx: this._canvasHRpx });
         this._fromCache();
+        this._adoptHomePortfolio(); // 首页刚刷过就以首页那份为准，避免两页当天收益不一致
     // 有缓存且过期 → 自动调起下拉刷新动画，让用户感知数据更新（onReady 后再调起）
     // 无缓存时 _fromCache 已直接拉取，无需动画
     // 交易日时钟：盘中 30s；盘后净值发布(最新日=最近交易日)即冻结；周末/节假日免拉
@@ -133,6 +137,7 @@ Page({
     try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     // 周期签入口：周/月/年 tab 显示对应签（当天 tab 无签），签数据为"至今"口径
     this.setData({ signVisible: this.data.activeTab !== "today" });
+    this._adoptHomePortfolio(); // 从首页切回来：若首页那份更新过，先把当天收益对齐再决定是否重拉
     if (this._first) { this._first = false; }
     else {
       // 交易日时钟判新鲜度：冻结态（盘后已发布净值/周末/节假日）不重复拉全量
@@ -171,13 +176,13 @@ Page({
         this._idxMap = c.im || {};
         this._totalCost = c.tc;
         this._cachedProfit = c.s ? { tp: c.s.tp, tpr: c.s.tpr } : null;
+        this._tpDay = calc.formatDate(new Date(c.ts || 0)); // 缓存里的当天收益属于写入那天
         this._cacheApplied = true;
         this.setData({
           loading: false,
           totalCost: c.tc,
           todayProfit: c.s.tp, todayProfitRate: c.s.tpr,
-          weekProfit: c.s.w, monthProfit: c.s.m, yearProfit: c.s.y,
-          weekProfitRate: c.s.wr, monthProfitRate: c.s.mr, yearProfitRate: c.s.yr,
+          ...this._periodSummary(c.s.tpr, c.s.tp),
           earliestDate: c.ed || c.d[0] ? (c.ed || c.d[0].date) : "",
           availableMonths: c.cal.months || [], selectedMonth: c.cal.sm || "",
           availableYears: c.cal.years || [], selectedYear: c.cal.sy || "",
@@ -240,21 +245,42 @@ Page({
     const TAB_LABELS = { today: "今日", week: "本周", month: "本月", year: "本年" };
     const TAB_DAYS = { today: 3, week: 7, month: 25, year: 260 };
     const finish = (best, worst) => {
+      // 周期内还没有收盘数据（如周一盘中）→ comboRate 置 null，卡片显示 -- 而不是 0%
+      const hasData = tab === "today" ? true : !!this._periodFlags()[tab + "HasData"];
       const review = {
         tabLabel: TAB_LABELS[tab] || "",
-        comboRate: +(parseFloat(this.data[RATES[tab]]) || 0).toFixed(2),
+        comboRate: hasData ? +(parseFloat(this.data[RATES[tab]]) || 0).toFixed(2) : null,
         hsRate: null, diffText: "", best, worst, opText: "",
       };
       const stale = () => this.data.activeTab !== tab; // 快速切 tab：迟到回调不得覆盖新周期复盘
       this.setData({ reviewCard: review });
       const applyHs = (rows) => {
         if (stale()) return;
-        const seg = (rows || []).slice(-(TAB_DAYS[tab] + 2));
-        if (seg.length < 2 || !seg[0].close) return;
-        const hsRate = +((seg[seg.length - 1].close / seg[0].close - 1) * 100).toFixed(2);
+        const list = rows || [];
+        let hsRate;
+        if (tab === "today") {
+          // 今日基准 = 最新收盘 / 前一交易日收盘。TAB_DAYS 那套取窗口径对"今日"会放大成 4 个交易日累计
+          // （4558.74→4480.08 = -1.73%），挂在"今日"下标就成了老数据
+          if (list.length < 2 || !list[list.length - 2].close) return;
+          hsRate = +((list[list.length - 1].close / list[list.length - 2].close - 1) * 100).toFixed(2);
+        } else {
+          // 周/月/年：与走势图、周期签同一口径——基线 = 周期起点前最后一个收盘，端点 = 收盘口径的最新收盘日
+          // （按固定根数取窗口会变成"最近 8/26/261 个交易日"，本年那条基线甚至会跑到去年 8 月）
+          const end = this._periodEnd();
+          const cut = end ? list.filter((r) => r.date <= end) : list;
+          const start = this._periodStart(tab);
+          let base = null, last = null;
+          for (const r of cut) { if (r.date < start) base = r; else last = r; }
+          if (!base || !last || !(base.close > 0)) return;
+          hsRate = +((last.close / base.close - 1) * 100).toFixed(2);
+        }
         review.hsRate = hsRate;
-        const diff = +(review.comboRate - hsRate).toFixed(2);
-        review.diffText = (diff >= 0 ? "跑赢沪深300 " : "跑输沪深300 ") + Math.abs(diff) + " 个百分点";
+        if (review.comboRate != null) {
+          const diff = +(review.comboRate - hsRate).toFixed(2);
+          review.diffText = diff === 0
+            ? "持平"
+            : (diff > 0 ? "跑赢 " : "跑输 ") + Math.abs(diff) + "%";
+        }
         this.setData({ reviewCard: { ...review } });
       };
       if (this._idxMap && (this._idxMap["000300"] || []).length >= 2) {
@@ -297,6 +323,103 @@ Page({
     return bj.toISOString().slice(0, 4) + "-01-01";
   },
 
+  // 周/月/年都要含当天：当天净值还没公布时，用"昨收市值 + 当天收益"补一个今日点
+  // （当天收益盘中是估算、盘后随净值公布更新，所以这个点也随它更新）。
+  // 非交易日不补（周末/节假日打开时，当天收益是上一交易日的冻结值）。
+  // 补的点只用于计算与绘图，不写进缓存（估算值不能当"已公布净值"长期驻留）
+  _withTodayClose(series, rate, amount) {
+    const all = series || [];
+    if (!all.length) return all;
+    const today = calc.formatDate(new Date());
+    if (all[all.length - 1].date >= today) return all;      // 今天已在序列里（净值已公布）
+    // 只有"9:30 起（含盘后）"才补：9:30 前与周末/节假日，服务端 getPortfolio 的 displayDay 还停在
+    // 最近交易日，那份"当天收益"属于上一交易日，补进今天会把那一交易日的涨跌算两遍
+    // （marketPhase 的 9:30/15:00 边界与云端 openedToday 的 bjMin>=570 一致）
+    if (marketTime.marketPhase() === "closed") return all;
+    // 只有"当天收益"确实是今天取到的才补：隔夜打开缓存时它属于上一交易日，补进去会把那天算两遍
+    if (this._tpDay !== today) return all;
+    const lastVal = all[all.length - 1].value;
+    if (!(lastVal > 0)) return all;
+    // 今日收盘市值 = 昨收市值 + 当天收益，金额优先（与"当天收益"同源，保证本周金额与当天金额分毫不差）；
+    // 金额缺失才退回按收益率折算
+    const amt = parseFloat(amount);
+    const tpr = parseFloat(rate);
+    let todayVal = null;
+    if (isFinite(amt) && amt !== 0) todayVal = lastVal + amt;
+    else if (isFinite(tpr) && tpr !== 0) todayVal = lastVal * (1 + tpr / 100);
+    if (todayVal == null) return all;
+    return all.concat([{ date: today, value: +todayVal.toFixed(2) }]);
+  },
+  // 周/月/年收益：收盘口径序列「期末 / 期初 - 1」，并给出周期内是否已有收盘数据（false → 显示 --）
+  _periodSummary(todayRate, todayAmount, baseSeries) {
+    const series = this._withTodayClose(baseSeries || this._allDaily || [], todayRate, todayAmount);
+    const now = new Date();
+    const today = calc.formatDate(now);
+    const calcPeriodRate = (startDate) => {
+      let first = null, last = null, has = false;
+      for (let i = 0; i < series.length; i++) {
+        if (series[i].date >= startDate) {
+          has = true;
+          if (first === null) {
+            for (let j = i - 1; j >= 0; j--) { if (series[j].date < startDate) { first = series[j].value; break; } }
+            if (first === null) first = series[i].value;
+          }
+          last = series[i].value;
+        }
+      }
+      if (!first || !last || first <= 0) return { rate: 0, amount: 0, has };
+      return { rate: +((last / first - 1) * 100).toFixed(2), amount: +(last - first).toFixed(2), has };
+    };
+    const wr = calcPeriodRate(this._mon(now));
+    const mr = calcPeriodRate(today.slice(0, 7) + "-01");
+    const yr = calcPeriodRate(today.slice(0, 4) + "-01-01");
+    return {
+      weekProfit: wr.amount, weekProfitRate: wr.rate, weekHasData: wr.has,
+      monthProfit: mr.amount, monthProfitRate: mr.rate, monthHasData: mr.has,
+      yearProfit: yr.amount, yearProfitRate: yr.rate, yearHasData: yr.has,
+    };
+  },
+  // 与首页的"当天收益"对齐：首页每次进入都会刷新组合数据，收益页盘后最长 30 分钟才刷一次，
+  // 于是"首页刷新完马上点进收益页"会看到两个不同的数。同一接口只是时刻不同 → 取更新的那一份。
+  // 盘后当天收益会随各基金净值陆续公布而变，这里跟着更新（含周/月/年与日历今日格）
+  _adoptHomePortfolio() {
+    try {
+      const pc = wx.getStorageSync("portfolio_cache");
+      if (!pc || !pc.ts || pc.todayProfit == null) return false;
+      const mine = (wx.getStorageSync(CACHE) || {}).ts || 0;
+      if (pc.ts <= mine) return false;                                  // 首页那份不比本页新
+      if (String(pc.todayProfit) === String(this.data.todayProfit)) return false;
+      const today = calc.formatDate(new Date());
+      if (this._dailyChange) this._dailyChange[today] = parseFloat(pc.todayProfit) || 0;
+      this._totalMarket = parseFloat(pc.totalAmount) || this._totalMarket;
+      this._tpDay = calc.formatDate(new Date(pc.ts)); // 这份当天收益属于首页取数那天
+      this.setData({
+        todayProfit: pc.todayProfit, todayProfitRate: pc.todayProfitRate,
+        ...this._periodSummary(pc.todayProfitRate, pc.todayProfit),
+      }, () => { this._updateAsOf(); this._draw(); this._cal(); this._ensureReview(this.data.activeTab); });
+      return true;
+    } catch (e) { return false; }
+  },
+  // 当前收盘口径的市值序列（缓存直出路径也走它，图表与周/月/年收益都以它为准）
+  _closingSeries() {
+    return this._withTodayClose(this._allDaily || [], this.data.todayProfitRate, this.data.todayProfit);
+  },
+  // 收盘口径的端点日：周/月/年的沪深300 要截到同一天，两端才可比
+  _periodEnd() {
+    const s = this._closingSeries();
+    return s.length ? s[s.length - 1].date : "";
+  },
+  // 周期内是否已有收盘数据：没有（如周一盘中，本周还没有任何收盘）时显示 --，
+  // 不能把"还没收盘"当成 0% 展示（0 是"确认为零收益"的真值语义）
+  _periodFlags(rate, amount) {
+    // 缓存直出时 data 里的今日收益还是旧值，必须显式传入（否则会把"还没数据"误判成 false）
+    const s = rate == null
+      ? this._closingSeries()
+      : this._withTodayClose(this._allDaily || [], rate, amount);
+    const has = (tab) => s.some((r) => r.date >= this._periodStart(tab));
+    return { weekHasData: has("week"), monthHasData: has("month"), yearHasData: has("year") };
+  },
+
   // ==== 周期签（周签/月签/年签）：对应 tab 内生成"至今"数据卡，年度报告的工艺热身 ====
   onShowSignCard(e) {
     const period = (e && e.currentTarget && e.currentTarget.dataset.period) || "week";
@@ -310,8 +433,11 @@ Page({
     const start = this._periodStart(period);
     const applyRows = (rows) => {
       // 区间与基线按周期起点锚定：基线 = 起点前最后一个收盘（否则漏掉周期首日涨幅）
-      const inRange = (rows || []).filter((r) => r.date >= start);
-      const prev = (rows || []).filter((r) => r.date < start).pop();
+      // 指数也截到收盘口径的端点日，与组合的周/月/年收益同一天
+      const end = this._periodEnd();
+      const cut = end ? (rows || []).filter((r) => r.date <= end) : (rows || []);
+      const inRange = cut.filter((r) => r.date >= start);
+      const prev = cut.filter((r) => r.date < start).pop();
       const base = prev || inRange[0];
       const hsRate = (base && inRange.length && base.close > 0)
         ? +((inRange[inRange.length - 1].close / base.close - 1) * 100).toFixed(2) : null;
@@ -487,29 +613,11 @@ Page({
       const tp = parseFloat(d.todayProfit) || 0;
       if (isTradingDay && tp !== 0) dcFinal[today] = tp;
 
-      // 收益率：和走势图一致，用「期末市值 / 期初市值 - 1」
-      const ws = this._mon(now);
-      const cm = today.slice(0, 7), cy = today.slice(0, 4);
-      const calcPeriodRate = (startDate) => {
-        let first = null, last = null;
-        for (let i = 0; i < allDaily.length; i++) {
-          if (allDaily[i].date >= startDate) {
-            if (first === null) {
-              for (let j = i - 1; j >= 0; j--) { if (allDaily[j].date < startDate) { first = allDaily[j].value; break; } }
-              if (first === null) first = allDaily[i].value;
-            }
-            last = allDaily[i].value;
-          }
-        }
-        if (!first || !last || first <= 0) return { rate: 0, amount: 0 };
-        return {
-          rate: +((last / first - 1) * 100).toFixed(2),
-          amount: +(last - first).toFixed(2),
-        };
-      };
-      const wr = calcPeriodRate(ws), mr = calcPeriodRate(cm + "-01"), yr = calcPeriodRate(cy + "-01-01");
-      const weekProfitRate = wr.rate, monthProfitRate = mr.rate, yearProfitRate = yr.rate;
-      const w = wr.amount, m = mr.amount, y = yr.amount;
+      // 收益率：和走势图一致，用「期末市值 / 期初市值 - 1」。序列含当天（当天收益值，盘后随净值公布更新）
+      this._tpDay = today; // 这份当天收益属于今天
+      const summ = this._periodSummary(d.todayProfitRate, d.todayProfit, allDaily);
+      const weekProfitRate = summ.weekProfitRate, monthProfitRate = summ.monthProfitRate, yearProfitRate = summ.yearProfitRate;
+      const w = summ.weekProfit, m = summ.monthProfit, y = summ.yearProfit;
 
       this._allDaily = allDaily;
       this._dailyChange = dcFinal;
@@ -527,6 +635,7 @@ Page({
         todayProfit: tp.toFixed(2),
         weekProfit: w, monthProfit: m, yearProfit: y,
         weekProfitRate, monthProfitRate, yearProfitRate,
+        weekHasData: summ.weekHasData, monthHasData: summ.monthHasData, yearHasData: summ.yearHasData,
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => {
         this._draw(); this._cal();
@@ -568,7 +677,8 @@ Page({
   // ============ 图 ============
 
   _data() {
-    const all = this._allDaily || [], idx = this._indexDaily || [];
+    // 走势图与周/月/年收益同源：收盘口径序列（收盘后含今日收盘点，盘中停在上一收盘）
+    const all = this._closingSeries(), idx = this._indexDaily || [];
     if (!all.length) return null;
     const now = new Date(), today = calc.formatDate(now);
 
@@ -602,7 +712,9 @@ Page({
     if (dates.length < 1) return null;
 
     const pm = {}; all.forEach(d => { pm[d.date] = d; });
-    const im = {}; idx.forEach(d => { im[d.date] = d; });
+    // 指数线截到收盘口径的端点日：盘中不画今天的实时点，避免指数线比组合线多走一天
+    const endDay = all[all.length - 1].date;
+    const im = {}; idx.forEach(d => { if (d.date <= endDay) im[d.date] = d; });
 
     // 基准取周期开始前最后一个有数据的交易日，确保第一个点显示实际涨跌幅而非 0
     let ib = null, pb = null;
@@ -1452,6 +1564,9 @@ Page({
       const res = await api.portfolioLight();
       if (!res.result || res.result.code !== 0) return;
       const d = res.result.data;
+      // 非交易时段（含客户端交易日表与服务端不一致的情形）服务端返回占位值，
+      // 直接应用会把冻结的当天收益洗成 0，并顺着"含当天"的周/月/年一起算错
+      if (d.inTrading === false || d.todayProfitRate == null) return;
       const rate = parseFloat(d.todayProfitRate || 0);
       // 今日收益 = 当前市值 - 昨日市值（_totalMarket 在 _fetch 时保存）
       // _fetch 未完成时市值基准未就绪，跳过本轮——否则金额被算成 0.00 而收益率有值（开盘瞬间进页面的错位显示）
@@ -1461,7 +1576,11 @@ Page({
       const tp = (yesterdayMarket * rate / 100).toFixed(2);
       const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
       if (changed) {
-        this.setData({ todayProfitRate: rate, todayProfit: tp });
+        this.setData({
+          todayProfitRate: rate, todayProfit: tp,
+          // 周/月/年含当天：当天值一变就得重算（否则"本周金额 == 当天金额"盘中会散架）
+          ...this._periodSummary(rate, tp),
+        });
         if (this.data.activeTab === 'today' && !animating) this._draw();
       }
       const snaps = d.intradaySnapshots;
