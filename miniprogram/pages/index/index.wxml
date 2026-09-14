@@ -110,8 +110,8 @@
           </view>
         </view>
         <view wx:if="{{batchMode}}" class="batch-alert-bar">
-          <text class="batch-alert-label">全局涨跌提醒 · 全部基金按 ±3% 提醒</text>
-          <view class="pe-switch {{alertGlobalOn ? 'on' : ''}}" bind:tap="onToggleGlobalAlert">
+          <text class="batch-alert-label">选中基金提醒 · 未设过的按 ±3%</text>
+          <view class="pe-switch {{batchAlertOn ? 'on' : ''}}" bind:tap="onBatchAlertToggle">
             <view class="pe-switch-dot"></view>
           </view>
         </view>

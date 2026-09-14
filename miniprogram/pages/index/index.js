@@ -56,7 +56,7 @@ Page({
     sortField: "todayProfit",
     sortOrder: "desc",
     batchMode: false,
-    alertGlobalOn: false,
+    batchAlertOn: false, // 批量栏：选中基金是否都已开启提醒（全部开启才算 on）
     selectedCount: 0,
     allSelected: false,
     loadError: false,
@@ -512,10 +512,9 @@ Page({
           }).catch(() => {});
         }
       }
-      // 全局提醒开关同步（本地缓存 + 页面显示）
+      // 全局默认提醒开关同步（写本地缓存，「提醒管理」页读它显示）
       if (res && typeof res.globalOn === "boolean") {
         wx.setStorageSync("alertGlobalOn", res.globalOn);
-        this.setData({ alertGlobalOn: res.globalOn });
       }
       if (this._checkAlerts) this._checkAlerts();
     }).catch(() => {});
@@ -671,11 +670,16 @@ Page({
         });
         this._refreshShareToken();
         this._checkAlerts();
-        // 组合级净值日（持仓最大 actualDate）：供 isCacheFresh 判断当晚净值发布后冻结
-        const maxActualDate = holdings.reduce((m, h) => (h.actualDate && h.actualDate > m ? h.actualDate : m), "");
+        // 组合级净值日（持仓里最滞后的那个 actualDate）：供 isCacheFresh 判断当晚净值全部公布后才冻结。
+        // 用"最大"会让一只基金一公布就整晚冻住，而净值是陆续公布的、聚合收益还在变
+        // （首页停在旧值、收益页还在更新 → 两页当天收益对不上）
+        const minActualDate = holdings.reduce((m, h) => {
+          if (!h.actualDate) return m;
+          return !m || h.actualDate < m ? h.actualDate : m;
+        }, "");
         this._portfolioCache = {
           holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now(),
-          actualDate: maxActualDate || undefined,
+          actualDate: minActualDate || undefined,
         };
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
         // 首日价值时刻（激活指标）：加持仓后首次在首页看到估值
@@ -1000,38 +1004,53 @@ Page({
   onToggleBatch() {
     const enter = !this.data.batchMode;
     const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));
-    // 进入批量模式时同步全局提醒开关的本地显示
     const patch = { batchMode: enter, displayHoldings: list, selectedCount: 0, allSelected: false };
-    if (enter) patch.alertGlobalOn = !!wx.getStorageSync("alertGlobalOn");
+    if (enter) patch.batchAlertOn = false; // 刚进入还没选基金
     this.setData(patch);
   },
 
-  // 全局涨跌提醒开关：开启后全部持仓按默认 ±3% 提醒（云端检测端兜底，新持仓自动纳入）
-  async onToggleGlobalAlert() {
-    const next = !this.data.alertGlobalOn;
-    this.setData({ alertGlobalOn: next });
-    wx.setStorageSync("alertGlobalOn", next);
+  // 批量栏提醒开关的显示状态：选中的基金全都开着才显示 on（部分开启显示 off，点一下补齐）
+  _refreshBatchAlert() {
+    const selected = this.data.displayHoldings.filter((h) => h._checked);
+    const settings = wx.getStorageSync("alertSettings") || {};
+    const on = selected.length > 0 && selected.every((h) => {
+      const s = settings[h.fundCode];
+      return !!(s && s.enabled);
+    });
+    if (on !== this.data.batchAlertOn) this.setData({ batchAlertOn: on });
+  },
+
+  // 批量为选中基金开启/关闭涨跌提醒：必须选中基金才可操作（批量栏其他项同理），
+  // 没单独设过规则的按默认 ±3% 建规则；已有规则只改 enabled，保留用户设的阈值。
+  // 全局默认开关（没有单独规则的持仓都按 ±3% 提醒）仍在「用户中心 → 提醒管理」页
+  async onBatchAlertToggle() {
+    const selected = this.data.displayHoldings.filter((h) => h._checked);
+    if (selected.length === 0) { wx.showToast({ title: "请先选择", icon: "none" }); return; }
+    const next = !this.data.batchAlertOn;
+    const settings = wx.getStorageSync("alertSettings") || {};
+    selected.forEach((h) => {
+      const prev = settings[h.fundCode] || {};
+      settings[h.fundCode] = {
+        upper: prev.upper != null && prev.upper !== "" ? prev.upper : 3,
+        lower: prev.lower != null && prev.lower !== "" ? prev.lower : -3,
+        peAlert: !!prev.peAlert,
+        enabled: next,
+      };
+    });
+    wx.setStorageSync("alertSettings", settings);
+    this.setData({ batchAlertOn: next });
+    wx.showToast({
+      title: next ? `已开启 ${selected.length} 只基金的提醒` : `已关闭 ${selected.length} 只基金的提醒`,
+      icon: "none",
+    });
+    // 设置上云（换设备同步；失败静默，本地仍生效）
+    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSet", settings } }).catch(() => {});
+    if (!next) return;
     // 开启时同步拉起订阅授权（单基金保存提醒同款；无授权微信侧 43101 会静默丢弃推送）
-    let authed = true;
-    if (next) {
-      const r = await subscribe.requestAlertAuth("scene_alert");
-      authed = !!(r && r.ok);
-    }
-    wx.cloud.callFunction({
-      name: "dailyBriefing",
-      data: { action: "alertSet", globalOn: next },
-    }).then(() => {
-      wx.showToast({
-        title: authed ? (next ? "已开启全局提醒" : "已关闭全局提醒")
-          : "已开启，但未授权推送，收不到提醒",
-        icon: "none",
-        duration: 2000,
-      });
-    }).catch(() => {
-      // 失败回滚本地（云端为准）
-      this.setData({ alertGlobalOn: !next });
-      wx.setStorageSync("alertGlobalOn", !next);
-      wx.showToast({ title: "设置失败，请重试", icon: "none" });
+    subscribe.requestAlertAuth("scene_alert").then((r) => {
+      if (r && r.ok === false) {
+        wx.showToast({ title: "已开启，但未授权推送，收不到提醒", icon: "none", duration: 2000 });
+      }
     });
   },
 
@@ -1040,13 +1059,13 @@ Page({
     const list = [...this.data.displayHoldings];
     list[idx]._checked = !list[idx]._checked;
     const count = list.filter(h => h._checked).length;
-    this.setData({ displayHoldings: list, selectedCount: count, allSelected: count === list.length });
+    this.setData({ displayHoldings: list, selectedCount: count, allSelected: count === list.length }, () => this._refreshBatchAlert());
   },
 
   onSelectAll() {
     const allSel = !this.data.allSelected;
     const list = this.data.displayHoldings.map(h => ({ ...h, _checked: allSel }));
-    this.setData({ displayHoldings: list, selectedCount: allSel ? list.length : 0, allSelected: allSel });
+    this.setData({ displayHoldings: list, selectedCount: allSel ? list.length : 0, allSelected: allSel }, () => this._refreshBatchAlert());
   },
 
   async onBatchDelete() {

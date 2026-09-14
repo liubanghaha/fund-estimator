@@ -97,7 +97,9 @@
 .pe-switch.on .pe-switch-dot{left:40rpx}
 
 .holdings-section{margin:0 4rpx;overflow:hidden;background:#FFF}
-.updated-tag{font-size:20rpx;color:#AAA;display:inline-block;margin-right:4rpx;vertical-align:middle}
+/* 净值已更新标记：原为浅灰 ✓（20rpx #AAA）几乎看不见 → 改品牌色浅底圆角标。
+   刻意用圆角矩形而非圆形实心：批量模式的选中项是红底白 ✓ 圆圈（.batch-check.checked），圆形会撞脸被误认成已勾选 */
+.updated-tag{font-size:18rpx;font-weight:700;color:var(--primary);background:var(--primary-bg);border-radius:6rpx;padding:1rpx 8rpx;display:inline-block;margin-right:6rpx;vertical-align:middle}
 
 /* 表格 */
 .table-scroll{width:100%;background:#FFF}
