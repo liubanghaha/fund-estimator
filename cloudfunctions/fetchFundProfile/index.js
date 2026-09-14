@@ -13,14 +13,18 @@ exports.main = async (event) => {
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 
 	    // 4 个请求全部并行，减少一轮网络往返
-	    const [profile, manager, holdingsData, prevHoldingsData, turnoverRates, sameTypeRank] = await Promise.all([
+	    const [profile, manager, holdingsData, prevHoldingsData, turnoverRates, rankRes] = await Promise.all([
 	      fetchProfile(fundCode),
 	      fetchManager(fundCode),
 	      fetchHoldings(fundCode, curY, curM),
 	      fetchHoldings(fundCode, prevY, prevM).catch(() => ({ holdings: [], reportYear: null, reportMonth: null, ok: false })),
 	      fetchTurnoverRate(fundCode).catch(() => []),
-	      fetchSameTypeRank(fundCode).catch(() => null),
+	      fetchSameTypeRank(fundCode).catch(() => ({ ok: false, rank: null })),
 	    ]);
+	    // rankOk 区分「拉取失败」（false，客户端下次可重试）与「该基金确实无排名数据」（true + rank:null），
+	    // 否则客户端只能把两者都当成"已拉过"，一次超时就会让排名卡永久消失
+	    const sameTypeRank = rankRes.rank;
+	    const rankOk = rankRes.ok;
     let holdings = holdingsData.holdings || [];
     let prevHoldings = prevHoldingsData.holdings || [];
     // 上期数据拉取失败（而非「上期真的空」）→ 前端显示「上期数据缺失」，避免误报全部新增/退出
@@ -97,18 +101,20 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
+    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, rankOk, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
   } catch (e) {
     console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
   }
 };
 
-// 同类排名（业绩排名时间序列取最新一条）：pingzhongdata 约 200KB，仅提取排名/总数/超越百分位
+// 同类排名（业绩排名时间序列取最新一条）：pingzhongdata 约 300KB，仅提取排名/总数/超越百分位
 // beatPct = 100 − 排名/总数×100，即"超越同类 X% 的基金"
+// 返回 { ok, rank }：ok=false 表示请求/解析失败（客户端可重试），ok=true 且 rank=null 表示该基金本就无排名数据
 function fetchSameTypeRank(fundCode) {
   const https = require("https");
   return new Promise((resolve) => {
+    const fail = () => resolve({ ok: false, rank: null });
     const req = https.get(`https://fund.eastmoney.com/pingzhongdata/${fundCode}.js`, { headers: { Referer: "https://fund.eastmoney.com/" } }, (res) => {
       res.setEncoding("utf8");
       let body = "";
@@ -118,6 +124,9 @@ function fetchSameTypeRank(fundCode) {
           // 值为 JS 数组字面量（内含嵌套 []），以分号为界提取后 JSON.parse
           const rankMatch = body.match(/Data_rateInSimilarType\s*=\s*([^;]+);/);
           const pctMatch = body.match(/Data_rateInSimilarPersent\s*=\s*([^;]+);/);
+          // 两个字段都取不到 = 响应异常（截断/非预期内容）→ 按失败处理；
+          // 取到数组但为空（新基金等）= 确实无排名数据 → 按成功处理，避免客户端反复重拉
+          if (!rankMatch && !pctMatch) { fail(); return; }
           let rank = null, total = null, beatPct = null;
           if (rankMatch) {
             const arr = JSON.parse(rankMatch[1]);
@@ -127,13 +136,12 @@ function fetchSameTypeRank(fundCode) {
             const arr = JSON.parse(pctMatch[1]);
             if (arr.length) beatPct = +arr[arr.length - 1][1].toFixed(2);
           }
-          if (rank != null && total > 0) resolve({ rank, total, beatPct });
-          else resolve(null);
-        } catch (e) { resolve(null); }
+          resolve({ ok: true, rank: rank != null && total > 0 ? { rank, total, beatPct } : null });
+        } catch (e) { fail(); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
-    req.on("error", () => resolve(null));
+    req.setTimeout(8000, () => { req.destroy(); fail(); });
+    req.on("error", fail);
   });
 }
 

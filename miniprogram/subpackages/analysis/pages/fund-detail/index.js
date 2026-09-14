@@ -6,12 +6,15 @@ const marketTime = require("../../../../utils/market-time");
 const CACHE_PREFIX = "fund_detail_cache_";
 // 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
 // 旧版本缓存自动作废 → 重新进入页面即拉到新值，避免用户一直看到修复前的错误调仓动向。
-const HOLDINGS_CACHE_VERSION = 2;
+// 3：修正同类排名的持久化标记（旧代码把"没拉过"写成"拉过了"，排名卡一消失就再也回不来）
+const HOLDINGS_CACHE_VERSION = 3;
 
 Page({
   data: {
     fundCode: "", fundName: "", loading: true, errorMsg: "", loadError: false,
     nav: null, estimatedNav: null, estimatedChangeRate: null, estimateTime: "", estSource: "",
+    // 涨跌幅文本（两位小数，WXML 不能用方法格式化）；由 updateDisplay 统一重算
+    estimatedChangeRateText: "--", displayChangeRateText: "--",
     actualNav: "", actualDate: "", actualChangeRate: null,
     navHistory: [], displayHistory: [], displayCount: 30,
     todayReturn: null, weekReturn: null, monthReturn: null,
@@ -22,6 +25,7 @@ Page({
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
     isTrading: false,
+    showEstimate: false, // 盘中且今日净值未公布：头部走估算口径（由 updateDisplay 计算）
     chartPeriod: '1M',
     chartTxMap: {},
     transactionList: [],
@@ -36,6 +40,9 @@ Page({
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
     turnoverRates: [],
     sameTypeRank: null,
+    // 同类排名是否已"确认"（含该基金确实无排名）：false 表示这次没拿到（超时/解析失败/老缓存缺字段），
+    // 切档案 tab 时补拉一次。只由真正拿到响应的那次 fetchProfile 置位，绝不能在通用保存路径里硬编码
+    rankFetched: false,
     showTurnover: false,
     scrollRefreshing: false,
     showExited: false,
@@ -328,11 +335,12 @@ Page({
         profile: cached.profile && cached.profile.fundSizeText ? cached.profile : null,
         manager: cached.manager || null,
         sameTypeRank: cached.sameTypeRank || null,
+        rankFetched: !!cached.rankFetched,
         profileLoaded: !!(cached.profile && cached.profile.fundSizeText),
       }, () => {
-        // 老缓存（本次新增字段前写入）没有 rankFetched 标记：标脏让切档案 tab 补拉一次，拉回后由 _saveCache 持久化。
+        // 档案在缓存里但排名还没确认（老缓存缺字段 / 上次拉取超时）→ 标脏，切档案 tab 补拉一次。
         // 不这样做的话，缓存命中的页面（profile 已存在 → onTabTap 守卫跳过请求）永远拿不到该字段。
-        // 用 rankFetched 而非 sameTypeRank 判空：区分「老缓存缺字段」与「该基金确实无排名（返回 null）」后者不该反复重拉
+        // 用 rankFetched 而非 sameTypeRank 判空：区分「还没拿到」与「该基金确实无排名（rankOk:true + rank:null）」
         if (cached.profile && cached.profile.fundSizeText && !cached.rankFetched) this._profileStale = true;
         this.calcReturns(cached.history);
         this.updateDisplay();
@@ -388,7 +396,7 @@ Page({
         quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
         turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
         sameTypeRank: this.data.sameTypeRank,
-        rankFetched: true, // 本版客户端已能取到同类排名：老缓存缺此标记即补拉一次，之后不再重复
+        rankFetched: !!this.data.rankFetched,
         dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),
       });
@@ -486,8 +494,23 @@ Page({
       this.data.nav, this.data.actualNav,
       this.data.estimatedChangeRate, this.data.actualChangeRate,
     );
+    // 涨跌幅展示统一两位小数：估值源（新浪）原始值是 4 位（如 0.3822），会直接渲染成 +0.3822%。
+    // WXML 不能调方法，所以在这里算好文本字段（与首页 _crText 的两位小数口径一致）
+    const rateText = (v) => {
+      const n = parseFloat(v);
+      if (v == null || v === "" || isNaN(n)) return "--";
+      if (Math.abs(n) < 0.005) return "0.00%"; // 开盘头几分钟估值常在 ±0.005% 内，别显示成 -0.00%
+      return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
+    };
     const isNavUpdated = this.data.actualDate === calc.formatDate(now);
-    this.setData({ isTrading, displayChangeRate, isNavUpdated });
+    // 估算口径只在「盘中 且 今日净值尚未公布 且 有估算净值」时成立：净值一公布就切回真值口径，
+    // 否则主数字（有持仓时是当日收益）用真值算、旁边涨跌幅还挂估算值，两个数字对不上
+    const showEstimate = !!(isTrading && !isNavUpdated && this.data.estimatedNav);
+    this.setData({
+      isTrading, displayChangeRate, isNavUpdated, showEstimate,
+      estimatedChangeRateText: rateText(this.data.estimatedChangeRate),
+      displayChangeRateText: rateText(displayChangeRate),
+    });
   },
 
   async fetchEstimate() {
@@ -564,9 +587,14 @@ Page({
           const holdings = res.result.data.holdings || [];
           // 先渲染持仓列表（今日涨跌显示 --），股票行情异步补拉
           const exited = res.result.data.exited || [];
-          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: res.result.data.sameTypeRank || null };
+          // rankOk 由云函数给出：true = 请求成功（含该基金确实无排名→rank:null），false = 拉取失败。
+          // 旧版云函数没有该字段：拿不到排名时一律按"未确认"处理，下次切档案 tab 自然重试
+          const rank = res.result.data.sameTypeRank || null;
+          const rankFetched = rank != null || res.result.data.rankOk === true;
+          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
           if (p) patch.profile = p;
           this.setData(patch);
+          if (!rankFetched) this._profileStale = true; // 排名这次没拿到：本次会话再切档案 tab 还能重试
           // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
           if (p) this._saveCache();
 

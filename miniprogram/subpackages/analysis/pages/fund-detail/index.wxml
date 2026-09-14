@@ -28,7 +28,8 @@
     </view>
 
     <block wx:if="{{!loading && !loadError}}">
-    <view wx:if="{{isTrading && estimatedNav}}" class="nav-card primary">
+    <!-- 盘中估算卡：仅未持仓时用它做主卡（有持仓的盘中卡在下面，主数字固定为当日收益） -->
+    <view wx:if="{{showEstimate && !(hasHolding && holdingData)}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
           <view class="nav-label">估算净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
@@ -38,27 +39,31 @@
         <view class="nav-change-col">
           <view class="nav-change-label">涨幅估算</view>
           <view class="nav-change {{estimatedChangeRate > 0 ? 'up' : estimatedChangeRate < 0 ? 'down' : ''}}">
-            {{estimatedChangeRate > 0 ? '+' : ''}}{{estimatedChangeRate != null ? estimatedChangeRate : '--'}}%
+            {{estimatedChangeRateText}}
           </view>
           <view class="nav-badge">盘中估算<text wx:if="{{estimateTime}}" class="nav-badge-src"> 估值 {{estimateTime}}</text></view>
         </view>
       </view>
     </view>
 
-    <view wx:if="{{!isTrading || !estimatedNav}}" class="nav-card primary">
+    <!-- 主卡：有持仓固定显示当日收益（盘中/盘后同一口径，与首页收益卡一致）；无持仓显示单位净值/估算净值 -->
+    <view wx:if="{{!showEstimate || (hasHolding && holdingData)}}" class="nav-card primary">
       <view class="nav-top-row">
         <view class="nav-main">
           <view wx:if="{{hasHolding && holdingData}}" class="nav-label">当日收益<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
-          <view wx:else class="nav-label">单位净值<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
+          <view wx:else class="nav-label">{{showEstimate ? '估算净值' : '单位净值'}}<text wx:if="{{isNavUpdated}}" class="nav-updated">✓</text></view>
           <view wx:if="{{hasHolding && holdingData}}" class="nav-big {{amountVisible ? (holdingData.todayProfit > 0 ? 'up' : holdingData.todayProfit < 0 ? 'down' : '') : ''}}">{{amountVisible ? (holdingData.todayProfit > 0 ? '+' : '') + holdingData.todayProfit : '****'}}</view>
-          <view wx:else class="nav-big">{{actualNav || nav || '--'}}</view>
-          <view wx:if="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
+          <view wx:else class="nav-big">{{showEstimate ? estimatedNav : (actualNav || nav || '--')}}</view>
+          <!-- 副行：估算口径下带出估算净值/估值时间；否则（无持仓）显示净值日期 -->
+          <view wx:if="{{showEstimate}}" class="nav-ref">估算净值 {{estimatedNav}}{{estimateTime ? ' · 估值 ' + estimateTime : ''}}</view>
+          <view wx:elif="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
         <view class="nav-change-col">
-          <view class="nav-change-label">当日涨幅</view>
+          <view class="nav-change-label">{{showEstimate ? '涨幅估算' : '当日涨幅'}}</view>
           <view class="nav-change {{displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : ''}}">
-            {{displayChangeRate > 0 ? '+' : ''}}{{displayChangeRate != null ? displayChangeRate : '--'}}%
+            {{showEstimate ? estimatedChangeRateText : displayChangeRateText}}
           </view>
+          <view wx:if="{{showEstimate}}" class="nav-badge">盘中估算</view>
         </view>
       </view>
     </view>
