@@ -1504,7 +1504,9 @@ Page({
   // 服务端只分别给"平台"和"分组"的汇总，两者叠加时必须在客户端按记录合计
   _cardSummary(scopedList) {
     const { activeGroup, activePlatform } = this.data;
-    if (activePlatform === "all" && activeGroup === "all") return null; // 都没筛 → 用总额
+    // 没做任何筛选（全部 / 账户汇总，且分组也是全部）→ 用服务端总额，避免与列表页
+    // 客户端现算的合计差 1~2 分（两边来源不同、四舍五入不同）
+    if ((activePlatform === "all" || activePlatform === "summary") && activeGroup === "all") return null;
     let list = scopedList || [];
     if (activeGroup === "ungrouped") list = list.filter(h => !h.group);
     else if (activeGroup !== "all") list = list.filter(h => h.group === activeGroup);
