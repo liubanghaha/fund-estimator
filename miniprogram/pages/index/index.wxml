@@ -86,12 +86,12 @@
         <!-- 平台栏（一级维度）：账户汇总 / 全部 / 各平台 / + 新建 / ☰ 管理。放在页面最顶部，资产卡显示当前平台合计 -->
         <view class="platform-bar">
           <scroll-view class="platform-tabs" scroll-x enhanced show-scrollbar="{{false}}">
-            <view class="group-tab {{activePlatform === 'summary' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="summary">账户汇总</view>
-            <view class="group-tab {{activePlatform === 'all' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="all">全部<text class="group-tab-n">{{groupCounts.records || 0}}</text></view>
+            <view class="platform-tab {{activePlatform === 'summary' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="summary">账户汇总</view>
+            <view class="platform-tab {{activePlatform === 'all' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="all">全部</view>
             <block wx:for="{{platformList}}" wx:key="*this">
-              <view class="group-tab {{activePlatform === item ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="{{item}}">{{item}}</view>
+              <view class="platform-tab {{activePlatform === item ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="{{item}}">{{item}}</view>
             </block>
-            <view class="group-tab group-tab-add" bind:tap="onAddPlatform">+</view>
+            <view class="platform-tab platform-add" bind:tap="onAddPlatform">＋</view>
           </scroll-view>
           <view class="tabs-manage" bind:tap="onToggleBatch">
             <view class="batch-bars">

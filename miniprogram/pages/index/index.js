@@ -689,7 +689,7 @@ Page({
           return !m || h.actualDate < m ? h.actualDate : m;
         }, "");
         this._portfolioCache = {
-          holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], ts: Date.now(),
+          holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], platforms: d.platforms || [], ts: Date.now(),
           actualDate: minActualDate || undefined,
         };
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });

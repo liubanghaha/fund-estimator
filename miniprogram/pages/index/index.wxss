@@ -173,9 +173,13 @@
 .stale-badge{font-size:20rpx;color:var(--up);margin-left:8rpx}
 
 /* 分组标签 */
-/* 平台栏（页面最顶部的一级维度）：与基金分组栏同款视觉，右侧固定管理入口 */
-.platform-bar{display:flex;align-items:center;background:#FFF;border-radius:16rpx;margin-bottom:16rpx;padding:8rpx 0}
-.platform-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}
+/* 平台栏（页面最顶部的一级维度）：下划线式页签，与下方"基金分组"胶囊区分开，右侧固定管理入口 */
+.platform-bar{display:flex;align-items:center;background:#FFF;border-radius:16rpx;margin-bottom:16rpx;padding:0 0 0 4rpx}
+.platform-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 12rpx}
+.platform-tab{display:inline-block;position:relative;padding:26rpx 22rpx 22rpx;font-size:28rpx;color:#666;white-space:nowrap;transition:color .15s}
+.platform-tab.active{color:#1A1A1A;font-weight:700}
+.platform-tab.active::after{content:'';position:absolute;left:24rpx;right:24rpx;bottom:8rpx;height:6rpx;border-radius:3rpx;background:var(--primary)}
+.platform-add{color:#BBB;font-size:30rpx;padding:22rpx 20rpx 20rpx}
 .ps-tip{padding:8rpx 28rpx 24rpx;font-size:20rpx;color:#BBB;line-height:1.5}
 .group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0;display:flex;align-items:center}
 .group-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}
