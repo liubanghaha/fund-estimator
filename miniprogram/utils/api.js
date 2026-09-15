@@ -172,11 +172,15 @@ const api = {
   holdingGetGroups() {
     return this.callFunction("manageHolding", { action: "getGroups" });
   },
-  holdingRenameGroup(group, newGroup) {
-    return this.callFunction("manageHolding", { action: "renameGroup", group, newGroup });
+  holdingRenameGroup(oldName, newName, field) {
+    return this.callFunction("manageHolding", field === "platform"
+      ? { action: "renameGroup", group: oldName, newGroup: newName, field: "platform" }
+      : { action: "renameGroup", group: oldName, newGroup: newName });
   },
-  holdingDeleteGroup(group) {
-    return this.callFunction("manageHolding", { action: "deleteGroup", group });
+  holdingDeleteGroup(group, field) {
+    return this.callFunction("manageHolding", field === "platform"
+      ? { action: "deleteGroup", group, field: "platform" }
+      : { action: "deleteGroup", group });
   },
   transactionAdd(data) {
     return this.callFunction("manageTransaction", { action: "add", data });

@@ -1757,16 +1757,29 @@ Page({
 
   // ========== 分组拖拽排序 ==========
 
+  // 拖拽排序/长按菜单对"基金分组"和"平台"两个维度通用（dataset.field 区分，默认分组）
+  _dragField(e) {
+    return e && e.currentTarget && e.currentTarget.dataset.field === "platform" ? "platform" : "group";
+  },
+  _dragList(field) {
+    return field === "platform" ? (this.data.platformList || []) : (this.data.groups || []);
+  },
+  _setDragList(field, list) {
+    this.setData(field === "platform" ? { platformList: list } : { groups: list });
+  },
+
   onGroupTouchStart(e) {
     const touch = e.touches[0];
     const idx = parseInt(e.currentTarget.dataset.index);
     if (isNaN(idx)) return;
+    this._dragFieldName = this._dragField(e);
     this._dragStartX = touch.clientX;
     this._dragStartIdx = idx;
     this._didLongPress = false;
     this._dragMoved = false;
     this._tabWidth = 0;
-    wx.createSelectorQuery().selectAll('.group-tab').boundingClientRect(rects => {
+    const sel = this._dragFieldName === "platform" ? ".platform-tab" : ".group-tab";
+    wx.createSelectorQuery().selectAll(sel).boundingClientRect(rects => {
       if (rects && rects.length > 0) {
         const sum = rects.reduce((s, r) => s + r.width, 0);
         this._tabWidth = Math.round(sum / rects.length);
@@ -1793,19 +1806,23 @@ Page({
       this._dragMoved = true;
       this.setData({ dragging: true, dragIndex: this._dragStartIdx, dragX: 0 });
     }
+    const field = this._dragFieldName || "group";
+    const list = this._dragList(field);
     const tw = this._tabWidth || 100;
     const maxLeft = -this._dragStartIdx * tw - 30;
-    const maxRight = (this.data.groups.length - 1 - this._dragStartIdx) * tw + 30;
+    const maxRight = (list.length - 1 - this._dragStartIdx) * tw + 30;
     const clampedX = Math.max(maxLeft, Math.min(maxRight, deltaX));
 
     const swapOffset = Math.round(clampedX / tw);
     const newIdx = this._dragStartIdx + swapOffset;
-    const clamped = Math.max(0, Math.min(newIdx, this.data.groups.length - 1));
+    const clamped = Math.max(0, Math.min(newIdx, list.length - 1));
     if (clamped !== this.data.dragIndex && this.data.dragIndex >= 0) {
-      const groups = [...this.data.groups];
-      const [moved] = groups.splice(this.data.dragIndex, 1);
-      groups.splice(clamped, 0, moved);
-      this.setData({ groups, dragIndex: clamped, dragX: clampedX - swapOffset * tw });
+      const p = this._dragFieldName || "group";
+      const next = [...this._dragList(p)];
+      const [moved] = next.splice(this.data.dragIndex, 1);
+      next.splice(clamped, 0, moved);
+      this._setDragList(p, next);
+      this.setData({ dragIndex: clamped, dragX: clampedX - swapOffset * tw });
       this._dragStartIdx = clamped;
       this._dragStartX = e.touches[0].clientX;
     } else {
@@ -1815,30 +1832,34 @@ Page({
 
   onGroupTouchEnd(e) {
     clearTimeout(this._dragTimer);
+    const field = this._dragFieldName || "group";
     if (this._dragMoved) {
-      wx.setStorageSync(GROUPS_CACHE_KEY, [...this.data.groups]);
+      // 拖拽后的顺序写入本地列表（平台还会与服务端列表合并，顺序以本地为准）
+      wx.setStorageSync(field === "platform" ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY, [...this._dragList(field)]);
       this.setData({ dragging: false, dragIndex: -1, dragX: 0 });
       this.updateGroupCounts();
       return;
     }
-    // 长按未拖拽 → 弹出菜单
+    // 长按未拖拽 → 弹出菜单（重命名 / 删除；平台删除只清归属，持仓变"未分配"）
     if (this._didLongPress) {
-      const group = e.currentTarget.dataset.group;
-      if (group && group !== "all" && group !== "ungrouped") {
+      const name = field === "platform" ? e.currentTarget.dataset.platform : e.currentTarget.dataset.group;
+      if (name && name !== "all" && name !== "ungrouped") {
+        const isPlatform = field === "platform";
         wx.showActionSheet({
-          itemList: ["重命名", "删除分组"],
+          itemList: [isPlatform ? "重命名平台" : "重命名", isPlatform ? "删除平台" : "删除分组"],
           success: (res) => {
-            if (res.tapIndex === 0) this.renameGroup(group);
-            else if (res.tapIndex === 1) this.deleteGroup(group);
+            if (res.tapIndex === 0) this.renameGroup(name, field);
+            else if (res.tapIndex === 1) this.deleteGroup(name, field);
           },
         });
       }
     }
   },
 
-  renameGroup(oldName) {
+  renameGroup(oldName, field) {
+    const isPlatform = field === "platform";
     wx.showModal({
-      title: "重命名分组",
+      title: isPlatform ? "重命名平台" : "重命名分组",
       editable: true,
       placeholderText: "输入新名称",
       content: oldName,
@@ -1847,22 +1868,24 @@ Page({
         const newNameStr = res.content.trim().slice(0, 20);
         if (!newNameStr || newNameStr === oldName) return;
         try {
-          await api.holdingRenameGroup(oldName, newNameStr);
-          // 同步本地缓存
-          const cached = this._getCachedGroups();
+          await api.holdingRenameGroup(oldName, newNameStr, field);
+          // 同步本地缓存（平台用 local_platforms）
+          const key = isPlatform ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY;
+          const cached = isPlatform ? this._getCachedPlatforms() : this._getCachedGroups();
           const idx = cached.indexOf(oldName);
           if (idx >= 0) cached[idx] = newNameStr;
           else if (!cached.includes(newNameStr)) cached.push(newNameStr);
-          wx.setStorageSync(GROUPS_CACHE_KEY, cached);
-          // 立即更新本地 groups
-          const idx2 = this.data.groups.indexOf(oldName);
+          wx.setStorageSync(key, cached);
+          // 立即更新本地列表
+          const list = this._dragList(field);
+          const idx2 = list.indexOf(oldName);
           if (idx2 >= 0) {
-            const gs = [...this.data.groups];
-            gs[idx2] = newNameStr;
-            this.setData({ groups: gs });
+            const next = [...list];
+            next[idx2] = newNameStr;
+            this._setDragList(field, next);
           }
-          if (this.data.activeGroup === oldName) {
-            this.setData({ activeGroup: newNameStr }, () => this.applyGroupFilter());
+          if (isPlatform ? this.data.activePlatform === oldName : this.data.activeGroup === oldName) {
+            this.setData(isPlatform ? { activePlatform: newNameStr } : { activeGroup: newNameStr }, () => this.applyGroupFilter());
           }
           wx.showToast({ title: "已重命名", icon: "success" });
           wx.removeStorageSync("portfolio_cache");
@@ -1875,22 +1898,24 @@ Page({
     });
   },
 
-  deleteGroup(group) {
+  deleteGroup(group, field) {
+    const isPlatform = field === "platform";
     wx.showModal({
-      title: "删除分组",
-      content: `确定删除「${group}」分组吗？组内持仓将变为「未分组」`,
+      title: isPlatform ? "删除平台" : "删除分组",
+      content: isPlatform
+        ? `确定删除「${group}」平台吗？该平台下的持仓会变为「未分配」，持仓数据不删`
+        : `确定删除「${group}」分组吗？组内持仓将变为「未分组」`,
       success: async (res) => {
         if (!res.confirm) return;
         try {
-          await api.holdingDeleteGroup(group);
-          // 同步本地缓存
-          const cached = this._getCachedGroups().filter(g => g !== group);
-          wx.setStorageSync(GROUPS_CACHE_KEY, cached);
-          // 从当前 groups 中移除（防止 _mergeGroups 加回来）
-          const groups = this.data.groups.filter(g => g !== group);
-          this.setData({ groups });
-          if (this.data.activeGroup === group) {
-            this.setData({ activeGroup: "all" }, () => this.applyGroupFilter());
+          await api.holdingDeleteGroup(group, field);
+          // 同步本地缓存 + 从当前列表移除（防止合并逻辑再加回来）
+          const key = isPlatform ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY;
+          const cached = (isPlatform ? this._getCachedPlatforms() : this._getCachedGroups()).filter(g => g !== group);
+          wx.setStorageSync(key, cached);
+          this._setDragList(field, this._dragList(field).filter(g => g !== group));
+          if (isPlatform ? this.data.activePlatform === group : this.data.activeGroup === group) {
+            this.setData(isPlatform ? { activePlatform: "all" } : { activeGroup: "all" }, () => this.applyGroupFilter());
           }
           wx.showToast({ title: "已删除", icon: "success" });
           wx.removeStorageSync("portfolio_cache");

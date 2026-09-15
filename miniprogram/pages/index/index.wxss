@@ -182,6 +182,7 @@
 .platform-tab.active{color:#1A1A1A;font-weight:700}
 .platform-tab.active::after{content:'';position:absolute;left:24rpx;right:24rpx;bottom:8rpx;height:6rpx;border-radius:3rpx;background:var(--primary)}
 .platform-add{color:#BBB;font-size:30rpx;padding:22rpx 20rpx 20rpx}
+.platform-tab.dragging{opacity:.85;z-index:10}
 .ps-tip{padding:8rpx 28rpx 24rpx;font-size:20rpx;color:#BBB;line-height:1.5}
 .group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0;display:flex;align-items:center}
 .group-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}

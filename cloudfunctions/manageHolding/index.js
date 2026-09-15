@@ -112,16 +112,19 @@ exports.main = async (event) => {
         const newName = (newGroup || "").trim().slice(0, 20);
         if (!newName) return { code: 400, msg: "新分组名不能为空" };
         const oldName = group.trim();
+        const rf = event.field === "platform" ? "platform" : "group";
         await db.collection("holdings")
-          .where({ _openid: OPENID, group: oldName }).update({ data: { group: newName } });
+          .where({ _openid: OPENID, [rf]: oldName }).update({ data: { [rf]: newName } });
         return { code: 0, msg: "已重命名" };
       }
       case "deleteGroup": {
         if (!group || typeof group !== "string") return { code: 400, msg: "缺少分组名" };
         const name = group.trim();
+        // field=platform 时清空平台归属（持仓变成"未分配"），不删数据
+        const df = event.field === "platform" ? "platform" : "group";
         await db.collection("holdings")
-          .where({ _openid: OPENID, group: name }).update({ data: { group: "" } });
-        return { code: 0, msg: "已删除分组" };
+          .where({ _openid: OPENID, [df]: name }).update({ data: { [df]: "" } });
+        return { code: 0, msg: df === "platform" ? "已删除平台" : "已删除分组" };
       }
       default:
         return { code: 400, msg: "未知操作" };

@@ -89,7 +89,17 @@
             <view class="platform-tab {{activePlatform === 'summary' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="summary">账户汇总</view>
             <view class="platform-tab {{activePlatform === 'all' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="all">全部</view>
             <block wx:for="{{platformList}}" wx:key="*this">
-              <view class="platform-tab {{activePlatform === item ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="{{item}}">{{item}}</view>
+              <view
+                class="platform-tab {{activePlatform === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
+                style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
+                bind:tap="onPlatformSwitch"
+                bind:touchstart="onGroupTouchStart"
+                bind:touchmove="onGroupTouchMove"
+                bind:touchend="onGroupTouchEnd"
+                data-platform="{{item}}"
+                data-field="platform"
+                data-index="{{index}}"
+              >{{item}}</view>
             </block>
             <view class="platform-tab platform-add" bind:tap="onAddPlatform">＋</view>
           </scroll-view>
