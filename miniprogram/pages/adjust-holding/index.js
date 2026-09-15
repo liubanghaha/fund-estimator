@@ -50,6 +50,11 @@ Page({
 
   async loadHoldings() {
     try {
+      // 从详情页"分平台明细 → 加减仓"进来时会带上要操作的那一笔
+      try {
+        const pre = wx.getStorageSync("adjust_prefill_holding");
+        if (pre) { this._prefillId = pre; wx.removeStorageSync("adjust_prefill_holding"); }
+      } catch (e) { /* ignore */ }
       const res = await api.holdingList();
       const data = (res.result && res.result.code === 0 && res.result.data) || [];
       this.setData({
@@ -67,6 +72,13 @@ Page({
     const holdings = this.data.holdings;
     if (!ocrName || holdings.length === 0) return -1;
 
+    // 同一基金多笔（多平台/同平台多笔）：优先用进页面时指定的那一笔
+    if (this._prefillId) {
+      const pre = holdings.find((h) => h._id === this._prefillId);
+      if (pre && pre.fundName && ocrName && pre.fundName.includes(ocrName)) {
+        return holdings.indexOf(pre);
+      }
+    }
     // 第1层：直接包含
     let idx = holdings.findIndex((h) =>
       h.fundName.includes(ocrName) || ocrName.includes(h.fundName)
@@ -314,15 +326,16 @@ Page({
       wx.showToast({ title: '暂无持仓，请先添加', icon: 'none' });
       return;
     }
-    const names = holdings.map(h => h.fundName);
+    const names = holdings.map(h => this._label(h));
     wx.showActionSheet({
       itemList: [...names, '重新截图'],
-      success: (res) => {
+      success: async (res) => {
         if (res.tapIndex === names.length) {
           this.onImportScreenshot();
           return;
         }
-        const h = holdings[res.tapIndex];
+        const picked = holdings[res.tapIndex];
+        const h = (await this._resolveRecord(picked.fundCode)) || picked;
         wx.showModal({
           title: h.fundName,
           editable: true,
@@ -341,6 +354,30 @@ Page({
         });
       },
     });
+  },
+
+  // 同一基金多笔 → 先选是哪一笔：带 prefill 直接用，否则弹平台选择
+  async _resolveRecord(fundCode) {
+    const list = this.data.holdings.filter((h) => h.fundCode === fundCode);
+    if (list.length <= 1) return list[0] || null;
+    if (this._prefillId) {
+      const hit = list.find((h) => h._id === this._prefillId);
+      if (hit) return hit;
+    }
+    return new Promise((resolve) => {
+      const labels = list.map((h) => `${h.platform || h.group || "未指定"} · ${h._currentShares} 份`);
+      wx.showActionSheet({
+        itemList: labels,
+        success: (r) => resolve(list[r.tapIndex] || null),
+        fail: () => resolve(null),
+      });
+    });
+  },
+
+  // 选择器里的名字：同一基金多笔时补平台名，避免两行一模一样
+  _label(h) {
+    const dup = this.data.holdings.filter((x) => x.fundCode === h.fundCode).length > 1;
+    return dup ? `${h.fundName}（${h.platform || h.group || "未指定"}）` : h.fundName;
   },
 
   async processManualAmount(h, amount) {

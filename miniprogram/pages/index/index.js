@@ -1448,9 +1448,12 @@ Page({
     // 行尾标签：全部里显示平台（区分同基金多平台），平台 tab 里显示基金分组
     rows.forEach(r => {
       const uniq = [...new Set((r._members || [r]).map(x => x.platform).filter(Boolean))];
-      // 全部里标平台（"未分配"不标）；平台 tab 里标基金分组（分组也在筛时就不重复标了）
+      // 全部里标平台；还没分平台的持仓回退标基金分组（否则老用户在"全部"里看不到任何标签）
+      // 平台 tab 里标基金分组（分组也在筛时就不重复标了）
       r._tag = activePlatform === "all"
-        ? uniq.slice(0, 2).join(" · ") + (uniq.length > 2 ? ` +${uniq.length - 2}` : "")
+        ? (uniq.length
+            ? uniq.slice(0, 2).join(" · ") + (uniq.length > 2 ? ` +${uniq.length - 2}` : "")
+            : (r.group || ""))
         : (activeGroup === "all" && r._multi === 1 ? (r.group || "") : "");
     });
     return this.sortHoldings(rows, this.data.sortField, this.data.sortOrder);

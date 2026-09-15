@@ -45,7 +45,7 @@ exports.main = async (event) => {
     if (holdings.length === 0) {
       return {
         code: 0,
-        data: { holdings: [], totalAmount: "0.00", todayProfit: "0.00",
+        data: { holdings: [], platforms: [], totalAmount: "0.00", todayProfit: "0.00",
           todayProfitRate: "0.00", totalReturn: "0.00", totalReturnRate: "0.00", updateTime: "" },
       };
     }
