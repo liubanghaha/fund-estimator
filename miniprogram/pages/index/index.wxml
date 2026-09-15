@@ -105,7 +105,6 @@
         <view class="asset-overview" bind:tap="onTapProfit">
           <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
-          <view wx:if="{{cardScopeLabel}}" class="group-badge">{{cardScopeLabel}}</view>
           <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
           <view class="asset-value {{amountVisible ? (cardSummary ? (cardSummary.todayProfit > 0 ? 'up' : cardSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
             {{amountVisible ? (cardSummary ? fmt.money(cardSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
