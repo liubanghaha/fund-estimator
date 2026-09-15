@@ -391,15 +391,14 @@ Page({
         const counts = this._countGroups(scoped);
         const platformList = this._mergePlatforms(cached.platforms || []);
         const platformRows = this._platformRows(holdings, cached.platforms || []);
-        const platformSummary = this._platformSummary(activePlatform, cached.platforms || []);
+        const cardSummary = this._cardSummary(scoped);
         // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
         const groups = this._mergeGroups(cached.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, cached.groups || []);
         this.setData({
-          holdings, displayHoldings, groupCounts: counts, groups, groupSummary, platformRows, platformList, platformSummary,
+          holdings, displayHoldings, groupCounts: counts, groups, groupSummary, platformRows, platformList,
           platformsData: cached.platforms || [],
-          cardSummary: platformSummary || groupSummary,
-          cardScopeLabel: platformSummary ? activePlatform : (groupSummary ? activeGroup : ""),
+          cardSummary,
           allGroupsData: cached.groups || [],
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
@@ -657,17 +656,16 @@ Page({
         const counts = this._countGroups(scoped);
         const platformList = this._mergePlatforms(d.platforms || []);
         const platformRows = this._platformRows(holdings, d.platforms || []);
-        const platformSummary = this._platformSummary(activePlatform, d.platforms || []);
+        const cardSummary = this._cardSummary(scoped);
         // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
         const groups = this._mergeGroups(d.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, d.groups || []);
         this.setData({
           loadError: false, stale: false, dataReady: true,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
-          groupSummary, platformRows, platformList, platformSummary,
+          groupSummary, platformRows, platformList,
           platformsData: d.platforms || [],
-          cardSummary: platformSummary || groupSummary,
-          cardScopeLabel: platformSummary ? activePlatform : (groupSummary ? activeGroup : ""),
+          cardSummary,
           totalAmount: d.totalAmount,
           todayProfit: d.todayProfit,
           todayProfitRate: d.todayProfitRate,
@@ -1423,9 +1421,7 @@ Page({
       groupCounts: this._countGroups(this._scopeHoldings(holdings)),
       groupSummary: this._computeGroupSummary(activeGroup),
       platformRows: this._platformRows(holdings, this.data.platformsData || []),
-      platformSummary: this._platformSummary(activePlatform, this.data.platformsData || []),
-      cardSummary: this._platformSummary(activePlatform, this.data.platformsData || []) || this._computeGroupSummary(activeGroup),
-      cardScopeLabel: this._platformSummary(activePlatform, this.data.platformsData || []) ? activePlatform : (this._computeGroupSummary(activeGroup) ? activeGroup : ""),
+      cardSummary: this._cardSummary(this._scopeHoldings(holdings)),
     });
   },
 
@@ -1496,10 +1492,33 @@ Page({
     return rows;
   },
 
-  // 资产卡口径：选中某平台时显示该平台合计，其余显示总额
-  _platformSummary(activePlatform, platformData) {
-    if (!activePlatform || activePlatform === "all" || activePlatform === "summary") return null;
-    return (platformData || []).find(p => p.name === activePlatform) || null;
+  // 资产卡口径 = 当前"平台 + 基金分组"范围内的合计（与列表可见范围一致）。
+  // 服务端只分别给"平台"和"分组"的汇总，两者叠加时必须在客户端按记录合计
+  _cardSummary(scopedList) {
+    const { activeGroup, activePlatform } = this.data;
+    if (activePlatform === "all" && activeGroup === "all") return null; // 都没筛 → 用总额
+    let list = scopedList || [];
+    if (activeGroup === "ungrouped") list = list.filter(h => !h.group);
+    else if (activeGroup !== "all") list = list.filter(h => h.group === activeGroup);
+    return this._sumHoldings(list);
+  },
+
+  _sumHoldings(list) {
+    const num = (v) => parseFloat(v) || 0;
+    let amount = 0, profit = 0, ret = 0, cost = 0;
+    list.forEach(h => {
+      const mv = num(h.marketValue), tp = num(h.todayProfit), tr = num(h.totalReturn);
+      amount += mv; profit += tp; ret += tr;
+      cost += mv - tr; // 成本 = 市值 − 累计收益
+    });
+    const yesterday = amount - profit;
+    return {
+      totalAmount: amount.toFixed(2),
+      todayProfit: profit.toFixed(2),
+      todayProfitRate: yesterday > 0 ? (profit / yesterday * 100).toFixed(2) : "0.00",
+      totalReturn: ret.toFixed(2),
+      totalReturnRate: cost > 0 ? (ret / cost * 100).toFixed(2) : "0.00",
+    };
   },
 
   // 同一基金多笔（同平台多笔/多平台各一笔）→ 合成一行。金额相加、累计收益率按成本加权；

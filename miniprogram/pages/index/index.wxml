@@ -202,7 +202,7 @@
             <view class="table-inner">
               <view class="t-row t-head">
                 <!-- 名称列（管理入口已挪到标签栏右端） -->
-                <view class="t-cell t-name"></view>
+                <view class="t-cell t-name"><text class="t-name-label">基金名称</text></view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
