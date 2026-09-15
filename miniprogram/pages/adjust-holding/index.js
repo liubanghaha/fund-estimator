@@ -57,7 +57,7 @@ Page({
       if (!list.length) return "";
       const pick = await new Promise((resolve) => {
         wx.showActionSheet({
-          itemList: [...list, "＋ 新建平台", "不指定平台"],
+          itemList: [...list, "＋ 新建账户", "不指定账户"],
           success: (r) => resolve(list[r.tapIndex] || ""),
           fail: () => resolve(null),
         });
@@ -112,7 +112,7 @@ Page({
     const holdings = this.data.holdings;
     if (!ocrName || holdings.length === 0) return -1;
 
-    // 同一基金多笔（多平台/同平台多笔）：优先用进页面时指定的那一笔
+    // 同一基金多笔（多账户/同平台多笔）：优先用进页面时指定的那一笔
     if (this._prefillId) {
       const pre = holdings.find((h) => h._id === this._prefillId);
       if (pre && pre.fundName && ocrName && pre.fundName.includes(ocrName)) {

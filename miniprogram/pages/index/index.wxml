@@ -187,8 +187,8 @@
         <!-- 账户汇总：每个平台一行，点行切到该平台 -->
         <view wx:if="{{activePlatform === 'summary'}}" class="platform-summary">
           <view class="ps-row ps-row-head">
-            <text class="ps-head-title">平台账户</text>
-            <text class="ps-head-hint">点平台查看该平台持仓</text>
+            <text class="ps-head-title">账户</text>
+            <text class="ps-head-hint">点账户查看该账户持仓</text>
           </view>
           <view class="ps-row" wx:for="{{platformRows}}" wx:key="name" bind:tap="onPlatformTap" data-name="{{item.name}}">
             <view class="ps-main">
@@ -203,8 +203,8 @@
             </view>
             <view class="ps-arrow">›</view>
           </view>
-          <view wx:if="{{!platformRows.length}}" class="ps-empty">还没有平台：新增持有时选一个平台，或点顶部「+」新建</view>
-          <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置平台」归入某个平台</view>
+          <view wx:if="{{!platformRows.length}}" class="ps-empty">还没有账户：新增持有时选一个账户，或点顶部「+」新建</view>
+          <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置账户」归入某个账户</view>
         </view>
 
         <view wx:if="{{displayHoldings.length > 0 && activePlatform !== 'summary'}}" class="holdings-section">
@@ -357,14 +357,14 @@
       <!-- 两个维度：基金分组（策略）/ 平台（账户） -->
       <view class="picker-field-row">
         <text class="picker-field-chip {{groupPickerField === 'group' ? 'active' : ''}}" bind:tap="onPickerFieldTap" data-field="group">基金分组</text>
-        <text class="picker-field-chip {{groupPickerField === 'platform' ? 'active' : ''}}" bind:tap="onPickerFieldTap" data-field="platform">平台</text>
+        <text class="picker-field-chip {{groupPickerField === 'platform' ? 'active' : ''}}" bind:tap="onPickerFieldTap" data-field="platform">账户</text>
       </view>
       <scroll-view scroll-y style="max-height:480rpx;margin:12rpx 0 16rpx">
-        <view wx:if="{{groupPickerOptions.length === 0}}" class="group-picker-empty">{{groupPickerField === 'platform' ? '暂无平台，点下方新建' : '暂无分组，请先新建'}}</view>
+        <view wx:if="{{groupPickerOptions.length === 0}}" class="group-picker-empty">{{groupPickerField === 'platform' ? '暂无账户，点下方新建' : '暂无分组，请先新建'}}</view>
         <view wx:for="{{groupPickerOptions}}" wx:key="*this" class="group-picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
-        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">{{groupPickerField === 'platform' ? '📂 不指定平台' : '📂 未分组'}}</view>
+        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">{{groupPickerField === 'platform' ? '📂 不指定账户' : '📂 未分组'}}</view>
       </scroll-view>
-      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建{{groupPickerField === 'platform' ? '平台' : '分组'}}</view>
+      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建{{groupPickerField === 'platform' ? '账户' : '分组'}}</view>
       <view class="col-edit-close" bind:tap="onCloseGroupPicker" style="margin-top:16rpx;background:#F5F5F5;color:#666">取消</view>
     </view>
   </view>

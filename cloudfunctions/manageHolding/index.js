@@ -48,7 +48,7 @@ exports.main = async (event) => {
         await db.collection("holdings")
           .where({ _id: id, _openid: OPENID }).remove();
         if (fundCode) {
-          // 只在该基金已无其它持仓记录时清流水：多平台场景下删一个平台不该动另一个平台的记录
+          // 只在该基金已无其它持仓记录时清流水：多账户场景下删一个平台不该动另一个平台的记录
           const rest = await db.collection("holdings")
             .where({ _openid: OPENID, fundCode }).count();
           if (rest.total === 0) {
@@ -73,14 +73,14 @@ exports.main = async (event) => {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少fundCode" };
         const res = await db.collection("holdings")
           .where({ _openid: OPENID, fundCode: data.fundCode }).get();
-        // 同一基金可能有多笔（多平台各一笔）：data 保留首条兼容旧客户端，list 给新客户端做合计与明细
+        // 同一基金可能有多笔（多账户各一笔）：data 保留首条兼容旧客户端，list 给新客户端做合计与明细
         return { code: 0, data: res.data[0] || null, list: res.data || [] };
       }
       // ---- 分组管理 ----
       case "setGroup": {
         // field: group(基金分组，默认) | platform(平台)——平台是独立的一级维度
         const field = event.field === "platform" ? "platform" : "group";
-        // ids = 按记录移动（同一基金多平台时只动选中的那一笔）；fundCodes 保留给旧客户端
+        // ids = 按记录移动（同一基金多账户时只动选中的那一笔）；fundCodes 保留给旧客户端
         if (ids && Array.isArray(ids) && ids.length > 0) {
           if (typeof group !== "string") return { code: 400, msg: "缺少分组名称" };
           const name = group.trim().slice(0, 20);
@@ -124,7 +124,7 @@ exports.main = async (event) => {
         const df = event.field === "platform" ? "platform" : "group";
         await db.collection("holdings")
           .where({ _openid: OPENID, [df]: name }).update({ data: { [df]: "" } });
-        return { code: 0, msg: df === "platform" ? "已删除平台" : "已删除分组" };
+        return { code: 0, msg: df === "platform" ? "已删除账户" : "已删除分组" };
       }
       default:
         return { code: 400, msg: "未知操作" };

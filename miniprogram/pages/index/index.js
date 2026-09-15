@@ -1363,7 +1363,7 @@ Page({
     const self = this;
     const row = (this.data.displayHoldings || []).find((x) => x._id === id);
     const members = (row && row._members) || [];
-    // 同一基金多笔（多平台/同平台多笔）在"全部"里合成一行 → 操作前先选是哪一笔
+    // 同一基金多笔（多账户/同平台多笔）在"全部"里合成一行 → 操作前先选是哪一笔
     if (members.length > 1) {
       wx.showActionSheet({
         itemList: members.map((m) => `${m.platform || "未分配"} · ${(m.shares || 0)} 份`),
@@ -1383,7 +1383,7 @@ Page({
     const self = this;
     const id = h._id;
     wx.showActionSheet({
-      itemList: ['编辑', '设置提醒', '设置平台', '移动到分组', '删除'],
+      itemList: ['编辑', '设置提醒', '设置账户', '移动到分组', '删除'],
       success(res) {
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
@@ -1393,7 +1393,7 @@ Page({
           const s = settings[h.fundCode] || { upper: 3, lower: -3 };
           self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || ''), alertEditPeAlert: !!s.peAlert });
         } else if (res.tapIndex === 2) {
-          self.moveHoldingToGroup(null, null, { ids: [id], field: "platform", title: "设置平台" });
+          self.moveHoldingToGroup(null, null, { ids: [id], field: "platform", title: "设置账户" });
         } else if (res.tapIndex === 3) {
           self.moveHoldingToGroup(null, null, { ids: [id], field: "group", title: "移动到分组" });
         } else if (res.tapIndex === 4) {
@@ -1449,7 +1449,7 @@ Page({
     else if (activeGroup !== "all") list = list.filter(h => h.group === activeGroup);
     // 批量模式不合并：每行 = 一笔，删除/移动分组直接落到这一笔，不用再选平台
     const rows = batchMode ? list : this.formatHoldings(this.mergeByFund(list), totalAmount);
-    // 行尾标签：全部里显示平台（区分同基金多平台），平台 tab 里显示基金分组
+    // 行尾标签：全部里显示平台（区分同基金多账户），平台 tab 里显示基金分组
     rows.forEach(r => {
       const uniq = [...new Set((r._members || [r]).map(x => x.platform).filter(Boolean))];
       // 全部里标平台；还没分平台的持仓回退标基金分组（否则老用户在"全部"里看不到任何标签）
@@ -1463,7 +1463,7 @@ Page({
     return this.sortHoldings(rows, this.data.sortField, this.data.sortOrder);
   },
 
-  // tab 上的只数：全部按"基金只数"算（同一基金多平台合成一行只算 1 只）
+  // tab 上的只数：全部按"基金只数"算（同一基金多账户合成一行只算 1 只）
   _countGroups(holdings) {
     const counts = { all: new Set(holdings.map(h => h.fundCode)).size, ungrouped: 0, records: holdings.length };
     for (const h of holdings) {
@@ -1529,7 +1529,7 @@ Page({
     };
   },
 
-  // 同一基金多笔（同平台多笔/多平台各一笔）→ 合成一行。金额相加、累计收益率按成本加权；
+  // 同一基金多笔（同平台多笔/多账户各一笔）→ 合成一行。金额相加、累计收益率按成本加权；
   // 基金级字段（涨跌幅/温度/回撤/净值日期）各笔本就相同，取首条；_members 留给"操作前先选平台"用
   mergeByFund(list) {
     const map = new Map();
@@ -1604,12 +1604,12 @@ Page({
     this.setData({ activePlatform: target }, () => this.applyGroupFilter());
   },
 
-  // 顶部栏「+」：新建平台（与新建分组同款弹层）
+  // 顶部栏「+」：新建账户（与新建分组同款弹层）
   onAddPlatform() {
     this.showGroupInput((name) => {
-      wx.showToast({ title: `已创建平台「${name}」，设置平台后持仓会归入`, icon: "none", duration: 2000 });
+      wx.showToast({ title: `已创建账户「${name}」，设置账户后持仓会归入`, icon: "none", duration: 2000 });
       this._savePlatformToCache(name);
-    }, "新建平台", "输入平台名称，如：支付宝");
+    }, "新建账户", "输入账户名称，如：支付宝");
   },
 
   // 平台列表：服务端（有持仓的平台）+ 本地新建的空平台（与分组的 local_groups 同款，
@@ -1706,7 +1706,7 @@ Page({
       groupPickerCodes: codes || [],
       groupPickerIds: o.ids || [],
       groupPickerField: field,
-      groupPickerTitle: o.title || (field === "platform" ? "设置平台" : "移动到分组"),
+      groupPickerTitle: o.title || (field === "platform" ? "设置账户" : "移动到分组"),
       groupPickerOptions: field === "platform" ? (this.data.platformList || []) : (this.data.groups || []),
     });
   },
@@ -1717,7 +1717,7 @@ Page({
     if (field === this.data.groupPickerField) return;
     this.setData({
       groupPickerField: field,
-      groupPickerTitle: field === "platform" ? "设置平台" : "移动到分组",
+      groupPickerTitle: field === "platform" ? "设置账户" : "移动到分组",
       groupPickerOptions: field === "platform" ? (this.data.platformList || []) : (this.data.groups || []),
     });
   },
@@ -1741,7 +1741,7 @@ Page({
       else this._saveGroupToCache(groupName);
       this.setData({ showGroupPicker: false });
       this.doMoveToGroup(groupPickerCodes, groupName, groupPickerField, groupPickerIds);
-    }, isPlatform ? "新建平台" : "新建分组", isPlatform ? "输入平台名称，如：支付宝" : "输入分组名称，如：科技类");
+    }, isPlatform ? "新建账户" : "新建分组", isPlatform ? "输入账户名称，如：支付宝" : "输入分组名称，如：科技类");
   },
 
   async doMoveToGroup(codes, group, field, ids) {
@@ -1854,7 +1854,7 @@ Page({
       if (name && name !== "all" && name !== "ungrouped") {
         const isPlatform = field === "platform";
         wx.showActionSheet({
-          itemList: [isPlatform ? "重命名平台" : "重命名", isPlatform ? "删除平台" : "删除分组"],
+          itemList: [isPlatform ? "重命名账户" : "重命名", isPlatform ? "删除账户" : "删除分组"],
           success: (res) => {
             if (res.tapIndex === 0) this.renameGroup(name, field);
             else if (res.tapIndex === 1) this.deleteGroup(name, field);
@@ -1867,7 +1867,7 @@ Page({
   renameGroup(oldName, field) {
     const isPlatform = field === "platform";
     wx.showModal({
-      title: isPlatform ? "重命名平台" : "重命名分组",
+      title: isPlatform ? "重命名账户" : "重命名分组",
       editable: true,
       placeholderText: "输入新名称",
       content: oldName,
@@ -1909,9 +1909,9 @@ Page({
   deleteGroup(group, field) {
     const isPlatform = field === "platform";
     wx.showModal({
-      title: isPlatform ? "删除平台" : "删除分组",
+      title: isPlatform ? "删除账户" : "删除分组",
       content: isPlatform
-        ? `确定删除「${group}」平台吗？该平台下的持仓会变为「未分配」，持仓数据不删`
+        ? `确定删除「${group}」平台吗？该账户下的持仓会变为「未分配」，持仓数据不删`
         : `确定删除「${group}」分组吗？组内持仓将变为「未分组」`,
       success: async (res) => {
         if (!res.confirm) return;

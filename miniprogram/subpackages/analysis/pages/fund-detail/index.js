@@ -898,7 +898,7 @@ Page({
     try {
       const res = await api.holdingCheck(this.data.fundCode);
       if (!res.result || res.result.code !== 0) return;
-      // 同一基金可能有多笔（多平台各一笔）：list 为新版返回，data 兼容旧版（单条）
+      // 同一基金可能有多笔（多账户各一笔）：list 为新版返回，data 兼容旧版（单条）
       const list = res.result.list && res.result.list.length
         ? res.result.list
         : (res.result.data ? [res.result.data] : []);
@@ -923,7 +923,7 @@ Page({
   },
 
   // 多笔 → 合计成"一笔"：份额相加、买入净值按份额加权、市值/收益相加。
-  // 口径与单笔完全一致（enrichHoldingData 拿到合计后照原逻辑算），页面头部不会因为多平台而算错
+  // 口径与单笔完全一致（enrichHoldingData 拿到合计后照原逻辑算），页面头部不会因为多账户而算错
   _aggregateHoldings(list) {
     const num = (v) => parseFloat(v) || 0;
     const shares = list.reduce((s, r) => s + num(r.shares || r.amount), 0);

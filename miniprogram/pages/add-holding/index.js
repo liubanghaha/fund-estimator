@@ -417,18 +417,18 @@ Page({
         let local = [];
         try { local = wx.getStorageSync("local_platforms") || []; } catch (e) { /* ignore */ }
         const list = [...new Set([...local, ...serverList])];
-        const items = [...list, "＋ 新建平台", "不指定平台"];
+        const items = [...list, "＋ 新建账户", "不指定账户"];
         wx.showActionSheet({
           itemList: items,
           success: (r) => {
             const pick = items[r.tapIndex];
-            if (pick === "＋ 新建平台") {
+            if (pick === "＋ 新建账户") {
               wx.showModal({
-                title: "新建平台", editable: true, placeholderText: "输入平台名称，如：支付宝",
+                title: "新建账户", editable: true, placeholderText: "输入账户名称，如：支付宝",
                 success: (m) => resolve(m.confirm && m.content ? m.content.trim().slice(0, 20) : null),
                 fail: () => resolve(null),
               });
-            } else if (pick === "不指定平台") resolve("");
+            } else if (pick === "不指定账户") resolve("");
             else resolve(pick);
           },
           fail: () => resolve(null),
@@ -600,7 +600,7 @@ Page({
           const goNew = await new Promise((resolve) => {
             wx.showModal({
               title: "该基金已有持仓",
-              content: `已有 ${existList.length} 笔。不同平台可以分开记；同一平台加仓建议用「加减仓」，成本更准。`,
+              content: `已有 ${existList.length} 笔。不同账户可以分开记；同一平台加仓建议用「加减仓」，成本更准。`,
               confirmText: "新增一笔", cancelText: "去编辑",
               success: (r) => resolve(!!r.confirm),
               fail: () => resolve(false),
