@@ -57,7 +57,7 @@ Page({
       if (!list.length) return "";
       const pick = await new Promise((resolve) => {
         wx.showActionSheet({
-          itemList: [...list, "不指定平台"],
+          itemList: [...list, "＋ 新建平台", "不指定平台"],
           success: (r) => resolve(list[r.tapIndex] || ""),
           fail: () => resolve(null),
         });

@@ -412,7 +412,11 @@ Page({
   _pickPlatform() {
     return new Promise((resolve) => {
       api.holdingGetPlatforms().then((res) => {
-        const list = (res.result && res.result.code === 0 && res.result.data) || [];
+        const serverList = (res.result && res.result.code === 0 && res.result.data) || [];
+        // 服务端只统计"已被持仓使用"的平台 → 必须并上本地新建的（否则新建但未挂持仓的平台不出现）
+        let local = [];
+        try { local = wx.getStorageSync("local_platforms") || []; } catch (e) { /* ignore */ }
+        const list = [...new Set([...local, ...serverList])];
         const items = [...list, "＋ 新建平台", "不指定平台"];
         wx.showActionSheet({
           itemList: items,
