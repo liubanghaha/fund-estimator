@@ -110,7 +110,7 @@ Page({
 
   // ========== 截图导入 ==========
 
-  onImportScreenshot() {
+  _doImportScreenshot() {
     wx.chooseMedia({
       count: 1, mediaType: ["image"],
       sourceType: ["album", "camera"], sizeType: ["compressed"],
@@ -389,14 +389,19 @@ Page({
     wx.navigateTo({ url: `/pages/add-holding/index?editScreenshot=1&idx=${idx}` });
   },
 
-  // 需要时问平台：已有平台列表为空 → 返回 ""（跳过，不打扰没用平台的用户）
+  // 需要时问平台：用户"建过平台"才问（含新建但还没挂持仓的平台——它只在本地列表里），
+  // 一个平台都没有则返回 ""（跳过，不打扰没用平台的用户）
   async _askPlatformIfNeeded() {
     if (this._urlPlatform) return this._urlPlatform;
+    let serverList = [];
     try {
       const res = await api.holdingGetPlatforms();
-      const list = (res.result && res.result.code === 0 && res.result.data) || [];
-      if (!list.length) return "";
-    } catch (e) { return ""; }
+      serverList = (res.result && res.result.code === 0 && res.result.data) || [];
+    } catch (e) { /* 网络失败按本地判断 */ }
+    let local = [];
+    try { local = wx.getStorageSync("local_platforms") || []; } catch (e) { /* ignore */ }
+    const list = [...new Set([...local, ...serverList])];
+    if (!list.length) return "";
     return await this._pickPlatform();
   },
 
@@ -423,6 +428,13 @@ Page({
         });
       }).catch(() => resolve(""));
     });
+  },
+
+  // 截图导入入口：先定平台再识别（与加减仓页一致），取消选平台则放弃本次导入
+  async onImportScreenshot() {
+    const platform = await this._askPlatformIfNeeded();
+    if (platform === null) return;
+    this._doImportScreenshot();
   },
 
   onRemoveScreenshot() {

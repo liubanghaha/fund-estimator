@@ -45,9 +45,15 @@ Page({
   // 导入前定平台：没建过平台直接跳过（不打扰）；带 platform 参数或已选过则不再问
   async _askPlatformForImport() {
     if (this._urlPlatform) return this._urlPlatform;
+    let serverList = [];
     try {
       const res = await api.holdingGetPlatforms();
-      const list = (res.result && res.result.code === 0 && res.result.data) || [];
+      serverList = (res.result && res.result.code === 0 && res.result.data) || [];
+    } catch (e) { /* 网络失败按本地判断 */ }
+    let local = [];
+    try { local = wx.getStorageSync("local_platforms") || []; } catch (e) { /* ignore */ }
+    try {
+      const list = [...new Set([...local, ...serverList])];
       if (!list.length) return "";
       const pick = await new Promise((resolve) => {
         wx.showActionSheet({
