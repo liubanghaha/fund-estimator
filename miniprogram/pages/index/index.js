@@ -82,6 +82,14 @@ Page({
     activeGroup: "all",
     groupCounts: {},
     groupSummary: null,
+    // 平台是与基金分组并行的一级维度：顶部平台栏切的是"哪个平台"，基金分组在该平台范围内再筛
+    activePlatform: "all",     // all | summary(账户汇总) | <平台名>
+    platformList: [],          // 平台名数组（顶部栏用）
+    platformRows: [],          // 账户汇总：各平台资产/当日收益/只数
+    platformSummary: null,     // 当前平台范围的合计（资产卡用；all/summary 时为 null = 全部）
+    platformsData: [],         // 服务端平台汇总原始数据（切平台时重算资产卡/汇总行）
+    cardSummary: null,         // 资产卡显示口径：平台优先，其次基金分组，都没有则显示总额
+    cardScopeLabel: "",        // 资产卡左上角的范围徽标（平台名 / 分组名）
     allGroupsData: [],
     // 分组拖拽
     dragging: false,
@@ -98,6 +106,10 @@ Page({
     groupEditFundName: '',
     showGroupPicker: false,
     groupPickerCodes: [],
+    groupPickerIds: [],       // 按记录移动（每行 = 一笔持仓）
+    groupPickerField: "group", // group（基金分组）| platform（平台）
+    groupPickerTitle: "移动到分组",
+    groupPickerOptions: [],
     // 分享卡片
     showShareCard: false,
     shareCardRendered: false,
@@ -372,22 +384,22 @@ Page({
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 与 fetchPortfolio 一致的合并渲染：displayHoldings/counts/groups 一次算好
-        const { activeGroup, sortField, sortOrder } = this.data;
-        let displayHoldings;
-        if (activeGroup === "all") displayHoldings = [...holdings];
-        else if (activeGroup === "ungrouped") displayHoldings = holdings.filter(h => !h.group);
-        else displayHoldings = holdings.filter(h => h.group === activeGroup);
-        displayHoldings = this.sortHoldings(displayHoldings, sortField, sortOrder);
-        const counts = { all: holdings.length, ungrouped: 0 };
-        for (const h of holdings) {
-          if (!h.group) counts.ungrouped++;
-          else counts[h.group] = (counts[h.group] || 0) + 1;
-        }
+        const { activeGroup, activePlatform } = this.data;
+        const scoped = this._scopeHoldings(holdings);
+        const displayHoldings = this._pickDisplay(holdings, cached.totalAmount);
+        const counts = this._countGroups(scoped);
+        const platformList = this._mergePlatforms(cached.platforms || []);
+        const platformRows = this._platformRows(holdings, cached.platforms || []);
+        const platformSummary = this._platformSummary(activePlatform, cached.platforms || []);
         // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
         const groups = this._mergeGroups(cached.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, cached.groups || []);
         this.setData({
-          holdings, displayHoldings, groupCounts: counts, groups, groupSummary,
+          holdings, displayHoldings, groupCounts: counts, groups, groupSummary, platformRows, platformList, platformSummary,
+          platformsData: cached.platforms || [],
+          cardSummary: platformSummary || groupSummary,
+          cardScopeLabel: platformSummary ? activePlatform : (groupSummary ? activeGroup : ""),
+          allGroupsData: cached.groups || [],
           totalAmount: cached.totalAmount,
           todayProfit: cached.todayProfit,
           todayProfitRate: cached.todayProfitRate,
@@ -638,24 +650,23 @@ Page({
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
         // 与主数据合并成一次 setData，避免多次渲染（原 3-4 次 setData）
-        const { activeGroup, sortField, sortOrder } = this.data;
-        let displayHoldings;
-        if (activeGroup === "all") displayHoldings = [...holdings];
-        else if (activeGroup === "ungrouped") displayHoldings = holdings.filter(h => !h.group);
-        else displayHoldings = holdings.filter(h => h.group === activeGroup);
-        displayHoldings = this.sortHoldings(displayHoldings, sortField, sortOrder);
-        const counts = { all: holdings.length, ungrouped: 0 };
-        for (const h of holdings) {
-          if (!h.group) counts.ungrouped++;
-          else counts[h.group] = (counts[h.group] || 0) + 1;
-        }
+        const { activeGroup, activePlatform } = this.data;
+        const scoped = this._scopeHoldings(holdings);
+        const displayHoldings = this._pickDisplay(holdings, d.totalAmount);
+        const counts = this._countGroups(scoped);
+        const platformList = this._mergePlatforms(d.platforms || []);
+        const platformRows = this._platformRows(holdings, d.platforms || []);
+        const platformSummary = this._platformSummary(activePlatform, d.platforms || []);
         // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
         const groups = this._mergeGroups(d.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, d.groups || []);
         this.setData({
           loadError: false, stale: false, dataReady: true,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
-          groupSummary,
+          groupSummary, platformRows, platformList, platformSummary,
+          platformsData: d.platforms || [],
+          cardSummary: platformSummary || groupSummary,
+          cardScopeLabel: platformSummary ? activePlatform : (groupSummary ? activeGroup : ""),
           totalAmount: d.totalAmount,
           todayProfit: d.todayProfit,
           todayProfitRate: d.todayProfitRate,
@@ -1341,13 +1352,32 @@ Page({
   },
 
   onLongPressHolding(e) {
-    const { id, code, name } = e.currentTarget.dataset;
+    const { id } = e.currentTarget.dataset;
     const self = this;
+    const row = (this.data.displayHoldings || []).find((x) => x._id === id);
+    const members = (row && row._members) || [];
+    // 同一基金多笔（多平台/同平台多笔）在"全部"里合成一行 → 操作前先选是哪一笔
+    if (members.length > 1) {
+      wx.showActionSheet({
+        itemList: members.map((m) => `${m.platform || "未分配"} · ${(m.shares || 0)} 份`),
+        success(res) {
+          const m = members[res.tapIndex];
+          if (m) self._openRowActions(m);
+        },
+      });
+      return;
+    }
+    self._openRowActions(members[0] || this.data.holdings.find((x) => x._id === id));
+  },
+
+  // 单笔持仓的操作菜单（编辑/提醒/平台/分组/删除）
+  _openRowActions(h) {
+    if (!h || !h._id) return;
+    const self = this;
+    const id = h._id;
     wx.showActionSheet({
-      itemList: ['编辑', '设置提醒', '移动到分组', '删除'],
+      itemList: ['编辑', '设置提醒', '设置平台', '移动到分组', '删除'],
       success(res) {
-        const h = self.data.holdings.find((x) => x._id === id);
-        if (!h) return;
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
@@ -1356,8 +1386,10 @@ Page({
           const s = settings[h.fundCode] || { upper: 3, lower: -3 };
           self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || ''), alertEditPeAlert: !!s.peAlert });
         } else if (res.tapIndex === 2) {
-          self.moveHoldingToGroup([h.fundCode], h.fundName);
+          self.moveHoldingToGroup(null, null, { ids: [id], field: "platform", title: "设置平台" });
         } else if (res.tapIndex === 3) {
+          self.moveHoldingToGroup(null, null, { ids: [id], field: "group", title: "移动到分组" });
+        } else if (res.tapIndex === 4) {
           wx.showModal({
             title: "确认删除",
             content: "确定要删除此条持仓吗？",
@@ -1384,18 +1416,110 @@ Page({
   // ========== 分组管理 ==========
 
   applyGroupFilter() {
-    const { holdings, activeGroup, sortField, sortOrder } = this.data;
-    let list;
-    if (activeGroup === "all") {
-      list = [...holdings];
-    } else if (activeGroup === "ungrouped") {
-      list = holdings.filter(h => !h.group);
-    } else {
-      list = holdings.filter(h => h.group === activeGroup);
+    const { holdings, totalAmount, activeGroup, activePlatform } = this.data;
+    this.setData({
+      displayHoldings: this._pickDisplay(holdings, totalAmount),
+      groupCounts: this._countGroups(this._scopeHoldings(holdings)),
+      groupSummary: this._computeGroupSummary(activeGroup),
+      platformRows: this._platformRows(holdings, this.data.platformsData || []),
+      platformSummary: this._platformSummary(activePlatform, this.data.platformsData || []),
+      cardSummary: this._platformSummary(activePlatform, this.data.platformsData || []) || this._computeGroupSummary(activeGroup),
+      cardScopeLabel: this._platformSummary(activePlatform, this.data.platformsData || []) ? activePlatform : (this._computeGroupSummary(activeGroup) ? activeGroup : ""),
+    });
+  },
+
+  // 当前平台范围下的持仓（平台是一级维度；all = 全部平台）
+  _scopeHoldings(holdings) {
+    const p = this.data.activePlatform;
+    if (!p || p === "all" || p === "summary") return holdings;
+    return holdings.filter(h => (h.platform || "未分配") === p);
+  },
+
+  // 当前要渲染的行：账户汇总不渲染表格；其余 = 平台范围内 → 基金分组 → 同一基金合并 → 排序
+  _pickDisplay(holdings, totalAmount) {
+    const { activeGroup, batchMode, activePlatform } = this.data;
+    if (activePlatform === "summary") return [];
+    let list = this._scopeHoldings(holdings);
+    if (activeGroup === "ungrouped") list = list.filter(h => !h.group);
+    else if (activeGroup !== "all") list = list.filter(h => h.group === activeGroup);
+    // 批量模式不合并：每行 = 一笔，删除/移动分组直接落到这一笔，不用再选平台
+    const rows = batchMode ? list : this.formatHoldings(this.mergeByFund(list), totalAmount);
+    // 行尾标签：全部里显示平台（区分同基金多平台），平台 tab 里显示基金分组
+    rows.forEach(r => {
+      const uniq = [...new Set((r._members || [r]).map(x => x.platform).filter(Boolean))];
+      // 全部里标平台（"未分配"不标）；平台 tab 里标基金分组（分组也在筛时就不重复标了）
+      r._tag = activePlatform === "all"
+        ? uniq.slice(0, 2).join(" · ") + (uniq.length > 2 ? ` +${uniq.length - 2}` : "")
+        : (activeGroup === "all" && r._multi === 1 ? (r.group || "") : "");
+    });
+    return this.sortHoldings(rows, this.data.sortField, this.data.sortOrder);
+  },
+
+  // tab 上的只数：全部按"基金只数"算（同一基金多平台合成一行只算 1 只）
+  _countGroups(holdings) {
+    const counts = { all: new Set(holdings.map(h => h.fundCode)).size, ungrouped: 0, records: holdings.length };
+    for (const h of holdings) {
+      if (!h.group) counts.ungrouped++;
+      else counts[h.group] = (counts[h.group] || 0) + 1;
     }
-    list = this.sortHoldings(list, sortField, sortOrder);
-    const extra = this._computeGroupSummary(activeGroup);
-    this.setData({ displayHoldings: list, groupSummary: extra });
+    return counts;
+  },
+
+  // 账户汇总：每个平台一行（资产/当日收益/收益率/只数）；末尾补"未分配"行（真有这类持仓时才出现）
+  _platformRows(holdings, platformData) {
+    const rows = (platformData || [])
+      .filter(p => p.name !== "未分配")
+      .map(p => ({
+        name: p.name, count: p.count,
+        totalAmount: p.totalAmount, todayProfit: p.todayProfit, todayProfitRate: p.todayProfitRate,
+      }));
+    const rest = holdings.filter(h => !h.platform);
+    if (rest.length > 0) {
+      const num = v => parseFloat(v) || 0;
+      const totalAmount = rest.reduce((s, h) => s + num(h.marketValue), 0);
+      const todayProfit = rest.reduce((s, h) => s + num(h.todayProfit), 0);
+      const yesterday = totalAmount - todayProfit;
+      rows.push({
+        name: "未分配", count: rest.length, unassigned: true,
+        totalAmount: totalAmount.toFixed(2), todayProfit: todayProfit.toFixed(2),
+        todayProfitRate: yesterday > 0 ? (todayProfit / yesterday * 100).toFixed(2) : "0.00",
+      });
+    }
+    return rows;
+  },
+
+  // 资产卡口径：选中某平台时显示该平台合计，其余显示总额
+  _platformSummary(activePlatform, platformData) {
+    if (!activePlatform || activePlatform === "all" || activePlatform === "summary") return null;
+    return (platformData || []).find(p => p.name === activePlatform) || null;
+  },
+
+  // 同一基金多笔（同平台多笔/多平台各一笔）→ 合成一行。金额相加、累计收益率按成本加权；
+  // 基金级字段（涨跌幅/温度/回撤/净值日期）各笔本就相同，取首条；_members 留给"操作前先选平台"用
+  mergeByFund(list) {
+    const map = new Map();
+    list.forEach(h => {
+      const cur = map.get(h.fundCode);
+      if (cur) cur._members.push(h);
+      else map.set(h.fundCode, { ...h, _members: [h] });
+    });
+    return [...map.values()].map(row => {
+      if (row._members.length === 1) { row._multi = 1; return row; }
+      const num = v => parseFloat(v) || 0;
+      const sum = k => row._members.reduce((s, r) => s + num(r[k]), 0);
+      const marketValue = +sum("marketValue").toFixed(2);
+      const totalReturn = +sum("totalReturn").toFixed(2);
+      const cost = marketValue - totalReturn; // 成本 = 市值 − 累计收益
+      return {
+        ...row,
+        _multi: row._members.length,
+        _id: "fund:" + row.fundCode,   // 合成行没有单一 _id，给个稳定 key
+        shares: +sum("shares").toFixed(4),
+        marketValue, totalReturn,
+        todayProfit: +sum("todayProfit").toFixed(2),
+        totalReturnRate: cost > 0 ? +(totalReturn / cost * 100).toFixed(2) : 0,
+      };
+    });
   },
 
   // 纯计算：当前分组的汇总（不 setData，供合并渲染用）
@@ -1411,11 +1535,7 @@ Page({
 
   updateGroupCounts() {
     const { holdings, groups } = this.data;
-    const counts = { all: holdings.length, ungrouped: 0 };
-    for (const h of holdings) {
-      if (!h.group) counts.ungrouped++;
-      else counts[h.group] = (counts[h.group] || 0) + 1;
-    }
+    const counts = this._countGroups(holdings);
     // 合并服务端分组
     const allGroups = this._mergeGroups(groups);
     this.setData({ groupCounts: counts, groups: allGroups });
@@ -1434,6 +1554,47 @@ Page({
     });
   },
 
+  // 顶部平台栏切换（all / summary / 具体平台）
+  onPlatformSwitch(e) {
+    const target = e.currentTarget.dataset.platform || "all";
+    if (target === this.data.activePlatform) return;
+    this.setData({ activePlatform: target }, () => this.applyGroupFilter());
+  },
+
+  // 账户汇总里点某个平台 → 切到该平台（"未分配"归到全部）
+  onPlatformTap(e) {
+    const name = e.currentTarget.dataset.name;
+    const target = !name || name === "未分配" ? "all" : name;
+    if (target === this.data.activePlatform) return;
+    this.setData({ activePlatform: target }, () => this.applyGroupFilter());
+  },
+
+  // 顶部栏「+」：新建平台（与新建分组同款弹层）
+  onAddPlatform() {
+    this.showGroupInput((name) => {
+      wx.showToast({ title: `已创建平台「${name}」，设置平台后持仓会归入`, icon: "none", duration: 2000 });
+      this._savePlatformToCache(name);
+    }, "新建平台", "输入平台名称，如：支付宝");
+  },
+
+  // 平台列表（顶部栏/新增持仓都要用）：服务端为准，本地新建的先补上
+  _mergePlatforms(list) {
+    const names = (list || []).map(x => (typeof x === "string" ? x : x && x.name)).filter(Boolean);
+    const local = this.data.platformList || [];
+    return [...new Set([...names, ...local])].filter(n => n !== "未分配");
+  },
+
+  _savePlatformToCache(name) {
+    try {
+      const cached = wx.getStorageSync("portfolio_cache") || {};
+      const list = cached.platforms || [];
+      if (!list.some(x => (x.name || x) === name)) list.push({ name, count: 0, totalAmount: "0.00", todayProfit: "0.00", todayProfitRate: "0.00" });
+      cached.platforms = list;
+      wx.setStorageSync("portfolio_cache", cached);
+    } catch (e) { /* ignore */ }
+    this.setData({ platformList: this._mergePlatforms([]) });
+  },
+
   onAddGroup() {
     this.showGroupInput((groupName) => {
       wx.showToast({ title: `已创建分组「${groupName}」，长按持仓可移入分组`, icon: "none", duration: 2000 });
@@ -1443,19 +1604,19 @@ Page({
     });
   },
 
-  showGroupInput(callback) {
+  showGroupInput(callback, title, placeholder) {
     wx.showModal({
-      title: "新建分组",
+      title: title || "新建分组",
       editable: true,
-      placeholderText: "输入分组名称，如：科技类",
+      placeholderText: placeholder || "输入分组名称，如：科技类",
       content: "",
       success: (res) => {
         if (!res.confirm || !res.content) return;
         const name = res.content.trim().slice(0, 20);
         if (!name) return;
         // 防止与内置标识冲突
-        if (name === "all" || name === "ungrouped") {
-          wx.showToast({ title: "分组名与系统保留字冲突", icon: "none" });
+        if (name === "all" || name === "ungrouped" || name === "summary") {
+          wx.showToast({ title: "名称与系统保留字冲突", icon: "none" });
           return;
         }
         callback(name);
@@ -1495,33 +1656,57 @@ Page({
     return merged;
   },
 
-  moveHoldingToGroup(codes, hintName) {
-    this.setData({ showGroupPicker: true, groupPickerCodes: codes });
+  // 打开"移到哪"弹层：opts = { ids:[记录id], field:"group"|"platform", title }
+  moveHoldingToGroup(codes, hintName, opts) {
+    const o = opts || {};
+    const field = o.field === "platform" ? "platform" : "group";
+    this.setData({
+      showGroupPicker: true,
+      groupPickerCodes: codes || [],
+      groupPickerIds: o.ids || [],
+      groupPickerField: field,
+      groupPickerTitle: o.title || (field === "platform" ? "设置平台" : "移动到分组"),
+      groupPickerOptions: field === "platform" ? (this.data.platformList || []) : (this.data.groups || []),
+    });
+  },
+
+  // 弹层顶部切换维度：基金分组 / 平台
+  onPickerFieldTap(e) {
+    const field = e.currentTarget.dataset.field === "platform" ? "platform" : "group";
+    if (field === this.data.groupPickerField) return;
+    this.setData({
+      groupPickerField: field,
+      groupPickerTitle: field === "platform" ? "设置平台" : "移动到分组",
+      groupPickerOptions: field === "platform" ? (this.data.platformList || []) : (this.data.groups || []),
+    });
   },
 
   onCloseGroupPicker() {
-    this.setData({ showGroupPicker: false, groupPickerCodes: [] });
+    this.setData({ showGroupPicker: false, groupPickerCodes: [], groupPickerIds: [] });
   },
 
   onPickGroup(e) {
     const group = e.currentTarget.dataset.group;
-    const codes = this.data.groupPickerCodes;
+    const { groupPickerCodes, groupPickerIds, groupPickerField } = this.data;
     this.setData({ showGroupPicker: false });
-    this.doMoveToGroup(codes, group);
+    this.doMoveToGroup(groupPickerCodes, group, groupPickerField, groupPickerIds);
   },
 
   onPickNewGroup() {
-    const codes = this.data.groupPickerCodes;
+    const { groupPickerCodes, groupPickerIds, groupPickerField } = this.data;
+    const isPlatform = groupPickerField === "platform";
     this.showGroupInput(groupName => {
-      this._saveGroupToCache(groupName);
+      if (isPlatform) this._savePlatformToCache(groupName);
+      else this._saveGroupToCache(groupName);
       this.setData({ showGroupPicker: false });
-      this.doMoveToGroup(codes, groupName);
-    });
+      this.doMoveToGroup(groupPickerCodes, groupName, groupPickerField, groupPickerIds);
+    }, isPlatform ? "新建平台" : "新建分组", isPlatform ? "输入平台名称，如：支付宝" : "输入分组名称，如：科技类");
   },
 
-  async doMoveToGroup(codes, group) {
+  async doMoveToGroup(codes, group, field, ids) {
+    const opts = { field: field || "group", ids: ids || [] };
     try {
-      const res = await api.holdingSetGroup(codes, group);
+      const res = await api.holdingSetGroup(codes, group, opts);
       if (res.result && res.result.code === 0) {
         wx.showToast({ title: "已移动", icon: "success" });
         // 移动后退出批量模式（与自选页一致），避免残留勾选状态
@@ -1691,8 +1876,7 @@ Page({
       wx.showToast({ title: "请先选择持仓", icon: "none" });
       return;
     }
-    const codes = selected.map(h => h.fundCode);
-    this.moveHoldingToGroup(codes);
+    this.moveHoldingToGroup(null, null, { ids: selected.map(h => h._id), field: "group", title: "移动分组" });
   },
 
 });

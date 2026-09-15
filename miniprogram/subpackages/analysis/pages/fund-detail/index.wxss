@@ -265,3 +265,19 @@
 .rank-big{font-size:52rpx;font-weight:700;color:var(--primary)}
 .rank-sub-line{font-size:26rpx;color:#333;font-weight:600}
 .rank-sub-note{font-size:20rpx;color:#BBB;margin-top:6rpx}
+
+/* 分平台明细（我的持仓卡内） */
+.mr-list{margin-top:8rpx;border-top:1rpx solid #F5F5F5;padding-top:8rpx}
+.mr-head{font-size:22rpx;color:#999;padding:12rpx 0 4rpx;display:flex;justify-content:space-between;align-items:baseline}
+.mr-hint{font-size:20rpx;color:#CCC}
+.mr-row{display:flex;align-items:center;padding:18rpx 0;border-top:1rpx solid #FAFAFA}
+.mr-row:first-of-type{border-top:none}
+.mr-main{flex:1;min-width:0}
+.mr-platform{font-size:26rpx;color:#333;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr-sub{font-size:20rpx;color:#BBB;margin-top:6rpx}
+.mr-nums{text-align:right;margin-right:8rpx;flex-shrink:0}
+.mr-amount{font-size:26rpx;font-weight:600;color:#333}
+.mr-profit{font-size:22rpx;margin-top:4rpx}
+.mr-profit.up{color:var(--up)}
+.mr-profit.down{color:#2E8B57}
+.mr-arrow{color:#CCC;font-size:28rpx;flex-shrink:0}

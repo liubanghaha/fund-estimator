@@ -157,8 +157,17 @@ const api = {
   holdingCheck(fundCode) {
     return this.callFunction("manageHolding", { action: "check", data: { fundCode } });
   },
-  holdingSetGroup(fundCodes, group) {
-    return this.callFunction("manageHolding", { action: "setGroup", fundCodes, group });
+  // opts: { ids: [记录id], field: "group" | "platform" }——平台是与基金分组并行的一级维度
+  holdingSetGroup(fundCodes, group, opts) {
+    const o = opts || {};
+    const data = { action: "setGroup", group };
+    if (o.ids && o.ids.length) data.ids = o.ids;
+    if (o.field) data.field = o.field;
+    if (!o.ids || !o.ids.length) data.fundCodes = fundCodes;
+    return this.callFunction("manageHolding", data);
+  },
+  holdingGetPlatforms() {
+    return this.callFunction("manageHolding", { action: "getPlatforms" });
   },
   holdingGetGroups() {
     return this.callFunction("manageHolding", { action: "getGroups" });

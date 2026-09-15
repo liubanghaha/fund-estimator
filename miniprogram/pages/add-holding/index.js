@@ -380,6 +380,31 @@ Page({
     wx.navigateTo({ url: `/pages/add-holding/index?editScreenshot=1&idx=${idx}` });
   },
 
+  // 选平台：列出已有平台 + 新建 + 不指定；返回平台名（空串=不指定），null=取消
+  _pickPlatform() {
+    return new Promise((resolve) => {
+      api.holdingGetPlatforms().then((res) => {
+        const list = (res.result && res.result.code === 0 && res.result.data) || [];
+        const items = [...list, "＋ 新建平台", "不指定平台"];
+        wx.showActionSheet({
+          itemList: items,
+          success: (r) => {
+            const pick = items[r.tapIndex];
+            if (pick === "＋ 新建平台") {
+              wx.showModal({
+                title: "新建平台", editable: true, placeholderText: "输入平台名称，如：支付宝",
+                success: (m) => resolve(m.confirm && m.content ? m.content.trim().slice(0, 20) : null),
+                fail: () => resolve(null),
+              });
+            } else if (pick === "不指定平台") resolve("");
+            else resolve(pick);
+          },
+          fail: () => resolve(null),
+        });
+      }).catch(() => resolve(""));
+    });
+  },
+
   onRemoveScreenshot() {
     this.setData({ screenshotUrl: "", ocrFunds: [] });
   },
@@ -526,13 +551,32 @@ Page({
     this._submitting = true;
     wx.showLoading({ title: "保存中...", mask: true });
     try {
-      // 查重前置：原来放在取净值之后，重复添加要多等两次网络请求才发现
+      // 查重前置：同一基金允许多笔（不同平台分开记），这里改成"再记一笔 / 去编辑已有那笔"
       if (!isEdit) {
         const chk = await api.holdingCheck(fundCode.trim());
-        if (chk.result && chk.result.code === 0 && chk.result.data) {
-          wx.hideLoading();
-          wx.showModal({ title: "重复添加", content: `基金 ${fundCode.trim()} 已在持仓中`, showCancel: false });
-          return;
+        const existList = (chk.result && chk.result.code === 0)
+          ? (chk.result.list && chk.result.list.length ? chk.result.list : (chk.result.data ? [chk.result.data] : []))
+          : [];
+        if (existList.length) {
+          const goNew = await new Promise((resolve) => {
+            wx.showModal({
+              title: "该基金已有持仓",
+              content: `已有 ${existList.length} 笔。不同平台可以分开记；同一平台加仓建议用「加减仓」，成本更准。`,
+              confirmText: "新增一笔", cancelText: "去编辑",
+              success: (r) => resolve(!!r.confirm),
+              fail: () => resolve(false),
+            });
+          });
+          wx.showLoading({ title: "保存中...", mask: true });
+          if (!goNew) {
+            wx.hideLoading();
+            const first = existList[0];
+            if (first && first._id) wx.redirectTo({ url: `/pages/add-holding/index?id=${first._id}` });
+            return;
+          }
+          const platform = await this._pickPlatform();
+          if (platform === null) { wx.hideLoading(); return; } // 取消选平台 = 放弃本次新增
+          this._pendingPlatform = platform;
         }
       }
       const estRes = await api.fetchFundEstimate(fundCode.trim());
@@ -617,7 +661,7 @@ Page({
       if (isEdit) {
         await api.holdingUpdate(id, data);
       } else {
-        const addRes = await api.holdingAdd(data);
+        const addRes = await api.holdingAdd({ ...data, platform: this._pendingPlatform || "" });
         // 只有真正写入成功才算激活（api 层业务失败不 reject，需显式判 code）
         if (addRes && addRes.result && addRes.result.code === 0) this._markFirstHolding();
       }

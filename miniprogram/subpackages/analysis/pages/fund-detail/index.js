@@ -20,7 +20,7 @@ Page({
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
-    hasHolding: false, holdingId: null, holdingData: null, followed: false, activeTab: "trend",
+    hasHolding: false, holdingId: null, holdingData: null, holdingRecords: [], followed: false, activeTab: "trend",
     chartLoading: false, // 切区间需补拉历史时图表区给加载反馈（否则数秒无反馈会被当成没反应）
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
@@ -897,12 +897,83 @@ Page({
   async checkHolding() {
     try {
       const res = await api.holdingCheck(this.data.fundCode);
-      if (res.result && res.result.code === 0 && res.result.data) {
-        this._rawHolding = res.result.data;
-        this.setData({ hasHolding: true, holdingId: res.result.data._id });
-        return;
-      }
+      if (!res.result || res.result.code !== 0) return;
+      // 同一基金可能有多笔（多平台各一笔）：list 为新版返回，data 兼容旧版（单条）
+      const list = res.result.list && res.result.list.length
+        ? res.result.list
+        : (res.result.data ? [res.result.data] : []);
+      if (!list.length) return;
+      this._rawHoldings = list;
+      this._rawHolding = this._aggregateHoldings(list); // 头部/我的持仓按合计口径（与单笔一致）
+      this.setData({
+        hasHolding: true,
+        holdingId: list[0]._id,
+        holdingRecords: list.map((r) => ({
+          id: r._id,
+          platform: r.platform || "未分配",
+          group: r.group || "",
+          shares: (parseFloat(r.shares) || parseFloat(r.amount) || 0).toFixed(2),
+          marketValue: (parseFloat(r.marketValue) || 0).toFixed(2),
+          buyPrice: (parseFloat(r.buyPrice) || parseFloat(r.nav) || 0).toFixed(4),
+          holdingReturn: (parseFloat(r.holdingReturn) || 0).toFixed(2),
+        })),
+      });
+      return;
     } catch (e) { console.error("checkHolding 客户端失败:", e); }
+  },
+
+  // 多笔 → 合计成"一笔"：份额相加、买入净值按份额加权、市值/收益相加。
+  // 口径与单笔完全一致（enrichHoldingData 拿到合计后照原逻辑算），页面头部不会因为多平台而算错
+  _aggregateHoldings(list) {
+    const num = (v) => parseFloat(v) || 0;
+    const shares = list.reduce((s, r) => s + num(r.shares || r.amount), 0);
+    const cost = list.reduce((s, r) => s + num(r.buyPrice || r.nav) * num(r.shares || r.amount), 0);
+    const marketValue = list.reduce((s, r) => s + num(r.marketValue), 0);
+    const holdingReturn = list.reduce((s, r) => s + num(r.holdingReturn), 0);
+    return {
+      _id: list[0]._id, fundCode: list[0].fundCode, fundName: list[0].fundName,
+      createTime: list[0].createTime,
+      shares, marketValue, holdingReturn,
+      buyPrice: shares > 0 ? +(cost / shares).toFixed(4) : 0,
+    };
+  },
+
+  // 明细行点开：对"这一笔"做修改/校准/加减仓/删除
+  onRecordTap(e) {
+    const id = e.currentTarget.dataset.id;
+    const rec = (this.data.holdingRecords || []).find((r) => r.id === id);
+    if (!id || !rec) return;
+    const self = this;
+    wx.showActionSheet({
+      itemList: ["修改这笔", "校准这笔", "加减仓", "删除这笔"],
+      success(res) {
+        if (res.tapIndex === 0) {
+          wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
+        } else if (res.tapIndex === 1) {
+          self.setData({ holdingId: id }); // 校准走既有弹层，落到选中的这一笔
+          self.onCalibrate();
+        } else if (res.tapIndex === 2) {
+          wx.setStorageSync("adjust_prefill_holding", id);
+          wx.navigateTo({ url: "/pages/adjust-holding/index" });
+        } else if (res.tapIndex === 3) {
+          wx.showModal({
+            title: "确认删除",
+            content: `删除「${rec.platform}」这笔持仓？（其它平台不受影响）`,
+            success(r) {
+              if (!r.confirm) return;
+              wx.showLoading({ title: "删除中..." });
+              api.holdingRemove(id).then(() => {
+                wx.hideLoading();
+                wx.showToast({ title: "已删除", icon: "success" });
+                self._rawHoldings = null; self._rawHolding = null;
+                self.setData({ hasHolding: false, holdingData: null, holdingRecords: [] });
+                self.fetchAll();
+              }).catch(() => { wx.hideLoading(); wx.showToast({ title: "删除失败", icon: "none" }); });
+            },
+          });
+        }
+      },
+    });
   },
 
   async fetchTransactions() {

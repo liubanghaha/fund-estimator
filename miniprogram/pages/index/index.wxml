@@ -83,18 +83,37 @@
       </view>
 
       <view wx:else class="dashboard">
+        <!-- 平台栏（一级维度）：账户汇总 / 全部 / 各平台 / + 新建 / ☰ 管理。放在页面最顶部，资产卡显示当前平台合计 -->
+        <view class="platform-bar">
+          <scroll-view class="platform-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+            <view class="group-tab {{activePlatform === 'summary' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="summary">账户汇总</view>
+            <view class="group-tab {{activePlatform === 'all' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="all">全部<text class="group-tab-n">{{groupCounts.records || 0}}</text></view>
+            <block wx:for="{{platformList}}" wx:key="*this">
+              <view class="group-tab {{activePlatform === item ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="{{item}}">{{item}}</view>
+            </block>
+            <view class="group-tab group-tab-add" bind:tap="onAddPlatform">+</view>
+          </scroll-view>
+          <view class="tabs-manage" bind:tap="onToggleBatch">
+            <view class="batch-bars">
+              <view class="batch-bar"></view>
+              <view class="batch-bar"></view>
+              <view class="batch-bar"></view>
+            </view>
+          </view>
+        </view>
+
         <view class="asset-overview" bind:tap="onTapProfit">
           <view class="share-toggle" catch:tap="onShareCard"><text class="share-toggle-icon">📤</text> 分享</view>
           <view class="amount-toggle" catch:tap="onToggleAmount">{{amountVisible ? '隐藏' : '显示'}}</view>
-          <view wx:if="{{activeGroup !== 'all' && groupSummary}}" class="group-badge">{{activeGroup}}</view>
+          <view wx:if="{{cardScopeLabel}}" class="group-badge">{{cardScopeLabel}}</view>
           <view class="asset-label">今日估算收益<text wx:if="{{allUpdated}}" class="updated-badge">✓</text></view>
-          <view class="asset-value {{amountVisible ? (groupSummary ? (groupSummary.todayProfit > 0 ? 'up' : groupSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
-            {{amountVisible ? (groupSummary ? fmt.money(groupSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
+          <view class="asset-value {{amountVisible ? (cardSummary ? (cardSummary.todayProfit > 0 ? 'up' : cardSummary.todayProfit < 0 ? 'down' : '') : (todayProfit > 0 ? 'up' : todayProfit < 0 ? 'down' : '')) : ''}}">
+            {{amountVisible ? (cardSummary ? fmt.money(cardSummary.todayProfit, true) : fmt.money(todayProfit, true)) : '****'}}
           </view>
           <view class="asset-sub">
-            <text class="asset-sub-item">涨幅<text class="asset-sub-num">{{groupSummary ? (groupSummary.todayProfitRate == null ? '--' : (groupSummary.todayProfitRate > 0 ? '+' : '') + groupSummary.todayProfitRate + '%') : (todayProfitRate == null ? '--' : (todayProfitRate > 0 ? '+' : '') + todayProfitRate + '%')}}</text></text>
-            <text class="asset-sub-item">市值<text class="asset-sub-num">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text></text>
-            <text class="asset-sub-item">累计<text class="asset-sub-num {{amountVisible ? (groupSummary ? (groupSummary.totalReturn > 0 ? 'up' : groupSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">{{amountVisible ? (groupSummary ? fmt.money(groupSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text></text>
+            <text class="asset-sub-item">涨幅<text class="asset-sub-num">{{cardSummary ? (cardSummary.todayProfitRate == null ? '--' : (cardSummary.todayProfitRate > 0 ? '+' : '') + cardSummary.todayProfitRate + '%') : (todayProfitRate == null ? '--' : (todayProfitRate > 0 ? '+' : '') + todayProfitRate + '%')}}</text></text>
+            <text class="asset-sub-item">市值<text class="asset-sub-num">{{amountVisible ? (cardSummary ? fmt.money(cardSummary.totalAmount) : fmt.money(totalAmount)) : '****'}}</text></text>
+            <text class="asset-sub-item">累计<text class="asset-sub-num {{amountVisible ? (cardSummary ? (cardSummary.totalReturn > 0 ? 'up' : cardSummary.totalReturn < 0 ? 'down' : '') : (totalReturn > 0 ? 'up' : totalReturn < 0 ? 'down' : '')) : ''}}">{{amountVisible ? (cardSummary ? fmt.money(cardSummary.totalReturn, true) : fmt.money(totalReturn, true)) : '****'}}</text></text>
           </view>
         </view>
 
@@ -135,8 +154,8 @@
           </view>
         </view>
 
-        <!-- 分组标签栏 -->
-        <view wx:if="{{holdings.length > 0}}" class="group-tabs-wrap">
+        <!-- 基金分组栏（在平台范围之内再筛） -->
+        <view wx:if="{{holdings.length > 0 && activePlatform !== 'summary'}}" class="group-tabs-wrap">
           <scroll-view class="group-tabs" scroll-x enhanced show-scrollbar="{{false}}">
             <view class="group-tab {{activeGroup === 'all' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="all">全部<text class="group-tab-n">{{groupCounts.all || 0}}</text></view>
             <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组<text class="group-tab-n">{{groupCounts.ungrouped || 0}}</text></view>
@@ -156,22 +175,35 @@
           </scroll-view>
         </view>
 
-        <view wx:if="{{displayHoldings.length > 0}}" class="holdings-section">
+        <!-- 账户汇总：每个平台一行，点行切到该平台 -->
+        <view wx:if="{{activePlatform === 'summary'}}" class="platform-summary">
+          <view class="ps-row ps-row-head">
+            <text class="ps-head-title">平台账户</text>
+            <text class="ps-head-hint">点平台查看该平台持仓</text>
+          </view>
+          <view class="ps-row" wx:for="{{platformRows}}" wx:key="name" bind:tap="onPlatformTap" data-name="{{item.name}}">
+            <view class="ps-main">
+              <view class="ps-name">{{item.name}}</view>
+              <view class="ps-sub">{{item.count}} 只持仓</view>
+            </view>
+            <view class="ps-nums">
+              <view class="ps-amount">{{amountVisible ? fmt.money(item.totalAmount) : '****'}}</view>
+              <view class="ps-profit {{item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : ''}}">
+                {{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}<text class="ps-rate">{{item.todayProfitRate > 0 ? '+' : ''}}{{item.todayProfitRate}}%</text>
+              </view>
+            </view>
+            <view class="ps-arrow">›</view>
+          </view>
+          <view wx:if="{{!platformRows.length}}" class="ps-empty">还没有平台：新增持有时选一个平台，或点顶部「+」新建</view>
+          <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置平台」归入某个平台</view>
+        </view>
+
+        <view wx:if="{{displayHoldings.length > 0 && activePlatform !== 'summary'}}" class="holdings-section">
           <scroll-view class="table-scroll" scroll-x show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">
               <view class="t-row t-head">
-                <view class="t-cell t-name">
-                  <!-- 设置入口：点击进入批量模式（全选/移动分组/删除/全局提醒 + 列设置）。
-                       三横线用 CSS 画而非字形：粗细/间距/颜色完全可控，且不受设备字体影响
-                       （U+2630/U+2261 这类字形在部分机型会缺字变方框） -->
-                  <view class="batch-btn" bind:tap="onToggleBatch">
-                    <view class="batch-bars">
-                      <view class="batch-bar"></view>
-                      <view class="batch-bar"></view>
-                      <view class="batch-bar"></view>
-                    </view>
-                  </view>
-                </view>
+                <!-- 名称列（管理入口已挪到标签栏右端） -->
+                <view class="t-cell t-name"></view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
@@ -185,7 +217,7 @@
                 <view class="t-cell t-name">
                   <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
                   <view class="name-text">{{item.fundName}}</view>
-                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}<text wx:if="{{activeGroup === 'all' && item.group}}" class="group-tag">{{item.group}}</text></view>
+                  <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}<text wx:if="{{item._tag}}" class="group-tag">{{item._tag}}</text></view>
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
@@ -214,7 +246,7 @@
           </scroll-view>
         </view>
 
-        <view wx:elif="{{activeGroup !== 'all'}}" class="empty-group">
+        <view wx:elif="{{activeGroup !== 'all' && activePlatform !== 'summary'}}" class="empty-group">
           <view class="empty-icon">📂</view>
           <view class="empty-desc">该分组暂无持仓</view>
           <view class="empty-hint">长按持仓可移动到本分组</view>
@@ -312,13 +344,18 @@
   <!-- 移动分组选择器 -->
   <view wx:if="{{showGroupPicker}}" class="col-edit-mask" bind:tap="onCloseGroupPicker">
     <view class="col-edit-card" catch:tap="noop">
-      <view class="col-edit-title">移动到分组</view>
-      <scroll-view scroll-y style="max-height:480rpx;margin:16rpx 0">
-        <view wx:if="{{groups.length === 0}}" class="group-picker-empty">暂无分组，请先新建</view>
-        <view wx:for="{{groups}}" wx:key="*this" class="group-picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
-        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">📂 未分组</view>
+      <view class="col-edit-title">{{groupPickerTitle}}</view>
+      <!-- 两个维度：基金分组（策略）/ 平台（账户） -->
+      <view class="picker-field-row">
+        <text class="picker-field-chip {{groupPickerField === 'group' ? 'active' : ''}}" bind:tap="onPickerFieldTap" data-field="group">基金分组</text>
+        <text class="picker-field-chip {{groupPickerField === 'platform' ? 'active' : ''}}" bind:tap="onPickerFieldTap" data-field="platform">平台</text>
+      </view>
+      <scroll-view scroll-y style="max-height:480rpx;margin:12rpx 0 16rpx">
+        <view wx:if="{{groupPickerOptions.length === 0}}" class="group-picker-empty">{{groupPickerField === 'platform' ? '暂无平台，点下方新建' : '暂无分组，请先新建'}}</view>
+        <view wx:for="{{groupPickerOptions}}" wx:key="*this" class="group-picker-item" bind:tap="onPickGroup" data-group="{{item}}">{{item}}</view>
+        <view class="group-picker-item" bind:tap="onPickGroup" data-group="">{{groupPickerField === 'platform' ? '📂 不指定平台' : '📂 未分组'}}</view>
       </scroll-view>
-      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建分组</view>
+      <view class="group-picker-new-btn" bind:tap="onPickNewGroup">+ 新建{{groupPickerField === 'platform' ? '平台' : '分组'}}</view>
       <view class="col-edit-close" bind:tap="onCloseGroupPicker" style="margin-top:16rpx;background:#F5F5F5;color:#666">取消</view>
     </view>
   </view>

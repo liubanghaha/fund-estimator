@@ -115,6 +115,21 @@
           <view class="mh-value {{quarterNet > 0 ? 'up' : 'down'}}">{{quarterNet > 0 ? '+' : ''}}{{quarterNet}}</view>
         </view>
       </view>
+      <!-- 分平台明细：同一基金多笔时展开（点某笔可修改/校准/加减仓/删除这一笔） -->
+      <view wx:if="{{holdingRecords.length > 1}}" class="mr-list">
+        <view class="mr-head">共 {{holdingRecords.length}} 笔<text class="mr-hint">点某笔可单独操作</text></view>
+        <view class="mr-row" wx:for="{{holdingRecords}}" wx:key="id" bind:tap="onRecordTap" data-id="{{item.id}}">
+          <view class="mr-main">
+            <view class="mr-platform">{{item.platform}}</view>
+            <view class="mr-sub">{{item.shares}} 份 · 成本 {{item.buyPrice}}</view>
+          </view>
+          <view class="mr-nums">
+            <view class="mr-amount">{{amountVisible ? item.marketValue : '****'}}</view>
+            <view class="mr-profit {{item.holdingReturn > 0 ? 'up' : item.holdingReturn < 0 ? 'down' : ''}}">{{amountVisible ? (item.holdingReturn > 0 ? '+' : '') + item.holdingReturn : '****'}}</view>
+          </view>
+          <view class="mr-arrow">›</view>
+        </view>
+      </view>
     </view>
 
     <view class="tab-bar">

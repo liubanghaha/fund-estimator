@@ -173,8 +173,17 @@
 .stale-badge{font-size:20rpx;color:var(--up);margin-left:8rpx}
 
 /* 分组标签 */
-.group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0}
-.group-tabs{white-space:nowrap;width:100%;padding:0 20rpx}
+/* 平台栏（页面最顶部的一级维度）：与基金分组栏同款视觉，右侧固定管理入口 */
+.platform-bar{display:flex;align-items:center;background:#FFF;border-radius:16rpx;margin-bottom:16rpx;padding:8rpx 0}
+.platform-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}
+.ps-tip{padding:8rpx 28rpx 24rpx;font-size:20rpx;color:#BBB;line-height:1.5}
+.group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0;display:flex;align-items:center}
+.group-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}
+/* 管理/批量入口固定在标签栏右端（tab 可以滚，它不滚） */
+.tabs-manage{flex-shrink:0;display:flex;align-items:center;padding:10rpx 20rpx 10rpx 16rpx;position:relative}
+.tabs-manage::after{content:'';position:absolute;left:-10rpx;top:-16rpx;right:-6rpx;bottom:-16rpx}
+/* 左侧白色渐隐：tab 滚动到管理入口处自然淡出，而不是被硬切一刀 */
+.tabs-manage::before{content:'';position:absolute;left:-28rpx;top:0;bottom:0;width:28rpx;background:linear-gradient(to right,rgba(255,255,255,0),#FFF);pointer-events:none}
 .group-tab{display:inline-flex;align-items:center;padding:12rpx 20rpx;margin-right:8rpx;font-size:24rpx;color:#888;background:#F5F5F5;border-radius:24rpx;white-space:nowrap;transition:all .2s}
 .group-tab.active{color:#FFF;background:var(--primary);font-weight:500}
 .group-tab-n{font-size:20rpx;opacity:.6;margin-left:6rpx}
@@ -186,11 +195,32 @@
 
 .group-tag{font-size:20rpx;color:#78868F;background:#EEF1F3;padding:2rpx 10rpx;border-radius:6rpx;margin-left:8rpx;vertical-align:middle}
 
+.platform-summary{margin:0 4rpx;background:#FFF;border-radius:0 0 12rpx 12rpx;padding:4rpx 0 8rpx}
+.ps-row{display:flex;align-items:center;padding:22rpx 28rpx;border-top:1rpx solid #F5F5F5}
+.ps-row:first-child{border-top:none}
+.ps-row-head{display:flex;justify-content:space-between;align-items:baseline;padding:18rpx 28rpx 10rpx}
+.ps-head-title{font-size:26rpx;font-weight:600;color:#333}
+.ps-head-hint{font-size:20rpx;color:#BBB}
+.ps-main{flex:1;min-width:0}
+.ps-name{font-size:26rpx;font-weight:500;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-sub{font-size:20rpx;color:#BBB;margin-top:6rpx}
+.ps-nums{text-align:right;margin-right:10rpx;flex-shrink:0}
+.ps-amount{font-size:28rpx;font-weight:600;color:#333}
+.ps-profit{font-size:22rpx;margin-top:6rpx;color:#999}
+.ps-profit.up{color:var(--up)}
+.ps-profit.down{color:#2E8B57}
+.ps-rate{margin-left:8rpx;opacity:.85}
+.ps-arrow{font-size:30rpx;color:#CCC;flex-shrink:0;line-height:1}
+.ps-empty{padding:44rpx 40rpx;font-size:22rpx;color:#BBB;text-align:center;line-height:1.6}
+
 .empty-group{display:flex;flex-direction:column;align-items:center;padding:48rpx;margin:0 4rpx;background:#FFF;border-radius:0 0 12rpx 12rpx}
 
 /* 分组选择器弹窗 */
 .group-picker-item{padding:24rpx 16rpx;font-size:28rpx;color:#333;border-bottom:1rpx solid #F5F5F5;text-align:center}
 .group-picker-item:active{background:#F5F5F5}
+.picker-field-row{display:flex;gap:12rpx;margin-top:16rpx}
+.picker-field-chip{flex:1;text-align:center;font-size:24rpx;color:#666;background:#F5F5F5;border-radius:10rpx;padding:14rpx 0}
+.picker-field-chip.active{color:#FFF;background:var(--primary);font-weight:500}
 .group-picker-empty{padding:32rpx;text-align:center;font-size:26rpx;color:#BBB}
 .group-picker-new-btn{text-align:center;padding:20rpx;font-size:28rpx;color:var(--primary);border-top:1rpx solid #F5F5F5}
 
