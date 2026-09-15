@@ -58,6 +58,8 @@ Page({
   },
 
   onLoad(options) {
+    // 从平台 tab 进来时带上平台；没带且用户已有平台 → 保存前问一次（没有平台就不打扰）
+    try { if (options && options.platform) this._urlPlatform = decodeURIComponent(options.platform); } catch (e) { /* ignore */ }
     if (options.editScreenshot) {
       const app = getApp();
       const funds = app.globalData._ocrFunds || [];
@@ -295,11 +297,18 @@ Page({
       return;
     }
 
+    // 截图批量导入：先定平台（在平台 tab 下进来就直接用，否则问一次；没建过平台不打扰）
+    const batchPlatform = await this._askPlatformIfNeeded();
+    if (batchPlatform === null) {
+      this.setData({ saving: false });
+      return;
+    }
     wx.showLoading({ title: "保存中..." });
     try {
       const res = await api.batchAddHoldings(unsaved.map(f => ({
         fundCode: f.fundCode,
         fundName: f.fundName,
+        platform: batchPlatform,
         marketValue: f.marketValue || "",
         holdingReturn: f.holdingReturn || "",
         buyDate: f.buyDate || "",
@@ -378,6 +387,17 @@ Page({
     app.globalData._ocrFunds = this.data.ocrFunds;
     app.globalData._editFundIdx = idx;
     wx.navigateTo({ url: `/pages/add-holding/index?editScreenshot=1&idx=${idx}` });
+  },
+
+  // 需要时问平台：已有平台列表为空 → 返回 ""（跳过，不打扰没用平台的用户）
+  async _askPlatformIfNeeded() {
+    if (this._urlPlatform) return this._urlPlatform;
+    try {
+      const res = await api.holdingGetPlatforms();
+      const list = (res.result && res.result.code === 0 && res.result.data) || [];
+      if (!list.length) return "";
+    } catch (e) { return ""; }
+    return await this._pickPlatform();
   },
 
   // 选平台：列出已有平台 + 新建 + 不指定；返回平台名（空串=不指定），null=取消
@@ -574,8 +594,13 @@ Page({
             if (first && first._id) wx.redirectTo({ url: `/pages/add-holding/index?id=${first._id}` });
             return;
           }
-          const platform = await this._pickPlatform();
+          const platform = await this._askPlatformIfNeeded();
           if (platform === null) { wx.hideLoading(); return; } // 取消选平台 = 放弃本次新增
+          this._pendingPlatform = platform;
+        } else {
+          // 该基金第一笔：没有平台 tab 上下文时也问一次（用户还没建过平台则跳过）
+          const platform = await this._askPlatformIfNeeded();
+          if (platform === null) { wx.hideLoading(); return; }
           this._pendingPlatform = platform;
         }
       }

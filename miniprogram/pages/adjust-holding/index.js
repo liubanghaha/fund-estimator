@@ -37,6 +37,40 @@ Page({
     reason: "", reasons: REASONS,
   },
 
+  onLoad(options) {
+    // 从平台 tab 进加减仓时带上平台；带则导入直接落到该平台，不带且有平台时导入前问一次
+    try { if (options && options.platform) this._urlPlatform = decodeURIComponent(options.platform); } catch (e) { /* ignore */ }
+  },
+
+  // 导入前定平台：没建过平台直接跳过（不打扰）；带 platform 参数或已选过则不再问
+  async _askPlatformForImport() {
+    if (this._urlPlatform) return this._urlPlatform;
+    try {
+      const res = await api.holdingGetPlatforms();
+      const list = (res.result && res.result.code === 0 && res.result.data) || [];
+      if (!list.length) return "";
+      const pick = await new Promise((resolve) => {
+        wx.showActionSheet({
+          itemList: [...list, "不指定平台"],
+          success: (r) => resolve(list[r.tapIndex] || ""),
+          fail: () => resolve(null),
+        });
+      });
+      if (pick === null) return null;
+      this._urlPlatform = pick;
+      return pick;
+    } catch (e) { return ""; }
+  },
+
+  // 同一基金多笔时，优先选用当前平台那一笔
+  _preferPlatform(idx) {
+    if (!this._urlPlatform || idx < 0) return idx;
+    const cur = this.data.holdings[idx];
+    if (!cur || cur.platform === this._urlPlatform) return idx;
+    const sib = this.data.holdings.findIndex((h) => h.fundCode === cur.fundCode && h.platform === this._urlPlatform);
+    return sib >= 0 ? sib : idx;
+  },
+
   onShow() {
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
@@ -83,7 +117,7 @@ Page({
     let idx = holdings.findIndex((h) =>
       h.fundName.includes(ocrName) || ocrName.includes(h.fundName)
     );
-    if (idx >= 0) return idx;
+    if (idx >= 0) return this._preferPlatform(idx);
 
     // 第2层：去噪包含（去空格括号，保留字母）
     const clean = (s) => s.replace(/[\s（）()]/g, "");
@@ -127,7 +161,13 @@ Page({
   },
 
   // ==== 截图导入 ====
-	  onImportScreenshot() {
+	  async onImportScreenshot() {
+    const platform = await this._askPlatformForImport();
+    if (platform === null) return; // 取消选平台 = 放弃本次导入
+    this._doImportScreenshot();
+  },
+
+  _doImportScreenshot() {
 	    wx.chooseMedia({
 	      count: 1, mediaType: ["image"],
 	      sourceType: ["album", "camera"],

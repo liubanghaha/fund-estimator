@@ -997,19 +997,26 @@ Page({
           success: (compressRes) => {
             const app = getApp();
             app.globalData._screenshotPath = compressRes.tempFilePath;
-            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+            const pf = this.data.activePlatform;
+            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" + (pf && pf !== "all" && pf !== "summary" ? `&platform=${encodeURIComponent(pf)}` : "") });
           },
           fail: () => {
             // 压缩失败则使用原图
             const app = getApp();
             app.globalData._screenshotPath = tempPath;
-            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" });
+            const pf = this.data.activePlatform;
+            wx.navigateTo({ url: "/pages/add-holding/index?autoScreenshot=1" + (pf && pf !== "all" && pf !== "summary" ? `&platform=${encodeURIComponent(pf)}` : "") });
           },
         });
       },
     });
   },
-  onAdd() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
+  // 新增/加减仓带上当前所在平台：在平台 tab 下就直接落到该平台，在"全部/账户汇总"下让目标页问用户
+  onAdd() {
+    const p = this.data.activePlatform;
+    const q = (p && p !== "all" && p !== "summary") ? `?platform=${encodeURIComponent(p)}` : "";
+    wx.navigateTo({ url: "/pages/add-holding/index" + q });
+  },
 
   onToggleBatch() {
     const enter = !this.data.batchMode;
@@ -1122,7 +1129,8 @@ Page({
       wx.showToast({ title: "暂无持仓", icon: "none" });
       return;
     }
-    wx.navigateTo({ url: "/pages/adjust-holding/index" });
+    const pf2 = this.data.activePlatform;
+    wx.navigateTo({ url: "/pages/adjust-holding/index" + (pf2 && pf2 !== "all" && pf2 !== "summary" ? `?platform=${encodeURIComponent(pf2)}` : "") });
   },
 
   onCorrelation() {

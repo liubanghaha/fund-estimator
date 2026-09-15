@@ -64,6 +64,7 @@ exports.main = async (event) => {
       toInsert.push({
         fundCode: code,
         fundName: name,
+        platform: f.platform || "",   // 平台维度：截图批量导入时按用户选的平台归属
         buyPrice: buyPrice || 0,
         shares: shares || 0,
         marketValue: mv,
