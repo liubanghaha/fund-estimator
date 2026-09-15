@@ -96,13 +96,16 @@ Page({
     this.setData({ mode: "screenshot" });
     wx.setNavigationBarTitle({ title: "截图添加持仓" });
     if (options.autoScreenshot) {
-      wx.nextTick(() => {
+      wx.nextTick(async () => {
         const app = getApp();
         const path = app.globalData._screenshotPath;
-        if (path) {
-          app.globalData._screenshotPath = null;
-          this.doOCR(path);
-        }
+        if (!path) return;
+        // 首页「截图添加」走的是这条分支（直接 doOCR），必须在这里先定平台：
+        // 从平台 tab 进来已带 platform 不会问；没建过平台也不问；取消选平台则放弃本次导入
+        const platform = await this._askPlatformIfNeeded();
+        if (platform === null) return;
+        app.globalData._screenshotPath = null;
+        this.doOCR(path);
       });
     }
     if (!this.data.mode) wx.switchTab({ url: "/pages/index/index" });
