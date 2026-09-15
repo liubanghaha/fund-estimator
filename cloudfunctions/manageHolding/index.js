@@ -4,7 +4,7 @@ const db = cloud.database();
 const _ = db.command;
 
 // 持仓字段白名单：客户端只能写入这些字段，防止覆盖 _openid 或注入任意数据
-const HOLDING_FIELDS = ["fundCode", "fundName", "shares", "buyPrice", "marketValue", "holdingReturn", "buyAmount", "buyDate", "group"];
+const HOLDING_FIELDS = ["fundCode", "fundName", "shares", "buyPrice", "marketValue", "holdingReturn", "buyAmount", "buyDate", "group", "platform"];
 
 function pickHoldingData(data) {
   const out = {};
@@ -15,7 +15,7 @@ function pickHoldingData(data) {
 }
 
 exports.main = async (event) => {
-  const { action, data, id, fundCodes, group, newGroup } = event;
+  const { action, data, id, ids, fundCodes, group, newGroup } = event;
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
 
@@ -25,9 +25,7 @@ exports.main = async (event) => {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少参数" };
         const clean = pickHoldingData(data);
         if (!clean.fundCode) return { code: 400, msg: "缺少参数" };
-        const exist = await db.collection("holdings")
-          .where({ _openid: OPENID, fundCode: clean.fundCode }).count();
-        if (exist.total > 0) return { code: 409, msg: "已存在" };
+        // 同一基金允许多笔（不同平台各一笔）：不再 409，由客户端在"记到哪个平台"弹层里引导
         const res = await db.collection("holdings").add({
           data: { ...clean, _openid: OPENID, createTime: new Date() },
         });
@@ -50,8 +48,13 @@ exports.main = async (event) => {
         await db.collection("holdings")
           .where({ _id: id, _openid: OPENID }).remove();
         if (fundCode) {
-          await db.collection("transactions")
-            .where({ _openid: OPENID, fundCode }).remove();
+          // 只在该基金已无其它持仓记录时清流水：多平台场景下删一个平台不该动另一个平台的记录
+          const rest = await db.collection("holdings")
+            .where({ _openid: OPENID, fundCode }).count();
+          if (rest.total === 0) {
+            await db.collection("transactions")
+              .where({ _openid: OPENID, fundCode }).remove();
+          }
         }
         return { code: 0, msg: "success" };
       }
@@ -70,10 +73,21 @@ exports.main = async (event) => {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少fundCode" };
         const res = await db.collection("holdings")
           .where({ _openid: OPENID, fundCode: data.fundCode }).get();
-        return { code: 0, data: res.data[0] || null };
+        // 同一基金可能有多笔（多平台各一笔）：data 保留首条兼容旧客户端，list 给新客户端做合计与明细
+        return { code: 0, data: res.data[0] || null, list: res.data || [] };
       }
       // ---- 分组管理 ----
       case "setGroup": {
+        // field: group(基金分组，默认) | platform(平台)——平台是独立的一级维度
+        const field = event.field === "platform" ? "platform" : "group";
+        // ids = 按记录移动（同一基金多平台时只动选中的那一笔）；fundCodes 保留给旧客户端
+        if (ids && Array.isArray(ids) && ids.length > 0) {
+          if (typeof group !== "string") return { code: 400, msg: "缺少分组名称" };
+          const name = group.trim().slice(0, 20);
+          await db.collection("holdings")
+            .where({ _openid: OPENID, _id: _.in(ids) }).update({ data: { [field]: name } });
+          return { code: 0, msg: "已更新分组" };
+        }
         if (!fundCodes || !Array.isArray(fundCodes) || fundCodes.length === 0) return { code: 400, msg: "缺少基金代码" };
         if (typeof group !== "string") return { code: 400, msg: "缺少分组名称" };
         const name = group.trim().slice(0, 20);
@@ -86,6 +100,12 @@ exports.main = async (event) => {
           .where({ _openid: OPENID }).field({ group: true }).get();
         const groups = [...new Set((res.data || []).map(d => d.group || "").filter(g => g !== ""))].sort();
         return { code: 0, data: groups };
+      }
+      case "getPlatforms": {
+        const res = await db.collection("holdings")
+          .where({ _openid: OPENID }).field({ platform: true }).get();
+        const list = [...new Set((res.data || []).map(d => d.platform || "").filter(p => p !== ""))].sort();
+        return { code: 0, data: list };
       }
       case "renameGroup": {
         if (!group || typeof group !== "string") return { code: 400, msg: "缺少原分组名" };

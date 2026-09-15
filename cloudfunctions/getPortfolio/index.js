@@ -32,7 +32,7 @@ exports.main = async (event) => {
         const res = await db.collection("holdings")
           .where(lastId ? { _openid: uid, _id: _.gt(lastId) } : { _openid: uid })
           .orderBy("_id", "asc") // 游标分页显式定序，不依赖底层默认序
-          .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, group: true })
+          .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, group: true, platform: true })
           .limit(PAGE)
           .get();
         const rows = res.data || [];
@@ -56,7 +56,7 @@ exports.main = async (event) => {
 
     // 批量请求估值（N 合 1），再并行获取东方财富最新净值与历史净值
     // 历史净值合并为一次请求（max(60, historyDays)），内存拆分 nav60，避免重复拉取
-    const codes = holdings.map((h) => h.fundCode);
+    const codes = [...new Set(holdings.map((h) => h.fundCode))];
     // 自算与数据源一互不依赖 → 并行，避免串行叠加延迟（新浪多批时会明显拖慢首页）；
     // 新浪给 15s 总预算：到点用已拿到的部分，宁缺不拖垮函数（getPortfolio 超时 60s）
     const [tiantianMap, sinaMap] = await Promise.all([
@@ -65,40 +65,47 @@ exports.main = async (event) => {
     ]);
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 60);
-    // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控
+    // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控。
+    // 按基金代码去重后再拉：同一基金在多个平台各一笔时，净值/历史只请求一次
     const CONCURRENT = 8;
-    const resultsList = [];
-    for (let i = 0; i < holdings.length; i += CONCURRENT) {
-      const batch = holdings.slice(i, i + CONCURRENT);
-      const batchResults = await Promise.all(batch.map(async (h) => {
+    const uniqueCodes = [...new Set(holdings.map((h) => h.fundCode))];
+    const navByCode = {};
+    for (let i = 0; i < uniqueCodes.length; i += CONCURRENT) {
+      const batch = uniqueCodes.slice(i, i + CONCURRENT);
+      const batchResults = await Promise.all(batch.map(async (code) => {
         try {
-          const tiantian = tiantianMap[h.fundCode] || {};
           // 净值与历史净值并行拉取（needDays=0 时只取净值，避免串行翻倍耗时）
           let eastmoney, navHistoryAll = [];
           if (needDays > 0) {
             [eastmoney, navHistoryAll] = await Promise.all([
-              fd.fetchLatestNavEastMoney(h.fundCode),
-              fd.fetchNAVHistory(h.fundCode, needDays),
+              fd.fetchLatestNavEastMoney(code),
+              fd.fetchNAVHistory(code, needDays),
             ]);
           } else {
-            eastmoney = await fd.fetchLatestNavEastMoney(h.fundCode);
+            eastmoney = await fd.fetchLatestNavEastMoney(code);
           }
           return {
-            h, tiantian,
-            eastmoney,
+            code, eastmoney,
             nav60: needDays > 0 ? (navHistoryAll || []).slice(0, 60) : [],
             navHistory: historyDays ? (navHistoryAll || []) : null,
           };
         } catch (e) {
-          console.error(`获取基金 ${h.fundCode} 失败:`, e);
-          return { h, tiantian: {}, eastmoney: {}, nav60: [], navHistory: [] };
+          console.error(`获取基金 ${code} 失败:`, e);
+          return { code, eastmoney: {}, nav60: [], navHistory: [] };
         }
       }));
-      resultsList.push(...batchResults);
-      if (i + CONCURRENT < holdings.length) {
+      batchResults.forEach((r) => { navByCode[r.code] = r; });
+      if (i + CONCURRENT < uniqueCodes.length) {
         await new Promise(r => setTimeout(r, 150));
       }
     }
+    const resultsList = holdings.map((h) => {
+      const n = navByCode[h.fundCode] || { eastmoney: {}, nav60: [], navHistory: [] };
+      return {
+        h, tiantian: tiantianMap[h.fundCode] || {},
+        eastmoney: n.eastmoney, nav60: n.nav60, navHistory: n.navHistory,
+      };
+    });
 
     const enriched = [];
     let totalMarket = 0;
@@ -447,6 +454,38 @@ exports.main = async (event) => {
       };
     });
 
+    // 平台维度汇总：平台是与基金分组并行的一级维度（顶部平台栏 / 账户汇总 / 资产卡按平台合计都用它）
+    const platformMap = {};
+    enriched.forEach(h => {
+      const pk = h.platform || "未分配";
+      if (!platformMap[pk]) {
+        platformMap[pk] = { name: pk, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, yesterdayMarket: 0, totalCost: 0 };
+      }
+      const m = platformMap[pk];
+      m.count++;
+      m.totalAmount += parseFloat(h.marketValue) || 0;
+      m.todayProfit += parseFloat(h.todayProfit) || 0;
+      m.totalReturn += parseFloat(h.totalReturn) || 0;
+      const shares = parseFloat(h.shares) || 0;
+      const buyPrice = parseFloat(h.buyPrice) || 0;
+      const currentNav = parseFloat(h.currentNav) || 0;
+      const todayChangeRate = parseFloat(h.todayChangeRate) || 0;
+      if (shares > 0 && currentNav > 0) {
+        const yesterdayNav = todayChangeRate !== 0 ? currentNav / (1 + todayChangeRate / 100) : currentNav;
+        m.yesterdayMarket += yesterdayNav * shares;
+        m.totalCost += buyPrice * shares;
+      }
+    });
+    const platforms = Object.values(platformMap).map(m => ({
+      name: m.name,
+      count: m.count,
+      totalAmount: m.totalAmount.toFixed(2),
+      todayProfit: m.todayProfit.toFixed(2),
+      todayProfitRate: (m.yesterdayMarket > 0 ? (m.todayProfit / m.yesterdayMarket) * 100 : 0).toFixed(2),
+      totalReturn: m.totalReturn.toFixed(2),
+      totalReturnRate: (m.totalCost > 0 ? (m.totalReturn / m.totalCost) * 100 : 0).toFixed(2),
+    }));
+
     // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----
     // 仅在交易时段补（与定时任务语义一致），距上一点 >= 1 分钟才写（快照已分钟粒度，与新定时同步）
     try {
@@ -490,6 +529,7 @@ exports.main = async (event) => {
       code: 0,
       data: {
         holdings: enriched,
+        platforms,
         totalAmount: totalMarket.toFixed(2),
         todayProfit: totalTodayProfit.toFixed(2),
         todayProfitRate: todayProfitRate.toFixed(2),
