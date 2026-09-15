@@ -14,7 +14,8 @@ const ALL_INDICES = [
   { code: "IXIC", name: "纳斯达克" },
 ];
 
-const CACHE_KEY = "portfolio_cache";
+// 平台（账户）维度的本地新建列表：与分组同款，保证空平台不会因下次拉取而消失
+const PLATFORMS_CACHE_KEY = "local_platforms";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
 const POLL_INTERVAL = 30000; // 盘中轮询间隔 30 秒
@@ -1467,12 +1468,16 @@ Page({
 
   // 账户汇总：每个平台一行（资产/当日收益/收益率/只数）；末尾补"未分配"行（真有这类持仓时才出现）
   _platformRows(holdings, platformData) {
-    const rows = (platformData || [])
-      .filter(p => p.name !== "未分配")
-      .map(p => ({
-        name: p.name, count: p.count,
-        totalAmount: p.totalAmount, todayProfit: p.todayProfit, todayProfitRate: p.todayProfitRate,
-      }));
+    const byName = {};
+    (platformData || []).forEach(p => { byName[p.name] = p; });
+    const rows = this._mergePlatforms(platformData)
+      .filter(n => n !== "未分配")
+      .map(name => {
+        const p = byName[name];
+        return p
+          ? { name, count: p.count, totalAmount: p.totalAmount, todayProfit: p.todayProfit, todayProfitRate: p.todayProfitRate }
+          : { name, count: 0, totalAmount: "0.00", todayProfit: "0.00", todayProfitRate: "0.00" };
+      });
     const rest = holdings.filter(h => !h.platform);
     if (rest.length > 0) {
       const num = v => parseFloat(v) || 0;
@@ -1577,22 +1582,28 @@ Page({
     }, "新建平台", "输入平台名称，如：支付宝");
   },
 
-  // 平台列表（顶部栏/新增持仓都要用）：服务端为准，本地新建的先补上
+  // 平台列表：服务端（有持仓的平台）+ 本地新建的空平台（与分组的 local_groups 同款，
+  // 只写 portfolio_cache 会被下次拉取覆盖 → 新建的平台"消失"）
+  _getCachedPlatforms() {
+    try { return wx.getStorageSync(PLATFORMS_CACHE_KEY) || []; } catch (e) { return []; }
+  },
+
   _mergePlatforms(list) {
-    const names = (list || []).map(x => (typeof x === "string" ? x : x && x.name)).filter(Boolean);
-    const local = this.data.platformList || [];
-    return [...new Set([...names, ...local])].filter(n => n !== "未分配");
+    const merged = [...this._getCachedPlatforms()];
+    for (const x of (list || [])) {
+      const name = typeof x === "string" ? x : (x && x.name);
+      if (name && name !== "未分配" && !merged.includes(name)) merged.push(name);
+    }
+    return merged;
   },
 
   _savePlatformToCache(name) {
-    try {
-      const cached = wx.getStorageSync("portfolio_cache") || {};
-      const list = cached.platforms || [];
-      if (!list.some(x => (x.name || x) === name)) list.push({ name, count: 0, totalAmount: "0.00", todayProfit: "0.00", todayProfitRate: "0.00" });
-      cached.platforms = list;
-      wx.setStorageSync("portfolio_cache", cached);
-    } catch (e) { /* ignore */ }
-    this.setData({ platformList: this._mergePlatforms([]) });
+    const cached = this._getCachedPlatforms();
+    if (!cached.includes(name)) {
+      cached.push(name);
+      wx.setStorageSync(PLATFORMS_CACHE_KEY, cached);
+    }
+    this.setData({ platformList: this._mergePlatforms(this.data.platformsData || []) });
   },
 
   onAddGroup() {
