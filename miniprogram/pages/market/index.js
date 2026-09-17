@@ -327,6 +327,25 @@ Page({
     };
   },
 
+  // 点敞口格子 → 跳到对应重仓股列表；该类没有数据时说明原因
+  // （原来两个格子没绑任何事件，点了没反应像坏了；--% 其实是"基金披露的重仓股里没有这一侧"）
+  onExposureTap(e) {
+    const market = e.currentTarget.dataset.market === "us" ? "us" : "hk";
+    const ex = this.data.exposure || {};
+    const has = market === "hk" ? (ex.hkStocks || []).length : (ex.usStocks || []).length;
+    if (!has) {
+      wx.showToast({
+        title: market === "hk"
+          ? "你持仓基金披露的重仓股里没有港股"
+          : "你持仓基金披露的重仓股里没有美股",
+        icon: "none",
+        duration: 2600,
+      });
+      return;
+    }
+    wx.pageScrollTo({ selector: market === "hk" ? "#stockSecHk" : "#stockSecUs", duration: 200 });
+  },
+
   // 海外市场速览（期货/商品/汇率 + 美股盘前盘后）；失败返回 null 由缓存兜底
   _fetchSnapshot(usCodes) {
     return api.fetchMarketSnapshot({ usCodes: usCodes || [] }).then((res) => {

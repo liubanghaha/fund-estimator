@@ -59,11 +59,11 @@
     <view wx:if="{{exposure && exposure.hasData}}" class="mk-card">
       <view class="mk-sec-title">你的持仓港美股敞口</view>
       <view class="exp-row">
-        <view class="exp-item">
+        <view class="exp-item" bind:tap="onExposureTap" data-market="hk">
           <view class="exp-pct up-text">{{exposure.hkPct == null ? '--' : exposure.hkPct}}%</view>
           <view class="exp-label">重仓港股<text class="exp-cnt" wx:if="{{exposure.hkCount}}">（{{exposure.hkCount}} 只基金）</text></view>
         </view>
-        <view class="exp-item">
+        <view class="exp-item" bind:tap="onExposureTap" data-market="us">
           <view class="exp-pct">{{exposure.usPct == null ? '--' : exposure.usPct}}%</view>
           <view class="exp-label">重仓美股<text class="exp-cnt" wx:if="{{exposure.usCount}}">（{{exposure.usCount}} 只基金）</text></view>
         </view>
@@ -73,7 +73,7 @@
 
     <!-- 重仓股实时行情（你的基金底仓视角，他处不可见） -->
     <view wx:if="{{exposure && (exposure.hkStocks.length || exposure.usStocks.length)}}" class="mk-card">
-      <view wx:if="{{exposure.hkStocks.length}}" class="stock-sec">
+      <view wx:if="{{exposure.hkStocks.length}}" class="stock-sec" id="stockSecHk">
         <view class="stock-sec-title">重仓港股<text class="stock-sec-note">按占仓权重排序 · 点击看详情</text></view>
         <view class="stock-row" wx:for="{{exposure.hkStocks}}" wx:key="code" data-code="{{item.code}}" data-market="hk" bind:tap="onStockTap">
           <view class="stock-name">
@@ -86,7 +86,7 @@
           </view>
         </view>
       </view>
-      <view wx:if="{{exposure.usStocks.length}}" class="stock-sec">
+      <view wx:if="{{exposure.usStocks.length}}" class="stock-sec" id="stockSecUs">
         <view class="stock-sec-title">重仓美股<text class="stock-sec-note">按占仓权重排序 · 点击看详情</text></view>
         <view class="stock-row" wx:for="{{exposure.usStocks}}" wx:key="code" data-code="{{item.code}}" data-market="us" bind:tap="onStockTap">
           <view class="stock-name">
