@@ -22,15 +22,19 @@
 
 /* 仪表盘 */
 .dashboard{padding:0 24rpx}
-.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:48rpx 28rpx 40rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
+/* 吸顶区（账户栏→分组栏）：页面滚动时固定在顶部，只让下方列表滚。
+   用 sticky 而非 fixed：它在 scroll-view 内仍然生效（fixed 不行），且不用测量高度、内容变化自适应 */
+.sticky-top{position:sticky;top:0;z-index:20;background:#F5F5F5}
+/* 吸顶后卡片常驻，高度收敛一档：留白 48/40→36/28、标签与数字间距各收 4/6rpx，字号不动 */
+.asset-overview{background:var(--primary-gradient);border-radius:16rpx;padding:36rpx 28rpx 28rpx;margin-bottom:16rpx;position:relative;color:#FFF;text-align:center}
 .amount-toggle{position:absolute;right:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.25);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1}
 .share-toggle{position:absolute;left:20rpx;top:20rpx;font-size:22rpx;background:rgba(255,255,255,.35);padding:6rpx 16rpx;border-radius:var(--radius-card);z-index:1;color:#FFF}
 .share-toggle-icon{font-size:20rpx;margin-right:4rpx}
 /* 热区扩大 ≥80rpx：伪元素向外撑点击范围，视觉大小不变（padding 会把带底色的胶囊撑变形） */
 .amount-toggle::after,.share-toggle::after{content:'';position:absolute;top:-20rpx;left:-12rpx;right:-12rpx;bottom:-20rpx}
-.asset-label{font-size:24rpx;opacity:.85;margin-bottom:14rpx}
+.asset-label{font-size:24rpx;opacity:.85;margin-bottom:10rpx}
 .updated-badge{font-size:18rpx;background:#FFF;color:var(--primary);padding:2rpx 8rpx;border-radius:8rpx;margin-left:8rpx}
-.asset-value{font-size:60rpx;font-weight:700;line-height:1.15;margin-bottom:18rpx}
+.asset-value{font-size:60rpx;font-weight:700;line-height:1.15;margin-bottom:12rpx}
 .asset-sub{font-size:24rpx;display:flex;flex-wrap:wrap;gap:26rpx;justify-content:center;align-items:baseline;margin-top:8rpx}
 /* 标签弱、数值强：原来三者同色同重，「市值 675,022.91」会盖住涨幅和累计 */
 .asset-sub-item{color:rgba(255,255,255,.72)}

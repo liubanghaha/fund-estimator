@@ -83,6 +83,8 @@
       </view>
 
       <view wx:else class="dashboard">
+        <!-- 吸顶区：账户栏 / 收益卡 / 快捷入口（含批量栏）/ 分组栏。下滑时只滚下面的列表 -->
+        <view class="sticky-top">
         <!-- 平台栏（一级维度）：账户汇总 / 全部 / 各平台 / + 新建 / ☰ 管理。放在页面最顶部，资产卡显示当前平台合计 -->
         <view class="platform-bar">
           <scroll-view class="platform-tabs" scroll-x enhanced show-scrollbar="{{false}}">
@@ -183,6 +185,8 @@
             <view class="group-tab group-tab-add" bind:tap="onAddGroup">+</view>
           </scroll-view>
         </view>
+        </view>
+        <!-- /吸顶区 -->
 
         <!-- 账户汇总：每个平台一行，点行切到该平台 -->
         <view wx:if="{{activePlatform === 'summary'}}" class="platform-summary">
