@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>韭菜估值宝使用指南</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 20px 16px;
+    color: #333;
+    font-size: 16px;
+    line-height: 1.8;
+  }
+  h1 {
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 8px;
+    color: #1a1a1a;
+  }
+  .subtitle {
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .greeting {
+    margin-bottom: 24px;
+    color: #666;
+  }
+  h2 {
+    font-size: 20px;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    padding-left: 12px;
+    border-left: 4px solid #E4393C;
+    color: #1a1a1a;
+  }
+  h3 {
+    font-size: 17px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    color: #1a1a1a;
+  }
+  .tip {
+    background: #fdf6ec;
+    border-left: 3px solid #e6a23c;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: #8a6d3b;
+    border-radius: 4px;
+  }
+  .img-placeholder {
+    background: #f5f5f5;
+    border: 1px dashed #ddd;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: #bbb;
+    font-size: 14px;
+    margin: 16px 0;
+  }
+  .step {
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 15px;
+  }
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 14px;
+  }
+  .summary-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .summary-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+    color: #555;
+  }
+  .summary-table td:last-child {
+    color: #888;
+  }
+  .footer {
+    text-align: center;
+    color: #bbb;
+    font-size: 13px;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .highlight {
+    color: #E4393C;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<h1>韭菜估值宝｜完整使用指南</h1>
+<p class="subtitle">2026年9月17日 · 功能介绍 + 上手教程</p>
+
+<p class="greeting">
+经常有人问：这个小程序和别的基金 App 有什么不一样？<br><br>
+别的 App 忙着告诉你「可以买什么」，韭菜估值宝只回答三个问题：<br>
+① 我今天赚了多少（盘中实时估算 + 收盘后官方净值）；<br>
+② 我手里这些基金<strong>现在贵不贵</strong>（估值温度）；<br>
+③ 我这笔钱<strong>真正到手赚了多少</strong>（扣掉持有费用的口径）。<br><br>
+另外，如果你同一只基金在两个平台各买了一笔，或者手里有十几二十只、还分了好几个分组——这个小程序就是按这种真实情况设计的。
+</p>
+
+<div class="tip">
+<strong>想直接上手</strong>：微信搜索小程序「<strong>韭菜估值宝</strong>」，或点文章里的小程序卡片直接打开。<br><span style="color:#BBB">（给编辑的备注：文中带「🖼 配图 N」的行是插图位置，按文件名上传对应图片后删掉该行即可；浏览器复制粘贴时图片不会跟过来，这是浏览器限制。）</span>第一次用推荐从「截图添加」开始——把现在持有的基金从支付宝 / 天天基金截一张图导进来，比一只只手动加快得多。
+</div>
+
+<div class="tip">
+<strong>本文分四部分</strong>：一、和同类工具最不一样的四件事（先看这里）；二、核心功能逐页过一遍；三、四个差异化功能详解；四、常见问题。
+</div>
+
+<h2>一、和同类工具最不一样的四件事</h2>
+
+<table class="summary-table">
+  <tr><td>①一基多账户</td><td>同一只基金在支付宝、天天基金各买了一笔：<strong>各记各的</strong>（成本、份额、收益分别算），切到「全部」时自动合并成一行看总数。大多数工具一只基金只能记一条，多平台买就只能自己加。</td></tr>
+  <tr><td>②估值温度</td><td>不只看今天涨跌，还按基金的 PE 分位算出「温度」（低估 / 适中 / 高估）。温度<strong>变化时能推送到微信</strong>——它回答的是"什么时候该谨慎"，不是买卖建议。</td></tr>
+  <tr><td>③费用黑洞 & 影子账户</td><td>把管理费、托管费按你的市值折成每年真实扣掉的钱；再复盘「这一年你实际赚到的」和「一直拿着不动会赚到的」差多少。行为成本这东西，不看数字是感觉不到的。</td></tr>
+  <tr><td>④数据体检 + 截图导入</td><td>数据错了不藏着：体检页逐项列出"份额与市值矛盾""净值缺失"之类的问题，点进去就能校准。导入也省事——<strong>支付宝 / 天天基金 / 东财的持仓截图直接识别</strong>，多账户可选记到哪个账户。</td></tr>
+</table>
+
+<h2>二、核心功能逐页过一遍</h2>
+
+<h3>首页：今天赚了多少</h3>
+<img src="screenshots/v23/01-home.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 1 · 01-home.png —— 首页：顶部是账户栏，红色卡片是当日收益，下面是持仓列表。</p>
+
+<ul>
+  <li><strong>账户栏</strong>：账户汇总看每个账户各自多少钱、各赚多少；「全部」把所有账户合在一起看，同一只基金会标出「天天 · 支付宝」；点某个账户只看那个账户的持仓。</li>
+  <li><strong>收益卡</strong>：会写明口径——盘中是<strong>估算</strong>，收盘后基金公司公布净值就自动切换成<strong>官方净值</strong>，不拿估算冒充真实收益。点卡片进收益走势页。</li>
+  <li><strong>列表</strong>：当日收益、累计收益、占比、距一年高点都能点列标题排序，列也可以自己增减；往下滑顶部固定不动，只有列表在滚。</li>
+  <li><strong>基金分组</strong>：自己建分组（军工 / 医药 / 科技…），长按持仓可移入。分组和账户是两个独立维度，可以"支付宝里的科技类"这样叠加着看。</li>
+</ul>
+
+<h3>基金详情：一只基金的全部信息</h3>
+<img src="screenshots/v23/02-detail.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 2 · 02-detail.png —— 详情页：估值与净值、基金档案、我的持仓（合计 + 分账户明细）、风险指标。</p>
+
+<ul>
+  <li><strong>估值 + 净值 + 当日涨跌</strong>：盘中看估算，盘后看官方值，来源都标清楚。</li>
+  <li><strong>我的持仓</strong>：显示合计（跨账户相加、成本按份额加权），下面按账户列出每一笔；点某一笔可以单独修改 / 校准 / 加减仓 / 删除，不影响另一个账户。</li>
+  <li><strong>基金档案</strong>：规模、成立时间、同类排名、近 3 月变动等。</li>
+  <li><strong>风险指标</strong>：最大回撤、夏普比率，都配了一句白话解释。</li>
+</ul>
+
+<h3>收益走势：日历 + 曲线 + 周月年复盘</h3>
+<img src="screenshots/v23/04-profit.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 3 · 04-profit.png —— 收益走势：日历、收益曲线（可叠加沪深300）、本周本月本年的复盘条。</p>
+
+<ul>
+  <li>日历看每天赚亏；曲线看趋势，可选叠加沪深300对照。</li>
+  <li>周 / 月 / 年复盘显示本周、本月、本年到现在累计赚了多少、跑赢还是跑输沪深300，<strong>含当天</strong>，收盘后会跟着当天真实收益继续更新。</li>
+</ul>
+
+<h3>资产分析：从"看单只"到"看整个组合"</h3>
+<img src="screenshots/v23/03-analysis.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 4 · 03-analysis.png —— 资产分析：持仓健康分、行业穿透、持仓重合度，以及费用与复盘。</p>
+
+<ul>
+  <li><strong>持仓健康分</strong>：从集中度、重合度、行业分布几个维度给组合打分，能看出"你可能没意识到自己买了三只半导体"。 </li>
+  <li><strong>行业穿透</strong>：按基金季报披露的重仓股，把你实际暴露的行业算出来（标注覆盖率）。</li>
+  <li><strong>持仓重合度</strong>：两只基金有多少重仓股是同一批——买十只基金不等于分散。</li>
+  <li><strong>费用与复盘</strong>：费用账单 + 影子账户，详见第三章。</li>
+</ul>
+
+<h3>提醒：涨跌阈值 + 温度变化，直接推微信</h3>
+<img src="screenshots/v23/07-alert.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 5 · 07-alert.png —— 我的提醒：顶部显示推送额度，下面是逐基金的规则开关。</p>
+
+<ul>
+  <li><strong>涨跌提醒</strong>：给每只基金设"涨到 / 跌到多少"提醒，也可以在批量模式里一键给多只设默认的 ±3%。</li>
+  <li><strong>温度提醒</strong>：估值温度档位变化时通知（比如"温度适中→温度偏高"）。</li>
+  <li><strong>推送怎么才能收到</strong>：微信的一次性订阅消息是"一次授权 = 一条通知"。页面顶部的「推送额度」就是你现在还能收几条，点「补充额度」授权即可；一直在用的话，下拉刷新会自动补充。额度不够时优先保提醒，收盘小结和净值播报会让路。</li>
+</ul>
+
+<h3>行情：不只看自己那几只</h3>
+<img src="screenshots/v23/05-market.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 6 · 05-market.png —— 行情页顶部：港股 / 美股 / 亚太 / 欧洲四组指数，点卡片看走势。</p>
+<img src="screenshots/v23/06-market-exposure.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 7 · 06-market-exposure.png —— 你的持仓港美股敞口，以及穿透后的重仓股与实时行情。</p>
+
+<ul>
+  <li><strong>四组指数</strong>：恒生、纳指、标普、道指、日经、韩国、印度、德法等，点开看近 5 日 / 近 1 月 / 近 3 月。</li>
+  <li><strong>海外市场速览</strong>：指数期货（纳指100、标普500、道指的期货几乎 24 小时在交易，晚上想知道今晚大概什么方向就看它）、商品（黄金 / 原油 / 铜）、汇率（美元、港元兑人民币）——持有 QDII 和港股基金的人用得上。</li>
+  <li><strong>我的持仓港美股敞口</strong>：按基金季报重仓股算出你实际有多少暴露在港股 / 美股上；下面列出具体重仓股与实时行情，美股在盘前 / 盘后时段会标明时段，不拿盘前价冒充盘中价。</li>
+</ul>
+
+<h3>我的：工具与设置</h3>
+<img src="screenshots/v23/08-mine.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 8 · 08-mine.png —— 「我的」里的工具入口：持仓体检、资产分析、收盘播报、数据源、主题色等。</p>
+
+<ul>
+  <li><strong>持仓体检</strong>：把数据问题逐项列出来，详见第三章。</li>
+  <li><strong>收盘播报 / 净值播报</strong>：15:30 推当天估算小结，21:30 官方净值出来后推真实收益，并对比当天估算偏差。</li>
+  <li><strong>数据源</strong>：估值可选"数据源一"或"自算"，两套口径的历史曲线都能看。</li>
+  <li><strong>主题色</strong>：红白 / 蓝白两套。</li>
+</ul>
+
+<h2>三、四个差异化功能详解</h2>
+
+<h3>1. 一基多账户：同一只基金，不同平台各记各的</h3>
+<p>这个功能是被用户催出来的——他在两个平台买了同一只基金，别的小程序只能记一条，收益和成本全糊在一起。</p>
+<div class="step">
+  <strong>怎么用</strong>：新增 / 截图导入时选「账户」（没建过账户就不打扰你）；记错了账户，长按列表行选「设置账户」即可。<br>
+  <strong>看数据</strong>：账户 tab 里只看该账户那笔；「全部」里同一基金合并成一行，标签写明「天天 · 支付宝」；详情页显示合计 + 分账户明细。<br>
+  <strong>改数据</strong>：点某一笔单独改 / 校准 / 加减仓 / 删，另一笔不受影响。账户可以重命名、删除（删除只清归属，持仓变「未分配」，不删数据），顺序也能在「＋」的管理面板里调。
+</div>
+
+<h3>2. 估值温度：回答"现在贵不贵"</h3>
+<p>涨跌幅告诉你今天发生了什么，温度告诉你现在处在什么位置。温度按基金的 PE 分位算，分成低估 / 适中 / 高三档，超过一年高点还会有标记。</p>
+<div class="tip">
+温度只是位置参考，不是买卖建议。我们只做数据陈述，不推荐任何基金、不给买卖点。
+</div>
+
+<h3>3. 费用黑洞 & 影子账户：把钱扣在哪了摆出来</h3>
+<p>费用账单按你现在的持仓市值，把管理费、托管费折成"每年大约扣多少钱"，并说明口径（不含申赎费用）。<br>
+影子账户用同一批持仓、同样的买卖时点做对照：如果你从买入起一直拿着不动，收益会是多少？和你的实际操作一比，差额就是行为带来的成本。我自己看完这条有点沉默。</p>
+
+<h3>4. 数据体检 + 截图导入：先保证数据是对的</h3>
+<img src="screenshots/v23/09-checkup.png" style="width:100%;border-radius:8px;border:1px solid #eee;margin:12px 0 6px">
+<p class="tip">🖼 配图 9 · 09-checkup.png —— 持仓体检：逐项列出数据问题，点进问题项可直接校准。</p>
+<div class="step">
+  <strong>数据体检</strong>：检查"份额与市值矛盾""净值缺失""同一账户下重复记录"等，每条都能点进去校准——数据不准，后面算的收益全是错的。<br>
+  <strong>截图导入</strong>：在支付宝 / 天天基金 / 东财的持仓页截一张图，从首页「截图添加」导入，自动识别基金名称、代码、金额、收益。识别不确定时宁可留空标「待确认」让你手补，也不猜着填——错基金静默入库，比让你多敲几个字糟糕得多。<br>
+  <strong>加减仓也能截图</strong>：交易记录截图识别后逐笔确认，不用一笔笔手输。
+</div>
+
+<h2>四、常见问题</h2>
+
+<h3>估值和官方净值为什么会对不上？</h3>
+<p>盘中还没有官方净值，只能用基金持仓和指数实时行情估算，偏差通常不到 0.1%，但遇到调仓、港股通停牌等情况会更大。所以：盘中看估算、盘后看官方值，界面上会明确标出当前用的是哪一种。21:30 的净值播报还会专门把当天估算和官方值的偏差告诉你。</p>
+
+<h3>提醒设置了，为什么没收到？</h3>
+<p>基本只可能是推送额度的问题：微信一次性订阅消息每次授权只能发一条。到「我的 → 我的提醒」看顶部额度，点「补充额度」授权一次即可；盘中触及阈值后最多 10 分钟就会推。额度不够时我们优先保提醒，收盘小结和净值播报会让路。</p>
+
+<h3>数据从哪来？</h3>
+<p>基金净值、估值、持仓、费率来自公开市场数据（东方财富、天天基金、腾讯行情等）；季报重仓股用于行业穿透与港美股敞口估算，会标注覆盖率与滞后性。所有数据仅供参考，不构成投资建议。</p>
+
+<h3>年度报告什么时候有？</h3>
+<p>每年 1 月 1 日开放上一年度报告（全年收益、最大回撤、操作次数、持有费用、影子账户），首次是 2027 年 1 月 1 日展示 2026 全年。今年剩下的几个月，数据都在替你攒着。</p>
+
+<h2>怎么开始用</h2>
+
+<p>微信里搜索小程序「<strong>韭菜估值宝</strong>」，或者直接点这篇文章里的小程序卡片。第一次进来建议按这个顺序：<br>
+① 先截图导入持仓（支付宝 / 天天基金 / 东财的持仓页截一张就行）；<br>
+② 回首页看一眼今天的收益，点卡片能看到收益走势；<br>
+③ 去「我的 → 我的提醒」把提醒设上，顺手点一下顶部的「补充额度」——不然消息发不出来（微信的规则，一次授权只能发一条）；<br>
+④ 手里基金多的，再去「资产分析」看一眼行业穿透和重合度，可能会有点意外。</p>
+
+<p>它不需要你做任何"投资决策"：把持仓导进来，剩下的数字我们替你算清楚——今天赚了多少、现在贵不贵、这笔钱最后真正到手赚了多少。</p>
+
+<p>版本更新和功能说明会发在<strong>这个公众号（韭菜养基宝）</strong>上，觉得有用的话可以关注一下，省得下次找不到。用着有问题、或者想加什么功能，小程序里「我的 → 意见反馈」直接说，我都能看到——很多功能就是被用户"催"出来的，比如上面的多账户。</p>
+
+<p class="footer">
+韭菜估值宝 · 估值有数 · 心中有底<br>
+本文为功能介绍，收益数据为历史演算，不构成投资建议
+</p>
+
+</body>
+</html>

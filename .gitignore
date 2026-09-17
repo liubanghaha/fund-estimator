@@ -13,3 +13,6 @@ project.private.config.json
 # CloudBase skills 安装产物
 .agents/
 skills-lock.json
+
+# 公众号文章的发布版（由 scripts/make-article-publish.py 生成，图片已内联 base64）
+articles/*-发布版.html
