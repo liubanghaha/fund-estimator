@@ -14,6 +14,8 @@ const ALL_INDICES = [
   { code: "IXIC", name: "纳斯达克" },
 ];
 
+// 持仓缓存键：首页写入，收益走势/资产分析/提醒页读它做口径对齐（9c77a0b 误删过，别再删）
+const CACHE_KEY = "portfolio_cache";
 // 平台（账户）维度的本地新建列表：与分组同款，保证空平台不会因下次拉取而消失
 const PLATFORMS_CACHE_KEY = "local_platforms";
 const INDEX_CACHE_KEY = "index_cache";
