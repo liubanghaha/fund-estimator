@@ -103,6 +103,7 @@ Page({
     _dragTimer: null,
     _didLongPress: false,
     managePanel: null,   // 账户/分组管理面板（点 + 打开）
+    mpDragging: false, mpDragIndex: -1,   // 面板内长按滑动排序状态
     _dragMoved: false,
     _tabWidth: 0,
     showGroupEdit: false,
@@ -1652,16 +1653,95 @@ Page({
     const { name, dir } = e.currentTarget.dataset;
     const panel = this.data.managePanel;
     if (!name || !panel) return;
-    const field = panel.field;
-    const list = [...this._dragList(field)];
-    const idx = list.indexOf(name);
+    const names = panel.items.map((i) => i.name);
+    const idx = names.indexOf(name);
     const to = idx + (dir === "up" ? -1 : 1);
-    if (idx < 0 || to < 0 || to >= list.length) return;
-    [list[idx], list[to]] = [list[to], list[idx]];
-    this._setDragList(field, list);
-    wx.setStorageSync(field === "platform" ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY, [...list]);
+    if (idx < 0 || to < 0 || to >= names.length) return;
+    [names[idx], names[to]] = [names[to], names[idx]];
+    this._applyManageOrder(panel.field, names);
+  },
+
+  // 用面板里的新顺序重排完整列表：不可编辑项（如「未分组」）保持原位，
+  // 避免面板看不见的项被顺手挪走或丢掉
+  _applyManageOrder(field, visibleNames) {
+    const full = this._dragList(field);
+    const wanted = new Set(visibleNames);
+    let i = 0;
+    const merged = full.map((x) => (wanted.has(x) ? visibleNames[i++] : x));
+    this._setDragList(field, merged);
+    wx.setStorageSync(field === "platform" ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY, [...merged]);
     if (this.updateGroupCounts) this.updateGroupCounts();
-    this._openManage(field);   // 重开面板以刷新序号与按钮可用态
+    this._openManage(field);   // 重开面板以刷新顺序与按钮可用态
+  },
+
+  // 触摸坐标：真机给 touches[0]，模拟器/部分基础库直接给 {x,y}
+  _touchY(e) {
+    // 模拟器把坐标放在事件本身（touches[0] 是 0,0 占位），真机才是 touches[0].clientY
+    if (typeof e.clientY === "number") return e.clientY;
+    if (typeof e.y === "number") return e.y;
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    return t && typeof t.clientY === "number" ? t.clientY : null;
+  },
+
+  // ===== 面板内长按上下滑动排序（与页签拖拽同款：长按 500ms 进入拖动，越过半行高换位）=====
+  onManageTouchStart(e) {
+    const startY = this._touchY(e);
+    if (startY === null) return;
+    this._mpStartY = startY;
+    this._mpRowH = 0;
+    this._mpMoved = false;
+    clearTimeout(this._mpTimer);
+    // 事件绑在面板卡片（稳定节点）上：行节点会随拖动 setData 重建，绑在行上会丢后续 touchmove
+    this._mpTimer = setTimeout(() => {
+      wx.createSelectorQuery().selectAll(".mp-row").boundingClientRect((rects) => {
+        const rows = rects || [];
+        if (rows.length < 2) return;
+        const rowH = Math.round(rows.reduce((a, r) => a + r.height, 0) / rows.length);
+        const idx = Math.max(0, Math.min(Math.floor((startY - rows[0].top) / (rowH || 90)), rows.length - 1));
+        this._mpRowH = rowH;
+        wx.vibrateShort({ type: "medium" });
+        this.setData({ mpDragging: true, mpDragIndex: idx });
+      }).exec();
+    }, 500);
+  },
+  onManageTouchMove(e) {
+    const y = this._touchY(e);
+    if (y === null || !this.data.mpDragging) return;
+    const touch = { clientY: y };
+    const items = (this.data.managePanel && this.data.managePanel.items) || [];
+    if (items.length < 2) return;
+    const rowH = this._mpRowH || 90;
+    const delta = touch.clientY - this._mpStartY;
+    const dir = delta > rowH / 2 ? 1 : delta < -rowH / 2 ? -1 : 0;
+    if (!dir) return;
+    const from = this.data.mpDragIndex;
+    const to = Math.max(0, Math.min(from + dir, items.length - 1));
+    if (to === from) return;
+    const next = items.map((x) => x.name);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    this._mpMoved = true;
+    this._mpStartY = touch.clientY;   // 基线跟着手指走，连续拖动可逐行换位
+    this.setData({
+      "managePanel.items": next.map((n) => {
+        const hit = items.find((x) => x.name === n);
+        return hit || { name: n, count: 0 };
+      }),
+      mpDragIndex: to,
+    });
+  },
+  onManageTouchEnd() {
+    clearTimeout(this._mpTimer);
+    if (!this.data.mpDragging) return;
+    const panel = this.data.managePanel;
+    // 拖动过才落盘；并短暂抑制"重命名/删除"的 tap，避免长按按钮时误触
+    if (panel && this._mpMoved) {
+      this._suppressManageTap = true;
+      setTimeout(() => { this._suppressManageTap = false; }, 400);
+      this._applyManageOrder(panel.field, panel.items.map((i) => i.name));
+    }
+    this._mpMoved = false;
+    this.setData({ mpDragging: false, mpDragIndex: -1 });
   },
   onManageCreate() {
     const panel = this.data.managePanel;
@@ -1670,12 +1750,14 @@ Page({
     if (panel.field === "platform") this._createPlatform(); else this._createGroup();
   },
   onManageRename(e) {
+    if (this._suppressManageTap) return;
     const name = e.currentTarget.dataset.name;
     const panel = this.data.managePanel;
     this.setData({ managePanel: null });
     if (name && panel) this.renameGroup(name, panel.field);
   },
   onManageDelete(e) {
+    if (this._suppressManageTap) return;
     const name = e.currentTarget.dataset.name;
     const panel = this.data.managePanel;
     this.setData({ managePanel: null });

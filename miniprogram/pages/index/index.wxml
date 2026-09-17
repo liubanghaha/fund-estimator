@@ -307,10 +307,11 @@
 
   <!-- 账户/分组管理面板：点「+」打开，新建/重命名/删除都在这一层，不用长按找 -->
   <view wx:if="{{managePanel}}" class="mp-mask" bind:tap="onCloseManage">
-    <view class="mp-card" catch:tap="noop">
-      <view class="mp-head">{{managePanel.title}}<text class="mp-head-tip">↑↓ 调整页签顺序</text></view>
-      <scroll-view scroll-y class="mp-list">
-        <view class="mp-row" wx:for="{{managePanel.items}}" wx:key="name">
+    <view class="mp-card" catch:tap="noop"
+      bind:touchstart="onManageTouchStart" bind:touchmove="onManageTouchMove" bind:touchend="onManageTouchEnd">
+      <view class="mp-head">{{managePanel.title}}<text class="mp-head-tip">↑↓ 或长按拖动可调顺序</text></view>
+      <scroll-view scroll-y="{{!mpDragging}}" class="mp-list">
+        <view class="mp-row {{mpDragIndex === index ? 'dragging' : ''}}" wx:for="{{managePanel.items}}" wx:key="name">
           <view class="mp-ord">
             <view class="mp-ord-btn {{index === 0 ? 'off' : ''}}" catch:tap="onManageMove" data-name="{{item.name}}" data-dir="up">↑</view>
             <view class="mp-ord-btn {{index === managePanel.items.length - 1 ? 'off' : ''}}" catch:tap="onManageMove" data-name="{{item.name}}" data-dir="down">↓</view>
