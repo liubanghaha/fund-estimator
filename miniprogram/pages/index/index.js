@@ -1646,6 +1646,23 @@ Page({
     });
   },
   onCloseManage() { this.setData({ managePanel: null }); },
+
+  // 面板里调顺序：与长按拖拽同一套顺序存储（本地键即页签顺序），改完立刻生效
+  onManageMove(e) {
+    const { name, dir } = e.currentTarget.dataset;
+    const panel = this.data.managePanel;
+    if (!name || !panel) return;
+    const field = panel.field;
+    const list = [...this._dragList(field)];
+    const idx = list.indexOf(name);
+    const to = idx + (dir === "up" ? -1 : 1);
+    if (idx < 0 || to < 0 || to >= list.length) return;
+    [list[idx], list[to]] = [list[to], list[idx]];
+    this._setDragList(field, list);
+    wx.setStorageSync(field === "platform" ? PLATFORMS_CACHE_KEY : GROUPS_CACHE_KEY, [...list]);
+    if (this.updateGroupCounts) this.updateGroupCounts();
+    this._openManage(field);   // 重开面板以刷新序号与按钮可用态
+  },
   onManageCreate() {
     const panel = this.data.managePanel;
     this.setData({ managePanel: null });

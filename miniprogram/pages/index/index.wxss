@@ -377,6 +377,10 @@
 .mp-head{font-size:32rpx;font-weight:700;color:#333;text-align:center;margin-bottom:18rpx}
 .mp-list{max-height:52vh;flex:1}
 .mp-row{display:flex;align-items:center;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
+.mp-head-tip{font-size:20rpx;color:#BBB;font-weight:400;margin-left:12rpx}
+.mp-ord{display:flex;flex-direction:column;gap:2rpx;margin-right:16rpx}
+.mp-ord-btn{font-size:22rpx;color:#666;background:#F5F5F5;border-radius:8rpx;padding:2rpx 12rpx;line-height:1.5}
+.mp-ord-btn.off{color:#D8D8D8}
 .mp-main{flex:1;min-width:0}
 .mp-name{font-size:28rpx;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mp-sub{font-size:20rpx;color:#BBB;margin-top:4rpx}
