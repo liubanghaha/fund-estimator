@@ -181,6 +181,8 @@ Page({
   onSearchFund() { wx.navigateTo({ url: "/pages/search/index" }); },
   onAddHolding() { wx.navigateTo({ url: "/pages/add-holding/index" }); },
   onHoldingCheck() { wx.navigateTo({ url: "/pages/holding-check/index" }); },
+  // 资产分析与持仓体检同类（组合级诊断），放一起；条数不足由分析页自己给空态
+  onCorrelation() { wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" }); },
   onAlertManage() { wx.navigateTo({ url: "/pages/alert-manage/index" }); },
   onAnnualReport() {
     const year = this.data.annualYear;

@@ -1020,14 +1020,13 @@ Page({
     wx.navigateTo({ url: "/pages/add-holding/index" + q });
   },
 
-  // 悬浮＋：原快捷入口那四个功能（搜索已挪到账户栏右端）
+  // 悬浮＋：只放"操作"。资产分析与持仓体检同类（组合级诊断），挪到「我的」挨着体检
   onFabTap() {
     wx.showActionSheet({
-      itemList: ["新增持仓", "加减仓", "资产分析"],
+      itemList: ["新增持仓", "加减仓"],
       success: (r) => {
         if (r.tapIndex === 0) this.onAdd();
         else if (r.tapIndex === 1) this.onAdjust();
-        else if (r.tapIndex === 2) this.onCorrelation();
       },
     });
   },

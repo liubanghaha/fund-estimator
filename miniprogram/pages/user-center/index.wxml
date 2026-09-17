@@ -12,6 +12,7 @@
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索添加</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onAddHolding"><text>添加持仓</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onHoldingCheck"><text>🩺 持仓体检</text><text class="arrow">></text></view>
+    <view class="menu-item" bind:tap="onCorrelation"><text>📊 资产分析</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onAlertManage"><text>🔔 我的提醒</text><text class="arrow">></text></view>
     <view wx:if="{{showAnnualEntry}}" class="menu-item" bind:tap="onAnnualReport"><text>📊 {{annualYear}} 年度报告</text><text class="arrow">></text></view>
   </view>

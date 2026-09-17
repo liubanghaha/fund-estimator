@@ -190,6 +190,14 @@
             <view class="ps-arrow">›</view>
           </view>
           <view wx:if="{{!platformRows.length}}" class="ps-empty">还没有账户：新增持有时选一个账户，或点顶部「+」新建</view>
+          <!-- 总览页是分析的天然入口（分析按整个组合算，不按账户切） -->
+          <view wx:if="{{holdings.length >= 2}}" class="ps-row" bind:tap="onCorrelation">
+            <view class="ps-main">
+              <view class="ps-name">📊 资产分析</view>
+              <view class="ps-sub">持仓分析 · 费用与复盘</view>
+            </view>
+            <view class="ps-arrow">›</view>
+          </view>
           <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置账户」归入某个账户</view>
         </view>
 
