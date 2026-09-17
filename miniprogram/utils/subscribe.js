@@ -80,6 +80,38 @@ function requestAuth(src) {
   });
 }
 
+// 显式「补充额度」（提醒管理页按钮）：用户在页面上的点击本身就是合法手势，
+// 所以每次都真的拉起授权弹窗，不再走 requestAlertAuth 的"当天已请求过"短路
+// （那个短路返回 ok:true 却什么都不做——用户点了没反应就是这么来的）。
+// 返回 { ok, added, errMsg }：added=本次拿到的额度条数（accept=1）
+function requestQuotaTopUp(src) {
+  return new Promise((resolve) => {
+    wx.requestSubscribeMessage({
+      tmplIds: [TEMPLATE_ID],
+      success(res) {
+        if (res[TEMPLATE_ID] === "accept") {
+          try { wx.setStorageSync(KEY_AUTHED, Date.now()); } catch (e) { /* ignore */ }
+          // 等云端记账完成再返回，避免 UI 重新读额度时还没加上的竞态
+          wx.cloud.callFunction({
+            name: "dailyBriefing",
+            data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
+          }).then(() => {
+            try { track.subAuthorize({ src: src || "", mode: "topup", result: "accept" }); } catch (e) { /* ignore */ }
+            resolve({ ok: true, added: 1 });
+          }).catch(() => resolve({ ok: true, added: 1, cloudFailed: true }));
+        } else {
+          try { track.subAuthorize({ src: src || "", mode: "topup", result: "reject" }); } catch (e) { /* ignore */ }
+          resolve({ ok: false, added: 0, errMsg: "你点了取消，未授权" });
+        }
+      },
+      fail(err) {
+        try { track.subAuthorize({ src: src || "", mode: "topup", result: "fail" }); } catch (e) { /* ignore */ }
+        resolve({ ok: false, added: 0, errMsg: (err && err.errMsg) || "拉起授权失败" });
+      },
+    });
+  });
+}
+
 // 提醒类授权的频控版 requestAuth：每天最多拉起一次弹窗——
 // 当天首次保存提醒时弹（未勾「总是保持以上选择」的用户不再反复被问）；
 // 当天已请求过的，仅对已授权用户静默调一次 requestSubscribeMessage 攒额度
@@ -203,4 +235,4 @@ function optOutRecall() {
   }).catch(() => {});
 }
 
-module.exports = { TEMPLATE_ID, requestAuth, requestAlertAuth, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };
+module.exports = { TEMPLATE_ID, requestAuth, requestAlertAuth, requestQuotaTopUp, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };

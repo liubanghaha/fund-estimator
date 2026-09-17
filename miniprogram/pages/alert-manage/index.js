@@ -68,15 +68,25 @@ Page({
     wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSet", ...payload } }).catch(() => {});
   },
 
-  // 补充推送额度：微信一次性订阅，一次授权 = 一条可发送额度
+  // 补充推送额度：微信一次性订阅，一次授权 = 一条可发送额度。
+  // 每次点击都真的拉起授权；结果如实反馈（拒绝/失败不再假装成功）
   onTopUp() {
-    subscribe.requestAlertAuth("alert_manage").then((r) => {
-      if (r && r.ok === false) {
-        wx.showToast({ title: "未授权，提醒无法送达微信", icon: "none", duration: 2000 });
+    if (this._topping) return;
+    this._topping = true;
+    subscribe.requestQuotaTopUp("alert_manage").then((r) => {
+      this._topping = false;
+      if (r && r.ok) {
+        wx.showToast({ title: "已补充 " + (r.added || 1) + " 条额度", icon: "success" });
+        setTimeout(() => this._load(), 600);
         return;
       }
-      wx.showToast({ title: "已补充推送额度", icon: "success" });
-      setTimeout(() => this._load(), 900);
+      // 开发者工具无法授权（要求真机点击手势），把原始原因给出来，别让人猜
+      wx.showModal({
+        title: "没能补充额度",
+        content: (r && r.errMsg ? r.errMsg + "\n\n" : "") + "微信一次性订阅只能在真机上点「允许」获取额度；模拟器/开发者工具里授权不生效。",
+        showCancel: false,
+        confirmText: "知道了",
+      });
     });
   },
 
