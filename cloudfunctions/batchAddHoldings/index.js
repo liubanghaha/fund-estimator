@@ -18,14 +18,23 @@ exports.main = async (event) => {
     const codes = validFunds.map(f => f.fundCode.trim());
     const codeSet = new Set(codes);
 
-    // 2. 先查已存在持仓，只对新增的基金拉净值（避免重复导入时白拉净值 HTTP）
-    const existCodes = new Set();
+    // 2. 先查已存在持仓：去重键是「基金代码 + 账户」——同一基金在多个账户各一笔是合法的，
+    //    只有"同账户 + 同基金"才算重复（此前只按代码去重，导致换账户导入被静默跳过）
+    const keyOf = (code, platform) => code + "|" + (platform || "");
+    const existKeys = new Set();
     const existRes = await db.collection("holdings")
       .where({ _openid: OPENID, fundCode: _.in(codes) })
-      .field({ fundCode: true })
+      .field({ fundCode: true, platform: true })
       .get();
-    existRes.data.forEach(h => existCodes.add(h.fundCode));
-    const newCodes = codes.filter(c => !existCodes.has(c));
+    existRes.data.forEach(h => existKeys.add(keyOf(h.fundCode, h.platform)));
+    // 拉净值的范围 = 本次真正要写入的那些：同一基金在别的账户已有记录，这一笔照样要按净值算份额。
+    // （曾写成"排除库里已有的代码"，结果换账户导入的那笔份额/成本价全为 0）
+    const codesToInsert = [];
+    for (const f of validFunds) {
+      const code = f.fundCode.trim();
+      if (!existKeys.has(keyOf(code, f.platform))) codesToInsert.push(code);
+    }
+    const newCodes = [...new Set(codesToInsert)];
 
     // 3. 只对新增代码批量获取净值估算
     const navMap = newCodes.length > 0 ? await batchFetchNav(newCodes) : {};
@@ -37,7 +46,7 @@ exports.main = async (event) => {
       const code = f.fundCode.trim();
       const name = f.fundName || "";
 
-      if (existCodes.has(code)) {
+      if (existKeys.has(keyOf(code, f.platform))) {
         skipped.push({ code, name, reason: "已存在" });
         continue;
       }

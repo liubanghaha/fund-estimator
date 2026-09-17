@@ -101,9 +101,11 @@ Page({
         const path = app.globalData._screenshotPath;
         if (!path) return;
         // 首页「截图添加」走的是这条分支（直接 doOCR），必须在这里先定平台：
-        // 从平台 tab 进来已带 platform 不会问；没建过平台也不问；取消选平台则放弃本次导入
-        this._pendingPlatform = this._urlPlatform || "";
+        // 从账户 tab 进来已带 platform 不会问；没建过账户也不问；取消选账户则放弃本次导入
+        const platform = await this._askPlatformIfNeeded();
         app.globalData._screenshotPath = null;
+        if (platform === null) return;
+        this._pendingPlatform = platform;
         this.doOCR(path);
       });
     }
@@ -240,6 +242,9 @@ Page({
     let r = await this.trySearch(name);
     if (r) return r;
 
+    // 后面两条策略都砍掉了类别后缀，容易搜到同基金的另一个份额（C 类搜成 A 类）
+    const wantClass = this._shareClass(name);
+
     // 策略2：去掉后缀搜索（ETF联接C / 股票C / 指数C / 混合A 等）
     const shortName = name.replace(/(?:ETF|LOF|QDII|FOF)?\s*联接\s*(?:\(QDII\))?\s*[AC]?\s*$/, "")
       .replace(/(?:混合|股票|指数|债券|货币)\s*[AC]\s*$/, "")
@@ -247,6 +252,7 @@ Page({
       .trim();
     if (shortName && shortName !== name && shortName.length >= 3) {
       r = await this.trySearch(shortName);
+      if (r && wantClass && this._shareClass(r.name) !== wantClass) r = null;
       if (r) return r;
     }
 
@@ -254,10 +260,17 @@ Page({
     if (name.length > 6) {
       const short = name.replace(/[（(].*$/, "").slice(0, 6);
       r = await this.trySearch(short);
+      if (r && wantClass && this._shareClass(r.name) !== wantClass) r = null;
       if (r) return r;
     }
 
     return null;
+  },
+
+  // 份额类别后缀：…混合C / …联接A / …混合C类 → "C"；无类别 → ""
+  _shareClass(name) {
+    const m = (name || "").replace(/\s/g, "").match(/([AC])类?$/);
+    return m ? m[1] : "";
   },
 
   async trySearch(keyword) {
@@ -284,7 +297,7 @@ Page({
     const confident = !!best;
     if (!best) best = results[0];
     const code = best ? (best.code || best.fundCode || "") : "";
-    return code ? { code, confident } : null;
+    return code ? { code, confident, name: clean(best.fundName || best.name) } : null;
   },
 
   async onSaveAll() {
@@ -299,8 +312,8 @@ Page({
       return;
     }
 
-    // 账户取"当前所在账户"（在账户 tab 下进来已带参数）；识别完成后保存不再弹选择弹窗
-    const batchPlatform = this._urlPlatform || "";
+    // 账户取"当前所在账户"（在账户 tab 下进来已带参数）；从「全部/账户汇总」进来则用导入前选的那个；识别完成后保存不再弹窗
+    const batchPlatform = this._urlPlatform || this._pendingPlatform || "";
     wx.showLoading({ title: "保存中..." });
     try {
       const res = await api.batchAddHoldings(unsaved.map(f => ({
@@ -388,9 +401,10 @@ Page({
   },
 
   // 需要时问平台：用户"建过平台"才问（含新建但还没挂持仓的平台——它只在本地列表里），
-  // 一个平台都没有则返回 ""（跳过，不打扰没用平台的用户）
+  // 一个平台都没有则返回 ""（跳过，不打扰没用平台的用户）。每页只问一次：选了「不指定账户」不重复弹
   async _askPlatformIfNeeded() {
     if (this._urlPlatform) return this._urlPlatform;
+    if (this._platformAsked) return this._pendingPlatform || "";
     let serverList = [];
     try {
       const res = await api.holdingGetPlatforms();
@@ -400,7 +414,9 @@ Page({
     try { local = wx.getStorageSync("local_platforms") || []; } catch (e) { /* ignore */ }
     const list = [...new Set([...local, ...serverList])];
     if (!list.length) return "";
-    return await this._pickPlatform();
+    const picked = await this._pickPlatform();
+    if (picked !== null) { this._platformAsked = true; this._pendingPlatform = picked; }
+    return picked;
   },
 
   // 选平台：列出已有平台 + 新建 + 不指定；返回平台名（空串=不指定），null=取消
@@ -609,8 +625,12 @@ Page({
             return;
           }
         }
-        // 账户取当前所在账户；保存过程不再弹选择（页面上的账户选择行下一步再做）
-        this._pendingPlatform = this._urlPlatform || "";
+        // 账户：从账户 tab 进来已知；从「全部/账户汇总」进来且建过账户时问一次；取消则放弃本次新增
+        wx.hideLoading();
+        const platform = await this._askPlatformIfNeeded();
+        if (platform === null) return; // finally 里会复位 _submitting
+        wx.showLoading({ title: "保存中...", mask: true });
+        this._pendingPlatform = platform;
       }
       const estRes = await api.fetchFundEstimate(fundCode.trim());
       if (!estRes.result || estRes.result.code !== 0) {

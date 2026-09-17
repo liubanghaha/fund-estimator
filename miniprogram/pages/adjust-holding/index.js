@@ -42,9 +42,10 @@ Page({
     try { if (options && options.platform) this._urlPlatform = decodeURIComponent(options.platform); } catch (e) { /* ignore */ }
   },
 
-  // 导入前定平台：没建过平台直接跳过（不打扰）；带 platform 参数或已选过则不再问
+  // 导入前定平台：没建过平台直接跳过（不打扰）；带 platform 参数或已问过则不再问
   async _askPlatformForImport() {
     if (this._urlPlatform) return this._urlPlatform;
+    if (this._platformAsked) return this._pendingPlatform || "";
     let serverList = [];
     try {
       const res = await api.holdingGetPlatforms();
@@ -63,6 +64,8 @@ Page({
         });
       });
       if (pick === null) return null;
+      this._platformAsked = true;
+      this._pendingPlatform = pick;
       this._urlPlatform = pick;
       return pick;
     } catch (e) { return ""; }
@@ -167,8 +170,10 @@ Page({
   },
 
   // ==== 截图导入 ====
-	  // 导入不再弹账户选择（账户取当前所在账户；页面上的账户选择行下一步再做）
-  onImportScreenshot() {
+  // 选图之前先定账户：从账户 tab 进来已知；从「全部/账户汇总」进来且建过账户时问一次
+  async onImportScreenshot() {
+    const platform = await this._askPlatformForImport();
+    if (platform === null) return;
     this._doImportScreenshot();
   },
 

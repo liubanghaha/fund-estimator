@@ -479,9 +479,12 @@ function layoutParseList(rows) {
     if (j0 < 0 || !layoutIsNameish(toks[j0].text)) continue;
 
     // 名称边界：从 j0 到第一个 6位代码 或 金额 为止（名称后可能紧跟代码，如天天）
-    let nEnd = toks.length;
+    // 图上印了代码就直接采纳：交给名称反查会串份额（"华宝新兴成长混合C" 被查成 A 类 010114）
+    let nEnd = toks.length, fundCode = "";
     for (let k = j0; k < toks.length; k++) {
-      if (layoutIsCode6(toks[k].text) || layoutMoney(toks[k].text) !== null || layoutSigned(toks[k].text) !== null) { nEnd = k; break; }
+      const tk = toks[k].text;
+      if (layoutIsCode6(tk)) { fundCode = tk; nEnd = k; break; }
+      if (layoutMoney(tk) !== null || layoutSigned(tk) !== null) { nEnd = k; break; }
     }
     let name = toks.slice(j0, nEnd).map((t) => t.text).join("");
 
@@ -515,7 +518,7 @@ function layoutParseList(rows) {
       }
     }
     if (out.some((h) => h.fundName === name)) continue;
-    out.push({ fundName: name, marketValue: String(mv), holdingReturn: hr ? hr.replace(/,/g, "") : "" });
+    out.push({ fundCode, fundName: name, marketValue: String(mv), holdingReturn: hr ? hr.replace(/,/g, "") : "" });
   }
   return out;
 }
@@ -661,75 +664,50 @@ exports.main = async (event) => {
   return result;
 };
 
+// 图上印的代码必须与图上名称对得上（行内 6 位金额会被误当代码）。
+// 这里只做校验不做补码：名称→代码的反查交给客户端（它带份额类别校验，能拦住 A/C 串档），
+// 云端旧反查接口返回格式时好时坏，会把"南方信息创新混合C"查成 A 类 007490。
 async function enrichCodes(holdings) {
-  const toSearch = holdings.filter((h) => !h.fundCode && h.fundName);
-  if (toSearch.length === 0) return;
   const https = require("https");
-  // 并发搜索（每只内部关键词降级串行，基金之间无依赖）
-  await Promise.all(toSearch.map(async (h) => {
+  await Promise.all(holdings.map(async (h) => {
+    if (!h.fundCode || !h.fundName) return;
     try {
-      const code = await searchFundCode(https, h.fundName);
-      // 只接受 6 位数字代码，防搜索兜底写入假代码
-      if (code && /^\d{6}$/.test(code)) h.fundCode = code;
+      const real = await lookupFundName(https, h.fundCode);
+      if (!real || !nameLooksSame(real, h.fundName)) h.fundCode = "";
     } catch (e) {
-      // 搜索失败不阻塞
+      // 校验失败（网络/接口变动）保留图上代码，别把好数据也丢了
     }
   }));
 }
 
-function searchFundCode(https, name) {
-  // 尝试不同长度的关键词
-  const keywords = [name];
-  // 去后缀：ETF联接C / 股票C / 指数C / 混合A 等
-  const short = name.replace(/(?:ETF|LOF|QDII|FOF)?\s*联接\s*(?:\(QDII\))?\s*[AC]?\s*$/, "")
-    .replace(/(?:混合|股票|指数|债券|货币)\s*[AC]\s*$/, "")
-    .replace(/(?:混合|股票|指数|债券|货币)\s*$/, "").trim();
-  if (short && short !== name && short.length >= 3) keywords.push(short);
-  // 逐字缩短：广发创新药产业 → 广发创新药 → 广发创新
-  if (short && short.length > 4) {
-    for (let len = short.length - 1; len >= 4; len--) {
-      keywords.push(short.slice(0, len));
-    }
-  }
-
-  return tryKeywords(https, keywords, 0);
-}
-
-function tryKeywords(https, keywords, idx) {
-  if (idx >= keywords.length) return null;
-  const kw = keywords[idx];
-  const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(kw)}&type=14&token=DGCE23MHKBN23AKDN23&count=5`;
-
-  return new Promise((resolve) => {
+// 代码 → 真实名称（东财基金站搜索接口，与 searchFund 云函数同源）；明确查无此代码才返回 null
+function lookupFundName(https, code) {
+  const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encodeURIComponent(code)}`;
+  return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => { res.setEncoding("utf8");
       let body = "";
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
-          const json = JSON.parse(body);
-          const datas = (json.QuotationCodeTable && json.QuotationCodeTable.Data) || [];
-          if (datas.length > 0) {
-            // 优先精确匹配名称
-            const clean = (s) => (s || "").replace(/\s/g, "").replace(/[（）()]/g, "");
-            const ck = clean(kw);
-            let best = datas.find((d) => clean(d.Name) === ck);
-            if (!best) best = datas.find((d) => clean(d.Name).includes(ck) || ck.includes(clean(d.Name)));
-            if (!best && ck.length >= 6) {
-              const prefix = ck.slice(0, 6);
-              best = datas.find((d) => clean(d.Name).startsWith(prefix));
-            }
-            if (!best) best = datas[0];
-            resolve(best ? best.Code : null);
-          } else {
-            // 当前关键词没结果，试下一个
-            resolve(tryKeywords(https, keywords, idx + 1));
-          }
+          const datas = JSON.parse(body).Datas || [];
+          const hit = datas.find((d) => String(d.CODE) === code);
+          resolve(hit ? hit.NAME : null);
         } catch (e) {
-          resolve(tryKeywords(https, keywords, idx + 1));
+          reject(e); // 结构变了/被拦截：按失败处理，保留图上代码
         }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve(tryKeywords(https, keywords, idx + 1)); });
-    req.on("error", () => resolve(tryKeywords(https, keywords, idx + 1)));
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error("timeout")); });
+    req.on("error", (e) => reject(e));
   });
+}
+
+// 代码查出来的名称与图上名称是否指向同一只基金：OCR 常截断后缀，任一包含另一方即通过
+function nameLooksSame(actual, ocrName) {
+  const clean = (s) => (s || "").replace(/\s/g, "").replace(/[（）()]/g, "");
+  const a = clean(actual), b = clean(ocrName);
+  if (!a || !b) return true;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  return longer.includes(shorter) || longer.slice(0, 4) === shorter.slice(0, 4);
 }
