@@ -264,7 +264,7 @@ async function handleRecallPush({ targets, variant }) {
       failed++;
     }
   }
-  return { code: 0, sent, failed, skipped, heldForAlert };
+  return { code: 0, sent, failed, skipped };
 }
 
 // 召回 A 文案（通用，默认）：纯数据陈述（合规红线 #2/#6）
@@ -455,6 +455,8 @@ async function runNavBrief(force, dryRun) {
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   // 有提醒规则的用户：净值播报同样给提醒留 1 条额度（否则 21:30 吃干、次日上午提醒全部发不出）
   const alertUserSet = await alertUserOpenids();
+
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "shares"]);
   const byUser = {};
   holdings.forEach(h => {
     if (!h._openid || !h.fundCode) return;
@@ -503,14 +505,14 @@ async function runNavBrief(force, dryRun) {
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
+  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0, pubCount = 0;
   const devSamples = []; // 估算偏差样本（P1-6）：循环内收集，结束后 saveEstimateDeviation 汇总落库
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
     // 给提醒留额度：有提醒规则的用户至少留 1 条（quota<2 时本条播报不发）
     if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }
     const list = byUser[sub._openid] || [];
-    let totalBase = 0, pubBase = 0, real = 0, pubCount = 0;
+    let totalBase = 0, pubBase = 0, real = 0;
     list.forEach(h => {
       const prev = prevNav[h.fundCode];
       const shares = parseFloat(h.shares);

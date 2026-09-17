@@ -98,7 +98,7 @@ function requestQuotaTopUp(src) {
           }).then(() => {
             try { track.subAuthorize({ src: src || "", mode: "topup", result: "accept" }); } catch (e) { /* ignore */ }
             resolve({ ok: true, added: 1 });
-          }).catch(() => resolve({ ok: true, added: 1, cloudFailed: true }));
+          }).catch(() => resolve({ ok: false, added: 0, errMsg: "授权成功，但额度记账失败，请再点一次" }));
         } else {
           try { track.subAuthorize({ src: src || "", mode: "topup", result: "reject" }); } catch (e) { /* ignore */ }
           resolve({ ok: false, added: 0, errMsg: "你点了取消，未授权" });

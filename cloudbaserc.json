@@ -224,6 +224,12 @@
       "timeout": 10,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "fetchMarketSnapshot",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

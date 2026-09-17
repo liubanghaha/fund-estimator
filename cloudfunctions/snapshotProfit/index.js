@@ -94,9 +94,9 @@ exports.main = async (event) => {
     }
 
     return {
-      code: 0, msg: "ok", time, dryRun: !!force,
+      code: 0, msg: "ok", time, dryRun: !!dryRun || !!force,
       users: Object.keys(userMap).length, written, funds: fundCodes.length, stocks: stockCount,
-      alertSent, alertHits, dryRun: !!dryRun, sample, costMs: el(),
+      alertSent, alertHits, sample, costMs: el(),
     };
   } catch (e) {
     console.error("snapshotProfit 失败:", e.message);
@@ -112,7 +112,7 @@ const ALERT_GLOBAL_DEFAULT = { upper: 3, lower: -3 };
 
 async function checkRateAlerts(userMap, fundRateMap, today, el, dryRun) {
   const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true, globalOn: true, src: true });
-  if (alertDocs.length === 0) return 0;
+  if (alertDocs.length === 0) return { sent: 0, hits: [] };   // 形状统一：调用方取 .sent/.hits
   const alertMap = {};
   alertDocs.forEach(d => { alertMap[d._openid] = d; });
 
