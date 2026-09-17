@@ -63,3 +63,11 @@
 .migrate-tip{font-size:24rpx;color:#999;margin:16rpx 4rpx;line-height:1.6}
 .migrate-btn{margin-top:20rpx;background:var(--primary);color:#FFF;font-size:30rpx;border-radius:44rpx;padding:18rpx 0}
 .migrate-btn[disabled]{opacity:.6;color:#FFF}
+
+/* 关注公众号：滚动提示条（点一下复制号名，小程序里不能直接跳公众号） */
+.follow-bar{display:flex;align-items:center;gap:12rpx;margin:0 24rpx 20rpx;padding:16rpx 20rpx;background:#FFF7F0;border:1rpx solid #F5D6B8;border-radius:14rpx;overflow:hidden}
+.follow-icon{flex-shrink:0;font-size:28rpx}
+.follow-marquee{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
+.follow-text{display:inline-block;padding-left:100%;font-size:24rpx;color:#B4642E;animation:followScroll 16s linear infinite}
+@keyframes followScroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.follow-cta{flex-shrink:0;font-size:23rpx;color:#FFF;background:#E4393C;border-radius:10rpx;padding:8rpx 18rpx}

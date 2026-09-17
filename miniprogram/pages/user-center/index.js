@@ -103,6 +103,15 @@ Page({
     if (r.ok) wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
   },
 
+  // 小程序无法直接打开公众号主页 → 复制号名，引导用户去微信搜一搜
+  onFollowTap() {
+    wx.setClipboardData({
+      data: "韭菜养基宝",
+      success: () => wx.showToast({ title: "已复制，去微信搜索关注", icon: "none", duration: 2200 }),
+    });
+    try { require("../../utils/track").track("follow_mp", {}); } catch (e) { /* ignore */ }
+  },
+
   onToggleTheme() {
     const next = this.data.theme === "red" ? "blue" : "red";
     this.setData({ theme: next });

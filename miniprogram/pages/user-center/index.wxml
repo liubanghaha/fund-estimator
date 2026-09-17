@@ -7,6 +7,16 @@
     <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
     <view class="nickname" bind:tap="onNicknameTap">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
   </view>
+  <!-- 关注公众号：滚动提示 + 点击复制号名（小程序里没法直接跳公众号，只能引导搜索） -->
+  <view class="follow-bar" bind:tap="onFollowTap">
+    <text class="follow-icon">📢</text>
+    <view class="follow-marquee">
+      <text class="follow-text">关注公众号「韭菜养基宝」——版本更新、新功能说明和使用技巧都发在那里 · 点这里复制号名去搜一搜</text>
+    </view>
+    <text class="follow-cta">去关注</text>
+  </view>
+  <official-account></official-account>
+
   <view class="menu-group-title">持仓管理</view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onSearchFund"><text>搜索添加</text><text class="arrow">></text></view>
