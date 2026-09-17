@@ -49,8 +49,6 @@ Page({
     showStockModal: false, stockModal: null, stockKlineLoading: false, stockKlineOk: false,
     // 海外市场速览（指数期货/商品/汇率，云函数 fetchMarketSnapshot）
     snapshot: null,
-    // 我的持仓分布（行业权重 + 全市场估值温度）
-    holdingsDist: null,
     // 各市场开闭市状态（本地推算）
     hkStatus: "", usStatus: "", apStatus: "", euStatus: "", usSessionText: "", usSessionState: "",
     // 核心指数（港/美/亚太 三类切换）
@@ -130,8 +128,8 @@ Page({
     // 敞口先到（快照需要知道持仓里有哪些美股代码）
     return this._fetchExposure().then((exposure0) => {
       const usCodes = ((exposure0 && exposure0.usStocks) || []).map((x) => x.code).filter(Boolean);
-      return Promise.all([Promise.resolve(exposure0), this._fetchIndices(), this._fetchSnapshot(usCodes), this._fetchHoldingsDist()]);
-    }).then(([exposure0, indexCards, snapshot, holdingsDist]) => {
+      return Promise.all([Promise.resolve(exposure0), this._fetchIndices(), this._fetchSnapshot(usCodes)]);
+    }).then(([exposure0, indexCards, snapshot]) => {
       const exposure = this._mergeUsSession(exposure0, snapshot);
       const now = Date.now();
       // 部分失败兜底：指数卡全"--"或敞口为空时保留上次好缓存（外源限流是分钟级的，恢复后自然更新）
@@ -144,7 +142,6 @@ Page({
         indexCards: effIndexCards,
         exposure: effExposure,
         snapshot: snapshot || (cacheUpToDate && cached && cached.snapshot) || null,
-        holdingsDist: holdingsDist || (cacheUpToDate && cached && cached.holdingsDist) || null,
         empty: !indexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
@@ -172,7 +169,6 @@ Page({
       exposure: cache.exposure || null,
       snapshot: cache.snapshot || null,
       snap: this._buildSnap(cache.snapshot),
-      holdingsDist: cache.holdingsDist || null,
       indexCards: [],
       indexLoading: false,
       ...this._marketStatus(),
@@ -315,14 +311,6 @@ Page({
     const key = e.currentTarget.dataset.key;
     if (!key || key === this.data.idxTab) return;
     this.setData({ idxTab: key, indexCards: this.data.indexCardsGrouped[key] || [] });
-  },
-
-  // 我的持仓分布（行业权重 + 全市场估值温度）；失败返回 null 由缓存兜底
-  _fetchHoldingsDist() {
-    return api.fetchMarketOverview({ action: "holdingsDist" }).then((res) => {
-      if (res && res.result && res.result.code === 0 && res.result.data) return res.result.data;
-      return null;
-    }).catch(() => null);
   },
 
   // 速览卡展示用：期货/商品 2 位小数、汇率 4 位；商品与汇率并成小格

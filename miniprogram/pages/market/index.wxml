@@ -146,31 +146,6 @@
       </view>
     </view>
 
-    <!-- 我的持仓分布：行业权重（与资产配置同口径）+ 全市场估值温度（均为基金维度，不含个股） -->
-    <view wx:if="{{holdingsDist && (holdingsDist.industries.length || holdingsDist.tempDist)}}" class="mk-card">
-      <view class="mk-sec-title-row">
-        <view class="mk-sec-title">我的持仓分布</view>
-        <text class="mk-sec-note">按最新净值市值加权</text>
-      </view>
-      <block wx:if="{{holdingsDist.industries.length}}">
-        <view class="snap-sub">行业权重</view>
-        <view class="ind-row" wx:for="{{holdingsDist.industries}}" wx:key="industry">
-          <text class="ind-name">{{item.industry}}</text>
-          <view class="ind-bar-wrap"><view class="ind-bar" style="width: {{item.percent > 100 ? 100 : item.percent}}%"></view></view>
-          <text class="ind-pct">{{item.percent}}%</text>
-        </view>
-      </block>
-      <block wx:if="{{holdingsDist.tempDist}}">
-        <view class="snap-sub">全市场估值温度（{{holdingsDist.tempDist.date}}）</view>
-        <view class="temp-row">
-          <view class="temp-item low"><text class="temp-num">{{holdingsDist.tempDist.low}}</text><text class="temp-label">低估</text></view>
-          <view class="temp-item mid"><text class="temp-num">{{holdingsDist.tempDist.mid}}</text><text class="temp-label">适中</text></view>
-          <view class="temp-item high"><text class="temp-num">{{holdingsDist.tempDist.high}}</text><text class="temp-label">高估</text></view>
-          <view class="temp-item total"><text class="temp-num">{{holdingsDist.tempDist.total}}</text><text class="temp-label">已计算</text></view>
-        </view>
-      </block>
-    </view>
-
     <!-- 空数据 -->
     <view wx:if="{{emptyData}}" class="mk-loading"><text class="mk-loading-text">行情数据暂不可用，请稍后再试</text></view>
   </block>

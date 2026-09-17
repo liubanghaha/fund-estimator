@@ -94,16 +94,3 @@
 .snap-tile-rate{font-size:22rpx}
 /* 重仓美股的盘前/盘后标记（只有盘外交易时段才出现） */
 .stock-session{font-size:18rpx;color:#FFF;background:var(--primary);border-radius:6rpx;padding:2rpx 8rpx;margin-left:10rpx}
-
-/* ===== 我的持仓分布（行业权重 + 温度分布） ===== */
-.ind-row{display:flex;align-items:center;padding:8rpx 0}
-.ind-name{width:150rpx;font-size:24rpx;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ind-bar-wrap{flex:1;height:14rpx;background:#F2F2F2;border-radius:7rpx;margin:0 16rpx;overflow:hidden}
-.ind-bar{height:100%;background:var(--primary);border-radius:7rpx}
-.ind-pct{width:90rpx;text-align:right;font-size:24rpx;color:#666}
-.temp-row{display:flex;gap:12rpx}
-.temp-item{flex:1;background:#F8F8F8;border-radius:12rpx;padding:16rpx 0;text-align:center}
-.temp-num{display:block;font-size:30rpx;font-weight:600;color:#333}
-.temp-label{display:block;font-size:20rpx;color:#999;margin-top:4rpx}
-.temp-item.low .temp-num{color:#2E8B57}
-.temp-item.high .temp-num{color:var(--up)}

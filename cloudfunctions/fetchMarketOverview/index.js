@@ -47,11 +47,6 @@ exports.main = async (event = {}) => {
     if (event.action === "tempDist") {
       return await handleTempDist();
     }
-    // 我的持仓分布（行情页）：行业权重（市值加权，与资产配置同口径）+ 全市场估值温度分布
-    if (event.action === "holdingsDist") {
-      const [industries, dist] = await Promise.all([fetchUserIndustries(OPENID), handleTempDist()]);
-      return { code: 0, data: { industries: industries.slice(0, 8), tempDist: dist && dist.data } };
-    }
     let overview, sectors, flows;
     if (_sharedCache && Date.now() - _sharedTs < SHARED_TTL) {
       ({ overview, sectors, flows } = _sharedCache);
