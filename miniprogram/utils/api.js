@@ -5,7 +5,7 @@ const api = {
   READ_ONLY_FUNCS: [
     "userLogin", "searchFund", "getPortfolio", "portfolioLight",
     "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
-    "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview", "fetchNews",
+    "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview", "fetchMarketSnapshot", "fetchNews",
     "batchFetchEstimate", "computeCorrelation",
     "dcaBacktest", "getMigrationCode",
   ],
@@ -206,6 +206,10 @@ const api = {
   fetchMarketOverview(data) {
     return this.callFunction("fetchMarketOverview", data || {});
   },
+  // 海外市场速览：指数期货/商品/汇率 + 美股盘前盘后（usCodes 传持仓里的美股代码）
+  fetchMarketSnapshot(data) {
+    return this.callFunction("fetchMarketSnapshot", data || {});
+  },
   // 个股/指数日K（腾讯 ifzq，白名单域名）：港股个股与 hk/us 指数可用，美股个股该端点不可用（返回异常数据）
   fetchStockKlineTencent(qtCode, days) {
     return new Promise((resolve, reject) => {
@@ -240,6 +244,11 @@ const api = {
       "N225": "100.N225",
       "KS11": "100.KS11",
       "DJIA": "100.DJIA",
+      "SENSEX": "100.SENSEX",
+      "TWII": "100.TWII",
+      "DAX": "100.GDAXI",
+      "FTSE": "100.FTSE",
+      "CAC": "100.FCHI",
     };
     const secid = INDEX_SECID[indexCode] || "";
     // 未映射代码早退（避免空 secid 拉回错误数据），由调用方走云函数多源路径

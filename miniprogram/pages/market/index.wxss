@@ -78,3 +78,32 @@
 .mk-sec-note{font-size:20rpx;color:#BBB;font-weight:400}
 .dim{color:#BBB}
 .idx-more{font-size:20rpx;color:#BBB;margin-top:8rpx}
+
+/* ===== 海外市场速览（指数期货 / 商品 · 汇率） ===== */
+.snap-sub{font-size:20rpx;color:#999;margin:6rpx 0 10rpx}
+.snap-sub:not(:first-of-type){margin-top:22rpx;padding-top:18rpx;border-top:1rpx solid #F5F5F5}
+.snap-row{display:flex;align-items:baseline;padding:10rpx 0}
+.snap-name{flex:1;min-width:0;font-size:26rpx;color:#333}
+.snap-price{font-size:26rpx;font-weight:600;margin-right:20rpx;text-align:right}
+.snap-rate{font-size:24rpx;min-width:110rpx;text-align:right}
+.snap-grid{display:flex;flex-wrap:wrap;gap:12rpx}
+.snap-tile{width:calc(50% - 6rpx);box-sizing:border-box;background:#F8F8F8;border-radius:12rpx;padding:14rpx 18rpx}
+.snap-tile-name{font-size:20rpx;color:#999}
+.snap-tile-line{display:flex;align-items:baseline;justify-content:space-between;margin-top:6rpx}
+.snap-tile-price{font-size:26rpx;font-weight:600;color:#333}
+.snap-tile-rate{font-size:22rpx}
+/* 重仓美股的盘前/盘后标记（只有盘外交易时段才出现） */
+.stock-session{font-size:18rpx;color:#FFF;background:var(--primary);border-radius:6rpx;padding:2rpx 8rpx;margin-left:10rpx}
+
+/* ===== 我的持仓分布（行业权重 + 温度分布） ===== */
+.ind-row{display:flex;align-items:center;padding:8rpx 0}
+.ind-name{width:150rpx;font-size:24rpx;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ind-bar-wrap{flex:1;height:14rpx;background:#F2F2F2;border-radius:7rpx;margin:0 16rpx;overflow:hidden}
+.ind-bar{height:100%;background:var(--primary);border-radius:7rpx}
+.ind-pct{width:90rpx;text-align:right;font-size:24rpx;color:#666}
+.temp-row{display:flex;gap:12rpx}
+.temp-item{flex:1;background:#F8F8F8;border-radius:12rpx;padding:16rpx 0;text-align:center}
+.temp-num{display:block;font-size:30rpx;font-weight:600;color:#333}
+.temp-label{display:block;font-size:20rpx;color:#999;margin-top:4rpx}
+.temp-item.low .temp-num{color:#2E8B57}
+.temp-item.high .temp-num{color:var(--up)}

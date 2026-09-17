@@ -10,6 +10,51 @@
   </view>
 
   <block wx:else>
+    <!-- 核心指数 -->
+    <view class="mk-card">
+      <view class="mk-sec-title-row">
+        <view class="mk-sec-title">核心指数</view>
+        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}} · 欧洲{{euStatus}} · 亚太{{apStatus}}</text>
+      </view>
+      <view class="idx-tabs">
+        <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
+      </view>
+      <scroll-view scroll-x class="idx-scroll" enable-flex>
+        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code" data-code="{{item.code}}" data-name="{{item.name}}" bind:tap="onIdxCardTap">
+          <view class="idx-name">{{item.name}}</view>
+          <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
+          <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
+          <view class="idx-more">近5日走势 ›</view>
+        </view>
+      </scroll-view>
+      <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+    </view>
+
+    <!-- 海外市场速览：指数期货/商品/汇率（夜盘与盘前时段最有参考；均为海外标的，合规口径） -->
+    <view wx:if="{{snap}}" class="mk-card">
+      <view class="mk-sec-title-row">
+        <view class="mk-sec-title">海外市场速览</view>
+        <text class="mk-sec-note">期货近 24 小时交易，是盘前先导</text>
+      </view>
+      <view class="snap-sub">指数期货</view>
+      <view class="snap-row" wx:for="{{snap.futures}}" wx:key="key">
+        <text class="snap-name">{{item.name}}</text>
+        <text class="snap-price {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.priceText}}</text>
+        <text class="snap-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.rateText}}</text>
+      </view>
+      <view class="snap-sub">商品 · 汇率</view>
+      <view class="snap-grid">
+        <view class="snap-tile" wx:for="{{snap.others}}" wx:key="key">
+          <view class="snap-tile-name">{{item.name}}</view>
+          <view class="snap-tile-line">
+            <text class="snap-tile-price">{{item.priceText}}</text>
+            <text class="snap-tile-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.rateText}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="mk-updated">数据更新于 {{snap.updatedAt}} · 公开市场数据，可能有延迟</view>
+    </view>
+
     <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述）+ 重仓股实时行情 -->
     <view wx:if="{{exposure && exposure.hasData}}" class="mk-card">
       <view class="mk-sec-title">你的持仓港美股敞口</view>
@@ -33,7 +78,7 @@
         <view class="stock-row" wx:for="{{exposure.hkStocks}}" wx:key="code" data-code="{{item.code}}" data-market="hk" bind:tap="onStockTap">
           <view class="stock-name">
             <view class="stock-name-text">{{item.name}}</view>
-            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
+            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%<text wx:if="{{item.sessionText}}" class="stock-session">{{item.sessionText}}</text></view>
           </view>
           <view class="stock-quote">
             <view class="stock-price">{{item.price != null ? item.price : '--'}}</view>
@@ -46,7 +91,7 @@
         <view class="stock-row" wx:for="{{exposure.usStocks}}" wx:key="code" data-code="{{item.code}}" data-market="us" bind:tap="onStockTap">
           <view class="stock-name">
             <view class="stock-name-text">{{item.name}}</view>
-            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%</view>
+            <view class="stock-code">{{item.code}} · 占仓 {{item.weight}}%<text wx:if="{{item.sessionText}}" class="stock-session">{{item.sessionText}}</text></view>
           </view>
           <view class="stock-quote">
             <view class="stock-price">{{item.price != null ? item.price : '--'}}</view>
@@ -54,27 +99,7 @@
           </view>
         </view>
       </view>
-      <view class="exp-tip">行情为腾讯实时报价（可能有 15 分钟延迟，以交易所为准）</view>
-    </view>
-
-    <!-- 核心指数 -->
-    <view class="mk-card">
-      <view class="mk-sec-title-row">
-        <view class="mk-sec-title">核心指数</view>
-        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}} · 亚太{{apStatus}}</text>
-      </view>
-      <view class="idx-tabs">
-        <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
-      </view>
-      <scroll-view scroll-x class="idx-scroll" enable-flex>
-        <view class="idx-card" wx:for="{{indexCards}}" wx:key="code" data-code="{{item.code}}" data-name="{{item.name}}" bind:tap="onIdxCardTap">
-          <view class="idx-name">{{item.name}}</view>
-          <view class="idx-price {{item.isUp ? 'up' : 'down'}}">{{item.price}}</view>
-          <view class="idx-rate {{item.isUp ? 'up' : 'down'}}">{{item.rateText}}</view>
-          <view class="idx-more">近5日走势 ›</view>
-        </view>
-      </scroll-view>
-      <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+      <view class="exp-tip">行情为公开市场实时报价（可能延迟约 15 分钟）；盘前/盘后为盘外交易价，以交易所为准</view>
     </view>
 
     <!-- 指数走势弹层（近5日/近1月/近3月可切） -->
@@ -91,7 +116,7 @@
           <text class="idx-period-chip {{idxPeriod === 66 ? 'active' : ''}}" data-days="66" bind:tap="onIdxPeriod">近3月</text>
         </view>
         <view wx:if="{{idxModalLoading}}" class="mk-loading"><text class="mk-loading-text">加载中...</text></view>
-        <view wx:elif="{{idxModalError}}" class="mk-loading"><text class="mk-loading-text">走势加载失败，请重试</text></view>
+        <view wx:elif="{{idxModalError}}" class="mk-loading"><text class="mk-loading-text">{{idxModalErrText}}</text></view>
         <canvas wx:else type="2d" id="idxModalCanvas" class="idx-modal-canvas"></canvas>
         <view class="idx-modal-foot">数据来源：公开市场数据，仅供参考</view>
       </view>
@@ -119,6 +144,31 @@
         <block wx:elif="{{stockKlineOk}}"><canvas type="2d" id="stockModalCanvas" class="idx-modal-canvas"></canvas></block>
         <view class="idx-modal-foot">数据来源：公开市场数据（可能有延迟），仅供参考</view>
       </view>
+    </view>
+
+    <!-- 我的持仓分布：行业权重（与资产配置同口径）+ 全市场估值温度（均为基金维度，不含个股） -->
+    <view wx:if="{{holdingsDist && (holdingsDist.industries.length || holdingsDist.tempDist)}}" class="mk-card">
+      <view class="mk-sec-title-row">
+        <view class="mk-sec-title">我的持仓分布</view>
+        <text class="mk-sec-note">按最新净值市值加权</text>
+      </view>
+      <block wx:if="{{holdingsDist.industries.length}}">
+        <view class="snap-sub">行业权重</view>
+        <view class="ind-row" wx:for="{{holdingsDist.industries}}" wx:key="industry">
+          <text class="ind-name">{{item.industry}}</text>
+          <view class="ind-bar-wrap"><view class="ind-bar" style="width: {{item.percent > 100 ? 100 : item.percent}}%"></view></view>
+          <text class="ind-pct">{{item.percent}}%</text>
+        </view>
+      </block>
+      <block wx:if="{{holdingsDist.tempDist}}">
+        <view class="snap-sub">全市场估值温度（{{holdingsDist.tempDist.date}}）</view>
+        <view class="temp-row">
+          <view class="temp-item low"><text class="temp-num">{{holdingsDist.tempDist.low}}</text><text class="temp-label">低估</text></view>
+          <view class="temp-item mid"><text class="temp-num">{{holdingsDist.tempDist.mid}}</text><text class="temp-label">适中</text></view>
+          <view class="temp-item high"><text class="temp-num">{{holdingsDist.tempDist.high}}</text><text class="temp-label">高估</text></view>
+          <view class="temp-item total"><text class="temp-num">{{holdingsDist.tempDist.total}}</text><text class="temp-label">已计算</text></view>
+        </view>
+      </block>
     </view>
 
     <!-- 空数据 -->

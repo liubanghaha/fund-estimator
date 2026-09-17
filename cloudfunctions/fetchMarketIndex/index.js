@@ -12,6 +12,11 @@ const INDEX_SYMBOL = {
   "IXIC": "IXIC",
   "N225": "N225",
   "KS11": "KS11",
+  "SENSEX": "SENSEX",
+  "TWII": "TWII",
+  "DAX": "DAX",
+  "FTSE": "FTSE",
+  "CAC": "CAC",
 };
 
 const US_SINA_SYMBOLS = { "SPX": "gb_inx", "IXIC": "gb_ixic" };
@@ -28,7 +33,7 @@ exports.main = async (event) => {
       data = await fetchHKIndexData(indexCode, days);
     } else if (indexCode === "SPX" || indexCode === "IXIC") {
       data = await fetchUSIndexData(indexCode, days);
-    } else if (indexCode === "N225" || indexCode === "KS11") {
+    } else if (GLOBAL_EM_SECIDS[indexCode]) {
       data = await fetchGlobalIndexData(indexCode, days);
     } else {
       data = await fetchAShareIndexData(INDEX_SYMBOL[indexCode], indexCode, days);
@@ -245,7 +250,7 @@ function formatDate(d) {
 
 // ========== 亚太指数（东财国际指数，市场前缀 100，两位小数 scale=100） ==========
 
-const GLOBAL_EM_SECIDS = { "N225": "100.N225", "KS11": "100.KS11" };
+const GLOBAL_EM_SECIDS = { "N225": "100.N225", "KS11": "100.KS11", "SENSEX": "100.SENSEX", "TWII": "100.TWII", "DAX": "100.GDAXI", "FTSE": "100.FTSE", "CAC": "100.FCHI" };
 
 // 指定 host 的东财实时行情（主站/镜像同构；云出口对 push2 偶发限流需要双 host 兜底）
 function fetchEMRealtimeOn(host, secid) {
@@ -338,11 +343,13 @@ function fetchEastMoneyKline(indexCode, days) {
   }, { Referer: "https://quote.eastmoney.com/" }).then(parseEMKlines);
 }
 
-function fetchEastMoneyGlobalKline(secid, days) {
-  return httpGet({
-    hostname: "push2.eastmoney.com",
-    path: `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`,
-  }, { Referer: "https://quote.eastmoney.com/" }).then(parseEMKlines);
+async function fetchEastMoneyGlobalKline(secid, days) {
+  const path = `/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${days}`;
+  const hdrs = { Referer: "https://quote.eastmoney.com/" };
+  // 历史 K 线走 push2his（与 A 股同源）；push2 对 100.* 全球指数只回当前快照，会退化成 2 个点
+  let out = await httpGet({ hostname: "push2his.eastmoney.com", path }, hdrs).then(parseEMKlines);
+  if (!out || out.length === 0) out = await httpGet({ hostname: "push2.eastmoney.com", path }, hdrs).then(parseEMKlines);
+  return out;
 }
 
 function fetchSinaHKKline(symbol, days) {
