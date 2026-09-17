@@ -102,8 +102,7 @@ Page({
         if (!path) return;
         // 首页「截图添加」走的是这条分支（直接 doOCR），必须在这里先定平台：
         // 从平台 tab 进来已带 platform 不会问；没建过平台也不问；取消选平台则放弃本次导入
-        const platform = await this._askPlatformIfNeeded();
-        if (platform === null) return;
+        this._pendingPlatform = this._urlPlatform || "";
         app.globalData._screenshotPath = null;
         this.doOCR(path);
       });
@@ -300,12 +299,8 @@ Page({
       return;
     }
 
-    // 截图批量导入：先定平台（在平台 tab 下进来就直接用，否则问一次；没建过平台不打扰）
-    const batchPlatform = await this._askPlatformIfNeeded();
-    if (batchPlatform === null) {
-      this.setData({ saving: false });
-      return;
-    }
+    // 账户取"当前所在账户"（在账户 tab 下进来已带参数）；识别完成后保存不再弹选择弹窗
+    const batchPlatform = this._urlPlatform || "";
     wx.showLoading({ title: "保存中..." });
     try {
       const res = await api.batchAddHoldings(unsaved.map(f => ({
@@ -613,15 +608,9 @@ Page({
             if (first && first._id) wx.redirectTo({ url: `/pages/add-holding/index?id=${first._id}` });
             return;
           }
-          const platform = await this._askPlatformIfNeeded();
-          if (platform === null) { wx.hideLoading(); return; } // 取消选平台 = 放弃本次新增
-          this._pendingPlatform = platform;
-        } else {
-          // 该基金第一笔：没有平台 tab 上下文时也问一次（用户还没建过平台则跳过）
-          const platform = await this._askPlatformIfNeeded();
-          if (platform === null) { wx.hideLoading(); return; }
-          this._pendingPlatform = platform;
         }
+        // 账户取当前所在账户；保存过程不再弹选择（页面上的账户选择行下一步再做）
+        this._pendingPlatform = this._urlPlatform || "";
       }
       const estRes = await api.fetchFundEstimate(fundCode.trim());
       if (!estRes.result || estRes.result.code !== 0) {

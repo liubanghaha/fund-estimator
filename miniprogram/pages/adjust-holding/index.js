@@ -167,9 +167,8 @@ Page({
   },
 
   // ==== 截图导入 ====
-	  async onImportScreenshot() {
-    const platform = await this._askPlatformForImport();
-    if (platform === null) return; // 取消选平台 = 放弃本次导入
+	  // 导入不再弹账户选择（账户取当前所在账户；页面上的账户选择行下一步再做）
+  onImportScreenshot() {
     this._doImportScreenshot();
   },
 
