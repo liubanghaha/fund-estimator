@@ -102,6 +102,7 @@ Page({
     _dragStartIdx: -1,
     _dragTimer: null,
     _didLongPress: false,
+    dragField: "",   // 当前正在拖哪一条页签（platform/group）——两条页签共用 dragIndex，不加这个会一起位移
     managePanel: null,   // 账户/分组管理面板（点 + 打开）
     mpDragging: false, mpDragIndex: -1,   // 面板内长按滑动排序状态
     _dragMoved: false,
@@ -414,7 +415,6 @@ Page({
           healthScore: cached.healthScore || null,
           fromCache: true,
           allUpdated,
-          allGroupsData: cached.groups || [],
           dataReady: true,
         });
         this._refreshShareToken();
@@ -1037,10 +1037,11 @@ Page({
 
   onToggleBatch() {
     const enter = !this.data.batchMode;
-    const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));
-    const patch = { batchMode: enter, displayHoldings: list, selectedCount: 0, allSelected: false };
+    const patch = { batchMode: enter, selectedCount: 0, allSelected: false };
     if (enter) patch.batchAlertOn = false; // 刚进入还没选基金
-    this.setData(patch);
+    // 进批量模式要重算列表：_pickDisplay 在 batchMode 下逐笔显示，
+    // 否则多账户基金的合并行会带着假 _id（"fund:xxx"），删除/移动分组静默失败还弹"成功"
+    this.setData(patch, () => this.applyGroupFilter());
   },
 
   // 批量栏提醒开关的显示状态：选中的基金全都开着才显示 on（部分开启显示 off，点一下补齐）
@@ -1474,7 +1475,10 @@ Page({
     if (activeGroup === "ungrouped") list = list.filter(h => !h.group);
     else if (activeGroup !== "all") list = list.filter(h => h.group === activeGroup);
     // 批量模式不合并：每行 = 一笔，删除/移动分组直接落到这一笔，不用再选平台
-    const rows = batchMode ? list : this.formatHoldings(this.mergeByFund(list), totalAmount);
+    // 占比口径 = 当前"账户+分组"范围（与卡片一致）；未筛选时用服务端总额，避免与其差 1~2 分
+    const scopedAll = (activePlatform === "all" || activePlatform === "summary") && activeGroup === "all";
+    const scopedTotal = scopedAll ? totalAmount : list.reduce((sum, h) => sum + (parseFloat(h.marketValue) || 0), 0);
+    const rows = batchMode ? list : this.formatHoldings(this.mergeByFund(list), scopedTotal);
     // 行尾标签：全部里显示平台（区分同基金多账户），平台 tab 里显示基金分组
     rows.forEach(r => {
       const uniq = [...new Set((r._members || [r]).map(x => x.platform).filter(Boolean))];
@@ -1619,6 +1623,7 @@ Page({
 
   // 顶部平台栏切换（all / summary / 具体平台）
   onPlatformSwitch(e) {
+    if (this._didLongPress || this._dragMoved) return;   // 长按（重命名/删除）或拖拽排序后的 tap 不切页
     const target = e.currentTarget.dataset.platform || "all";
     if (target === this.data.activePlatform) return;
     this.setData({ activePlatform: target }, () => this.applyGroupFilter());
@@ -1954,6 +1959,7 @@ Page({
     const idx = parseInt(e.currentTarget.dataset.index);
     if (isNaN(idx)) return;
     this._dragFieldName = this._dragField(e);
+    if (this.data.dragField !== this._dragFieldName) this.setData({ dragField: this._dragFieldName });
     this._dragStartX = touch.clientX;
     this._dragStartIdx = idx;
     this._didLongPress = false;

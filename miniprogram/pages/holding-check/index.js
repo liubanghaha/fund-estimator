@@ -30,12 +30,17 @@ function checkDuplicate(list) {
   list.forEach((h) => {
     const code = String(h.fundCode || "");
     if (!code) return;
-    (groups[code] = groups[code] || []).push(h);
+    // 同一基金在多个账户各一笔是合法的（2026-09 起的账户维度）→ 判重键必须带账户，
+    // 否则多账户用户会看到假告警、被引导去删掉真实持仓
+    const key = code + "|" + (h.platform || "");
+    (groups[key] = groups[key] || []).push(h);
   });
   const issues = [];
-  Object.keys(groups).forEach((code) => {
-    const arr = groups[code];
+  Object.keys(groups).forEach((key) => {
+    const arr = groups[key];
     if (arr.length <= 1) return;
+    const code = String(arr[0].fundCode || "");
+    const acct = arr[0].platform || "未分配";
     arr.forEach((h) => {
       issues.push({
         type: "duplicate",
@@ -43,7 +48,7 @@ function checkDuplicate(list) {
         fundCode: code,
         fundName: h.fundName || code,
         id: h._id,
-        desc: "代码 " + code + " 存在 " + arr.length + " 条持仓记录，可能重复添加",
+        desc: "「" + acct + "」下 " + code + " 存在 " + arr.length + " 条记录，可能重复添加",
         meta: "记录ID：" + (h._id || "-"),
       });
     });

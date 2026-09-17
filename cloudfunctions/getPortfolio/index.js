@@ -481,9 +481,9 @@ exports.main = async (event) => {
       count: m.count,
       totalAmount: m.totalAmount.toFixed(2),
       todayProfit: m.todayProfit.toFixed(2),
-      todayProfitRate: (m.yesterdayMarket > 0 ? (m.todayProfit / m.yesterdayMarket) * 100 : 0).toFixed(2),
+      todayProfitRate: m.yesterdayMarket > 0 ? ((m.todayProfit / m.yesterdayMarket) * 100).toFixed(2) : null,
       totalReturn: m.totalReturn.toFixed(2),
-      totalReturnRate: (m.totalCost > 0 ? (m.totalReturn / m.totalCost) * 100 : 0).toFixed(2),
+      totalReturnRate: m.totalCost > 0 ? ((m.totalReturn / m.totalCost) * 100).toFixed(2) : null,
     }));
 
     // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----

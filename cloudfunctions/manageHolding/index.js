@@ -103,7 +103,7 @@ exports.main = async (event) => {
       }
       case "getPlatforms": {
         const res = await db.collection("holdings")
-          .where({ _openid: OPENID }).field({ platform: true }).get();
+          .where({ _openid: OPENID }).field({ platform: true }).limit(1000).get();   // 默认 100 条会漏账户
         const list = [...new Set((res.data || []).map(d => d.platform || "").filter(p => p !== ""))].sort();
         return { code: 0, data: list };
       }

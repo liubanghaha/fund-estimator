@@ -144,7 +144,8 @@ Page({
         }
       });
 
-      const fundCodes = d.holdings.map(h => h.fundCode);
+      // 同一基金多账户会重复出现 → 去重，否则重合度会把同一只基金算两次
+      const fundCodes = [...new Set(d.holdings.map(h => h.fundCode))];
       const fundNames = d.holdings.map(h => h.fundName);
       this.setData({ fundCodes, fundNames });
 

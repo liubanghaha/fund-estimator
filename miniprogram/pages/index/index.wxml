@@ -92,8 +92,8 @@
             <view class="platform-tab {{activePlatform === 'all' ? 'active' : ''}}" bind:tap="onPlatformSwitch" data-platform="all">全部</view>
             <block wx:for="{{platformList}}" wx:key="*this">
               <view
-                class="platform-tab {{activePlatform === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
-                style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
+                class="platform-tab {{activePlatform === item ? 'active' : ''}} {{dragField === 'platform' && dragIndex === index ? 'dragging' : ''}}"
+                style="{{dragField === 'platform' && dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
                 bind:tap="onPlatformSwitch"
                 bind:touchstart="onGroupTouchStart"
                 bind:touchmove="onGroupTouchMove"
@@ -147,8 +147,8 @@
             <view class="group-tab {{activeGroup === 'ungrouped' ? 'active' : ''}}" bind:tap="onGroupTap" data-group="ungrouped">未分组<text class="group-tab-n">{{groupCounts.ungrouped || 0}}</text></view>
             <block wx:for="{{groups}}" wx:key="*this">
               <view
-                class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragIndex === index ? 'dragging' : ''}}"
-                style="{{dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
+                class="group-tab {{activeGroup === item ? 'active' : ''}} {{dragField === 'group' && dragIndex === index ? 'dragging' : ''}}"
+                style="{{dragField === 'group' && dragIndex === index ? 'transform:translateX(' + dragX + 'px);z-index:10' : ''}}"
                 bind:tap="onGroupTap"
                 bind:touchstart="onGroupTouchStart"
                 bind:touchmove="onGroupTouchMove"
@@ -177,7 +177,7 @@
             <view class="ps-nums">
               <view class="ps-amount">{{amountVisible ? fmt.money(item.totalAmount) : '****'}}</view>
               <view class="ps-profit {{item.todayProfit > 0 ? 'up' : item.todayProfit < 0 ? 'down' : ''}}">
-                {{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}<text class="ps-rate">{{item.todayProfitRate > 0 ? '+' : ''}}{{item.todayProfitRate}}%</text>
+                {{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}<text class="ps-rate">{{item.todayProfitRate == null ? '--' : (item.todayProfitRate > 0 ? '+' : '') + item.todayProfitRate + '%'}}</text>
               </view>
             </view>
             <view class="ps-arrow">›</view>

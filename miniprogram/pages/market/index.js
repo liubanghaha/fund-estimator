@@ -50,7 +50,7 @@ Page({
     // 海外市场速览（指数期货/商品/汇率，云函数 fetchMarketSnapshot）
     snapshot: null,
     // 各市场开闭市状态（本地推算）
-    hkStatus: "", usStatus: "", apStatus: "", euStatus: "", usSessionText: "", usSessionState: "",
+    hkStatus: "", usStatus: "", apStatus: "", euStatus: "", usSessionState: "",
     // 核心指数（港/美/亚太 三类切换）
     idxTabs: IDX_TABS,
     idxTab: "hk",
@@ -125,10 +125,12 @@ Page({
     // 缓存秒开：缓存存在但不新鲜时先渲染旧数据（避免 fetch 期间出现"全 --"中间态）
     if (cached && cacheUpToDate) this._render(cached, true);
     this.setData({ loading: !cached, emptyData: false, loadError: false });
+    // 指数是本页最慢的一路（多源竞速），先发出去，别串在敞口后面等
+    const indicesP = this._fetchIndices();
     // 敞口先到（快照需要知道持仓里有哪些美股代码）
     return this._fetchExposure().then((exposure0) => {
       const usCodes = ((exposure0 && exposure0.usStocks) || []).map((x) => x.code).filter(Boolean);
-      return Promise.all([Promise.resolve(exposure0), this._fetchIndices(), this._fetchSnapshot(usCodes)]);
+      return Promise.all([Promise.resolve(exposure0), indicesP, this._fetchSnapshot(usCodes)]);
     }).then(([exposure0, indexCards, snapshot]) => {
       const exposure = this._mergeUsSession(exposure0, snapshot);
       const now = Date.now();

@@ -187,8 +187,7 @@ async function fetchUSIndexData(code, days) {
       }
       return kline;
     }
-    const fb = await quoteOf();
-    if (fb && fb.length > 0) return fb;
+    if (quote && quote.length > 0) return quote;   // 复用上面那一次的结果，别重复等一次最长 9s 的请求
     const yahoo = await Promise.race([fetchYahooKline(code, days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []);
     return yahoo || [];
   }

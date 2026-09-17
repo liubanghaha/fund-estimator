@@ -27,7 +27,10 @@ exports.main = async (event = {}) => {
   try {
     // 定时触发器分流：三个 timer 共用本函数
     if (event.Type === "Timer") {
-      if (event.TriggerName === "confirmBriefTimer") return await runBriefing(false, false);
+      // 名字必须与 config.json 的触发器一致：navBriefTimer=21:30 净值播报、weeklyBriefTimer=周六周报，
+      // 其余（closingBriefTimer）走 15:30 收盘小结。原来判的是 confirmBriefTimer（配置里没这个名字）
+      // → runNavBrief 永不触发、21:30 实际跑成了被查重挡掉的收盘小结
+      if (event.TriggerName === "navBriefTimer") return await runNavBrief(false, false);
       if (event.TriggerName === "weeklyBriefTimer") return await runWeeklyBrief(false);
       return await runBriefing(false, false);
     }

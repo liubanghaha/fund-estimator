@@ -57,9 +57,32 @@ Page({
       const list = [...new Set([...local, ...serverList])];
       if (!list.length) return "";
       const pick = await new Promise((resolve) => {
+        const items = [...list, "＋ 新建账户", "不指定账户"];
         wx.showActionSheet({
-          itemList: [...list, "＋ 新建账户", "不指定账户"],
-          success: (r) => resolve(list[r.tapIndex] || ""),
+          itemList: items,
+          success: (r) => {
+            const hit = items[r.tapIndex];
+            if (hit === "＋ 新建账户") {
+              // 原来 list[r.tapIndex] 越界成 undefined → 静默当"不指定"，选项形同虚设
+              wx.showModal({
+                title: "新建账户", editable: true, placeholderText: "输入账户名称，如：支付宝",
+                success: (m) => {
+                  const name = m.confirm && m.content ? m.content.trim().slice(0, 20) : "";
+                  if (name) {
+                    // 与首页同款：本地表存一份，页签/选择器就能看到这个新账户
+                    try {
+                      const local = wx.getStorageSync("local_platforms") || [];
+                      if (!local.includes(name)) { local.push(name); wx.setStorageSync("local_platforms", local); }
+                    } catch (e) { /* ignore */ }
+                  }
+                  resolve(name || null);
+                },
+                fail: () => resolve(null),
+              });
+              return;
+            }
+            resolve(hit === "不指定账户" ? "" : hit);
+          },
           fail: () => resolve(null),
         });
       });
