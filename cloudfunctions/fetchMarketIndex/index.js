@@ -10,6 +10,7 @@ const INDEX_SYMBOL = {
   "HSI": "HSI",
   "SPX": "SPX",
   "IXIC": "IXIC",
+  "DJIA": "DJIA",
   "N225": "N225",
   "KS11": "KS11",
   "SENSEX": "SENSEX",
@@ -19,7 +20,8 @@ const INDEX_SYMBOL = {
   "CAC": "CAC",
 };
 
-const US_SINA_SYMBOLS = { "SPX": "gb_inx", "IXIC": "gb_ixic" };
+const US_SINA_SYMBOLS = { "SPX": "gb_inx", "IXIC": "gb_ixic", "DJIA": "gb_$dji" };
+const US_TENCENT = { "SPX": "usINX", "IXIC": "usIXIC", "DJIA": "usDJI" };
 
 exports.main = async (event) => {
   const { indexCode, days = 80 } = event;
@@ -31,7 +33,7 @@ exports.main = async (event) => {
     let data;
     if (indexCode === "HSTECH" || indexCode === "HSI") {
       data = await fetchHKIndexData(indexCode, days);
-    } else if (indexCode === "SPX" || indexCode === "IXIC") {
+    } else if (indexCode === "SPX" || indexCode === "IXIC" || indexCode === "DJIA") {
       data = await fetchUSIndexData(indexCode, days);
     } else if (GLOBAL_EM_SECIDS[indexCode]) {
       data = await fetchGlobalIndexData(indexCode, days);
@@ -139,18 +141,64 @@ async function fetchHKIndexData(code, days) {
 
 // ========== 美股指数 ==========
 
+// 美股指数日 K：腾讯 usfqkline（实测 param=usIXIC 可回 30 天；fqkline/HK 通道对美股只回 1 行）
+function fetchUsIndexKline(code, days) {
+  const sym = US_TENCENT[code];
+  if (!sym) return Promise.resolve([]);
+  return httpGet({
+    hostname: "web.ifzq.gtimg.cn",
+    path: `/appstock/app/usfqkline/get?_var=kline_dayqfq&param=${sym},day,,,${days},qfq`,
+  }, { Referer: "https://gu.qq.com/" }).then((body) => {
+    try {
+      // 响应形如 `kline_dayqfq={...}`（_var= 指定）或 `var x={...}`：统一砍掉 "=" 之前的变量名
+      let jsonStr = body.trim();
+      if (jsonStr[0] !== "{") jsonStr = jsonStr.slice(jsonStr.indexOf("=") + 1);
+      jsonStr = jsonStr.replace(/;?\s*$/, "");
+      const json = JSON.parse(jsonStr);
+      const node = (json.data && json.data[sym]) || {};
+      const list = node.day || node.qfqday || [];
+      if (!Array.isArray(list)) return [];
+      return list.map((parts) => ({
+        date: parts[0], open: +parts[1] || 0, close: +parts[2] || 0,
+        high: +parts[3] || 0, low: +parts[4] || 0, volume: +parts[5] || 0,
+      }));
+    } catch (e) { return []; }
+  });
+}
+
 async function fetchUSIndexData(code, days) {
-  // 并行发起 + 按优先级取首个有数据（慢源 Yahoo 3.5s 兜底超时）
-  const pending = [
-    Promise.race([fetchSinaUSQuote(US_SINA_SYMBOLS[code]), new Promise((r) => setTimeout(() => r([]), 9000))]).catch(() => []),
-    Promise.race([fetchTencentHKKline(US_SINA_SYMBOLS[code], days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []),
-    Promise.race([fetchYahooKline(code, days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []),
-  ];
-  for (let i = 0; i < pending.length; i++) {
-    const r = await pending[i];
-    if (r && r.length > 0) return r;
+  const quoteOf = () => Promise.race([
+    fetchSinaUSQuote(US_SINA_SYMBOLS[code]),
+    new Promise((r) => setTimeout(() => r([]), 9000)),
+  ]).catch(() => []);
+  // 历史场景（走势弹层）：先取日 K，再把实时快照融到最后一点——
+  // 原来实时快照排在第一位，2 个点就直接 return，K 线永远轮不到（纳斯达克"暂无历史走势"的根因）
+  if (days > 2) {
+    const [kline, quote] = await Promise.all([fetchUsIndexKline(code, days).catch(() => []), quoteOf()]);
+    if (kline && kline.length > 1) {
+      if (quote && quote.length >= 2) {
+        const q = quote[quote.length - 1];
+        const k = kline[kline.length - 1];
+        if (k.date === q.date) {
+          kline[kline.length - 1] = { ...k, close: q.close, high: Math.max(k.high, q.high), low: Math.min(k.low || q.low, q.low) };
+        } else {
+          kline.push({ date: q.date, open: q.open || q.close, close: q.close, high: q.high, low: q.low, volume: 0 });
+        }
+      }
+      return kline;
+    }
+    const fb = await quoteOf();
+    if (fb && fb.length > 0) return fb;
+    const yahoo = await Promise.race([fetchYahooKline(code, days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []);
+    return yahoo || [];
   }
-  return [];
+  // 短周期（行情卡片）：实时快照优先，失败再退 K 线
+  const quote = await quoteOf();
+  if (quote && quote.length >= 2) return quote;
+  const kline = await fetchUsIndexKline(code, days).catch(() => []);
+  if (kline && kline.length > 0) return kline;
+  const yahoo = await Promise.race([fetchYahooKline(code, days), new Promise((r) => setTimeout(() => r([]), 3500))]).catch(() => []);
+  return yahoo || [];
 }
 
 function fetchSinaUSQuote(symbol) {
