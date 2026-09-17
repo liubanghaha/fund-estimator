@@ -182,20 +182,22 @@
 /* 平台栏（页面最顶部的一级维度）：下划线式页签，与下方"基金分组"胶囊区分开，右侧固定管理入口 */
 .platform-bar{display:flex;align-items:center;background:#FFF;border-radius:16rpx;margin-bottom:16rpx;padding:0 0 0 4rpx}
 .platform-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 12rpx}
-.platform-tab{display:inline-block;position:relative;padding:26rpx 22rpx 22rpx;font-size:28rpx;color:#666;white-space:nowrap;transition:color .15s}
+.platform-tab{display:inline-block;position:relative;padding:18rpx 22rpx 16rpx;font-size:28rpx;color:#666;white-space:nowrap;transition:color .15s}
 .platform-tab.active{color:#1A1A1A;font-weight:700}
 .platform-tab.active::after{content:'';position:absolute;left:24rpx;right:24rpx;bottom:8rpx;height:6rpx;border-radius:3rpx;background:var(--primary)}
-.platform-add{color:#BBB;font-size:30rpx;padding:22rpx 20rpx 20rpx}
+.platform-add{color:#BBB;font-size:30rpx;padding:16rpx 20rpx 14rpx}
 .platform-tab.dragging{opacity:.85;z-index:10}
 .ps-tip{padding:8rpx 28rpx 24rpx;font-size:20rpx;color:#BBB;line-height:1.5}
-.group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:8rpx 0;display:flex;align-items:center}
+.group-tabs-wrap{margin:0 4rpx 0;background:#FFF;border-top:1rpx solid #F5F5F5;padding:3rpx 0;display:flex;align-items:center}
 .group-tabs{white-space:nowrap;flex:1;min-width:0;padding:0 0 0 20rpx}
 /* 管理/批量入口固定在标签栏右端（tab 可以滚，它不滚） */
+.tabs-search{flex-shrink:0;font-size:30rpx;padding:12rpx 10rpx 10rpx 14rpx;position:relative;opacity:.75}
+.tabs-search::after{content:'';position:absolute;left:-8rpx;top:-18rpx;right:-8rpx;bottom:-18rpx}
 .tabs-manage{flex-shrink:0;display:flex;align-items:center;padding:10rpx 20rpx 10rpx 16rpx;position:relative}
 .tabs-manage::after{content:'';position:absolute;left:-10rpx;top:-16rpx;right:-6rpx;bottom:-16rpx}
 /* 左侧白色渐隐：tab 滚动到管理入口处自然淡出，而不是被硬切一刀 */
 .tabs-manage::before{content:'';position:absolute;left:-28rpx;top:0;bottom:0;width:28rpx;background:linear-gradient(to right,rgba(255,255,255,0),#FFF);pointer-events:none}
-.group-tab{display:inline-flex;align-items:center;padding:12rpx 20rpx;margin-right:8rpx;font-size:24rpx;color:#888;background:#F5F5F5;border-radius:24rpx;white-space:nowrap;transition:all .2s}
+.group-tab{display:inline-flex;align-items:center;padding:10rpx 18rpx;margin-right:8rpx;font-size:24rpx;color:#888;background:#F5F5F5;border-radius:24rpx;white-space:nowrap;transition:all .2s}
 .group-tab.active{color:#FFF;background:var(--primary);font-weight:500}
 .group-tab-n{font-size:20rpx;opacity:.6;margin-left:6rpx}
 .group-tab.active .group-tab-n{opacity:.85}
@@ -244,6 +246,8 @@
 @keyframes shimmer{0%,100%{opacity:.5}50%{opacity:1}}
 
 /* 指数行情 */
+.fab{position:fixed;right:32rpx;bottom:112rpx;width:104rpx;height:104rpx;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;box-shadow:0 8rpx 24rpx rgba(0,0,0,.2);z-index:99}
+.fab-icon{color:#FFF;font-size:56rpx;line-height:1;font-weight:300;margin-top:-6rpx}
 .index-bar{position:fixed;left:0;right:0;bottom:0;background:#FFF;border-top:1rpx solid #F0F0F0;z-index:100;padding:8rpx 0 0;box-shadow:0 -2rpx 12rpx rgba(0,0,0,.04)}
 .index-collapsed{display:flex;align-items:baseline;padding:6rpx 24rpx 18rpx;animation:fadeSlideIn .3s ease}
 .idx-name{font-size:26rpx;color:#333;flex-shrink:0}

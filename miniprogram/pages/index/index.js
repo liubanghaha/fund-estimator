@@ -1020,6 +1020,18 @@ Page({
     wx.navigateTo({ url: "/pages/add-holding/index" + q });
   },
 
+  // 悬浮＋：原快捷入口那四个功能（搜索已挪到账户栏右端）
+  onFabTap() {
+    wx.showActionSheet({
+      itemList: ["新增持仓", "加减仓", "资产分析"],
+      success: (r) => {
+        if (r.tapIndex === 0) this.onAdd();
+        else if (r.tapIndex === 1) this.onAdjust();
+        else if (r.tapIndex === 2) this.onCorrelation();
+      },
+    });
+  },
+
   onToggleBatch() {
     const enter = !this.data.batchMode;
     const list = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));

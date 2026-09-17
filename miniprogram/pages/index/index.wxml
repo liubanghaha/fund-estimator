@@ -105,6 +105,7 @@
             </block>
             <view class="platform-tab platform-add" bind:tap="onAddPlatform">＋</view>
           </scroll-view>
+          <view class="tabs-search" bind:tap="onSearch">🔍</view>
           <view class="tabs-manage" bind:tap="onToggleBatch">
             <view class="batch-bars">
               <view class="batch-bar"></view>
@@ -143,25 +144,6 @@
           <text class="batch-alert-label">选中基金提醒 · 未设过的按 ±3%</text>
           <view class="pe-switch {{batchAlertOn ? 'on' : ''}}" bind:tap="onBatchAlertToggle">
             <view class="pe-switch-dot"></view>
-          </view>
-        </view>
-
-        <view wx:else class="quick-actions">
-          <view class="action-item" bind:tap="onSearch">
-            <view class="action-icon">🔍</view>
-            <view class="action-text">搜索</view>
-          </view>
-          <view class="action-item" bind:tap="onAdd">
-            <view class="action-icon">📝</view>
-            <view class="action-text">新增</view>
-          </view>
-          <view class="action-item" bind:tap="onAdjust">
-            <view class="action-icon">✏️</view>
-            <view class="action-text">加减仓</view>
-          </view>
-          <view class="action-item" bind:tap="onCorrelation">
-            <view class="action-icon">📊</view>
-            <view class="action-text">资产分析</view>
           </view>
         </view>
 
@@ -269,6 +251,11 @@
       </view>
     </view>
   </scroll-view>
+
+  <!-- 悬浮操作：新增/加减仓/资产分析（原先占常驻区 84px 的快捷入口，挪到拇指可及处） -->
+  <view wx:if="{{!batchMode && !indexExpanded && !showIndexEdit && holdings.length > 0}}" class="fab" bind:tap="onFabTap">
+    <text class="fab-icon">＋</text>
+  </view>
 
   <view wx:if="{{indexCards.length > 0}}" class="index-bar">
     <view wx:if="{{showIndexEdit}}" class="index-edit-panel">
