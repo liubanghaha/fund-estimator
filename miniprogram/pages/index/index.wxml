@@ -106,13 +106,6 @@
             <view class="platform-tab platform-add" bind:tap="onAddPlatform">＋</view>
           </scroll-view>
           <view class="tabs-search" bind:tap="onSearch">🔍</view>
-          <view class="tabs-manage" bind:tap="onToggleBatch">
-            <view class="batch-bars">
-              <view class="batch-bar"></view>
-              <view class="batch-bar"></view>
-              <view class="batch-bar"></view>
-            </view>
-          </view>
         </view>
 
         <view class="asset-overview" bind:tap="onTapProfit">
@@ -206,7 +199,15 @@
             <view class="table-inner">
               <view class="t-row t-head">
                 <!-- 名称列（管理入口已挪到标签栏右端） -->
-                <view class="t-cell t-name"><text class="t-name-label">基金名称</text></view>
+                <view class="t-cell t-name">
+                  <view class="t-head-manage" bind:tap="onToggleBatch">
+                    <view class="batch-bars">
+                      <view class="batch-bar"></view>
+                      <view class="batch-bar"></view>
+                      <view class="batch-bar"></view>
+                    </view>
+                  </view>
+                </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col"
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
@@ -301,6 +302,25 @@
           </view>
         </view>
       </scroll-view>
+    </view>
+  </view>
+
+  <!-- 账户/分组管理面板：点「+」打开，新建/重命名/删除都在这一层，不用长按找 -->
+  <view wx:if="{{managePanel}}" class="mp-mask" bind:tap="onCloseManage">
+    <view class="mp-card" catch:tap="noop">
+      <view class="mp-head">{{managePanel.title}}</view>
+      <scroll-view scroll-y class="mp-list">
+        <view class="mp-row" wx:for="{{managePanel.items}}" wx:key="name">
+          <view class="mp-main">
+            <view class="mp-name">{{item.name}}</view>
+            <view class="mp-sub">{{item.count}} 只持仓</view>
+          </view>
+          <view class="mp-act" catch:tap="onManageRename" data-name="{{item.name}}">重命名</view>
+          <view class="mp-act danger" catch:tap="onManageDelete" data-name="{{item.name}}">删除</view>
+        </view>
+        <view wx:if="{{!managePanel.items.length}}" class="mp-empty">还没有{{managePanel.noun}}，点下方新建</view>
+      </scroll-view>
+      <view class="mp-new" catch:tap="onManageCreate">＋ 新建{{managePanel.noun}}</view>
     </view>
   </view>
 

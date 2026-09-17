@@ -102,6 +102,7 @@ Page({
     _dragStartIdx: -1,
     _dragTimer: null,
     _didLongPress: false,
+    managePanel: null,   // 账户/分组管理面板（点 + 打开）
     _dragMoved: false,
     _tabWidth: 0,
     showGroupEdit: false,
@@ -1619,8 +1620,52 @@ Page({
     this.setData({ activePlatform: target }, () => this.applyGroupFilter());
   },
 
-  // 顶部栏「+」：新建账户（与新建分组同款弹层）
-  onAddPlatform() {
+  // 顶部栏「+」：打开账户管理面板（新建/重命名/删除都在这一层，不用再长按找）
+  onAddPlatform() { this._openManage("platform"); },
+
+  // 账户/分组管理面板：列出已有项 + 每项的重命名/删除 + 底部新建
+  _openManage(field) {
+    const isPlatform = field === "platform";
+    const names = isPlatform
+      ? (this.data.platformList || [])
+      : (this.data.groups || []).filter((g) => g && g !== "未分组");
+    const counts = {};
+    if (isPlatform) {
+      (this.data.platformRows || []).forEach((r) => { counts[r.name] = r.count || 0; });
+    } else {
+      const gc = this.data.groupCounts || {};
+      names.forEach((n) => { counts[n] = gc[n] || 0; });
+    }
+    this.setData({
+      managePanel: {
+        field,
+        title: isPlatform ? "账户管理" : "分组管理",
+        noun: isPlatform ? "账户" : "分组",
+        items: names.map((n) => ({ name: n, count: counts[n] || 0 })),
+      },
+    });
+  },
+  onCloseManage() { this.setData({ managePanel: null }); },
+  onManageCreate() {
+    const panel = this.data.managePanel;
+    this.setData({ managePanel: null });
+    if (!panel) return;
+    if (panel.field === "platform") this._createPlatform(); else this._createGroup();
+  },
+  onManageRename(e) {
+    const name = e.currentTarget.dataset.name;
+    const panel = this.data.managePanel;
+    this.setData({ managePanel: null });
+    if (name && panel) this.renameGroup(name, panel.field);
+  },
+  onManageDelete(e) {
+    const name = e.currentTarget.dataset.name;
+    const panel = this.data.managePanel;
+    this.setData({ managePanel: null });
+    if (name && panel) this.deleteGroup(name, panel.field);
+  },
+
+  _createPlatform() {
     this.showGroupInput((name) => {
       wx.showToast({ title: `已创建账户「${name}」，设置账户后持仓会归入`, icon: "none", duration: 2000 });
       this._savePlatformToCache(name);
@@ -1651,7 +1696,10 @@ Page({
     this.setData({ platformList: this._mergePlatforms(this.data.platformsData || []) });
   },
 
-  onAddGroup() {
+  // 分组栏「+」：同一套管理面板（分组维度）
+  onAddGroup() { this._openManage("group"); },
+
+  _createGroup() {
     this.showGroupInput((groupName) => {
       wx.showToast({ title: `已创建分组「${groupName}」，长按持仓可移入分组`, icon: "none", duration: 2000 });
       this._saveGroupToCache(groupName);
