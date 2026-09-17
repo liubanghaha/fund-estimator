@@ -6,7 +6,7 @@
     {
       "name": "snapshotTimer",
       "type": "timer",
-      "config": "0 * 9-15 * * 1-5 *"
+      "config": "*/10 9-15 * * 1-5 *"
     }
   ]
 }

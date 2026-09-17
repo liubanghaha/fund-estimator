@@ -57,8 +57,11 @@ async function handleAlertGet() {
   if (!OPENID) return { code: -1, msg: "无用户身份" };
   const r = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const doc = r.data[0];
+  // 推送额度一并返回：提醒能否送达只取决于额度，客户端要把状态显式告诉用户
+  const sub = await db.collection("subscriptions").where({ _openid: OPENID, scene: SCENE }).get().catch(() => ({ data: [] }));
+  const quota = (sub.data || []).reduce((a, x) => a + Math.max(0, x.quota || 0), 0);
   // data=settings 保持向后兼容，globalOn 顶层返回（全局涨跌提醒开关）
-  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn) };
+  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn), quota, peCache: (doc && doc.peCache) || {} };
 }
 
 async function handleAlertSet({ settings, globalOn }) {
@@ -81,6 +84,22 @@ async function handleAlertSet({ settings, globalOn }) {
     });
   }
   return { code: 0 };
+}
+
+// 有"启用中"提醒规则的用户集合（播报给提醒留额度的判断依据；量级千级，整表读）
+async function alertUserOpenids() {
+  try {
+    const docs = await readAll("alert_settings", {}, ["_openid", "settings", "globalOn"]);
+    const set = new Set();
+    docs.forEach((d) => {
+      if (d.globalOn) { set.add(d._openid); return; }
+      const st = d.settings || {};
+      if (Object.keys(st).some((k) => st[k] && st[k].enabled !== false)) set.add(d._openid);
+    });
+    return set;
+  } catch (e) {
+    return new Set();
+  }
 }
 
 // ---- action: alertSrc ----
@@ -115,10 +134,16 @@ async function handleAlertPush({ pushes }) {
   if (!TEMPLATE_ID) return { code: -1, msg: "TEMPLATE_ID 未配置" };
   const token = await getAccessToken();
   const today = td.bjDateStr();
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, noQuota = 0;
+  // 发送前先查额度（原来不查：没额度也照发，微信 43101 拒绝 → 每小时重试、日志刷屏，
+  // 用户侧看不到任何东西）。额度够才发，不够就等下一次检查——授权到位后自然补发
+  const subRows = await readAll("subscriptions", { scene: SCENE }, ["_openid", "quota"]);
+  const quotaLeft = {};
+  subRows.forEach((x) => { quotaLeft[x._openid] = (quotaLeft[x._openid] || 0) + Math.max(0, x.quota || 0); });
   // 全量分页处理：命中数超过单轮上限时不截断（截断会静默漏发且无日志）
   for (let start = 0; start < pushes.length; start += 200) {
   for (const p of pushes.slice(start, start + 200)) {
+    if (!(quotaLeft[p.openid] > 0)) { noQuota++; continue; }
     const brief = {
       thing1: { value: "韭菜估值宝" },
       thing2: { value: String(p.fundName || "持仓基金").slice(0, 20) },
@@ -133,6 +158,7 @@ async function handleAlertPush({ pushes }) {
       await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE, quota: _.gt(0) }).update({
         data: { quota: _.inc(-1), updatedAt: Date.now() }
       });
+      quotaLeft[p.openid] = Math.max(0, (quotaLeft[p.openid] || 0) - 1);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
@@ -146,7 +172,7 @@ async function handleAlertPush({ pushes }) {
     }
   }
   }
-  return { code: 0, sent, failed };
+  return { code: 0, sent, failed, noQuota };
 }
 
 // 基于日期串的纯日期偏移（UTC 计算，北京日期串无时区歧义）
@@ -238,7 +264,7 @@ async function handleRecallPush({ targets, variant }) {
       failed++;
     }
   }
-  return { code: 0, sent, failed, skipped };
+  return { code: 0, sent, failed, skipped, heldForAlert };
 }
 
 // 召回 A 文案（通用，默认）：纯数据陈述（合规红线 #2/#6）
@@ -322,6 +348,9 @@ async function runBriefing(dryRun, force) {
   // 1. 订阅读者（quota>0；dryRun 不发送不扣额度，不过滤额度便于文案验证）
   const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
+  // 1b. 配了提醒规则的用户：播报给提醒留 1 条额度（一次性订阅共用额度池，
+  //     播报吃干后盘中提醒全部 43101——2026-09-09 实测就是这么丢的）
+  const alertUserSet = await alertUserOpenids();
 
   // 2. 全量持仓按 openid 分组（同 snapshotProfit 模式：一次读全量，内存分组）
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue", "shares"]);
@@ -358,11 +387,13 @@ async function runBriefing(dryRun, force) {
   // stable_token 官方建议每次业务调用时获取（未过期时接口自动复用同一 token）
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
   for (let i = 0; i < runList.length; i += BATCH_SIZE) {
     const batch = runList.slice(i, i + BATCH_SIZE);
     for (const sub of batch) {
       if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
+      // 给提醒留额度：有提醒规则的用户至少留 1 条，quota<2 时本次播报不发（不报错、不写失败日志）
+      if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }
       // 官方净值口径：全确认按实际；未确认（23:00 兜底档）按"已发布实际+未发布估算"混合，
       // estimated 标志让文案区分估算部分，避免把兜底值误读为确认值
       const rateInfo = resolveRate(byUser[sub._openid], confirmation, rateMap[sub._openid], totalMarket[sub._openid]);
@@ -420,10 +451,10 @@ async function runNavBrief(force, dryRun) {
   }
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
 
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid"]);
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
-
-  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "shares"]);
+  // 有提醒规则的用户：净值播报同样给提醒留 1 条额度（否则 21:30 吃干、次日上午提醒全部发不出）
+  const alertUserSet = await alertUserOpenids();
   const byUser = {};
   holdings.forEach(h => {
     if (!h._openid || !h.fundCode) return;
@@ -472,10 +503,12 @@ async function runNavBrief(force, dryRun) {
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
   const devSamples = []; // 估算偏差样本（P1-6）：循环内收集，结束后 saveEstimateDeviation 汇总落库
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
+    // 给提醒留额度：有提醒规则的用户至少留 1 条（quota<2 时本条播报不发）
+    if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }
     const list = byUser[sub._openid] || [];
     let totalBase = 0, pubBase = 0, real = 0, pubCount = 0;
     list.forEach(h => {
@@ -548,8 +581,8 @@ async function runNavBrief(force, dryRun) {
     try { await saveEstimateDeviation(dataDay, devSamples); }
     catch (e) { console.error("[dailyBriefing][navBrief] estimate_deviation 异常:", e.message); }
   }
-  console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
-  return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
+  console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} heldForAlert=${heldForAlert} publishedFunds=${pubCount} dryRun=${dryRun}`);
+  return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}，留额度 ${heldForAlert}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // ---- 估算偏差落库（P1-6 信任线底座）----
@@ -599,7 +632,8 @@ async function runWeeklyBrief(force, dryRun) {
     d = addDays(d, -1);
   }
 
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid"]);
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  const alertUserSet = await alertUserOpenids();   // 同净值播报：给提醒留额度
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "marketValue"]);
@@ -640,9 +674,10 @@ async function runWeeklyBrief(force, dryRun) {
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
+    if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }   // 给提醒留额度
     const rates = dayRate[sub._openid];
     if (!rates) { skipped++; continue; } // 本周无快照（新用户/无持仓日）不发
     let mult = 1;

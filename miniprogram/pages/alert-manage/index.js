@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const subscribe = require("../../utils/subscribe");
 
 // 我的提醒管理页（产品规划·功能可用性）：提醒规则的汇总管理——
 // 全局开关 / 单条启用（enabled 字段向后兼容：旧数据缺省视为启用）/ 删除，改动即时同步云端
@@ -8,6 +9,8 @@ Page({
     globalOn: true,
     rules: [],
     loading: true,
+    quota: 0,        // 推送额度：>0 提醒才能送到微信（一次性订阅，一次授权=一条）
+    quotaLoaded: false,
   },
 
   onLoad() {
@@ -20,6 +23,20 @@ Page({
 
   _load() {
     const settings = wx.getStorageSync("alertSettings") || {};
+    // 历史脏数据自愈：跌阈值存成正数的规则永远不会触发（旧版界面还把它显示成"不限"）
+    let healed = false;
+    Object.keys(settings).forEach((code) => {
+      const r = settings[code] || {};
+      if (typeof r.lower === "number" && r.lower > 0) { r.lower = -r.lower; healed = true; }
+    });
+    if (healed) {
+      wx.setStorageSync("alertSettings", settings);
+      this._syncCloud(settings);
+    }
+    // 推送额度（提醒能否真的送达只取决于它）
+    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
+      .then((r) => this.setData({ quota: ((r && r.result) || {}).quota || 0, quotaLoaded: true }))
+      .catch(() => this.setData({ quotaLoaded: true }));
     const globalOn = wx.getStorageSync("alertGlobalOn");
     // 基金名优先取首页持仓缓存（alertSettings 里只有 fundCode）
     const pc = wx.getStorageSync("portfolio_cache") || {};
@@ -49,6 +66,18 @@ Page({
     if (settings) payload.settings = settings;
     if (typeof globalOn === "boolean") payload.globalOn = globalOn;
     wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSet", ...payload } }).catch(() => {});
+  },
+
+  // 补充推送额度：微信一次性订阅，一次授权 = 一条可发送额度
+  onTopUp() {
+    subscribe.requestAlertAuth("alert_manage").then((r) => {
+      if (r && r.ok === false) {
+        wx.showToast({ title: "未授权，提醒无法送达微信", icon: "none", duration: 2000 });
+        return;
+      }
+      wx.showToast({ title: "已补充推送额度", icon: "success" });
+      setTimeout(() => this._load(), 900);
+    });
   },
 
   onToggleGlobal(e) {

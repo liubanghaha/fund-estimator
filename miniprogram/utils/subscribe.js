@@ -123,8 +123,16 @@ function silentDailyAuth(src) {
   } catch (e) { /* ignore */ }
   try {
     const today = new Date().toDateString();
-    if (wx.getStorageSync(KEY_SILENT_DAY) === today) return;
-    wx.setStorageSync(KEY_SILENT_DAY, today);
+    const rec = wx.getStorageSync(KEY_SILENT_DAY) || {};
+    // 兼容旧格式（原来只存日期字符串）
+    const sameDay = rec && rec.date === today;
+    const count = sameDay ? rec.count || 0 : 0;
+    // 一次授权 = 一条额度，而提醒和播报都要用；勾了「总是保持以上选择」的用户是无感的，
+    // 所以每天最多补 3 次（间隔 >=3 小时），保证盘中提醒和收盘/净值播报都有额度可用
+    const max = wx.getStorageSync(KEY_ALWAYS_ALLOW) ? 3 : 1;
+    if (count >= max) return;
+    if (sameDay && rec.ts && Date.now() - rec.ts < 3 * 3600 * 1000) return;
+    wx.setStorageSync(KEY_SILENT_DAY, { date: today, count: count + 1, ts: Date.now() });
   } catch (e) {
     return;
   }

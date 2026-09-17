@@ -6,7 +6,8 @@ const _ = db.command;
 const fd = require("./_shared/fund-data");
 
 exports.main = async (event) => {
-  const { force } = event || {}; // force=true：跳过交易时段判断 + 只算不写，供部署后验证
+  const { force, dryRun } = event || {}; // force=true：跳过交易时段判断 + 只算不写（供部署后验证）
+  // dryRun=true：提醒检测只算不发（不消耗用户订阅额度、不写推送日志），用于验证命中逻辑
   const _start = Date.now();
   const el = () => Date.now() - _start;
 
@@ -83,9 +84,11 @@ exports.main = async (event) => {
 
     // 4. 盘中涨跌提醒：读提醒设置比对单基金估算涨跌，命中后委托 dailyBriefing 发送
     //    （每日每基金一次由 push_logs 查重保证；提醒独立于快照写入，预算外仍执行）
-    let alertSent = 0;
+    let alertSent = 0, alertHits = [];
     try {
-      alertSent = await checkRateAlerts(userMap, fundRateMap, today, el);
+      const r = await checkRateAlerts(userMap, fundRateMap, today, el, !!dryRun);
+      alertSent = r.sent;
+      alertHits = r.hits || [];
     } catch (e) {
       console.warn("[snapshotProfit] 涨跌提醒检测失败:", e.message);
     }
@@ -93,7 +96,7 @@ exports.main = async (event) => {
     return {
       code: 0, msg: "ok", time, dryRun: !!force,
       users: Object.keys(userMap).length, written, funds: fundCodes.length, stocks: stockCount,
-      alertSent, sample, costMs: el(),
+      alertSent, alertHits, dryRun: !!dryRun, sample, costMs: el(),
     };
   } catch (e) {
     console.error("snapshotProfit 失败:", e.message);
@@ -107,7 +110,7 @@ exports.main = async (event) => {
 // globalOn=true 的用户全部持仓按默认阈值（±3，与客户端弹窗默认一致）兜底提醒
 const ALERT_GLOBAL_DEFAULT = { upper: 3, lower: -3 };
 
-async function checkRateAlerts(userMap, fundRateMap, today, el) {
+async function checkRateAlerts(userMap, fundRateMap, today, el, dryRun) {
   const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true, globalOn: true, src: true });
   if (alertDocs.length === 0) return 0;
   const alertMap = {};
@@ -154,7 +157,12 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
     const { _rate, ...rest } = p;
     return rest;
   });
-  if (pushes.length === 0) return 0;
+  const hits = pushes.map(p => `${p.fundName}(${p.fundCode}) ${p.kind} ${p.text}`);
+  if (pushes.length === 0) return { sent: 0, hits: [] };
+  if (dryRun) {
+    console.log(`[snapshotProfit][dryRun] 涨跌提醒命中 ${pushes.length} 条但不发送: ${hits.slice(0, 5).join("; ")}`);
+    return { sent: 0, hits };
+  }
   console.log(`[snapshotProfit] 涨跌提醒命中 ${pushes.length} 条 t=${el()}ms`);
   // 截断 200（=handleAlertPush 单次上限），溢出的下一分钟触发周期自然补上（查重后不再重发已发的）
   const r = await cloud.callFunction({
@@ -162,8 +170,9 @@ async function checkRateAlerts(userMap, fundRateMap, today, el) {
     data: { action: "alertPush", pushes: pushes.slice(0, 200) },
   });
   const sent = (r.result && r.result.sent) || 0;
-  console.log(`[snapshotProfit] alertPush sent=${sent} t=${el()}ms`);
-  return sent;
+  const noQuota = (r.result && r.result.noQuota) || 0;
+  console.log(`[snapshotProfit] alertPush sent=${sent} noQuota=${noQuota} t=${el()}ms`);
+  return { sent, hits, noQuota };
 }
 
 // skip 分页读全量（提醒相关集合量级在千级，够用且实现简单）

@@ -4,6 +4,15 @@
   <view wx:if="{{loading}}" class="am-loading"><text>加载中...</text></view>
 
   <block wx:else>
+    <!-- 推送额度：额度为 0 时提醒发不出去（微信一次性订阅，一次授权=一条发送额度） -->
+    <view class="am-card am-quota {{quota > 0 ? 'ok' : 'warn'}}">
+      <view class="am-row-main">
+        <view class="am-name">推送额度 {{quota}} 条</view>
+        <view class="am-sub">{{quota > 0 ? '微信通知可用；提醒触发时会推送给你' : '额度为 0：提醒触发时发不出微信通知（点右侧补充）'}}</view>
+      </view>
+      <view class="am-quota-btn" bind:tap="onTopUp">补充额度</view>
+    </view>
+
     <!-- 全局开关 -->
     <view class="am-card">
       <view class="am-row">

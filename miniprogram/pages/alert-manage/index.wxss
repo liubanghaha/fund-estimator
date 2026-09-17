@@ -17,3 +17,8 @@
 .am-empty-text{font-size:28rpx;color:#666;margin-top:20rpx}
 .am-empty-hint{font-size:22rpx;color:#BBB;margin-top:12rpx;line-height:1.6}
 .am-home-btn{margin-top:32rpx;font-size:26rpx;color:var(--primary);background:#FFF;border:1rpx solid var(--primary);border-radius:40rpx;line-height:2.4}
+/* 推送额度条：额度为 0 时用警示色，提醒"发了也送不到" */
+.am-quota{display:flex;align-items:center;justify-content:space-between;gap:16rpx}
+.am-quota.warn{background:#FFF7F0;border:1rpx solid #F5D6B8}
+.am-quota.ok{background:#F4FBF6;border:1rpx solid #CFE9D8}
+.am-quota-btn{flex-shrink:0;font-size:24rpx;color:#FFF;background:var(--primary);border-radius:10rpx;padding:12rpx 22rpx}

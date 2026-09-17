@@ -542,12 +542,14 @@ Page({
   onSaveAlert() {
     const { alertEditFundCode, alertEditUpper, alertEditLower, alertEditPeAlert } = this.data;
     const upper = parseFloat(alertEditUpper);
-    const lower = parseFloat(alertEditLower);
+    let lower = parseFloat(alertEditLower);
     // 非法输入直接拦截，不静默按 0（关闭）处理；留空视为不启用该方向提醒
     if ((alertEditUpper !== '' && isNaN(upper)) || (alertEditLower !== '' && isNaN(lower))) {
       wx.showToast({ title: "请输入有效的数字", icon: "none" });
       return;
     }
+    // 跌阈值必须为负：用户按"跌幅 3%"填正数 3 也照收（旧版会静默存成 +3 → 跌方向永不触发）
+    if (alertEditLower !== '' && !isNaN(lower) && lower > 0) lower = -lower;
     if (upper && lower && upper <= lower) {
       wx.showToast({ title: "下限需小于上限", icon: "none" });
       return;
@@ -1060,15 +1062,24 @@ Page({
     if (selected.length === 0) { wx.showToast({ title: "请先选择", icon: "none" }); return; }
     const next = !this.data.batchAlertOn;
     const settings = wx.getStorageSync("alertSettings") || {};
+    const peCache = wx.getStorageSync("peSignalCache") || {};
     selected.forEach((h) => {
       const prev = settings[h.fundCode] || {};
+      const prevLower = parseFloat(prev.lower);
       settings[h.fundCode] = {
         upper: prev.upper != null && prev.upper !== "" ? prev.upper : 3,
-        lower: prev.lower != null && prev.lower !== "" ? prev.lower : -3,
-        peAlert: !!prev.peAlert,
+        // 跌阈值必须为负：历史脏数据（+3）顺手纠正
+        lower: isFinite(prevLower) && prevLower !== 0 ? (prevLower > 0 ? -prevLower : prevLower) : -3,
+        // 新规则默认连温度提醒一起开（用户开了"没设过的"就是想要提醒到位）；
+        // 已显式关过的不覆盖用户的决定
+        peAlert: prev.peAlert === undefined ? true : !!prev.peAlert,
         enabled: next,
       };
+      if (next && settings[h.fundCode].peAlert && h.peTemp && h.peTemp.signal && peCache[h.fundCode] === undefined) {
+        peCache[h.fundCode] = h.peTemp.signal;   // 记基线，首日不误报
+      }
     });
+    wx.setStorageSync("peSignalCache", peCache);
     wx.setStorageSync("alertSettings", settings);
     this.setData({ batchAlertOn: next });
     wx.showToast({
