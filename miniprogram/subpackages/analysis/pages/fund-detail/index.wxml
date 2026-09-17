@@ -433,7 +433,7 @@
     <view wx:if="{{showCalibrate}}" class="cal-mask" bind:tap="onCalibrateCancel">
       <view class="cal-card" catch:tap>
         <view class="cal-title">数据校准</view>
-        <view class="cal-desc">修正份额与成本记录误差，只改数字，不产生新记录</view>
+        <view class="cal-desc">{{calLabel ? '正在校准「' + calLabel + '」这一笔（卡片上是各账户合计）：' : ''}}修正份额与成本记录误差，只改数字，不产生新记录</view>
         <view class="cal-row">
           <text class="cal-label">持有份额</text>
           <input class="cal-input" type="digit" value="{{calShares}}" bindinput="onCalSharesInput" placeholder="如 1234.56" />

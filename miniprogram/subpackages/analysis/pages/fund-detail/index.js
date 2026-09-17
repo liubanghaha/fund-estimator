@@ -1137,19 +1137,44 @@ Page({
     this.fetchProfile().finally(() => this.setData({ profileLoading: false }));
   },
 
+  // 同一基金多笔（多账户）时先选是哪一笔：卡片与头部是合计口径，但修改/校准只能落到某一笔。
+  // 直接取第一笔会把"合计"和"某一笔"混在一屏里（修改回显不是总金额；校准会把合计份额写进第一笔）
+  _pickHoldingRecord() {
+    const list = this.data.holdingRecords || [];
+    if (list.length <= 1) return Promise.resolve(list[0] || null);
+    return new Promise((resolve) => {
+      wx.showActionSheet({
+        itemList: list.map((r) => `${r.platform} · ${r.shares} 份 · ¥${r.marketValue}`),
+        success: (res) => resolve(list[res.tapIndex] || null),
+        fail: () => resolve(null),
+      });
+    });
+  },
+
   // ===== 数据校准（P0-3）：修正 OCR/推算的份额与成本误差，纯数字修正不产生交易记录 =====
-  onCalibrate() {
+  async onCalibrate() {
+    const multi = (this.data.holdingRecords || []).length > 1;
+    const rec = await this._pickHoldingRecord();
+    if (multi && !rec) return; // 多笔时取消选择 = 放弃本次校准
     const h = this.data.holdingData || {};
-    this.setData({ showCalibrate: true, calShares: String(h.shares || ""), calPrice: String(h.buyPrice || "") });
+    this._calId = (rec && rec.id) || this.data.holdingId;
+    // 单笔：沿用卡片口径预填（含 OCR 缺份额时按市值反推的估算值）；多笔：只能用选中那一笔自己的数字
+    this.setData({
+      showCalibrate: true,
+      calShares: String((multi && rec ? rec.shares : h.shares) || ""),
+      calPrice: String((multi && rec ? rec.buyPrice : h.buyPrice) || ""),
+      calLabel: multi && rec ? rec.platform : "",
+    });
   },
   onCalSharesInput(e) { this.setData({ calShares: e.detail.value }); },
   onCalPriceInput(e) { this.setData({ calPrice: e.detail.value }); },
-  onCalibrateCancel() { this.setData({ showCalibrate: false }); },
+  onCalibrateCancel() { this.setData({ showCalibrate: false, calLabel: "" }); },
   async onCalibrateSave() {
     const shares = parseFloat(this.data.calShares);
     const buyPrice = parseFloat(this.data.calPrice);
     if (!(shares > 0) || !(buyPrice > 0)) { wx.showToast({ title: "请输入有效的份额与净值", icon: "none" }); return; }
-    if (!this.data.holdingId) { wx.showToast({ title: "持仓数据未就绪", icon: "none" }); return; }
+    const calId = this._calId || this.data.holdingId;
+    if (!calId) { wx.showToast({ title: "持仓数据未就绪", icon: "none" }); return; }
     this.setData({ calSaving: true });
     try {
       // 市值/收益按官方净值重算，口径与 add-holding/adjust-holding 一致
@@ -1157,20 +1182,24 @@ Page({
       const buyAmount = +(shares * buyPrice).toFixed(2);
       const marketValue = nav > 0 ? +(shares * nav).toFixed(2) : buyAmount;
       const holdingReturn = +(marketValue - buyAmount).toFixed(2);
-      await api.holdingUpdate(this.data.holdingId, {
+      await api.holdingUpdate(calId, {
         shares: parseFloat(shares.toFixed(4)),
         buyPrice: parseFloat(buyPrice.toFixed(4)),
         buyAmount, marketValue, holdingReturn,
       });
       // 本地即时生效 + 首页等列表页走强制刷新
-      if (this._rawHolding) {
+      if ((this.data.holdingRecords || []).length > 1) {
+        // 多笔：合计口径随之变化，重新拉明细再算（不能拿单笔数字去改合计对象）
+        await this.checkHolding();
+        this.enrichHoldingData();
+      } else if (this._rawHolding) {
         Object.assign(this._rawHolding, { shares, buyPrice, buyAmount, marketValue, holdingReturn });
         this.enrichHoldingData();
       }
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
       this._saveCache();
-      this.setData({ showCalibrate: false });
+      this.setData({ showCalibrate: false, calLabel: "" });
       wx.showToast({ title: "已校准", icon: "success" });
     } catch (e) {
       console.error("数据校准保存失败:", e);
@@ -1272,10 +1301,14 @@ Page({
     }
   },
 
-  onAddHolding() {
+  async onAddHolding() {
     const { fundCode, fundName, hasHolding, holdingId } = this.data;
-    if (hasHolding && holdingId) {
-      wx.navigateTo({ url: `/pages/add-holding/index?id=${holdingId}` });
+    if (hasHolding) {
+      // 多笔（多账户）时先选改哪一笔：卡片显示的是合计，直接取第一笔会让人以为回显错了
+      const rec = await this._pickHoldingRecord();
+      const id = (rec && rec.id) || holdingId;
+      if (!id) { wx.showToast({ title: "持仓数据未就绪", icon: "none" }); return; }
+      wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
     } else {
       wx.navigateTo({ url: `/pages/add-holding/index?fundCode=${fundCode}&fundName=${encodeURIComponent(fundName)}` });
     }
