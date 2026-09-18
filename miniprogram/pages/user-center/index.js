@@ -15,10 +15,9 @@ Page({
     avatarUrl: "", nickName: "",
     synced: false,   // 账号同步状态：openid 静默获取，正常情况打开即已同步
     showFollowQr: false, // 关注公众号二维码弹层
-    // 添加到桌面引导：安卓有「添加到桌面」，iOS 只能引导「添加到我的小程序」（见 utils/device.js）
+    // 添加到桌面引导：iOS 与安卓统一一套文案（用户拍板，见 utils/device.js）
     addGuide: device.addShortcutGuide(),
     showAddGuide: false,
-    addedToMyMp: false,  // 「我的小程序」是否已添加（wx.checkIsAddedToMyMiniProgram 查，iOS 引导用）
     showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
     feedbackType: "suggestion",
@@ -132,16 +131,7 @@ Page({
 
   onOpenAddGuide() {
     this.setData({ showAddGuide: true });
-    // 「我的小程序」是否已添加：只有这一项有 API（桌面查不到）。老基础库没有该 API → 照常给步骤
-    try {
-      if (typeof wx.checkIsAddedToMyMiniProgram === "function") {
-        wx.checkIsAddedToMyMiniProgram({
-          success: (res) => this.setData({ addedToMyMp: !!(res && res.added) }),
-          fail: () => { /* 查不到就当没添加，照常给步骤 */ },
-        });
-      }
-    } catch (e) { /* ignore */ }
-    try { require("../../utils/track").track("add_shortcut_guide", { src: "user_center", kind: this.data.addGuide.label }); } catch (e) { /* ignore */ }
+    try { require("../../utils/track").track("add_shortcut_guide", { src: "user_center" }); } catch (e) { /* ignore */ }
   },
 
   onCloseAddGuide() {

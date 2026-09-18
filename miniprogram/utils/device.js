@@ -1,33 +1,11 @@
 /**
- * 设备/平台判断（与「账户平台 platform」无关，别混）。
+ * 「添加到桌面」引导文案（用户 2026-09-18 拍板：iOS 与安卓统一用这一套，不做平台分叉）。
  *
- * 添加到桌面：安卓微信右上角胶囊菜单里有「添加到桌面」，加了之后桌面图标点开直达小程序；
- * iOS 系统不提供桌面快捷方式（微信侧限制），菜单里没有这一项，只能引导「添加到我的小程序」
- * （之后在微信首页下拉直达）。小程序侧也没有 API 能调用它、或检测用户是否已添加，只能引导。
+ * 背景：微信没有提供"一键加桌面"的接口，只能引导用户点右上角胶囊菜单；
+ * 菜单里是否存在「添加到桌面」由客户端/系统决定（安卓微信有，且需系统允许微信
+ * 创建桌面快捷方式），因此文案统一写成"菜单里若没有这一项 → 去手机设置开权限"。
  */
-function isIOS() {
-  try {
-    return /ios/i.test(wx.getSystemInfoSync().platform || "");
-  } catch (e) {
-    return false;
-  }
-}
-
-// 引导文案：首页气泡与「我的」页入口共用一套，避免两处说法分叉
 function addShortcutGuide() {
-  if (isIOS()) {
-    return {
-      kind: "myminiprogram",
-      label: "添加到我的小程序",
-      title: "添加到我的小程序",
-      steps: [
-        "点右上角「···」打开菜单",
-        "选择「添加到我的小程序」",
-        "之后在微信首页下拉，即可直达小程序",
-      ],
-      tip: "iOS 系统不提供桌面快捷方式，微信里最接近的用法是「添加到我的小程序」",
-    };
-  }
   return {
     kind: "desktop",
     label: "添加到桌面",
@@ -41,4 +19,4 @@ function addShortcutGuide() {
   };
 }
 
-module.exports = { isIOS, addShortcutGuide };
+module.exports = { addShortcutGuide };

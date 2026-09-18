@@ -165,27 +165,20 @@
   <view wx:if="{{showAddGuide}}" class="addg-mask" bind:tap="onCloseAddGuide">
     <view class="addg-card" catch:tap="noop">
       <view class="addg-title">{{addGuide.title}}</view>
-      <!-- 已添加过「我的小程序」就不再重复引导（仅 iOS 引导的目标是它；桌面查不到状态） -->
-      <block wx:if="{{addedToMyMp && addGuide.kind === 'myminiprogram'}}">
-        <view class="addg-done">✓ 已添加到「我的小程序」</view>
-        <view class="addg-done-tip">之后在微信首页下拉，即可直达小程序</view>
-      </block>
-      <block wx:else>
-        <view class="addg-capsule-wrap">
-          <view class="addg-hint">↗ 点这里</view>
-          <view class="addg-capsule">
-            <text class="addg-dots">···</text>
-            <view class="addg-ring"></view>
-          </view>
+      <view class="addg-capsule-wrap">
+        <view class="addg-hint">↗ 点这里</view>
+        <view class="addg-capsule">
+          <text class="addg-dots">···</text>
+          <view class="addg-ring"></view>
         </view>
-        <view class="addg-steps">
-          <view class="addg-step" wx:for="{{addGuide.steps}}" wx:key="*this">
-            <text class="addg-step-n">{{index + 1}}</text>
-            <text class="addg-step-t">{{item}}</text>
-          </view>
+      </view>
+      <view class="addg-steps">
+        <view class="addg-step" wx:for="{{addGuide.steps}}" wx:key="*this">
+          <text class="addg-step-n">{{index + 1}}</text>
+          <text class="addg-step-t">{{item}}</text>
         </view>
-        <view class="addg-tip">{{addGuide.tip}}</view>
-      </block>
+      </view>
+      <view class="addg-tip">{{addGuide.tip}}</view>
       <view class="addg-close" bind:tap="onCloseAddGuide">知道了</view>
     </view>
   </view>
