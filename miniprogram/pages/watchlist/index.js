@@ -131,25 +131,26 @@ Page({
     this.setData({ theme });
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      // 30s 节流 + 交易日时钟：盘中照常自动刷新；盘后净值发布即冻结、周末/节假日全天免拉
-      // 过期改静默刷新（转圈动画仅保留用户手动下拉）——30s 轮询已兜实时性
-      const now = Date.now();
-      const cacheFresh = marketTime.isCacheFresh(this._wlCache, { estimateTtl: 30000 });
-      if ((!this._lastFetch || now - this._lastFetch > 30000) && !cacheFresh) {
-        this._lastFetch = now;
-        this.fetchWatchlist();
-      }
-      this._startPolling();
+      this._enterList();
     } else {
-      this.setData({
-        watchlist: [], displayList: [], loaded: true, groups: [], activeGroup: "all",
-        checkedMap: {}, sortField: "", sortOrder: "", searchKeyword: "", updateTime: "",
-        holdingCodes: [], groupCounts: {}, summary: { avg: 0, up: 0, down: 0, total: 0 },
-        stale: false,
+      // 打开即用：静默登录（openid 云端直取，无授权弹窗）拿到后按正常流程加载；失败给「加载失败」重试
+      getApp().ensureLogin().then((ok) => {
+        if (ok) this._enterList();
+        else this.setData({ loaded: true, loadError: true });
       });
-      this._stopPolling();
-      wx.removeStorageSync(CACHE_KEY);
     }
+  },
+
+  _enterList() {
+    // 30s 节流 + 交易日时钟：盘中照常自动刷新；盘后净值发布即冻结、周末/节假日全天免拉
+    // 过期改静默刷新（转圈动画仅保留用户手动下拉）——30s 轮询已兜实时性
+    const now = Date.now();
+    const cacheFresh = marketTime.isCacheFresh(this._wlCache, { estimateTtl: 30000 });
+    if ((!this._lastFetch || now - this._lastFetch > 30000) && !cacheFresh) {
+      this._lastFetch = now;
+      this.fetchWatchlist();
+    }
+    this._startPolling();
   },
 
   onHide() {

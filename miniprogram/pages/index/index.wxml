@@ -64,14 +64,6 @@
         </view>
       </view>
 
-      <!-- 未登录：优先于无持仓引导展示 -->
-      <view wx:elif="{{!isLoggedIn}}" class="empty-state">
-        <view class="empty-desc">登录后同步你的持仓与分组</view>
-        <view class="empty-btns">
-          <button class="login-btn" bind:tap="onGoLogin">去登录</button>
-        </view>
-      </view>
-
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
         <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
         <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
@@ -445,9 +437,9 @@
     </view>
   </view>
 
-  <!-- 添加到我的小程序轻引导（指向右上角胶囊） -->
+  <!-- 快捷方式轻引导（指向右上角胶囊）：安卓=添加到桌面 / iOS=添加到我的小程序 -->
   <view wx:if="{{showAddGuide}}" class="add-guide" bind:tap="onCloseAddGuide">
-    <text class="add-guide-text">点右上角「···」→ 添加到我的小程序</text>
+    <text class="add-guide-text">{{addGuideText}}</text>
     <view class="add-guide-close">×</view>
   </view>
 </view>

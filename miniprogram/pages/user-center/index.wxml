@@ -5,13 +5,19 @@
       <view class="avatar-placeholder" wx:else>👤</view>
     </button>
     <view class="nickname-tip" wx:if="{{!avatarUrl}}">点击头像设置</view>
-    <view class="nickname" bind:tap="onNicknameTap">{{isLoggedIn ? nickName || '微信用户' : '点击登录'}}</view>
+    <view class="nickname">{{nickName || '微信用户'}}</view>
+    <!-- 账号同步：openid 由云函数静默获取（不弹授权），正常情况自动同步完成；未同步时点一下即可登录 -->
+    <view class="account-row" bind:tap="onAccountTap">
+      <text class="account-label">账号</text>
+      <text class="account-value {{synced ? '' : 'unsynced'}}">{{synced ? '微信账号已同步' : '点击登录'}}</text>
+      <text class="account-arrow">›</text>
+    </view>
   </view>
-  <!-- 关注公众号：滚动提示 + 点击复制号名（小程序里没法直接跳公众号，只能引导搜索） -->
+  <!-- 关注公众号：滚动提示 + 点开二维码（小程序里没法直接跳公众号，扫码/长按识别是唯一路径） -->
   <view class="follow-bar" bind:tap="onFollowTap">
     <text class="follow-icon">📢</text>
     <view class="follow-marquee">
-      <text class="follow-text">关注公众号「韭菜养基宝」——版本更新、新功能说明和使用技巧都发在那里 · 点这里复制号名去搜一搜</text>
+      <text class="follow-text">关注公众号「韭菜养基宝」——版本更新、新功能说明和使用技巧都发在那里 · 点这里扫码关注</text>
     </view>
     <text class="follow-cta">去关注</text>
   </view>
@@ -29,116 +35,160 @@
   <view class="menu-group-title">通知与数据</view>
   <view class="menu-list">
     <view class="menu-item" bind:tap="onBriefing"><text>📈 收盘播报</text><text class="arrow">{{showBrief ? '∨' : (briefAuthed ? '已开启' : '>')}}</text></view>
+    <!-- 收盘播报（订阅消息） -->
+    <view wx:if="{{showBrief}}" class="menu-expand">
+      <view class="fb-section">
+        <view class="fb-label">净值确认后送达</view>
+        <view class="migrate-tip">交易日净值公布确认后推送：持仓当日最终收益、温度变化播报。数据播报，不构成投资建议，可随时在微信「服务通知」中拒收。</view>
+        <button class="migrate-btn" bind:tap="onBriefingAuth" loading="{{briefSubmitting}}">{{briefAuthed ? '补充推送额度' : '立即订阅'}}</button>
+        <view class="migrate-tip">一次性订阅 = 授权一次发一条。弹授权时勾选「总是保持以上选择」，每次打开小程序会自动补充额度，体验等同长期开启。</view>
+      </view>
+    </view>
+
     <view class="menu-item" bind:tap="onEstimateSrc"><text>数据源</text><text class="arrow">{{estimateSrcText}} ›</text></view>
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
+    <!-- 反馈表单 -->
+    <view wx:if="{{showFeedback}}" class="menu-expand">
+      <!-- 反馈类型 -->
+      <view class="fb-section">
+        <view class="fb-label">反馈类型</view>
+        <view class="fb-type-row">
+          <view
+            class="fb-type-item {{feedbackType === 'suggestion' ? 'active' : ''}}"
+            bind:tap="onTypeTap"
+            data-type="suggestion"
+          >💡 功能建议</view>
+          <view
+            class="fb-type-item {{feedbackType === 'bug' ? 'active' : ''}}"
+            bind:tap="onTypeTap"
+            data-type="bug"
+          >🐛 问题反馈</view>
+          <view
+            class="fb-type-item {{feedbackType === 'other' ? 'active' : ''}}"
+            bind:tap="onTypeTap"
+            data-type="other"
+          >💬 其他</view>
+        </view>
+      </view>
+
+  	    <!-- 详细描述 -->
+      <view class="fb-section">
+        <view class="fb-label">详细描述</view>
+        <textarea
+          class="fb-textarea"
+          value="{{feedbackText}}"
+          placeholder="请详细描述你的建议或遇到的问题…"
+          maxlength="500"
+          auto-height
+          bind:input="onFeedbackInput"
+        />
+        <view class="fb-count">{{feedbackText.length}}/500</view>
+      </view>
+
+      <!-- 截图上传 -->
+      <view class="fb-section">
+        <view class="fb-label">截图（选填，最多3张）</view>
+        <view class="fb-images">
+          <block wx:for="{{feedbackImages}}" wx:key="index">
+            <view class="fb-img-item">
+              <image class="fb-img" src="{{item}}" mode="aspectFill" />
+              <view class="fb-img-del" bind:tap="onRemoveImage" data-index="{{index}}">×</view>
+            </view>
+          </block>
+          <view
+            wx:if="{{feedbackImages.length < 3}}"
+            class="fb-img-add"
+            bind:tap="onAddImage"
+          >
+            <text class="fb-img-add-icon">+</text>
+            <text class="fb-img-add-text">{{feedbackImages.length === 0 ? '添加截图' : ''}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="fb-actions">
+        <button class="fb-cancel" bind:tap="onFeedback">取消</button>
+        <button
+          class="fb-submit"
+          bind:tap="onSubmitFeedback"
+          loading="{{feedbackSubmitting}}"
+          disabled="{{feedbackSubmitting}}"
+        >提交反馈</button>
+      </view>
+    </view>
+
     <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
+    <!-- 数据迁移（认领旧数据） -->
+    <view wx:if="{{showMigrate}}" class="menu-expand">
+      <view class="fb-section">
+        <view class="fb-label">输入迁移码</view>
+        <input
+          class="fb-textarea migrate-input"
+          value="{{migrateCode}}"
+          placeholder="6 位迁移码，在旧小程序「我的」页查看"
+          maxlength="6"
+          bindinput="onMigrateInput"
+        />
+        <view class="migrate-tip">迁移码在旧版小程序「我的」→「数据迁移」中查看，输入后自动认领你的持仓、自选和交易记录。</view>
+        <button class="migrate-btn" bind:tap="onSubmitMigrate" disabled="{{migrating}}">{{migrating ? '迁移中...' : '开始迁移'}}</button>
+      </view>
+    </view>
+
   </view>
   <view class="menu-group-title">通用</view>
   <view class="menu-list">
+    <view class="menu-item" bind:tap="onOpenAddGuide"><text>📲 {{addGuide.label}}</text><text class="arrow">></text></view>
     <view class="menu-item" wx:if="{{isOpsAdmin}}" bind:tap="onOpenOps"><text>运营助手</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onShowVersion"><text>关于</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onToggleTheme"><text>主题色</text><text class="arrow">{{theme === 'red' ? '红白' : '蓝白'}}</text></view>
   </view>
 
-  <!-- 收盘播报（订阅消息） -->
-  <view wx:if="{{showBrief}}" class="feedback-form">
-    <view class="fb-section">
-      <view class="fb-label">净值确认后送达</view>
-      <view class="migrate-tip">交易日净值公布确认后推送：持仓当日最终收益、温度变化播报。数据播报，不构成投资建议，可随时在微信「服务通知」中拒收。</view>
-      <button class="migrate-btn" bind:tap="onBriefingAuth" loading="{{briefSubmitting}}">{{briefAuthed ? '补充推送额度' : '立即订阅'}}</button>
-      <view class="migrate-tip">一次性订阅 = 授权一次发一条。弹授权时勾选「总是保持以上选择」，每次打开小程序会自动补充额度，体验等同长期开启。</view>
+  <!-- 关注公众号二维码：长按图片识别（show-menu-by-longpress） -->
+  <view wx:if="{{showFollowQr}}" class="follow-qr-mask" bind:tap="onCloseFollowQr">
+    <view class="follow-qr-card" catch:tap="noop">
+      <view class="follow-qr-title">关注公众号「韭菜养基宝」</view>
+      <image
+        class="follow-qr-img"
+        src="/images/official-account-qr.png"
+        mode="widthFix"
+        show-menu-by-longpress="{{true}}"
+      ></image>
+      <view class="follow-qr-action">长按二维码 → 识别图中二维码</view>
+      <view class="follow-qr-tip">版本更新、新功能说明、使用技巧都发在公众号里</view>
+      <view class="follow-qr-copy" bind:tap="onFollowCopyName">搜不到？复制公众号名称</view>
+      <view class="follow-qr-close" bind:tap="onCloseFollowQr">关闭</view>
     </view>
   </view>
 
-  <!-- 数据迁移（认领旧数据） -->
-  <view wx:if="{{showMigrate}}" class="feedback-form">
-    <view class="fb-section">
-      <view class="fb-label">输入迁移码</view>
-      <input
-        class="fb-textarea migrate-input"
-        value="{{migrateCode}}"
-        placeholder="6 位迁移码，在旧小程序「我的」页查看"
-        maxlength="6"
-        bindinput="onMigrateInput"
-      />
-      <view class="migrate-tip">迁移码在旧版小程序「我的」→「数据迁移」中查看，输入后自动认领你的持仓、自选和交易记录。</view>
-      <button class="migrate-btn" bind:tap="onSubmitMigrate" disabled="{{migrating}}">{{migrating ? '迁移中...' : '开始迁移'}}</button>
-    </view>
-  </view>
-
-  <!-- 反馈表单 -->
-  <view wx:if="{{showFeedback}}" class="feedback-form">
-    <!-- 反馈类型 -->
-    <view class="fb-section">
-      <view class="fb-label">反馈类型</view>
-      <view class="fb-type-row">
-        <view
-          class="fb-type-item {{feedbackType === 'suggestion' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="suggestion"
-        >💡 功能建议</view>
-        <view
-          class="fb-type-item {{feedbackType === 'bug' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="bug"
-        >🐛 问题反馈</view>
-        <view
-          class="fb-type-item {{feedbackType === 'other' ? 'active' : ''}}"
-          bind:tap="onTypeTap"
-          data-type="other"
-        >💬 其他</view>
-      </view>
-    </view>
-
-	    <!-- 详细描述 -->
-    <view class="fb-section">
-      <view class="fb-label">详细描述</view>
-      <textarea
-        class="fb-textarea"
-        value="{{feedbackText}}"
-        placeholder="请详细描述你的建议或遇到的问题…"
-        maxlength="500"
-        auto-height
-        bind:input="onFeedbackInput"
-      />
-      <view class="fb-count">{{feedbackText.length}}/500</view>
-    </view>
-
-    <!-- 截图上传 -->
-    <view class="fb-section">
-      <view class="fb-label">截图（选填，最多3张）</view>
-      <view class="fb-images">
-        <block wx:for="{{feedbackImages}}" wx:key="index">
-          <view class="fb-img-item">
-            <image class="fb-img" src="{{item}}" mode="aspectFill" />
-            <view class="fb-img-del" bind:tap="onRemoveImage" data-index="{{index}}">×</view>
+  <!-- 添加到桌面 / 添加到我的小程序：微信无 API 可调用或检测，只能按平台给步骤引导 -->
+  <view wx:if="{{showAddGuide}}" class="addg-mask" bind:tap="onCloseAddGuide">
+    <view class="addg-card" catch:tap="noop">
+      <view class="addg-title">{{addGuide.title}}</view>
+      <!-- 已添加过「我的小程序」就不再重复引导（仅 iOS 引导的目标是它；桌面查不到状态） -->
+      <block wx:if="{{addedToMyMp && addGuide.kind === 'myminiprogram'}}">
+        <view class="addg-done">✓ 已添加到「我的小程序」</view>
+        <view class="addg-done-tip">之后在微信首页下拉，即可直达小程序</view>
+      </block>
+      <block wx:else>
+        <view class="addg-capsule-wrap">
+          <view class="addg-hint">↗ 点这里</view>
+          <view class="addg-capsule">
+            <text class="addg-dots">···</text>
+            <view class="addg-ring"></view>
           </view>
-        </block>
-        <view
-          wx:if="{{feedbackImages.length < 3}}"
-          class="fb-img-add"
-          bind:tap="onAddImage"
-        >
-          <text class="fb-img-add-icon">+</text>
-          <text class="fb-img-add-text">{{feedbackImages.length === 0 ? '添加截图' : ''}}</text>
         </view>
-      </view>
-    </view>
-
-    <!-- 操作按钮 -->
-    <view class="fb-actions">
-      <button class="fb-cancel" bind:tap="onFeedback">取消</button>
-      <button
-        class="fb-submit"
-        bind:tap="onSubmitFeedback"
-        loading="{{feedbackSubmitting}}"
-        disabled="{{feedbackSubmitting}}"
-      >提交反馈</button>
+        <view class="addg-steps">
+          <view class="addg-step" wx:for="{{addGuide.steps}}" wx:key="*this">
+            <text class="addg-step-n">{{index + 1}}</text>
+            <text class="addg-step-t">{{item}}</text>
+          </view>
+        </view>
+        <view class="addg-tip">{{addGuide.tip}}</view>
+      </block>
+      <view class="addg-close" bind:tap="onCloseAddGuide">知道了</view>
     </view>
   </view>
-
-  <view wx:if="{{!isLoggedIn}}" class="login-tip" bind:tap="onLogin">登录后可管理持仓数据</view>
-  <view wx:if="{{isLoggedIn}}" class="logout-btn" bind:tap="onLogout">退出登录</view>
 
   <!-- 版本更新日志 -->
   <view wx:if="{{showVersionLog}}" class="ver-mask" bind:tap="onCloseVersionLog">

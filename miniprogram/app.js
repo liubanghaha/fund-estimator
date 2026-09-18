@@ -4,6 +4,7 @@ const APP_VERSION = (() => {
 })();
 
 const track = require("./utils/track.js");
+const api = require("./utils/api");
 
 // 更新日志：数组第 0 条即「当前版本」——版本日志页只展示 log[0]，升级弹窗按版本号匹配。
 // 排序约定：新的在前（按发布日期倒序）；末尾那条 2026-07-08 的 2.3.0 是「老小程序（迁移前 AppID）」的历史记录，非本小程序版本。
@@ -96,6 +97,7 @@ App({
       }
     }
     this.globalData = { _ocrFunds: null, _screenshotPath: null };
+    this.ensureLogin(); // 静默取 openid，各页开场即可用，用户无登录步骤
     this._handlePushEntry(options, "cold");
     this._trackLaunch();
     // 统一埋点（P0-0）：建会话 + 接回未发完队列，2s 后补发避开冷启动关键路径
@@ -166,6 +168,32 @@ App({
         }
       }).catch(() => {});
     } catch (e) { /* 埋点失败不提示 */ }
+  },
+
+  // 静默登录：openid 由云函数从微信调用上下文直接返回，不弹任何授权、不需要用户操作。
+  // 因此「登录」不再是用户可见的步骤——打开小程序即可浏览，数据自动归属到本人微信账号。
+  // 只在首次（或本地缓存被清）时真的发一次请求，之后走本地缓存；失败会清掉在途标记，下次进页面自动重试。
+  ensureLogin: function () {
+    // 本地已有 openid 即视为就绪（storage 是唯一真源，重装/清缓存后自然走下面的重新获取）
+    try {
+      const cached = wx.getStorageSync("userInfo");
+      if (cached && cached.loggedIn && cached.openid) return Promise.resolve(true);
+    } catch (e) { /* ignore */ }
+    // 在途请求去重：多页同时开场只发一次；落地即清标记（结果一律以 storage 为准），
+    // 避免把一次失败/旧结果缓存住 —— 判定口径只有 storage 一处。
+    if (this._loginPromise) return this._loginPromise;
+    const p = api.userLogin().then((res) => {
+      const r = (res && res.result) || {};
+      if (r.code !== 0 || !r.data || !r.data.openid) return false;
+      // 合并写入：昵称/头像等本地资料不能被覆盖
+      const prev = wx.getStorageSync("userInfo") || {};
+      wx.setStorageSync("userInfo", Object.assign({}, prev, { loggedIn: true, openid: r.data.openid }));
+      return true;
+    }).catch(() => false);
+    this._loginPromise = p;
+    const clear = () => { if (this._loginPromise === p) this._loginPromise = null; };
+    p.then(clear, clear);
+    return p;
   },
 
   getVersion: function () {

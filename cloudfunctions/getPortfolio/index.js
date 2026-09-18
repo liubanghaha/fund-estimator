@@ -50,7 +50,6 @@ exports.main = async (event) => {
       };
     }
 
-    let totalCost = 0, totalYesterdayMarket = 0, totalTodayProfit = 0;
     let updateTime = "";
     const navHistoryMap = {};
 
@@ -108,7 +107,6 @@ exports.main = async (event) => {
     });
 
     const enriched = [];
-    let totalMarket = 0;
 
     for (const { h, tiantian, eastmoney, navHistory, nav60 } of resultsList) {
       // 向后兼容：旧数据用 amount/nav 字段（金额/净值），新数据用 shares/buyPrice
@@ -184,7 +182,6 @@ exports.main = async (event) => {
         todayChangeRate = eastmoney.actualChangeRate || 0;
       }
 
-      totalYesterdayMarket += yesterdayNavSafe * shares;
       if (estRate != null) { updateTime = estSource === "sina" ? (sn.time || "") : (tiantian.estimateTime || ""); }
 
       const costValue = buyPrice * shares;
@@ -193,10 +190,6 @@ exports.main = async (event) => {
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
       // 单只基金当日收益率：今日收益 / 昨日市值（客户端当日收益列按此排序）
       const todayProfitRate = shares > 0 && yesterdayNav > 0 ? ((todayProfitAmount / (yesterdayNav * shares)) * 100) : 0;
-
-      totalCost += costValue;
-      totalMarket += marketValue;
-      totalTodayProfit += todayProfitAmount;
 
       // 60 日位置信号
       let position = null, navHigh = null, navLow = null;
@@ -231,8 +224,17 @@ exports.main = async (event) => {
       });
     }
 
+    // 组合合计口径 = 逐笔「已舍入到分」的值相加（与平台/分组汇总、客户端 _sumHoldings、收盘播报一致）。
+    // 此前用未舍入的 shares×nav / buyPrice×shares 累加、最后统一舍入：与逐笔相加会差 1 分
+    // （12 笔逐笔舍入残差累计 ≈ -0.006 元，刚好跨过进位边界），
+    // 表现为「全部」资产卡与「账户」资产卡、账户汇总行对不上（单账户也一样）。
+    const totalAmount = enriched.reduce((s, h) => s + (parseFloat(h.marketValue) || 0), 0);
+    const totalReturn = enriched.reduce((s, h) => s + (parseFloat(h.totalReturn) || 0), 0);
+    const totalTodayProfit = enriched.reduce((s, h) => s + (parseFloat(h.todayProfit) || 0), 0);
+    // 收益率与客户端 _sumHoldings 同式：昨日市值 = 市值 − 今日收益，成本 = 市值 − 累计收益
+    const totalYesterdayMarket = totalAmount - totalTodayProfit;
+    const totalCost = totalAmount - totalReturn;
     const todayProfitRate = totalYesterdayMarket > 0 ? ((totalTodayProfit / totalYesterdayMarket) * 100) : 0;
-    const totalReturn = totalMarket - totalCost;
     const totalReturnRate = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0;
 
     const today = fd.formatBJDate();
@@ -423,26 +425,21 @@ exports.main = async (event) => {
     enriched.forEach(h => {
       const g = h.group || "未分组";
       if (!groupMap[g]) {
-        groupMap[g] = { name: g, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, todayProfitRate: 0, totalReturnRate: 0, yesterdayMarket: 0, totalCost: 0 };
+        groupMap[g] = { name: g, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0 };
       }
       groupMap[g].count++;
       groupMap[g].totalAmount += parseFloat(h.marketValue) || 0;
       groupMap[g].todayProfit += parseFloat(h.todayProfit) || 0;
       groupMap[g].totalReturn += parseFloat(h.totalReturn) || 0;
-      // 累计昨日市值和总成本用于计算分组收益率
-      const shares = parseFloat(h.shares) || 0;
-      const buyPrice = parseFloat(h.buyPrice) || 0;
-      const currentNav = parseFloat(h.currentNav) || 0;
-      const todayChangeRate = parseFloat(h.todayChangeRate) || 0;
-      if (shares > 0 && currentNav > 0) {
-        const yesterdayNav = todayChangeRate !== 0 ? currentNav / (1 + todayChangeRate / 100) : currentNav;
-        groupMap[g].yesterdayMarket += yesterdayNav * shares;
-        groupMap[g].totalCost += buyPrice * shares;
-      }
     });
+    // 收益率同口径：昨日市值 = 市值 − 今日收益，成本 = 市值 − 累计收益
+    //（与总额、客户端 _sumHoldings 一套式子；此前用 净值/(1+涨幅) 反推昨收、用 buyPrice×shares 当成本，
+    //  与点进该分组后卡片上的收益率会差 0.01pp）
     const groups = Object.values(groupMap).map(g => {
-      const tpr = g.yesterdayMarket > 0 ? ((g.todayProfit / g.yesterdayMarket) * 100) : 0;
-      const trr = g.totalCost > 0 ? ((g.totalReturn / g.totalCost) * 100) : 0;
+      const yesterday = g.totalAmount - g.todayProfit;
+      const cost = g.totalAmount - g.totalReturn;
+      const tpr = yesterday > 0 ? ((g.todayProfit / yesterday) * 100) : 0;
+      const trr = cost > 0 ? ((g.totalReturn / cost) * 100) : 0;
       return {
         name: g.name,
         count: g.count,
@@ -459,32 +456,27 @@ exports.main = async (event) => {
     enriched.forEach(h => {
       const pk = h.platform || "未分配";
       if (!platformMap[pk]) {
-        platformMap[pk] = { name: pk, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, yesterdayMarket: 0, totalCost: 0 };
+        platformMap[pk] = { name: pk, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0 };
       }
       const m = platformMap[pk];
       m.count++;
       m.totalAmount += parseFloat(h.marketValue) || 0;
       m.todayProfit += parseFloat(h.todayProfit) || 0;
       m.totalReturn += parseFloat(h.totalReturn) || 0;
-      const shares = parseFloat(h.shares) || 0;
-      const buyPrice = parseFloat(h.buyPrice) || 0;
-      const currentNav = parseFloat(h.currentNav) || 0;
-      const todayChangeRate = parseFloat(h.todayChangeRate) || 0;
-      if (shares > 0 && currentNav > 0) {
-        const yesterdayNav = todayChangeRate !== 0 ? currentNav / (1 + todayChangeRate / 100) : currentNav;
-        m.yesterdayMarket += yesterdayNav * shares;
-        m.totalCost += buyPrice * shares;
-      }
     });
-    const platforms = Object.values(platformMap).map(m => ({
-      name: m.name,
-      count: m.count,
-      totalAmount: m.totalAmount.toFixed(2),
-      todayProfit: m.todayProfit.toFixed(2),
-      todayProfitRate: m.yesterdayMarket > 0 ? ((m.todayProfit / m.yesterdayMarket) * 100).toFixed(2) : null,
-      totalReturn: m.totalReturn.toFixed(2),
-      totalReturnRate: m.totalCost > 0 ? ((m.totalReturn / m.totalCost) * 100).toFixed(2) : null,
-    }));
+    const platforms = Object.values(platformMap).map(m => {
+      const yesterday = m.totalAmount - m.todayProfit;
+      const cost = m.totalAmount - m.totalReturn;
+      return {
+        name: m.name,
+        count: m.count,
+        totalAmount: m.totalAmount.toFixed(2),
+        todayProfit: m.todayProfit.toFixed(2),
+        todayProfitRate: yesterday > 0 ? ((m.todayProfit / yesterday) * 100).toFixed(2) : null,
+        totalReturn: m.totalReturn.toFixed(2),
+        totalReturnRate: cost > 0 ? ((m.totalReturn / cost) * 100).toFixed(2) : null,
+      };
+    });
 
     // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----
     // 仅在交易时段补（与定时任务语义一致），距上一点 >= 1 分钟才写（快照已分钟粒度，与新定时同步）
@@ -530,7 +522,7 @@ exports.main = async (event) => {
       data: {
         holdings: enriched,
         platforms,
-        totalAmount: totalMarket.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
         todayProfit: totalTodayProfit.toFixed(2),
         todayProfitRate: todayProfitRate.toFixed(2),
         totalReturn: totalReturn.toFixed(2),

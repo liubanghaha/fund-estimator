@@ -484,7 +484,9 @@ async function runNavBrief(force, dryRun) {
     }));
     results.forEach(({ code, r }) => {
       if (r && r.actualDate === dataDay && r.actualChangeRate != null) {
-        navInfo[code] = { published: true, changeRate: r.actualChangeRate };
+        // nav 一并留着：算金额要用「今日净值 − 昨日净值」，不能用「涨幅 × 昨日市值」
+        //（官方涨幅只保留 2 位小数，乘上几十万市值后单只可偏 3 元 → 播报与页面对不上）
+        navInfo[code] = { published: true, changeRate: r.actualChangeRate, nav: r.actualNav || null };
       }
     });
   }
@@ -525,7 +527,8 @@ async function runNavBrief(force, dryRun) {
       const info = navInfo[h.fundCode];
       if (info && info.published) {
         pubBase += fundBase;
-        real += fundBase * info.changeRate / 100;
+        // 同 resolveRate：金额用净值差算，别用「官方涨幅(2 位) × 昨日市值」，否则与页面差几元
+        real += info.nav > 0 ? (info.nav - prev) * shares : fundBase * info.changeRate / 100;
         pubCount++;
       }
     });
@@ -844,7 +847,9 @@ async function collectConfirmation(targets, byUser, dataDay) {
     }));
     results.forEach(({ code, r }) => {
       if (r && r.actualDate === dataDay && r.actualChangeRate != null) {
-        navInfo[code] = { published: true, changeRate: r.actualChangeRate };
+        // nav 一并留着：算金额要用「今日净值 − 昨日净值」，不能用「涨幅 × 昨日市值」
+        //（官方涨幅只保留 2 位小数，乘上几十万市值后单只可偏 3 元 → 播报与页面对不上）
+        navInfo[code] = { published: true, changeRate: r.actualChangeRate, nav: r.actualNav || null };
       }
     });
   }
@@ -887,7 +892,10 @@ function resolveRate(funds, confirmation, estRate, dbMarket) {
     const info = navInfo[f.fundCode];
     if (info && info.published) {
       if (hasPrev) published++;
-      real += base * info.changeRate / 100;
+      // 金额与页面 getPortfolio 同口径：(今日净值 − 昨日净值) × 份额。
+      // 不能用「昨日市值 × 官方涨幅」——官方涨幅只保留 2 位小数，乘上几十万市值后
+      // 单只就能偏 3 元（实测 12 只累计 -5.4 元：播报 +15207 vs 页面 +15212.41）
+      real += (hasPrev && info.nav > 0) ? (info.nav - prev) * shares : base * info.changeRate / 100;
     } else {
       estBase += base;
     }

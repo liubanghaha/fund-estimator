@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const subscribe = require("../../utils/subscribe");
+const device = require("../../utils/device");
 const ADMIN_CACHE_KEY = "ops_admin_cache"; // 管理员标记缓存：true 缓存 7 天 / false 缓存 1 天
 
 Page({
@@ -11,7 +12,13 @@ Page({
       return bj.getUTCFullYear() - 1;
     })(),
     showAnnualEntry: new Date(Date.now() + 8 * 3600000).getUTCFullYear() >= 2027,
-    isLoggedIn: false, avatarUrl: "", nickName: "",
+    avatarUrl: "", nickName: "",
+    synced: false,   // 账号同步状态：openid 静默获取，正常情况打开即已同步
+    showFollowQr: false, // 关注公众号二维码弹层
+    // 添加到桌面引导：安卓有「添加到桌面」，iOS 只能引导「添加到我的小程序」（见 utils/device.js）
+    addGuide: device.addShortcutGuide(),
+    showAddGuide: false,
+    addedToMyMp: false,  // 「我的小程序」是否已添加（wx.checkIsAddedToMyMiniProgram 查，iOS 引导用）
     showBrief: false, briefAuthed: false, briefSubmitting: false,
     showFeedback: false,
     feedbackType: "suggestion",
@@ -28,14 +35,13 @@ Page({
   },
 
   onShow() {
-    const userInfo = wx.getStorageSync("userInfo");
-    if (userInfo && userInfo.loggedIn) {
-      this.setData({
-        isLoggedIn: true,
-        avatarUrl: userInfo.avatarUrl || "",
-        nickName: userInfo.nickName || "",
-      });
-    }
+    const userInfo = wx.getStorageSync("userInfo") || {};
+    this.setData({
+      avatarUrl: userInfo.avatarUrl || "",
+      nickName: userInfo.nickName || "",
+    });
+    // 打开即用：openid 由云函数静默获取（无授权弹窗、无登录步骤），这里只反映同步结果
+    getApp().ensureLogin().then((ok) => this.setData({ synced: !!ok }));
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({
       theme,
@@ -103,13 +109,43 @@ Page({
     if (r.ok) wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
   },
 
-  // 小程序无法直接打开公众号主页 → 复制号名，引导用户去微信搜一搜
+  // 小程序无法直接打开公众号主页 → 弹二维码，长按识别关注（扫码是微信认可的关注路径）
   onFollowTap() {
+    this.setData({ showFollowQr: true });
+    try { require("../../utils/track").track("follow_mp", { src: "qr" }); } catch (e) { /* ignore */ }
+  },
+
+  onCloseFollowQr() {
+    this.setData({ showFollowQr: false });
+  },
+
+  // 兜底：识别不出来时复制号名去微信搜一搜（保留整改前的路径）
+  onFollowCopyName() {
     wx.setClipboardData({
       data: "韭菜养基宝",
       success: () => wx.showToast({ title: "已复制，去微信搜索关注", icon: "none", duration: 2200 }),
     });
-    try { require("../../utils/track").track("follow_mp", {}); } catch (e) { /* ignore */ }
+    try { require("../../utils/track").track("follow_mp", { src: "copy" }); } catch (e) { /* ignore */ }
+  },
+
+  noop() {},
+
+  onOpenAddGuide() {
+    this.setData({ showAddGuide: true });
+    // 「我的小程序」是否已添加：只有这一项有 API（桌面查不到）。老基础库没有该 API → 照常给步骤
+    try {
+      if (typeof wx.checkIsAddedToMyMiniProgram === "function") {
+        wx.checkIsAddedToMyMiniProgram({
+          success: (res) => this.setData({ addedToMyMp: !!(res && res.added) }),
+          fail: () => { /* 查不到就当没添加，照常给步骤 */ },
+        });
+      }
+    } catch (e) { /* ignore */ }
+    try { require("../../utils/track").track("add_shortcut_guide", { src: "user_center", kind: this.data.addGuide.label }); } catch (e) { /* ignore */ }
+  },
+
+  onCloseAddGuide() {
+    this.setData({ showAddGuide: false });
   },
 
   onToggleTheme() {
@@ -124,30 +160,6 @@ Page({
     wx.showToast({ title: "主题已切换", icon: "none", duration: 2000 });
   },
 
-  // 头部「点击登录」：未登录时触发登录；已登录点击无动作
-  onNicknameTap() {
-    if (!this.data.isLoggedIn) this.onLogin();
-  },
-
-  async onLogin() {
-    wx.showLoading({ title: "登录中..." });
-    try {
-      const res = await api.userLogin();
-      wx.hideLoading();
-      if (res.result && res.result.code === 0) {
-        wx.setStorageSync("userInfo", { loggedIn: true, openid: res.result.data.openid });
-        this.setData({ isLoggedIn: true });
-        wx.showToast({ title: "登录成功", icon: "success" });
-      } else {
-        wx.showToast({ title: "登录失败，请重试", icon: "none" });
-      }
-    } catch (e) {
-      wx.hideLoading();
-      console.error("登录失败:", e);
-      wx.showToast({ title: "网络错误，请重试", icon: "none" });
-    }
-  },
-
   onChooseAvatar(e) {
     const avatarUrl = e.detail.avatarUrl;
     this.setData({ avatarUrl });
@@ -156,34 +168,22 @@ Page({
     wx.setStorageSync("userInfo", userInfo);
   },
 
-  onLogout() {
-    wx.showModal({
-      title: "提示", content: "确定要退出登录吗？",
-      success: (res) => {
-        if (res.confirm) {
-          wx.removeStorageSync("userInfo");
-          wx.removeStorageSync("watchlist_cache");
-          wx.removeStorageSync("portfolio_cache");
-          wx.removeStorageSync("portfolio_force_refresh");
-          wx.removeStorageSync("profit_detail_cache_v3");
-          wx.removeStorageSync("profit_detail_cache_v2");
-          wx.removeStorageSync("profit_detail_cache");
-          wx.removeStorageSync("index_cache");
-          wx.removeStorageSync("indexCodes");
-          wx.removeStorageSync("amountVisible");
-          wx.removeStorageSync("estimate_src");
-          wx.removeStorageSync("holding_groups_cache");
-          wx.removeStorageSync("news_cache");
-          wx.removeStorageSync("track_queue_v1");
-          wx.removeStorageSync("ops_admin_cache");
-          const app = getApp();
-          if (app && app.globalData) {
-            app.globalData._ocrFunds = null;
-            app.globalData._screenshotPath = null;
-          }
-          this.setData({ isLoggedIn: false, avatarUrl: "", nickName: "", isOpsAdmin: false });
-        }
-      },
+  // 账号行：已同步 → 说明同步范围；未同步（首启断网等）→ 点一下完成登录
+  onAccountTap() {
+    if (this.data.synced) {
+      wx.showModal({
+        title: "账号同步",
+        content: "持仓、自选与交易记录会自动同步到你的微信账号，换设备或重新安装后打开小程序即可恢复，无需密码。",
+        showCancel: false,
+        confirmText: "知道了",
+      });
+      return;
+    }
+    wx.showLoading({ title: "登录中..." });
+    getApp().ensureLogin().then((ok) => {
+      wx.hideLoading();
+      this.setData({ synced: !!ok });
+      wx.showToast({ title: ok ? "已同步" : "网络异常，请重试", icon: ok ? "success" : "none" });
     });
   },
 
@@ -215,7 +215,9 @@ Page({
   async onSubmitMigrate() {
     const code = (this.data.migrateCode || "").trim();
     if (!code) { wx.showToast({ title: "请输入迁移码", icon: "none" }); return; }
-    if (!this.data.isLoggedIn) { wx.showToast({ title: "请先登录", icon: "none" }); return; }
+    // 迁移码要落到本人 openid 上，先确保静默登录完成（无授权弹窗）
+    const logged = await getApp().ensureLogin();
+    if (!logged) { wx.showToast({ title: "网络异常，请稍后重试", icon: "none" }); return; }
     this.setData({ migrating: true });
     try {
       const res = await api.bindMigrationCode(code);

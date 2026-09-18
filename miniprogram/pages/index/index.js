@@ -2,6 +2,10 @@ const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
 const subscribe = require("../../utils/subscribe");
 const track = require("../../utils/track");
+const device = require("../../utils/device");
+
+// 快捷方式引导文案：安卓微信菜单有「添加到桌面」，iOS 只有「添加到我的小程序」（见 utils/device.js）
+const ADD_GUIDE_TEXT = "点右上角「···」→ " + device.addShortcutGuide().label;
 
 const ALL_INDICES = [
   { code: "000001", name: "上证指数" },
@@ -121,8 +125,9 @@ Page({
     shareCardRendered: false,
     cardVariant: "profit", // 分享卡变体：profit=收益卡 | temp=温度数据卡（极值日自动切换）
     tempDist: null, eventDay: false, eventHeadline: "",
-    // 添加到我的小程序轻引导（卡片保存/分享后触发）
+    // 快捷方式轻引导（卡片保存/分享后触发）：文案按平台给（安卓=添加到桌面 / iOS=添加到我的小程序）
     showAddGuide: false,
+    addGuideText: ADD_GUIDE_TEXT,
     // 分享落地横幅 + 渠道来源
     shareCard: null,
     entryChannel: "",
@@ -249,14 +254,10 @@ Page({
     this.setData({ shareCard: null });
   },
 
-  // 分享落地引导：未登录先登录，已登录去搜索页添加持仓
+  // 分享落地引导：直接去搜索页添加持仓（openid 静默获取，无登录步骤）
   onAddMyHolding() {
-    // 落地转化（漏斗第二环）：isLoggedIn 区分"去登录"与"去搜索"两条转化路径
+    // 落地转化（漏斗第二环）：留着 isLoggedIn 维度做漏斗归因
     track.landingConvert({ cta: "add_holding", isLoggedIn: !!this.data.isLoggedIn });
-    if (!this.data.isLoggedIn) {
-      wx.navigateTo({ url: "/pages/login/index" });
-      return;
-    }
     wx.navigateTo({ url: "/pages/search/index" });
   },
 
@@ -307,7 +308,6 @@ Page({
     this.setData({ theme });
     this._syncAlertSettingsDaily();
     this._maybeShowUpdateLog();
-    const now = Date.now();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     this.maybeShowGuide(); // 新手导览（首笔持仓后一次性）
@@ -330,49 +330,65 @@ Page({
     if (curCodes !== nextCodes) {
       this.setData({ activeIndices });
     }
+    this._enterPortfolio();
+  },
+
+  // 打开即用：openid 由云函数静默返回（不弹授权、无登录步骤），拿到后即按正常流程加载。
+  // 先渲染指数与本地缓存；静默登录失败的极少数情况落在「网络异常」重试态，不拦浏览。
+  _enterPortfolio() {
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
-      this.setData({ isLoggedIn: true });
-      this.applyCache();
-      const indexCached = this.applyIndexCache();
-      // 缓存 TTL 检查：60s 内直接复用缓存，超时后台刷新
-      const forceRefresh = wx.getStorageSync("portfolio_force_refresh");
-      if (forceRefresh) {
-        wx.removeStorageSync("portfolio_force_refresh");
-        this._lastFetch = 0;
-        // 光清 storage 不够：判新鲜度的 isCacheFresh 读的是内存里的 _portfolioCache，
-        // 盘后会命中「净值已发布即冻结」把这份旧缓存判为新鲜，needFetch=false 整个跳过拉取
-        // （改持仓/加减仓后总市值不更新）。必须一并清掉内存缓存，force_refresh 才真正生效。
-        this._portfolioCache = null;
-        this._cacheTs = 0;
-      }
-      // 交易日时钟判缓存新鲜度：盘中 30s 短 TTL；盘后净值发布(actualDate=今天)即冻结；
-      // 周末/节假日/早盘全天免拉（数据只在交易日变化）
-      const portfolioFresh = marketTime.isCacheFresh(this._portfolioCache, { estimateTtl: 30000 });
-      const needFetch = this._lastFetch
-        ? (now - this._lastFetch > 30000 || !portfolioFresh)
-        : !portfolioFresh;
-      if (needFetch) {
-        this._lastFetch = now;
-        // 页面已就绪 → 静默后台刷新（缓存已渲染，不再拉起下拉动画，避免打开页面长时间转圈）
-        if (this._ready) {
-          this._silentRefresh();
-        } else {
-          // 首次进入：标记待 onReady 后再刷新（onLoad 时机页面未就绪）
-          this._pendingAutoRefresh = true;
-        }
-      }
-      if (!indexCached) this.fetchIndices();
-      // 盘中轮询：交易时段每 30s 静默刷新（onHide/onUnload 停止）
-      this._startPolling();
-    } else {
-      this._stopPolling();
-      this.setData({ isLoggedIn: false, holdings: [], displayHoldings: [], dataReady: true });
-      this.applyIndexCache();
-      this.fetchIndices();
-      wx.removeStorageSync("portfolio_cache");
-      wx.removeStorageSync("profit_detail_cache");
+      this._loadPortfolio();
+      return;
     }
+    this._stopPolling();
+    this.setData({ isLoggedIn: false });
+    this.applyIndexCache();
+    this.fetchIndices();
+    getApp().ensureLogin().then((ok) => {
+      if (ok) {
+        this._loadPortfolio();
+      } else {
+        this.setData({ dataReady: true, loadError: this.data.holdings.length === 0 });
+      }
+    });
+  },
+
+  _loadPortfolio() {
+    const now = Date.now();
+    this.setData({ isLoggedIn: true });
+    this.applyCache();
+    const indexCached = this.applyIndexCache();
+    // 缓存 TTL 检查：60s 内直接复用缓存，超时后台刷新
+    const forceRefresh = wx.getStorageSync("portfolio_force_refresh");
+    if (forceRefresh) {
+      wx.removeStorageSync("portfolio_force_refresh");
+      this._lastFetch = 0;
+      // 光清 storage 不够：判新鲜度的 isCacheFresh 读的是内存里的 _portfolioCache，
+      // 盘后会命中「净值已发布即冻结」把这份旧缓存判为新鲜，needFetch=false 整个跳过拉取
+      // （改持仓/加减仓后总市值不更新）。必须一并清掉内存缓存，force_refresh 才真正生效。
+      this._portfolioCache = null;
+      this._cacheTs = 0;
+    }
+    // 交易日时钟判缓存新鲜度：盘中 30s 短 TTL；盘后净值发布(actualDate=今天)即冻结；
+    // 周末/节假日/早盘全天免拉（数据只在交易日变化）
+    const portfolioFresh = marketTime.isCacheFresh(this._portfolioCache, { estimateTtl: 30000 });
+    const needFetch = this._lastFetch
+      ? (now - this._lastFetch > 30000 || !portfolioFresh)
+      : !portfolioFresh;
+    if (needFetch) {
+      this._lastFetch = now;
+      // 页面已就绪 → 静默后台刷新（缓存已渲染，不再拉起下拉动画，避免打开页面长时间转圈）
+      if (this._ready) {
+        this._silentRefresh();
+      } else {
+        // 首次进入：标记待 onReady 后再刷新（onLoad 时机页面未就绪）
+        this._pendingAutoRefresh = true;
+      }
+    }
+    if (!indexCached) this.fetchIndices();
+    // 盘中轮询：交易时段每 30s 静默刷新（onHide/onUnload 停止）
+    this._startPolling();
   },
 
   onHide() { this._stopPolling(); },
@@ -433,9 +449,15 @@ Page({
       const cached = wx.getStorageSync(INDEX_CACHE_KEY);
       const codes = this.data.activeIndices.map((i) => i.code).join(",");
       if (cached && cached.codes === codes && cached.cards && cached.cards.length > 0) {
-        // 指数行情 15:00 收盘即定格：有缓存先渲染，收盘后写入的直接免拉
-        this.setData({ indexCards: cached.cards }, () => this._measureIndexBar());
-        return marketTime.isCacheFresh(cached, { estimateTtl: 30000, finalAtClose: true });
+        // A股指数的卡片还必须覆盖到应有的数据日：缓存里那份序列若是"当天 K 线还没出现"时写的，
+        // 它算出的涨跌是更早一天的（会被当成今日展示）——此时不能拿它当新鲜，直接重新拉
+        const expect = marketTime.expectedIndexDay();
+        const stale = cached.cards.some((c) => marketTime.isAShareIndex(c.code) && !marketTime.rowsReachDay([{ date: c.lastDate }], expect));
+        if (!stale) {
+          // 指数行情 15:00 收盘即定格：有缓存先渲染，收盘后写入的直接免拉
+          this.setData({ indexCards: cached.cards }, () => this._measureIndexBar());
+          return marketTime.isCacheFresh(cached, { estimateTtl: 30000, finalAtClose: true });
+        }
       }
     } catch (e) { /* ignore */ }
     // 无缓存时展示占位，让指数栏立即可见
@@ -623,8 +645,17 @@ Page({
   },
 
   onScrollRefresh() {
+    // 静默登录还没成功（首次或断网重试）：下拉即重试登录，成功后按正常流程加载
     if (!this.data.isLoggedIn) {
-      this.setData({ refresherTriggered: false });
+      this.setData({ refresherTriggered: true });
+      getApp().ensureLogin().then((ok) => {
+        this.setData({ refresherTriggered: false });
+        if (!ok) {
+          wx.showToast({ title: "网络异常，请稍后重试", icon: "none" });
+          return;
+        }
+        this._loadPortfolio();
+      });
       return;
     }
     // 消费 _autoPull 标记（onShow 自动刷新可能通过 scroll-view 触发），避免残留绕过防抖
@@ -866,9 +897,15 @@ Page({
     };
 
     const buildCard = (idx, data) => {
+      const placeholder = { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
       if (data && data.length >= 1) {
         const latest = data[data.length - 1];
         const prev = data.length >= 2 ? data[data.length - 2] : latest;
+        // A股指数：序列没覆盖到应有的数据日时，"最后两根"算出来的是更早一天的涨跌
+        // （会被当成今日展示）→ 显示占位并带上 lastDate，缓存侧据此判为不新鲜、下次重拉
+        if (marketTime.isAShareIndex(idx.code) && !marketTime.rowsReachDay(data, marketTime.expectedIndexDay())) {
+          return { ...placeholder, lastDate: latest.date };
+        }
         const change = +(latest.close - prev.close).toFixed(2);
         const changeRate = prev.close && prev.close !== 0
           ? +((change / prev.close) * 100).toFixed(2) : 0;
@@ -878,9 +915,10 @@ Page({
           change: change > 0 ? `+${change}` : `${change}`,
           changeRate: changeRate > 0 ? `+${changeRate}` : `${changeRate}`,
           isUp: change >= 0,
+          lastDate: latest.date,
         };
       }
-      return { name: idx.name, code: idx.code, price: "--", change: "--", changeRate: "--", isUp: true };
+      return placeholder;
     };
 
     // 以 activeIndices 为准构建 cards，避免与旧 indexCards 长度/顺序不一致
@@ -983,14 +1021,8 @@ Page({
 
   noop() {},
 
-  onGoLogin() { wx.navigateTo({ url: "/pages/login/index" }); },
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
   onScreenshotAdd() {
-    // 未登录先引导授权
-    if (!this.data.isLoggedIn) {
-      wx.navigateTo({ url: "/pages/login/index" });
-      return;
-    }
     wx.chooseMedia({
       count: 1, mediaType: ["image"],
       sourceType: ["album", "camera"], sizeType: ["compressed"],

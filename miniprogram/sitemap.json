@@ -1,7 +1,6 @@
 {
   "rules": [
     { "action": "disallow", "page": "pages/ops/index" },
-    { "action": "disallow", "page": "pages/login/index" },
     { "action": "allow", "page": "*" }
   ]
 }

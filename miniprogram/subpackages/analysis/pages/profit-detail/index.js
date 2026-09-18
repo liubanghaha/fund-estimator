@@ -174,6 +174,12 @@ Page({
         // 当日条目只可能在真实交易日注入成功后才存在，属合法数据，留待 _fetch() 刷新验证
         this._indexDaily = c.idx;
         this._idxMap = c.im || {};
+        // 指数序列没到缓存的数据日（写入时今天这根 bar 还没出现）→ 不能"免拉全量"，
+        // 否则这份旧序列会被一直复用（沪深300 今日涨幅显示成昨天的）
+        const im = c.im || {};
+        const expectDay = marketTime.expectedIndexDay();
+        this._idxStale = Object.keys(im).some((code) =>
+          marketTime.isAShareIndex(code) && !marketTime.rowsReachDay(im[code], expectDay));
         this._totalCost = c.tc;
         this._cachedProfit = c.s ? { tp: c.s.tp, tpr: c.s.tpr } : null;
         this._tpDay = calc.formatDate(new Date(c.ts || 0)); // 缓存里的当天收益属于写入那天
@@ -197,7 +203,7 @@ Page({
     if (!this._cacheApplied) this._quickFirstPaint(); // 无缓存首屏：轻量接口先画当天图
     // 缓存新鲜（盘中 30s TTL / 盘后净值发布即冻结 / 周末节假日全天）→ 免拉全量
     // （getPortfolio 全年聚合重）；当天分时不在免拉之列——分时缺失当天图会空白，仍按需轻拉
-    if (this._cacheApplied &&
+    if (this._cacheApplied && !this._idxStale &&
         marketTime.isCacheFresh(wx.getStorageSync(CACHE), { estimateTtl: 30000 })) {
       if (this.data.activeTab === 'today' && this._shouldRefetchIntraday()) this.fetchIntraday();
       // 免拉全量但轻量补一笔 portfolioLight：补 _totalMarket 供 30s 轮询换算今日收益。
@@ -254,7 +260,7 @@ Page({
       };
       const stale = () => this.data.activeTab !== tab; // 快速切 tab：迟到回调不得覆盖新周期复盘
       this.setData({ reviewCard: review });
-      const applyHs = (rows) => {
+      const applyHs = (rows, retried) => {
         if (stale()) return;
         const list = rows || [];
         let hsRate;
@@ -262,6 +268,14 @@ Page({
           // 今日基准 = 最新收盘 / 前一交易日收盘。TAB_DAYS 那套取窗口径对"今日"会放大成 4 个交易日累计
           // （4558.74→4480.08 = -1.73%），挂在"今日"下标就成了老数据
           if (list.length < 2 || !list[list.length - 2].close) return;
+          // 序列必须覆盖到组合数据所属日，否则"最后两根"是更早一天的涨跌（09-18 显示 09-17 的 -0.45%）：
+          // 先清缓存重拉一次；重拉仍缺就不显示对比（宁可 -- 也不给错数）
+          const expect = marketTime.expectedIndexDay();
+          if (!marketTime.rowsReachDay(list, expect)) {
+            if (retried) return;
+            this._idx("000300", TAB_DAYS[tab] + 2).then((r2) => applyHs(r2, true)).catch(() => {});
+            return;
+          }
           hsRate = +((list[list.length - 1].close / list[list.length - 2].close - 1) * 100).toFixed(2);
         } else {
           // 周/月/年：与走势图、周期签同一口径——基线 = 周期起点前最后一个收盘，端点 = 收盘口径的最新收盘日
@@ -284,9 +298,11 @@ Page({
         this.setData({ reviewCard: { ...review } });
       };
       if (this._idxMap && (this._idxMap["000300"] || []).length >= 2) {
+        // 内存里这份序列可能来自旧整页缓存（缺当日）→ 交给 applyHs 的日期守卫决定是否重拉
         applyHs(this._idxMap["000300"]);
       } else {
-        this._idx("000300", TAB_DAYS[tab] + 2).then(applyHs).catch(() => { /* 基准缺失仅不显示对比 */ });
+        // _idx 已是"带日期校验后再取"的结果，直接按最终数据算（retried=true）
+        this._idx("000300", TAB_DAYS[tab] + 2).then((r) => applyHs(r, true)).catch(() => { /* 基准缺失仅不显示对比 */ });
       }
       api.transactionList().then((res) => {
         if (stale()) return;
@@ -409,6 +425,10 @@ Page({
     const s = this._closingSeries();
     return s.length ? s[s.length - 1].date : "";
   },
+
+  // 注：沪深300 序列的日期校验统一走 marketTime.expectedIndexDay() / rowsReachDay()。
+  // 别用首页缓存的 actualDate——那是最滞后那只基金的净值日，某只基金晚公布会把期望日拖回昨天，
+  // 停在昨天的序列又会被判成合法（同一个 bug 换条件复活）
   // 周期内是否已有收盘数据：没有（如周一盘中，本周还没有任何收盘）时显示 --，
   // 不能把"还没收盘"当成 0% 展示（0 是"确认为零收益"的真值语义）
   _periodFlags(rate, amount) {
@@ -1604,7 +1624,10 @@ Page({
     try {
       const all = wx.getStorageSync(IDX_HIST_CACHE) || {};
       const c = all[code];
+      // A股指数还要看序列有没有覆盖到组合数据日：只有"写入时间在收盘后"这一个条件不够——
+      // 早上写的缓存（那时今天这根 bar 还没有）会被一直当成收盘定格数据复用
       if (c && c.rows && c.rows.length >= days * 0.85 &&
+          (!marketTime.isAShareIndex(code) || marketTime.rowsReachDay(c.rows, marketTime.expectedIndexDay())) &&
           marketTime.isCacheFresh(c, { estimateTtl: 300000, finalAtClose: true })) {
         return c.rows;
       }

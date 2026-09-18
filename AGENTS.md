@@ -58,7 +58,6 @@
 - `subpackages/analysis/pages/fund-detail/index` — 基金详情（估值+净值+档案+持仓+风险指标+费用黑洞）
 - `pages/add-holding/index` — 添加持仓（输入代码+金额）
 - `pages/user-center/index` — 用户中心（反馈/关于/主题）
-- `pages/login/index` — 登录页
 - `pages/watchlist/index` — 自选列表（分组/排序/轮询）
 - `subpackages/analysis/pages/profit-detail/index` — 收益走势（日历/走势图）
 - `subpackages/analysis/pages/fund-compare/index` — 基金对比（双基金净值对比）

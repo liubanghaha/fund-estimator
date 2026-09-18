@@ -63,6 +63,37 @@ function lastTradingDay(dateStr) {
   return d;
 }
 
+// 严格早于 dateStr 的最近交易日（lastTradingDay 含当天，取"上一交易日"要用它）
+function prevTradingDay(dateStr) {
+  const t = new Date((dateStr || bjDateStr()) + "T00:00:00Z");
+  t.setUTCDate(t.getUTCDate() - 1);
+  return lastTradingDay(t.toISOString().slice(0, 10));
+}
+
+// A股主要指数（与基金共用交易日历）：只有它们能按"序列是否覆盖到数据日"校验；
+// 港美欧亚指数各有各的日历与休市安排，不能拿 A股 的数据日去要求它
+const A_SHARE_INDEX_CODES = ["000001", "399001", "000300", "399006"];
+function isAShareIndex(code) {
+  return A_SHARE_INDEX_CODES.indexOf(String(code || "")) !== -1;
+}
+
+// 指数序列"应当覆盖到"的数据日：交易日盘中/盘后=今天，交易日 9:30 前与周末节假日=最近收盘日。
+// 用途：凡"取序列最后两根相除当今日涨跌"的地方都要先过这个校验——
+// 序列停在更早日期时算出来的是更早一天的涨跌，会被当成今日展示（2026-09-18 实战踩过）
+function expectedIndexDay() {
+  const today = bjDateStr();
+  if (!isTradingDay(today)) return lastTradingDay(today);
+  if (marketPhase() === "closed") return prevTradingDay(today); // 交易日 9:30 前：数据仍是上一交易日的
+  return today;
+}
+
+// 序列（[{date, close}]）是否已覆盖到 day（day 为空视为不校验）
+function rowsReachDay(rows, day) {
+  if (!day) return true;
+  const last = rows && rows.length ? rows[rows.length - 1].date : "";
+  return !!last && last >= day;
+}
+
 // 当前市场三态
 function marketPhase() {
   const bj = _bjNow();
@@ -129,9 +160,13 @@ function isLunchBreak() {
 module.exports = {
   isTradingDay,
   lastTradingDay,
+  prevTradingDay,
   marketPhase,
   isLunchBreak,
   bjDateStr,
   isCacheFresh,
+  isAShareIndex,
+  expectedIndexDay,
+  rowsReachDay,
   HOLIDAYS,
 };
