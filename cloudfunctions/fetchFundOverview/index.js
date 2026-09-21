@@ -38,7 +38,7 @@ async function fetchEstimate(fundCode, estSrc) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）
   const em = await fd.fetchLatestNavEastMoney(fundCode);
   const todayStr = fd.formatBJDate();
-  // 数据所属日：当日 9:30 起为今日；凌晨/周末/节假日为上一交易日（净值已确定，按实际口径）
+  // 数据所属日：当日 9:25 起为今日（集合竞价开盘价定出）；9:25 前/周末/节假日为上一交易日（净值已确定，按实际口径）
   const estimateUpdated = em.actualDate === _dataDay(todayStr);
 
   // 净值已公布：估算请求无意义（官方 GSZZL 已清空），直接走真值短路，省两轮外部请求
@@ -73,7 +73,9 @@ async function fetchEstimate(fundCode, estSrc) {
   } else if (sinaToday) {
     estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else {
-    estRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
+    // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 置 null，别拿上一交易日涨幅
+    // 冒充今日（与 getPortfolio / batchFetchEstimate / fetchFundEstimate 同一约定）
+    estRate = null; source = "nav";
   }
 
   return {
@@ -215,7 +217,7 @@ async function fetchPeTemp(fundCode) {
   return null;
 }
 
-// 数据所属日（净值/估算口径）：当日 9:30 起（含盘后当晚）为今日——盘中估算/晚间精确；
+// 数据所属日（净值/估算口径）：当日 9:25 起（含盘后当晚）为今日——盘中估算/晚间精确；
 // 次日凌晨开盘前与周末、节假日为上一交易日——净值已确定，按实际口径
 // GZTIME/数据日期是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss"、"YYYY-MM-DD" 与 "MM-DD HH:mm:ss" 三种格式
 function _gdIsToday(gztime, todayStr) {
@@ -223,11 +225,13 @@ function _gdIsToday(gztime, todayStr) {
   return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
 }
 
+// 数据所属日（净值/估算口径）：当日 9:25 起（含盘后当晚）为今日——集合竞价开盘价 9:25 定出；
+// 次日 9:25 前与周末、节假日为上一交易日。⚠️ 与 getPortfolio 的 openedToday 同一边界
 function _dataDay(todayStr) {
   const bj = new Date(Date.now() + 8 * 3600000);
   const day = bj.getUTCDay();
   const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-  const openedToday = day >= 1 && day <= 5 && min >= 570;
+  const openedToday = day >= 1 && day <= 5 && min >= fd.OPEN_MIN;
   // lastTradingDay 含当天，取"上一交易日"须从昨天回找
   return openedToday && td.isTradingDay(todayStr) ? todayStr : td.lastTradingDay(_addDays(todayStr, -1));
 }

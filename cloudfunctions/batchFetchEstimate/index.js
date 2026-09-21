@@ -1,7 +1,26 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const fd = require("./_shared/fund-data");
+const td = require("./_shared/trading-day");
 const https = require("https");
+
+// 数据所属日：当日 9:25 起（集合竞价开盘价定出）为今日；9:25 前/周末/节假日为上一交易日。
+// ⚠️ 必须与 getPortfolio 的 openedToday / 客户端 marketPhase() 同一边界——自选页原先用
+// `actualDate === todayStr` 硬比，导致 9:25 前与周末把已确定净值标成"估算"、盘中拿不到估算时
+// 又把上一交易日涨幅当"今日"（首页此时是 --，两页打架）
+function _dataDay(todayStr) {
+  const bj = new Date(Date.now() + 8 * 3600000);
+  const day = bj.getUTCDay();
+  const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+  const openedToday = day >= 1 && day <= 5 && min >= fd.OPEN_MIN;
+  return openedToday && td.isTradingDay(todayStr) ? todayStr : td.lastTradingDay(_addDays(todayStr, -1));
+}
+
+function _addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 // ---- 自主计算基金估算涨跌（取代已下线的天天基金 API） ----
 
@@ -129,8 +148,11 @@ exports.main = async (event) => {
       const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
       const nav = em.actualNav != null ? em.actualNav : null;
       // 净值已公布用精确值；未公布按所选源（sina=数据源一优先，self=数据源二优先），互相兜底
+      // 判据用 displayDay（9:25 起=今天），不是硬比 todayStr——后者在 9:25 前/周末会把
+      // 上一交易日的已确定净值误判成"今日未公布"，再据此编出假估算
+      const displayDay = _dataDay(todayStr);
       let estimatedChangeRate = null, estimateTime = "", source = "";
-      if (em.actualDate === todayStr) {
+      if (em.actualDate === displayDay) {
         estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null;
         source = "nav";
       } else if (estSrc === "sina" && sinaToday) {
@@ -140,7 +162,9 @@ exports.main = async (event) => {
       } else if (sinaToday) {
         estimatedChangeRate = sn.changeRate; estimateTime = sn.time || ""; source = "sina";
       } else {
-        estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null; source = "nav";
+        // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不拿上一交易日涨幅顶替，
+        // 留 null 让列表显示 --（与首页/详情页同一约定）
+        estimatedChangeRate = null; source = "nav";
       }
       // 估算净值：数据源一直用新浪给的估算净值，数据源二/兜底按最新净值 × (1 + 估算涨跌%)
       const estimatedNav = (source === "sina" && sn.nav != null)
@@ -154,7 +178,11 @@ exports.main = async (event) => {
         nav,
         estimatedNav,
         estimatedChangeRate,
-        displayChangeRate: selectChangeRate(nav, em.actualNav, estimatedChangeRate, em.actualChangeRate),
+        // 今日未出估值（estimatedChangeRate 为 null）→ displayChangeRate 也留 null，
+        // 列表显示 --；否则 selectChangeRate 会回退成上一交易日涨幅（假"今日"）
+        displayChangeRate: estimatedChangeRate == null
+          ? null
+          : selectChangeRate(nav, em.actualNav, estimatedChangeRate, em.actualChangeRate),
         estimateTime,
         source,
       };

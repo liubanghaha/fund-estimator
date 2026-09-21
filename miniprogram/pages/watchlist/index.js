@@ -8,7 +8,7 @@ const POLL_INTERVAL = 30000;  // 盘中轮询间隔 30 秒（原 10 秒，每次
 
 // 交易时段判断
 function isTradingTime() {
-  // 交易日时钟（含节假日表）：交易日 9:30~15:00 视作盘中，午休不轮询
+  // 交易日时钟（含节假日表）：交易日 9:25~15:00 视作盘中（含集合竞价段），午休不轮询
   return marketTime.marketPhase() === "trading" && !marketTime.isLunchBreak();
 }
 
@@ -543,6 +543,9 @@ Page({
     if (!userInfo || !userInfo.loggedIn) return;
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
+      // 开盘后不认隔日缓存：里面的涨跌/估算净值是上一交易日的，顶着"今日"渲染会误导
+      // （与首页/走势页/详情页同一守卫；休市相位照认——那本就是最近一份有效数据）
+      if (cached && !marketTime.cacheIsToday(cached.ts)) return;
       if (cached && cached.watchlist && cached.watchlist.length > 0) {
         this._wlCache = cached;
         this.updateGroupCounts();
@@ -665,15 +668,33 @@ Page({
 
   _startPolling() {
     this._stopPolling();
-    if (!isTradingTime()) return;
+    if (!isTradingTime()) { this._startPhaseWatch(); return; }
     this._pollTimer = setInterval(() => {
-      if (!isTradingTime()) { this._stopPolling(); return; }
+      // 退出轮询时把相位监听接回去（_stopPolling 会连相位定时器一起清），
+      // 否则 11:30 午休这一次退出之后整个下午没人再拉起刷新
+      if (!isTradingTime()) { this._stopPolling(); this._startPhaseWatch(); return; }
       this._refreshEstimates();
     }, POLL_INTERVAL);
   },
 
+  // 非交易时段只盯相位（本地判断）：9:25/13:00 到点自动重载，页面开着也会切到今日估值
+  _startPhaseWatch() {
+    this._stopPhaseWatch();
+    this._phaseTimer = setInterval(() => {
+      if (!isTradingTime()) return;
+      this._stopPhaseWatch();
+      this.fetchWatchlist();
+      this._startPolling();   // 起回盘中轮询（_startPolling 内部会先清定时器）
+    }, 30000);
+  },
+
+  _stopPhaseWatch() {
+    if (this._phaseTimer) { clearInterval(this._phaseTimer); this._phaseTimer = null; }
+  },
+
   _stopPolling() {
     if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    this._stopPhaseWatch();
   },
 
   async _refreshEstimates() {
@@ -692,10 +713,11 @@ Page({
         return {
           ...w,
           nav: e.nav || w.nav,
-          // null 判断而非真值：服务端清空估值（转入已确认净值）时要让"估"标消失
-          estimatedNav: e.estimatedNav != null ? e.estimatedNav : w.estimatedNav,
-          displayChangeRate: e.displayChangeRate != null ? e.displayChangeRate : w.displayChangeRate,
-          estimateTime: e.estimateTime || w.estimateTime,
+          // 用 !== undefined 而不是真值/null 判断：服务端明确回 null（今日未出估值）时要让
+          // 涨幅显示 -- 、"估"标与旧值一起清掉，不能被上一轮的值兜住
+          estimatedNav: e.estimatedNav !== undefined ? e.estimatedNav : w.estimatedNav,
+          displayChangeRate: e.displayChangeRate !== undefined ? e.displayChangeRate : w.displayChangeRate,
+          estimateTime: e.estimateTime !== undefined ? e.estimateTime : w.estimateTime,
         };
       });
       // 对比新旧估值字段，无变化则跳过 setData（首次渲染走 fetchWatchlist，不经过此处）

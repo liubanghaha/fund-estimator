@@ -371,11 +371,12 @@ const api = {
             const points = (stockData.data && stockData.data.data) || [];
             const apiDate = (stockData.data && stockData.data.date) || '';
             // 日期校验：交易时段只认今日，非交易时段允许旧数据
+            // 时段边界含 9:25 集合竞价段（与 marketTime.marketPhase 的"今天"起点一致）
             if (apiDate !== today) {
               const now = new Date();
               const day = now.getDay();
               const totalMin = now.getHours() * 60 + now.getMinutes();
-              const inTrading = day >= 1 && day <= 5 && totalMin >= 570 && totalMin <= 900;
+              const inTrading = day >= 1 && day <= 5 && totalMin >= 565 && totalMin <= 900;
               if (inTrading) { resolve({ code: 500, msg: "非今日数据" }); return; }
             }
             if (points.length < 2) { resolve({ code: 500, msg: "分时数据不足" }); return; }

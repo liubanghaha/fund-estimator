@@ -7,7 +7,7 @@
         <view class="fund-code">{{fundA.code}}</view>
         <view class="fund-nav">净值 {{fundA.nav || '--'}}</view>
         <view class="fund-rate {{fundA.changeRate > 0 ? 'up' : fundA.changeRate < 0 ? 'down' : ''}}">
-          涨幅 {{fundA.changeRate > 0 ? '+' : ''}}{{fundA.changeRate != null ? fundA.changeRate : '--'}}%
+          涨幅 {{fundA.changeRate != null ? (fundA.changeRate > 0 ? '+' : '') + fundA.changeRate + '%' : '--'}}
         </view>
       </view>
       <view class="vs-divider">VS</view>
@@ -16,7 +16,7 @@
         <view class="fund-code">{{fundB.code}}</view>
         <view class="fund-nav">净值 {{fundB.nav || '--'}}</view>
         <view class="fund-rate {{fundB.changeRate > 0 ? 'up' : fundB.changeRate < 0 ? 'down' : ''}}">
-          涨幅 {{fundB.changeRate > 0 ? '+' : ''}}{{fundB.changeRate != null ? fundB.changeRate : '--'}}%
+          涨幅 {{fundB.changeRate != null ? (fundB.changeRate > 0 ? '+' : '') + fundB.changeRate + '%' : '--'}}
         </view>
       </view>
       <view wx:else class="fund-col fund-col-placeholder" catch:tap="onTapPlaceholder">

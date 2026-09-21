@@ -31,6 +31,22 @@ function isBJWeekday(date) {
   return day >= 1 && day <= 5;
 }
 
+// ---------------- 交易时段边界（北京时间） ----------------
+// 集合竞价 9:15-9:25，开盘价 9:25 定出 → 从 9:25 起就有"今日估值"可展示，
+// 所以"今天"的起点是 9:25 而不是开盘 9:30（displayDay / 快照 / 轮询共用这一个边界）。
+// ⚠️ 客户端 miniprogram/utils/market-time.js 的 marketPhase() 必须与此一致。
+const OPEN_MIN = 565;      // 09:25 集合竞价开盘价定出
+const AM_CLOSE_MIN = 690;  // 11:30 上午收盘
+const PM_OPEN_MIN = 780;   // 13:00 下午开盘
+const CLOSE_MIN = 900;     // 15:00 收盘
+
+// 是否当日盘口时段（含 9:25-9:30 集合竞价段，不含午休）。
+// 端点是有意与客户端 marketPhase()（9:25~15:00，15:00 即 afterClose）不同的：
+// 云端含 15:00 整分钟，好让收盘那一刻的快照点被写上；11:30 整分钟不算盘口（客户端靠 isLunchBreak 掩住）
+function inTradingWindow(bjMin) {
+  return (bjMin >= OPEN_MIN && bjMin < AM_CLOSE_MIN) || (bjMin >= PM_OPEN_MIN && bjMin <= CLOSE_MIN);
+}
+
 /**
  * 最近已发布季报的年份/月份（1-3月→上年12月，4-6月→3月，7-9月→6月，10-12月→9月）
  */
@@ -681,6 +697,11 @@ module.exports = {
   formatBJDate,
   formatBJTime,
   isBJWeekday,
+  inTradingWindow,
+  OPEN_MIN,
+  AM_CLOSE_MIN,
+  PM_OPEN_MIN,
+  CLOSE_MIN,
   getQuarterParams,
   fetchTempHoldings,
   fetchTempHoldingsWithMeta,

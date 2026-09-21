@@ -252,10 +252,12 @@ Page({
     const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
     this.setData({
       nav: e.nav != null ? e.nav : this.data.nav,
-      estimatedNav: e.estimatedNav != null ? e.estimatedNav : this.data.estimatedNav,
-      estimatedChangeRate: e.estimatedChangeRate != null ? e.estimatedChangeRate : this.data.estimatedChangeRate,
+      // !== undefined 而非 != null：服务端明确回 null（今日无估值，如 source=nav 的债券/968）
+      // 时要让旧估值/时间一起清掉，否则卡片1 会出现"涨幅估算 -- + 盘中估算角标"的混搭
+      estimatedNav: e.estimatedNav !== undefined ? e.estimatedNav : this.data.estimatedNav,
+      estimatedChangeRate: e.estimatedChangeRate !== undefined ? e.estimatedChangeRate : this.data.estimatedChangeRate,
       estSource: e.source || this.data.estSource,
-      estimateTime: e.estimateTime || this.data.estimateTime,
+      estimateTime: e.estimateTime !== undefined ? e.estimateTime : this.data.estimateTime,
       actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
       actualChangeRate: actualCR,
       displayChangeRate: calc.selectChangeRate(
@@ -312,19 +314,23 @@ Page({
       if (!cached || !cached.history || !cached.history.length) return false;
       // 数据只在交易日变化：跨日/周末的缓存也直接渲染（旧值即最新值），不再有「加载中」空窗。
       // 是否后台刷新由 isCacheFresh 判断：盘中短 TTL、收盘净值发布(actualDate=今天)后冻结、周末全天免拉
+      // 但"今日"字段（估算/涨跌展示/持仓当日收益）隔日就是上一交易日的值，开盘后不能直出：
+      // 置 null 走 "--" 占位，等 fetchEstimate / checkHolding 回来再填（净值与净值日期不受影响）
+      const cacheToday = marketTime.cacheIsToday(cached.ts);
       this.setData({
         loading: false,
         fundName: this.data.fundName || cached.fundName || "",
-        nav: cached.nav, estimatedNav: cached.estimatedNav,
-        estimatedChangeRate: cached.estimatedChangeRate, estimateTime: cached.estimateTime,
+        nav: cached.nav, estimatedNav: cacheToday ? cached.estimatedNav : null,
+        estimatedChangeRate: cacheToday ? cached.estimatedChangeRate : null,
+        estimateTime: cacheToday ? cached.estimateTime : "",
         actualNav: cached.actualNav, actualChangeRate: cached.actualChangeRate,
-        actualDate: cached.actualDate, displayChangeRate: cached.displayChangeRate,
+        actualDate: cached.actualDate, displayChangeRate: cacheToday ? cached.displayChangeRate : null,
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
         displayHistory: (cached.history || []).slice(0, 30),
         displayCount: 30,
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
-        holdingData: cached.holdingData || null,
+        holdingData: cacheToday ? (cached.holdingData || null) : null,
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
         holdings: cached.holdings || [], exited: cached.exited || [],
         quarterLabel: cached.quarterLabel || '', prevDataIncomplete: !!cached.prevDataIncomplete,
@@ -502,15 +508,32 @@ Page({
       if (Math.abs(n) < 0.005) return "0.00%"; // 开盘头几分钟估值常在 ±0.005% 内，别显示成 -0.00%
       return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
     };
-    const isNavUpdated = this.data.actualDate === calc.formatDate(now);
+    // 净值日（服务端给的是北京日期）→ 用北京日比较，别用设备本地日期（非 +8 时区会误判成未公布）
+    const isNavUpdated = this.data.actualDate === marketTime.bjDateStr();
     // 估算口径只在「盘中 且 今日净值尚未公布 且 有估算净值」时成立：净值一公布就切回真值口径，
     // 否则主数字（有持仓时是当日收益）用真值算、旁边涨跌幅还挂估算值，两个数字对不上
     const showEstimate = !!(isTrading && !isNavUpdated && this.data.estimatedNav);
+    // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的：服务端 source="nav" 回退成上一交易日涨幅）
+    // → 头部不能拿上一交易日的涨幅当"今日"（首页当日收益列同样显示 --）。
+    // 判据用 marketPhase（9:25 起才叫"今天"）：9:25 前与周末节假日仍展示最近交易日，全站口径一致。
+    // 第二个条件是"估算值还没到位"（缓存直出窗口里 estSource 还是空串、估算值为 null）——
+    // 只看 estSource 的话那段时间会算回上一交易日涨幅，"--" 只活一帧
+    const noTodayEst = marketTime.marketPhase() !== "closed" && !isNavUpdated &&
+      (this.data.estSource === "nav" || this.data.estimatedChangeRate == null);
     this.setData({
-      isTrading, displayChangeRate, isNavUpdated, showEstimate,
-      estimatedChangeRateText: rateText(this.data.estimatedChangeRate),
-      displayChangeRateText: rateText(displayChangeRate),
+      isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst,
+      estimatedChangeRateText: noTodayEst ? "--" : rateText(this.data.estimatedChangeRate),
+      displayChangeRateText: noTodayEst ? "--" : rateText(displayChangeRate),
     });
+  },
+
+  // 今日估算涨跌幅：只在"确有今日估值"时返回值（服务端 source==="nav" = 两源都拿不到今日估算，
+  // 那个值是上一交易日的涨幅）。净值已公布时它是真今日涨幅；休市相位照常给最近交易日口径
+  _todayEstRate() {
+    const v = parseFloat(this.data.estimatedChangeRate);
+    if (!isFinite(v)) return null;
+    const usable = this.data.estSource !== "nav" || this.data.isNavUpdated || marketTime.marketPhase() === "closed";
+    return usable ? v : null;
   },
 
   async fetchEstimate() {
@@ -1043,7 +1066,8 @@ Page({
 	    if (currentNav !== yesterdayNav) {
 	      todayProfit = (currentNav - yesterdayNav) * shares;
 	    } else {
-	      const estRate = parseFloat(this.data.estimatedChangeRate);
+	      // 无今日估值（债券/968 等）→ 当日收益按 0 计，不拿上一交易日涨幅顶替（与首页一致）
+	      const estRate = this._todayEstRate();
 	      todayProfit = estRate ? yesterdayNav * estRate / 100 * shares : 0;
 	    }
 	    const costValue = buyPrice * shares;
@@ -1078,7 +1102,7 @@ Page({
     if (currentNav !== yesterdayNav) {
       todayProfit = (currentNav - yesterdayNav) * shares;
     } else {
-      const estRate = parseFloat(this.data.estimatedChangeRate);
+      const estRate = this._todayEstRate(); // 无今日估值 → 0，同首页口径
       todayProfit = estRate ? yesterdayNav * estRate / 100 * shares : 0;
     }
     const costValue = buyPrice * shares;

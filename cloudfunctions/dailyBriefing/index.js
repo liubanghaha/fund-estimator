@@ -653,17 +653,26 @@ async function runWeeklyBrief(force, dryRun) {
     fundCount[h._openid] = (fundCount[h._openid] || 0);
     if (h.fundCode) fundCount[h._openid]++;
   });
+
   const targets = subs.filter(s => marketMap[s._openid] > 0);
   if (targets.length === 0) return { code: 0, msg: "无目标用户" };
 
   // 每用户每日最后 rate → 五日复利
-  const rows = await readAll("profit_snapshots", { date: _.in(days) }, ["_openid", "date", "points"]);
+  const rows = await readAll("profit_snapshots", { date: _.in(days) }, ["_openid", "date", "points", "base"]);
   const dayRate = {};
+  const dayTp = {};     // 每日金额（快照点 tp，与 rate 同源同口径；旧点没有该字段）
+  const weekBaseMap = {}; // 周初基准市值（首日文档级 base = Σ 基准净值 × 份额，即上周五收盘市值）
   rows.forEach(r => {
     if (r.points && r.points.length > 0) {
+      const last = r.points[r.points.length - 1];
       dayRate[r._openid] = dayRate[r._openid] || {};
-      dayRate[r._openid][r.date] = r.points[r.points.length - 1].rate;
+      dayRate[r._openid][r.date] = last.rate;
+      if (last.tp != null) {
+        dayTp[r._openid] = dayTp[r._openid] || {};
+        dayTp[r._openid][r.date] = last.tp;
+      }
     }
+    if (r.date === days[0] && r.base > 0) weekBaseMap[r._openid] = r.base;
   });
 
   // 本周操作笔数
@@ -694,10 +703,22 @@ async function runWeeklyBrief(force, dryRun) {
       if (r != null) mult *= 1 + r / 100;
     });
     const weekRate = (mult - 1) * 100;
-    const mv = marketMap[sub._openid];
-    // 金额 ≈ 周初市值 × 周收益率 = 当前市值/(1+r) × r
-    const weekProfit = mv / (1 + weekRate / 100) * (weekRate / 100);
-    let text = `本周${weekRate >= 0 ? "+" : ""}${weekRate.toFixed(1)}%(${weekProfit >= 0 ? "+" : ""}${weekProfit.toFixed(0)}元)`;
+    // 本周金额：金额按天可加 → 优先把本周各日的当日收益金额相加（精确）；
+    // 旧点没有金额字段时退回「周初基准市值 × 周收益率」——周初值取首日快照文档里的 base
+    // （= 当日 Σ 基准净值 × 份额 = 上周五收盘市值），不再用 DB 那个从不更新的 holdings.marketValue
+    // 反推（旧实现「当前市值/(1+r)×r」，持仓越久偏得越多）；两者都拿不到时不报金额
+    const tps = dayTp[sub._openid];
+    const ratedDays = days.filter(day => rates[day] != null);
+    const tpDays = ratedDays.filter(day => tps && tps[day] != null);
+    const weekBase = weekBaseMap[sub._openid] || 0;
+    let weekProfit = null;
+    if (ratedDays.length > 0 && tpDays.length === ratedDays.length) {
+      weekProfit = tpDays.reduce((s, day) => s + (tps[day] || 0), 0);
+    } else if (weekBase > 0) {
+      weekProfit = weekBase * (weekRate / 100);
+    }
+    const amtText = weekProfit == null ? "" : `(${weekProfit >= 0 ? "+" : ""}${weekProfit.toFixed(0)}元)`;
+    let text = `本周${weekRate >= 0 ? "+" : ""}${weekRate.toFixed(1)}%${amtText}`;
     if (opCount[sub._openid]) text += ` ${opCount[sub._openid]}笔`;
     const brief = {
       thing1: { value: "韭菜估值宝" },

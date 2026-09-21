@@ -41,7 +41,7 @@ async function fetchSelfEstimate(fundCode, src) {
   const em = await fd.fetchLatestNavEastMoney(fundCode);
   const estSrc = src === "self" ? "self" : "sina"; // 默认 sina（数据源一优先）
   const todayStr = fd.formatBJDate();
-  // 数据所属日：当日 9:30 起为今日；凌晨/周末/节假日为上一交易日（净值已确定，按实际口径）
+  // 数据所属日：当日 9:25 起为今日（集合竞价开盘价定出）；9:25 前/周末/节假日为上一交易日（净值已确定，按实际口径）
   const estimateUpdated = em.actualDate === _dataDay(todayStr);
 
   // 净值已公布：估算请求无意义（官方 GSZZL 已清空），直接走真值短路，省两轮外部请求
@@ -80,7 +80,9 @@ async function fetchSelfEstimate(fundCode, src) {
   } else if (sinaToday) {
     estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
   } else {
-    estRate = em.actualChangeRate || null; estTime = ""; source = "nav";
+    // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不留"上一交易日涨幅"冒充今日，
+    // 置 null 让详情页显示 --（与 getPortfolio / batchFetchEstimate 同一约定）
+    estRate = null; estTime = ""; source = "nav";
   }
 
   // nav 要与 actualNav 保持一致，避免前端 selectChangeRate 误判
@@ -160,13 +162,14 @@ async function fetchTemperature(fundCode) {
   return null;
 }
 
-// 数据所属日（净值/估算口径）：当日 9:30 起（含盘后当晚）为今日——盘中估算/晚间精确；
-// 次日凌晨开盘前与周末、节假日为上一交易日——净值已确定，按实际口径
+// 数据所属日（净值/估算口径）：当日 9:25 起（含盘后当晚）为今日——集合竞价开盘价 9:25 定出，
+// 从这一刻起就有今日估值；次日 9:25 前与周末、节假日为上一交易日——净值已确定，按实际口径
+// ⚠️ 与 getPortfolio 的 openedToday / 客户端 marketPhase() 用同一个边界（fd.OPEN_MIN）
 function _dataDay(todayStr) {
   const bj = new Date(Date.now() + 8 * 3600000);
   const day = bj.getUTCDay();
   const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-  const openedToday = day >= 1 && day <= 5 && min >= 570;
+  const openedToday = day >= 1 && day <= 5 && min >= fd.OPEN_MIN;
   // lastTradingDay 含当天，取"上一交易日"须从昨天回找
   return openedToday && td.isTradingDay(todayStr) ? todayStr : td.lastTradingDay(_addDays(todayStr, -1));
 }

@@ -256,14 +256,15 @@ const chart = {
     const range = max - min || 0.01;
     const yMin = min - range * 0.15, yMax = max + range * 0.15;
 
-    // 交易时段跳过午休：09:30-11:30 + 13:00-15:00，共 240 分钟，紧凑映射
+    // 交易时段跳过午休：09:25-11:30 + 13:00-15:00，共 245 分钟，紧凑映射
+    // 含 9:25-9:30 集合竞价段：开盘价 9:25 定出，当日曲线从这一刻起点（与快照写入时段一致）
     const xp = (i) => {
       const [hh, mm] = data[i].time.split(':').map(Number);
       const total = hh * 60 + mm;
       let ratio;
-      if (total <= 690) ratio = (total - 570) / 240;      // 上午
-      else if (total >= 780) ratio = (120 + total - 780) / 240; // 下午
-      else ratio = 0.5; // 午休期间落在中间
+      if (total <= 690) ratio = (total - 565) / 245;      // 上午
+      else if (total >= 780) ratio = (125 + total - 780) / 245; // 下午
+      else ratio = 125 / 245; // 午休期间落在 11:30/13:00 的交界处
       return p.left + pw * Math.max(0, Math.min(1, ratio));
     };
     const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
@@ -348,8 +349,8 @@ const chart = {
     // X轴时间标签
     ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top';
     [
-      { t: '09:30', pos: 0, a: 'left' },
-      { t: '11:30/13:00', pos: 0.5, a: 'center' },
+      { t: '09:25', pos: 0, a: 'left' },
+      { t: '11:30/13:00', pos: 125 / 245, a: 'center' },
       { t: '15:00', pos: 1, a: 'right' },
     ].forEach(l => {
       ctx.textAlign = l.a;
@@ -654,8 +655,8 @@ const chart = {
     ctx.font = '9px sans-serif';
     ctx.textBaseline = 'top';
     [
-      { t: '09:30', pos: 0, a: 'left' },
-      { t: '11:30/13:00', pos: 0.5, a: 'center' },
+      { t: '09:25', pos: 0, a: 'left' },
+      { t: '11:30/13:00', pos: 125 / 245, a: 'center' },
       { t: '15:00', pos: 1, a: 'right' },
     ].forEach(l => {
       ctx.textAlign = l.a;

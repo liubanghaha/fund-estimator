@@ -146,8 +146,8 @@ Page({
         this._fetch();
       }
     }
-    // 交易时段启动收益轮询
-    if (this._isTradingNow()) this._startPolling();
+    // 交易时段启动收益轮询；非交易时段只盯相位（9:25/13:00 到点自动重载并起轮询）
+    if (this._isTradingNow()) this._startPolling(); else this._startPhaseWatch();
   },
 
   onHide() {
@@ -166,9 +166,14 @@ Page({
   // ============ 缓存 + 拉取 ============
 
   _fromCache() {
+    let cacheUsable = true;
     try {
       const c = wx.getStorageSync(CACHE);
-      if (c && c.d && c.d.length && c.idx && c.idx.length) {
+      // 开盘后不认隔日缓存：里面存的"当天收益/日历今日格"顶着"今日"的名头，隔日就是上一交易日的数。
+      // 只跳过"应用缓存"这一步、不提前 return——尾部还要走 _quickFirstPaint 的轻量接口补今日值，
+      // 否则首屏会一直等到最重的全年聚合返回。休市相位（周末/节假日/9:25 前）照认，那本就是最近一份有效数据
+      cacheUsable = !c || marketTime.cacheIsToday(c.ts);
+      if (cacheUsable && c && c.d && c.d.length && c.idx && c.idx.length) {
         this._allDaily = c.d;
         this._dailyChange = c.dc;
         // 当日条目只可能在真实交易日注入成功后才存在，属合法数据，留待 _fetch() 刷新验证
@@ -182,6 +187,10 @@ Page({
           marketTime.isAShareIndex(code) && !marketTime.rowsReachDay(im[code], expectDay));
         this._totalCost = c.tc;
         this._cachedProfit = c.s ? { tp: c.s.tp, tpr: c.s.tpr } : null;
+        // 基准市值：缓存直存（tb）；老缓存没有该字段时用同一份缓存的金额/收益率反推同一基准
+        // （tp 与 tpr 同一次写入，两者相除就是当时的基准市值）
+        if (c.tb != null) this._baseMarket = parseFloat(c.tb) || 0;
+        else if (c.s && parseFloat(c.s.tpr)) this._baseMarket = ((parseFloat(c.s.tp) || 0) / parseFloat(c.s.tpr) * 100) || 0;
         this._tpDay = calc.formatDate(new Date(c.ts || 0)); // 缓存里的当天收益属于写入那天
         this._cacheApplied = true;
         this.setData({
@@ -223,20 +232,55 @@ Page({
     api.portfolioLight().then((r) => {
       const d = r.result && r.result.data;
       if (!d) return;
-      // 非交易时段 portfolioLight 返回空占位（todayProfitRate:null，无真实数据语义），
-      // 直接应用会把冻结期缓存里正确的收益值（如周五收盘 -1.31%）洗成 0，
+      // 非交易时段、以及盘内但当天还没有快照点时，portfolioLight 回 todayProfitRate:null
+      // （无真实数据语义）——直接应用会把缓存里正确的收益值洗成 0，
       // 并连锁污染图例与曲线末端对齐点（末端被对齐到 0 后画在 Y 轴顶端外，视觉上成"翘尾"）
-      if (d.inTrading === false) return;
+      if (d.inTrading === false || d.todayProfitRate == null) return;
       if (d.intradaySnapshots && d.intradaySnapshots.length) {
         this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
       }
       this._totalMarket = parseFloat(d.totalAmount) || 0;
       const rate = parseFloat(d.todayProfitRate || 0);
-      const ym = this._totalMarket > 0 ? this._totalMarket / (1 + rate / 100) : 0;
-      this.setData({ loading: false, todayProfitRate: rate, todayProfit: (ym * rate / 100).toFixed(2) });
+      // 金额优先用快照点里存的（写入时用未舍入收益率算），没有才用「基准市值 × 2 位收益率」
+      const tpSrv = d.todayProfit != null ? (parseFloat(d.todayProfit) || 0).toFixed(2) : null;
+      this.setData({ loading: false, todayProfitRate: rate, todayProfit: tpSrv != null ? tpSrv : this._amountFromRate(rate) });
       this._updateAsOf();
       this._draw();
     }).catch(() => {});
+  },
+
+  // 首页缓存里的基准市值：优先用聚合字段；缓存写于本次改动之前时没有该字段，
+  // 但 holdings 里逐笔都带 baseValue → 求和兜底（老缓存也能命中）
+  _baseMarketOfCache(pc) {
+    if (!pc) return 0;
+    const agg = parseFloat(pc.baseValue);
+    if (agg > 0) return agg;   // 无有效基准时服务端回的是字符串 "0.00"，不能据此短路掉逐笔求和
+    return (pc.holdings || []).reduce((s, h) => s + (h && h.baseValue != null ? (parseFloat(h.baseValue) || 0) : 0), 0);
+  },
+
+  // 当前可用的基准市值（收益率分母，= Σ 基准净值 × 份额，服务端 getPortfolio 的 baseValue）：
+  // 优先本次会话已拿到的；其次首页缓存（同一接口字段，进页时首页刚刷过；隔日的不要——净值每天变）
+  _baseMarketValue() {
+    if (this._baseMarket > 0) return this._baseMarket;
+    try {
+      const pc = wx.getStorageSync("portfolio_cache");
+      if (!pc || !pc.ts || !marketTime.cacheIsToday(pc.ts)) return 0;
+      const v = this._baseMarketOfCache(pc);
+      if (v > 0) this._baseMarket = v;
+      return v;
+    } catch (e) { return 0; }
+  },
+
+  // 今日收益金额 = 基准市值 × 收益率。此前用「市值 / (1 + rate)」反推昨日市值再乘收益率：
+  // 那只在"市值已含今日收益"（盘后净值已公布）时成立；盘中市值本身就是基准净值算的，
+  // 反推会少算 ~rate%，且没有市值基准时金额会被写成 0.00（收益率有值、金额 0 的错位显示）
+  _amountFromRate(rate) {
+    const r = parseFloat(rate) || 0;
+    const base = this._baseMarketValue();
+    if (base > 0) return (base * r / 100).toFixed(2);
+    const tm = this._totalMarket || 0;
+    if (tm > 0) return (tm / (1 + r / 100) * r / 100).toFixed(2); // 旧数据兜底（仅精确模式成立）
+    return "0.00";
   },
 
   // 今日复盘（盘后复盘卡）：组合 vs 沪深300、持仓当日强弱、今日操作笔数。
@@ -348,9 +392,9 @@ Page({
     if (!all.length) return all;
     const today = calc.formatDate(new Date());
     if (all[all.length - 1].date >= today) return all;      // 今天已在序列里（净值已公布）
-    // 只有"9:30 起（含盘后）"才补：9:30 前与周末/节假日，服务端 getPortfolio 的 displayDay 还停在
+    // 只有"9:25 起（含盘后）"才补：9:25 前与周末/节假日，服务端 getPortfolio 的 displayDay 还停在
     // 最近交易日，那份"当天收益"属于上一交易日，补进今天会把那一交易日的涨跌算两遍
-    // （marketPhase 的 9:30/15:00 边界与云端 openedToday 的 bjMin>=570 一致）
+    // （marketPhase 的 9:25/15:00 边界与云端 openedToday 的 bjMin>=565 一致）
     if (marketTime.marketPhase() === "closed") return all;
     // 只有"当天收益"确实是今天取到的才补：隔夜打开缓存时它属于上一交易日，补进去会把那天算两遍
     if (this._tpDay !== today) return all;
@@ -408,6 +452,9 @@ Page({
       const today = calc.formatDate(new Date());
       if (this._dailyChange) this._dailyChange[today] = parseFloat(pc.todayProfit) || 0;
       this._totalMarket = parseFloat(pc.totalAmount) || this._totalMarket;
+      // 基准市值跟着首页那份一起换（同一接口字段/逐笔求和），金额换算才有正确基数
+      const hBase = this._baseMarketOfCache(pc);
+      if (hBase > 0) this._baseMarket = hBase;
       this._tpDay = calc.formatDate(new Date(pc.ts)); // 这份当天收益属于首页取数那天
       this.setData({
         todayProfit: pc.todayProfit, todayProfitRate: pc.todayProfitRate,
@@ -644,6 +691,7 @@ Page({
       this._indexDaily = idxMap[this.data.compareIndex] || [];
       this._totalCost = totalCost;
       this._totalMarket = parseFloat(d.totalAmount) || 0;
+      this._baseMarket = parseFloat(d.baseValue) || 0; // 基准市值（收益率分母），金额换算与首页同源
       this._cacheApplied = false;
 
       const earliestCreate = hs.reduce((min, h) => { if (!h.createTime) return min; const d = calc.formatDate(h.createTime); return d < min ? d : min; }, "9999-99-99");
@@ -670,7 +718,7 @@ Page({
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
       if (hasIndex) {
         this._retryCount = 0;
-        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now(), actualDate: allDaily.length ? allDaily[allDaily.length - 1].date : "" } });
+        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, tb: this._baseMarket || 0, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now(), actualDate: allDaily.length ? allDaily[allDaily.length - 1].date : "" } });
       } else {
         this._retryCount = (this._retryCount || 0) + 1;
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
@@ -983,10 +1031,11 @@ Page({
     const profitSnaps = this._profitSnapshots || [];
     const idxRaw = this._intradayRaw || [];
 
+    // 分时窗口含 9:25-9:30 集合竞价段（开盘价 9:25 定出，当日曲线从这里起点，与快照写入时段一致）
     const isTrading = (chinaTime) => {
       const [hh, mm] = chinaTime.split(':').map(Number);
       const total = hh * 60 + mm;
-      return (total >= 570 && total <= 690) || (total >= 780 && total <= 900);
+      return (total >= 565 && total <= 690) || (total >= 780 && total <= 900);
     };
 
     // 以指数分时为时间主轴（交易时段连续分钟），让「我的收益」rate 对齐到指数的时间点。
@@ -1558,7 +1607,7 @@ Page({
       return false;
     }
 
-    const afterOpen = totalMin >= 570;        // 9:30
+    const afterOpen = totalMin >= 565;        // 9:25 集合竞价开盘价定出（与云端"今天"起点一致）
     const beforeClose = totalMin <= 900;      // 15:00
     const isLunch = totalMin > 690 && totalMin < 780; // 11:31-12:59 午休
     return afterOpen && beforeClose && !isLunch;
@@ -1572,10 +1621,27 @@ Page({
 
   _stopPolling() {
     if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    this._stopPhaseWatch();
+  },
+
+  // 非交易时段只盯"相位"（本地判断，不发请求）：页面开着跨过 9:25/13:00 时自动重载并起轮询
+  _startPhaseWatch() {
+    this._stopPhaseWatch();
+    this._phaseTimer = setInterval(() => {
+      if (!this._isTradingNow()) return;
+      this._stopPhaseWatch();
+      this._fetch();
+      this._startPolling();
+    }, 30000);
+  },
+
+  _stopPhaseWatch() {
+    if (this._phaseTimer) { clearInterval(this._phaseTimer); this._phaseTimer = null; }
   },
 
   async _pollFundRate() {
-    if (!this._isTradingNow()) { this._stopPolling(); return; }
+    // 退出轮询时把相位监听接回去（_stopPolling 会连相位定时器一起清），否则午休退出后下午不再刷新
+    if (!this._isTradingNow()) { this._stopPolling(); this._startPhaseWatch(); return; }
     if (this._pollingNow) return;
     // 动画进行中只跳过"重绘/拉分时"（否则后台重绘会把动画盖掉），数据更新照常做
     const animating = chartUtil.isAnimating && chartUtil.isAnimating();
@@ -1588,12 +1654,14 @@ Page({
       // 直接应用会把冻结的当天收益洗成 0，并顺着"含当天"的周/月/年一起算错
       if (d.inTrading === false || d.todayProfitRate == null) return;
       const rate = parseFloat(d.todayProfitRate || 0);
-      // 今日收益 = 当前市值 - 昨日市值（_totalMarket 在 _fetch 时保存）
-      // _fetch 未完成时市值基准未就绪，跳过本轮——否则金额被算成 0.00 而收益率有值（开盘瞬间进页面的错位显示）
-      if (!(this._totalMarket > 0)) return;
-      const totalMarket = this._totalMarket || 0;
-      const yesterdayMarket = totalMarket > 0 ? totalMarket / (1 + rate / 100) : 0;
-      const tp = (yesterdayMarket * rate / 100).toFixed(2);
+      // 今日收益金额：优先用快照点里存的（服务端用未舍入收益率算好，与首页金额一致）；
+      // 旧点没有这个字段才退回「基准市值 × 2 位收益率」。
+      // 这里不用「市值/(1+rate)」反推昨收：盘中市值不含今日收益，反推金额会少算 ~rate%；
+      // 基准未就绪时跳过本轮——否则金额被算成 0.00 而收益率有值（开盘瞬间进页面的错位显示）
+      const tpSrv = d.todayProfit != null ? (parseFloat(d.todayProfit) || 0).toFixed(2) : null;
+      const base = this._baseMarketValue();
+      const tp = tpSrv != null ? tpSrv : (base > 0 ? (base * rate / 100).toFixed(2) : null);
+      if (tp == null) return;
       const changed = this.data.todayProfitRate !== rate || this.data.todayProfit !== tp;
       if (changed) {
         this.setData({

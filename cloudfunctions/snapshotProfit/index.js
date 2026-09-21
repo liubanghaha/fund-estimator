@@ -12,11 +12,11 @@ exports.main = async (event) => {
   const el = () => Date.now() - _start;
 
   try {
-    // 北京时间交易时段判断
+    // 北京时间交易时段判断（含 9:25 集合竞价段：开盘价 9:25 定出，当日曲线从这里起点）
     const bj = new Date(Date.now() + 8 * 3600000);
     const bjDay = bj.getUTCDay();
     const totalMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-    const inTrading = bjDay >= 1 && bjDay <= 5 && ((totalMin >= 570 && totalMin < 690) || (totalMin >= 780 && totalMin <= 900));
+    const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin);
     if (!force && !inTrading) return { code: 0, msg: "非交易时段跳过" };
     const today = fd.formatBJDate();
     const time = fd.formatBJTime();
@@ -65,9 +65,13 @@ exports.main = async (event) => {
       if (totalBase <= 0) continue; // 无有效数据不写假 0 点
       const rate = +((totalWeightedRate / totalBase)).toFixed(2);
       const rateSelf = +((totalWeightedSelf / totalBase)).toFixed(2);
+      // 金额（元）= Σ(基准市值 × 收益率)/100 = 加权和/100，用未舍入值算：客户端只有 2 位小数
+      // 收益率，乘几十万基数会差几十元，与首页金额对不上（点里存上金额，客户端直接用）
+      const amount = +(totalWeightedRate / 100).toFixed(2);
+      const amountSelf = +(totalWeightedSelf / 100).toFixed(2);
       if (sample.length < 5) sample.push({ openid: openid.slice(0, 8) + "…", funds: userHoldings.length, rate });
       if (force) { written++; continue; } // dry-run 只算不写
-      pending.push({ openid, rate, rateSelf });
+      pending.push({ openid, rate, rateSelf, amount, amountSelf, base: +totalBase.toFixed(2) });
     }
 
     // 分批并发写：每批 CONCURRENT 个用户并行 upsert，预算在批间判断以尽量写全一批
@@ -75,7 +79,7 @@ exports.main = async (event) => {
     const WRITE_BUDGET_MS = 112000; // 留 ~8s 给函数收尾（timeout 120s）
     for (let i = 0; i < pending.length && el() < WRITE_BUDGET_MS; i += CONCURRENT) {
       const batch = pending.slice(i, i + CONCURRENT);
-      const results = await Promise.all(batch.map(p => writePoints(p.openid, today, time, p.rate, p.rateSelf)));
+      const results = await Promise.all(batch.map(p => writePoints(p.openid, today, time, p.rate, p.rateSelf, p.amount, p.amountSelf, p.base)));
       results.forEach(ok => { if (ok) written++; });
     }
     if (el() >= WRITE_BUDGET_MS && written < pending.length) {
@@ -208,21 +212,28 @@ async function readAllHoldings() {
 // 将单个用户当天的快照点写入 profit_snapshots（upsert + 同分钟去重）。
 // 与原子写点的语义一致：当天文档存在则 push 新点（同分钟已存在则跳过），否则新建文档。
 // 返回 true 表示本分钟这一点已写入（供调用方计数）。
-async function writePoints(openid, today, time, rate, rateSelf) {
+async function writePoints(openid, today, time, rate, rateSelf, amount, amountSelf, base) {
   try {
     const point = { time, rate };
+    // 当日基准市值（文档级，一天内不变）：周播报用"周初基准市值 × 周收益率"折算金额，
+    // 不再拿 DB 里从不更新的 holdings.marketValue 反推；缺失时相关口径退回"只播百分比"
+    const docBase = base != null ? { base } : {};
     if (rateSelf != null) point.rateSelf = rateSelf; // 旧逻辑单值点无 rateSelf，读取端回退 rate
+    // 金额（元）：今日收益 = 基准市值 × 收益率，用未舍入收益率算好存进来（旧点无此字段，
+    // 读取端退回「基准市值 × 2 位收益率」）
+    if (amount != null) point.tp = amount;
+    if (amountSelf != null) point.tpSelf = amountSelf;
     const doc = await db.collection("profit_snapshots")
       .where({ _openid: openid, date: today }).get();
     if (doc.data && doc.data.length > 0) {
       const exists = (doc.data[0].points || []).some(p => p.time === time);
       if (exists) return true; // 同分钟已存在，视为写入成功（避免并发重写报错）
       await db.collection("profit_snapshots").doc(doc.data[0]._id).update({
-        data: { points: db.command.push(point) }
+        data: { ...docBase, points: db.command.push(point) }
       });
     } else {
       await db.collection("profit_snapshots").add({
-        data: { _openid: openid, date: today, points: [point] }
+        data: { _openid: openid, date: today, ...docBase, points: [point] }
       });
     }
     return true;

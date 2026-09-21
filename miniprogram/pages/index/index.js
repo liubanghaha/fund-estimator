@@ -28,7 +28,7 @@ const POLL_INTERVAL = 30000; // 盘中轮询间隔 30 秒
 
 // 交易时段判断
 function isTradingTime() {
-  // 交易日时钟（含节假日表）：交易日 9:30~15:00 视作盘中，午休不轮询
+  // 交易日时钟（含节假日表）：交易日 9:25~15:00 视作盘中（含集合竞价段），午休不轮询
   return marketTime.marketPhase() === "trading" && !marketTime.isLunchBreak();
 }
 
@@ -398,6 +398,10 @@ Page({
   applyCache() {
     try {
       const cached = wx.getStorageSync(CACHE_KEY);
+      // 开盘后（9:25 起）不拿"上一交易日那份"垫首屏：卡片写着"今日估算收益"，垫昨天的数
+      // 会先闪一个错值。隔日缓存直接跳过，显示"加载中"，等今日估值回来
+      // （休市相位与当天取的缓存照常直出，见 marketTime.cacheIsToday）
+      if (cached && !marketTime.cacheIsToday(cached.ts)) return;
       if (cached && cached.holdings && cached.holdings.length > 0) {
         this._cacheTs = cached.ts || 0;
         this._portfolioCache = cached;
@@ -726,6 +730,8 @@ Page({
         }, "");
         this._portfolioCache = {
           holdings, totalAmount: d.totalAmount, todayProfit: d.todayProfit, todayProfitRate: d.todayProfitRate, totalReturn: d.totalReturn, totalReturnRate: d.totalReturnRate, updateTime: d.updateTime, assetAllocation: d.assetAllocation, healthScore: d.healthScore, groups: d.groups || [], platforms: d.platforms || [], ts: Date.now(),
+          // 基准市值：走势页在快照点没带金额时，按「基准市值 × 收益率」换算当日收益，靠它兜底
+          baseValue: d.baseValue,
           actualDate: minActualDate || undefined,
         };
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
@@ -761,9 +767,11 @@ Page({
 
   _startPolling() {
     this._stopPolling();
-    if (!isTradingTime()) return;
+    if (!isTradingTime()) { this._startPhaseWatch(); return; }
     this._pollTimer = setInterval(() => {
-      if (!isTradingTime()) { this._stopPolling(); return; }
+      // 退出轮询时把相位监听接回去（_stopPolling 会连相位定时器一起清），否则午休退出后
+      // 整个下午没人再拉起刷新（页面开着跨过 13:00 也要切回盘中）
+      if (!isTradingTime()) { this._stopPolling(); this._startPhaseWatch(); return; }
       // 批量模式暂停轮询；重入由 _silentRefresh 的 _silentFetching 兜底
       if (this.data.batchMode) return;
       this._silentRefresh();
@@ -772,6 +780,22 @@ Page({
 
   _stopPolling() {
     if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    this._stopPhaseWatch();
+  },
+
+  // 非交易时段只盯"相位"（本地判断，不发请求）：到了 9:25 / 13:00 自动重载。
+  // 页面一直开着不动时也要切——否则会继续把上一交易日的数据挂在"今日估算收益"名下
+  _startPhaseWatch() {
+    this._stopPhaseWatch();
+    this._phaseTimer = setInterval(() => {
+      if (!isTradingTime()) return;
+      this._stopPhaseWatch();
+      this._loadPortfolio();
+    }, 30000);
+  },
+
+  _stopPhaseWatch() {
+    if (this._phaseTimer) { clearInterval(this._phaseTimer); this._phaseTimer = null; }
   },
 
   onSortTap(e) {
@@ -790,6 +814,9 @@ Page({
     const total = parseFloat(totalAmount) || 0;
     return list.map(h => {
       // 预计算列表单元格展示字段（避免 WXML 里每格重复三元判断，减轻渲染压力）
+      // todayChangeRate 为 null = 今日未出估值（债券/968/货币等无覆盖标的）→ 当日收益列显示 --，
+      // 不能拿上一交易日涨幅冒充今日（服务端已不再回传那个值）
+      const noEst = h.todayChangeRate == null;
       const cr = parseFloat(h.todayChangeRate) || 0;
       const tp = parseFloat(h.todayProfit) || 0;
       const tr = parseFloat(h.totalReturn) || 0;
@@ -818,7 +845,7 @@ Page({
         navHigh: h.navHigh != null ? parseFloat(h.navHigh).toFixed(2) : null,
         navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
         _crCls: crCls, _tpCls: tpCls, _trCls: trCls, _trrCls: trrCls,
-        _crText: (cr > 0 ? '+' : '') + cr.toFixed(2) + '%',
+        _crText: noEst ? '--' : (cr > 0 ? '+' : '') + cr.toFixed(2) + '%',
         _trrText: (trr > 0 ? '+' : '') + trr.toFixed(2) + '%',
         _valCls: valCls, _valText: valText,
         _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',
@@ -1552,11 +1579,12 @@ Page({
       const num = v => parseFloat(v) || 0;
       const totalAmount = rest.reduce((s, h) => s + num(h.marketValue), 0);
       const todayProfit = rest.reduce((s, h) => s + num(h.todayProfit), 0);
-      const yesterday = totalAmount - todayProfit;
+      // 分母同 _sumHoldings：基准市值（盘中不能拿「市值 − 今日收益」当昨收）
+      const base = rest.reduce((s, h) => s + (h.baseValue != null ? num(h.baseValue) : Math.max(0, num(h.marketValue) - num(h.todayProfit))), 0);
       rows.push({
         name: "未分配", count: rest.length, unassigned: true,
         totalAmount: totalAmount.toFixed(2), todayProfit: todayProfit.toFixed(2),
-        todayProfitRate: yesterday > 0 ? (todayProfit / yesterday * 100).toFixed(2) : "0.00",
+        todayProfitRate: base > 0 ? (todayProfit / base * 100).toFixed(2) : "0.00",
       });
     }
     return rows;
@@ -1577,17 +1605,21 @@ Page({
 
   _sumHoldings(list) {
     const num = (v) => parseFloat(v) || 0;
-    let amount = 0, profit = 0, ret = 0, cost = 0;
+    let amount = 0, profit = 0, ret = 0, cost = 0, base = 0;
     list.forEach(h => {
       const mv = num(h.marketValue), tp = num(h.todayProfit), tr = num(h.totalReturn);
       amount += mv; profit += tp; ret += tr;
+      // 收益率分母 = 逐笔基准市值（服务端算的「基准净值 × 份额」）。盘中市值本身就等于基准市值，
+      // 不能用「市值 − 今日收益」反推昨收——那会把今日收益减两次，涨幅被放大 1/(1−r/100)
+      // （4.43% 那一例：分母放大到 4.63%，叠加"基准取晚一天"后实际显示 4.59%）。
+      // 老缓存无该字段时才退回旧式（仅精确模式成立）
+      base += h.baseValue != null ? num(h.baseValue) : Math.max(0, mv - tp);
       cost += mv - tr; // 成本 = 市值 − 累计收益
     });
-    const yesterday = amount - profit;
     return {
       totalAmount: amount.toFixed(2),
       todayProfit: profit.toFixed(2),
-      todayProfitRate: yesterday > 0 ? (profit / yesterday * 100).toFixed(2) : "0.00",
+      todayProfitRate: base > 0 ? (profit / base * 100).toFixed(2) : "0.00",
       totalReturn: ret.toFixed(2),
       totalReturnRate: cost > 0 ? (ret / cost * 100).toFixed(2) : "0.00",
     };

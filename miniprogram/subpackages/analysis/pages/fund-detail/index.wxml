@@ -59,11 +59,12 @@
           <view wx:elif="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
         <view class="nav-change-col">
-          <view class="nav-change-label">{{showEstimate ? '涨幅估算' : '当日涨幅'}}</view>
-          <view class="nav-change {{displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : ''}}">
+          <view class="nav-change-label">{{showEstimate ? '涨幅估算' : (noTodayEst ? '今日涨跌' : '当日涨幅')}}</view>
+          <view class="nav-change {{noTodayEst ? '' : (displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : '')}}">
             {{showEstimate ? estimatedChangeRateText : displayChangeRateText}}
           </view>
           <view wx:if="{{showEstimate}}" class="nav-badge">盘中估算</view>
+          <view wx:elif="{{noTodayEst}}" class="nav-badge">未出估值</view>
         </view>
       </view>
     </view>

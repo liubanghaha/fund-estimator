@@ -7,6 +7,16 @@ const _getChartColors = () => {
 const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
 const chartUtil = require("../../../../utils/chart");
+const marketTime = require("../../../../utils/market-time");
+
+// 今日涨跌：服务端 source="nav" 且净值日不是今天 = 两个源都拿不到今日估值（债券/968/货币等），
+// 此时不能拿上一交易日涨幅当"涨幅"展示（否则同一张对比表里，一只是今日估值、另一只是昨日值）
+function todayRate(d) {
+  if (!d) return null;
+  const noToday = marketTime.marketPhase() !== "closed" && d.source === "nav" && d.actualDate !== marketTime.bjDateStr();
+  if (noToday) return null;
+  return d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate;
+}
 
 Page({
   data: {
@@ -80,7 +90,7 @@ Page({
 
       this.setData({
         "fundA.nav": d.actualNav || d.nav || null,
-        "fundA.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
+        "fundA.changeRate": todayRate(d),
         "fundA.profile": d.profile || {},
         "fundA.manager": d.manager || {},
       loading: false,
@@ -162,7 +172,7 @@ Page({
 
       this.setData({
         "fundB.nav": d.actualNav || d.nav || null,
-        "fundB.changeRate": d.estimatedChangeRate != null ? d.estimatedChangeRate : d.actualChangeRate,
+        "fundB.changeRate": todayRate(d),
         "fundB.profile": d.profile || {},
         "fundB.manager": d.manager || {},
       }, () => {

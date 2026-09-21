@@ -45,7 +45,7 @@ exports.main = async (event) => {
     if (holdings.length === 0) {
       return {
         code: 0,
-        data: { holdings: [], platforms: [], totalAmount: "0.00", todayProfit: "0.00",
+        data: { holdings: [], platforms: [], totalAmount: "0.00", baseValue: "0.00", todayProfit: "0.00",
           todayProfitRate: "0.00", totalReturn: "0.00", totalReturnRate: "0.00", updateTime: "" },
       };
     }
@@ -146,20 +146,23 @@ exports.main = async (event) => {
         }
       }
 
-      // 数据所属日：当日 9:30 起（含盘后当晚）展示今日——盘中估算、晚间净值公布后精确；
-      // 次日凌晨开盘前与周末/节假日展示最近交易日——净值已确定，按精确口径（此前按 todayStr
+      // 数据所属日：当日 9:25 起（含盘后当晚）展示今日——集合竞价开盘价 9:25 定出，从这一刻起
+      // 就有"今日估值"可展示，不必等到 9:30；盘中估算、晚间净值公布后精确。
+      // 次日凌晨到 9:25 前与周末/节假日展示最近交易日——净值已确定，按精确口径（此前按 todayStr
       // 硬比导致午夜后把已确定净值误判为"今日未公布"，整组合退回自算估算口径）
       const now = new Date();
       const todayStr = fd.formatBJDate(now);
       const bjNow = new Date(now.getTime() + 8 * 3600000);
       const bjDay = bjNow.getUTCDay();
       const bjMin = bjNow.getUTCHours() * 60 + bjNow.getUTCMinutes();
-      const openedToday = bjDay >= 1 && bjDay <= 5 && bjMin >= 570 && td.isTradingDay(todayStr);
+      const openedToday = bjDay >= 1 && bjDay <= 5 && bjMin >= fd.OPEN_MIN && td.isTradingDay(todayStr);
       // lastTradingDay 含当天（9/10 凌晨直接传今天会返回 9/10），取"上一交易日"须从昨天回找
       const displayDay = openedToday ? todayStr : td.lastTradingDay(addDays(todayStr, -1));
       const estimateUpdated = eastmoney.actualDate === displayDay;
       // 估算源选择：sina=数据源一（新浪估值当日有效时覆盖自算）；self=数据源二（自算优先，新浪兜底）
       const sn = sinaMap[h.fundCode] || {};
+      // 这里恒比 todayStr（今日估算的日期必须是今天）；不用 displayDay——9:25 前/周末新浪那份
+      // 属于上一交易日，本就该丢弃，交给下面的"无今日估值"分支
       const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
       let estRate = tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : (sinaToday ? sn.changeRate : null);
       let estSource = tiantian.estimatedChangeRate != null ? "self" : (sinaToday ? "sina" : "");
@@ -170,16 +173,36 @@ exports.main = async (event) => {
         console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
 
-      if (!estimateUpdated && estRate != null && yesterdayNav != null) {
-        // 今日净值未公布 → 估算模式（新浪估值或自主加权）
-        todayProfitAmount = yesterdayNav * estRate / 100 * shares;
+      // 涨跌基准净值：今日收益与收益率的比较基准，必须与所用算式配对——
+      //  - 估算模式（今日净值未公布）：估算涨跌幅的基准是「最新已公布净值」，即东财 list[0]
+      //    （此刻它还不是"今日净值"）。用 list[1] 会晚一个交易日：001717 盘中 10:34 估算 4.43%
+      //    时，基数取了 9-17 的 3.2510，而估算基准是 9-18 的 3.2780
+      //  - 净值差口径（今日净值已公布）：差值基准是 list[1]（上一交易日）
+      // 口径切换的唯一判据是 estimateUpdated（今日净值是否已公布），不再用"净值是否相等"当代理
+      const actualNavSafe = eastmoney.actualNav != null && eastmoney.actualNav > 0 ? eastmoney.actualNav : null;
+      const baseNav = estimateUpdated ? yesterdayNav : (actualNavSafe || yesterdayNav);
+      // 基准市值（= 基准净值 × 份额）即收益率分母，先算好供下面各分支折算金额用。
+      // 盘中市值本身就是基准净值算的、不含今日收益，所以分母≠市值−今日收益（那会把今日收益减两次，
+      // 收益率被放大 1/(1−r/100)）
+      const baseValue = baseNav != null && baseNav > 0 && shares > 0 ? baseNav * shares : 0;
+      if (estimateUpdated && currentNav != null && yesterdayNav != null) {
+        // 今日净值已公布 → 精确模式：净值差就是今日收益
+        todayProfitAmount = currentNav !== yesterdayNav
+          ? (currentNav - yesterdayNav) * shares
+          // 只有一条已公布净值（968 互认基金走 MNF 兜底，没有前日净值可做差）：用官方涨幅 × 基准市值，
+          // 与行内涨幅、详情页金额同口径（旧行为是金额 0 而涨幅非 0，同一行自相矛盾）
+          : (eastmoney.actualChangeRate != null ? baseValue * eastmoney.actualChangeRate / 100 : 0);
+        todayChangeRate = eastmoney.actualChangeRate || 0;
+      } else if (!estimateUpdated && estRate != null && baseValue > 0) {
+        // 今日净值未公布但拿得到今日估算（新浪估值或自主加权）；baseValue=0（完全取不到净值、
+        // 份额为 0）时不给涨幅——否则出现"涨幅有值 / 金额 0 / 收益率 0.00%"的自相矛盾行
+        todayProfitAmount = baseValue * estRate / 100;
         todayChangeRate = estRate;
-      } else if (currentNav != null && yesterdayNav != null && currentNav !== yesterdayNav) {
-        // 今日净值已公布 → 精确模式
-        todayProfitAmount = (currentNav - yesterdayNav) * shares;
-        todayChangeRate = eastmoney.actualChangeRate || 0;
       } else {
-        todayChangeRate = eastmoney.actualChangeRate || 0;
+        // 今日既没有净值也拿不到估算（债券/968/货币等无覆盖标的）→ 未出估值：
+        // 不能拿上一交易日涨幅冒充"今日"（列表显示 --、当日收益按 0 计，卡片与快照同口径）
+        todayProfitAmount = 0;
+        todayChangeRate = null;
       }
 
       if (estRate != null) { updateTime = estSource === "sina" ? (sn.time || "") : (tiantian.estimateTime || ""); }
@@ -188,8 +211,8 @@ exports.main = async (event) => {
       const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;
       const totalReturn = marketValue - costValue;
       const totalReturnRate = costValue > 0 ? ((totalReturn / costValue) * 100) : 0;
-      // 单只基金当日收益率：今日收益 / 昨日市值（客户端当日收益列按此排序）
-      const todayProfitRate = shares > 0 && yesterdayNav > 0 ? ((todayProfitAmount / (yesterdayNav * shares)) * 100) : 0;
+      // 单只基金当日收益率：今日收益 / 基准市值（客户端当日收益列按此排序）
+      const todayProfitRate = baseValue > 0 ? ((todayProfitAmount / baseValue) * 100) : 0;
 
       // 60 日位置信号
       let position = null, navHigh = null, navLow = null;
@@ -211,7 +234,8 @@ exports.main = async (event) => {
         buyPrice,
         currentNav: currentNav != null ? currentNav.toFixed(4) : null,
         marketValue: marketValue.toFixed(2),
-        todayChangeRate: todayChangeRate.toFixed(2),
+        baseValue: baseValue.toFixed(2),   // 基准市值（基准净值 × 份额）：收益率分母，客户端聚合按它算
+        todayChangeRate: todayChangeRate != null ? todayChangeRate.toFixed(2) : null,  // null = 今日未出估值（列表显示 --）
         todayProfit: todayProfitAmount.toFixed(2),
         todayProfitRate: todayProfitRate.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
@@ -231,10 +255,11 @@ exports.main = async (event) => {
     const totalAmount = enriched.reduce((s, h) => s + (parseFloat(h.marketValue) || 0), 0);
     const totalReturn = enriched.reduce((s, h) => s + (parseFloat(h.totalReturn) || 0), 0);
     const totalTodayProfit = enriched.reduce((s, h) => s + (parseFloat(h.todayProfit) || 0), 0);
-    // 收益率与客户端 _sumHoldings 同式：昨日市值 = 市值 − 今日收益，成本 = 市值 − 累计收益
-    const totalYesterdayMarket = totalAmount - totalTodayProfit;
+    // 收益率分母 = 逐笔基准市值之和（与客户端 _sumHoldings、分组/账户汇总、收盘播报的 base 同式）。
+    // 不能用「市值 − 今日收益」反推：盘中市值就是基准净值算的，反推会把今日收益多减一次
+    const totalBaseValue = enriched.reduce((s, h) => s + (parseFloat(h.baseValue) || 0), 0);
     const totalCost = totalAmount - totalReturn;
-    const todayProfitRate = totalYesterdayMarket > 0 ? ((totalTodayProfit / totalYesterdayMarket) * 100) : 0;
+    const todayProfitRate = totalBaseValue > 0 ? ((totalTodayProfit / totalBaseValue) * 100) : 0;
     const totalReturnRate = totalCost > 0 ? ((totalReturn / totalCost) * 100) : 0;
 
     const today = fd.formatBJDate();
@@ -341,7 +366,7 @@ exports.main = async (event) => {
         // 交易时段缺失不回退，交由下方"快照兜底"写当天新点，避免混合两日曲线
         const bj = new Date(Date.now() + 8 * 3600000);
         const bjMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-        const inTradingNow = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && ((bjMin >= 570 && bjMin < 690) || (bjMin >= 780 && bjMin <= 900));
+        const inTradingNow = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && fd.inTradingWindow(bjMin);
         if (!inTradingNow) {
           const start = fd.formatBJDate(new Date(Date.now() - 30 * 86400000));
           const fbRes = await db.collection("profit_snapshots")
@@ -425,20 +450,20 @@ exports.main = async (event) => {
     enriched.forEach(h => {
       const g = h.group || "未分组";
       if (!groupMap[g]) {
-        groupMap[g] = { name: g, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0 };
+        groupMap[g] = { name: g, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, baseValue: 0 };
       }
       groupMap[g].count++;
       groupMap[g].totalAmount += parseFloat(h.marketValue) || 0;
       groupMap[g].todayProfit += parseFloat(h.todayProfit) || 0;
       groupMap[g].totalReturn += parseFloat(h.totalReturn) || 0;
+      groupMap[g].baseValue += parseFloat(h.baseValue) || 0;
     });
-    // 收益率同口径：昨日市值 = 市值 − 今日收益，成本 = 市值 − 累计收益
-    //（与总额、客户端 _sumHoldings 一套式子；此前用 净值/(1+涨幅) 反推昨收、用 buyPrice×shares 当成本，
+    // 收益率同口径：分母 = 逐笔基准市值之和，成本 = 市值 − 累计收益
+    //（与总额、客户端 _sumHoldings、收盘播报一套式子；此前用 净值/(1+涨幅) 反推昨收、用 buyPrice×shares 当成本，
     //  与点进该分组后卡片上的收益率会差 0.01pp）
     const groups = Object.values(groupMap).map(g => {
-      const yesterday = g.totalAmount - g.todayProfit;
       const cost = g.totalAmount - g.totalReturn;
-      const tpr = yesterday > 0 ? ((g.todayProfit / yesterday) * 100) : 0;
+      const tpr = g.baseValue > 0 ? ((g.todayProfit / g.baseValue) * 100) : 0;
       const trr = cost > 0 ? ((g.totalReturn / cost) * 100) : 0;
       return {
         name: g.name,
@@ -456,23 +481,23 @@ exports.main = async (event) => {
     enriched.forEach(h => {
       const pk = h.platform || "未分配";
       if (!platformMap[pk]) {
-        platformMap[pk] = { name: pk, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0 };
+        platformMap[pk] = { name: pk, count: 0, totalAmount: 0, todayProfit: 0, totalReturn: 0, baseValue: 0 };
       }
       const m = platformMap[pk];
       m.count++;
       m.totalAmount += parseFloat(h.marketValue) || 0;
       m.todayProfit += parseFloat(h.todayProfit) || 0;
       m.totalReturn += parseFloat(h.totalReturn) || 0;
+      m.baseValue += parseFloat(h.baseValue) || 0;
     });
     const platforms = Object.values(platformMap).map(m => {
-      const yesterday = m.totalAmount - m.todayProfit;
       const cost = m.totalAmount - m.totalReturn;
       return {
         name: m.name,
         count: m.count,
         totalAmount: m.totalAmount.toFixed(2),
         todayProfit: m.todayProfit.toFixed(2),
-        todayProfitRate: yesterday > 0 ? ((m.todayProfit / yesterday) * 100).toFixed(2) : null,
+        todayProfitRate: m.baseValue > 0 ? ((m.todayProfit / m.baseValue) * 100).toFixed(2) : null,
         totalReturn: m.totalReturn.toFixed(2),
         totalReturnRate: cost > 0 ? ((m.totalReturn / cost) * 100).toFixed(2) : null,
       };
@@ -484,7 +509,7 @@ exports.main = async (event) => {
       const _bj = new Date(Date.now() + 8 * 3600000);
       const _day = _bj.getUTCDay();
       const _min = _bj.getUTCHours() * 60 + _bj.getUTCMinutes();
-      const _inTrading = _day >= 1 && _day <= 5 && ((_min >= 570 && _min < 690) || (_min >= 780 && _min <= 900));
+      const _inTrading = _day >= 1 && _day <= 5 && fd.inTradingWindow(_min);
       if (_inTrading) {
         const _last = intradaySnapshots[intradaySnapshots.length - 1];
         // 时间解析防御：time 缺失/格式异常时 parseInt 得 NaN（.slice 对 null 会直接抛错）——NaN 时跳过本轮兜底写点
@@ -494,22 +519,27 @@ exports.main = async (event) => {
         if (!Number.isNaN(_lastMin) && _min - _lastMin >= 1) {
           const _time = `${String(_bj.getUTCHours()).padStart(2, "0")}:${String(_bj.getUTCMinutes()).padStart(2, "0")}`;
           const _rate = +todayProfitRate.toFixed(2);
+          // 金额同点存一份（= 基准市值 × 收益率，与 rate 同口径）：客户端只有 2 位收益率，
+          // 自己乘基准市值会差几十元（与首页金额对不上）
+          const _point = { time: _time, rate: _rate, tp: +totalTodayProfit.toFixed(2) };
+          // 文档级基准市值（周播报折算金额用，见 snapshotProfit.writePoints）
+          const _docBase = { base: +totalBaseValue.toFixed(2) };
           const _doc = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
           if (_doc.data && _doc.data.length > 0) {
             // 与 snapshotProfit 定时器竞态：读到的文档可能已含同分钟点（read-then-push 双写），先检查再 push
             const _exists = (_doc.data[0].points || []).some(p => p.time === _time);
             if (_exists) {
-              if (!intradaySnapshots.some(p => p.time === _time)) intradaySnapshots.push({ time: _time, rate: _rate });
+              if (!intradaySnapshots.some(p => p.time === _time)) intradaySnapshots.push(_point);
             } else {
               await db.collection("profit_snapshots").doc(_doc.data[0]._id).update({
-                data: { points: _.push({ time: _time, rate: _rate }) },
+                data: { ..._docBase, points: _.push(_point) },
               });
               // update 分支同样同步本地数组，本次响应带上最新点
-              if (!intradaySnapshots.some(p => p.time === _time)) intradaySnapshots.push({ time: _time, rate: _rate });
+              if (!intradaySnapshots.some(p => p.time === _time)) intradaySnapshots.push(_point);
             }
           } else {
             await db.collection("profit_snapshots").add({
-              data: { _openid: uid, date: today, points: [{ time: _time, rate: _rate }] },
+              data: { _openid: uid, date: today, ..._docBase, points: [_point] },
             });
           }
           intradaySnapshots.sort((a, b) => a.time.localeCompare(b.time));
@@ -523,6 +553,8 @@ exports.main = async (event) => {
         holdings: enriched,
         platforms,
         totalAmount: totalAmount.toFixed(2),
+        // 基准市值（逐笔基准净值 × 份额之和）：今日收益金额 = 基准市值 × 收益率，两个页面按它换算
+        baseValue: totalBaseValue.toFixed(2),
         todayProfit: totalTodayProfit.toFixed(2),
         todayProfitRate: todayProfitRate.toFixed(2),
         totalReturn: totalReturn.toFixed(2),

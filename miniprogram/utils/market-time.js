@@ -2,9 +2,12 @@
  * 交易日时钟：全局缓存新鲜度统一按「数据只在交易日变化」判断。
  *
  * 三态：
- *  - trading   交易日 9:30~15:00（含午休，估值定格但保持短 TTL 简单处理）
+ *  - trading   交易日 9:25~15:00（含午休，估值定格但保持短 TTL 简单处理）
  *  - afterClose 交易日 15:00~24:00（估值已收盘定格；净值当晚发布，发布后 actualDate=今天 即冻结）
- *  - closed    非交易日（周末/节假日）全天 + 交易日 0:00~9:30
+ *  - closed    非交易日（周末/节假日）全天 + 交易日 0:00~9:25
+ *
+ * 9:25 而非 9:30：集合竞价开盘价 9:25 定出，从这一刻起就有"今日估算"可展示，
+ * 云端（getPortfolio 的 openedToday / fetchFundEstimate 的 _dataDay）用同一个边界。
  *
  * 节假日表来自国务院办公厅当年通知（只记工作日休市日；周末股市永不交易，调休上班日也不开市）。
  * 未收录的年份退化为「工作日=交易日」：宁可多拉一次，不可把交易日错标成休市导致数据不刷新。
@@ -35,6 +38,27 @@ function bjDateStr(offsetDays = 0) {
   const d = _bjNow();
   d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
+}
+
+// 当前"展示日"的 9:25 边界时间戳（与服务端 getPortfolio 的 openedToday/displayDay 同一套规则）：
+// 交易日 9:25 后=今天 9:25；交易日 9:25 前与周末/节假日=上一交易日 9:25
+function _displayDayStartTs() {
+  const today = bjDateStr();
+  const opened = isTradingDay(today) && marketPhase() !== "closed";
+  return Date.parse((opened ? today : prevTradingDay(today)) + "T01:25:00Z"); // 9:25 北京 = 01:25 UTC
+}
+
+/**
+ * 这份缓存（ts=取数时间戳）属于"当前展示日"吗？
+ * 判据是"取得够不够晚"，不是"是不是今天取的"：交易日 0:00-9:25 服务端 displayDay 还停在
+ * 上一交易日，那段时间取到的缓存里写着上一交易日的"今日收益"、ts 却是今天——只看日期会把它
+ * 当成今日缓存直出（卡片先闪一下昨天的数）。所以要求 ts ≥ 本展示日的 9:25 边界。
+ * 休市相位（周末/节假日/9:25 前）的边界就是上一交易日 9:25，那份缓存本就是最近一份有效数据，照认。
+ */
+function cacheIsToday(ts) {
+  const t = Number(ts);
+  if (!t) return false;
+  return t >= _displayDayStartTs();
 }
 
 function _isWeekday(dateStr) {
@@ -77,13 +101,13 @@ function isAShareIndex(code) {
   return A_SHARE_INDEX_CODES.indexOf(String(code || "")) !== -1;
 }
 
-// 指数序列"应当覆盖到"的数据日：交易日盘中/盘后=今天，交易日 9:30 前与周末节假日=最近收盘日。
+// 指数序列"应当覆盖到"的数据日：交易日盘中/盘后=今天，交易日 9:25 前与周末节假日=最近收盘日。
 // 用途：凡"取序列最后两根相除当今日涨跌"的地方都要先过这个校验——
 // 序列停在更早日期时算出来的是更早一天的涨跌，会被当成今日展示（2026-09-18 实战踩过）
 function expectedIndexDay() {
   const today = bjDateStr();
   if (!isTradingDay(today)) return lastTradingDay(today);
-  if (marketPhase() === "closed") return prevTradingDay(today); // 交易日 9:30 前：数据仍是上一交易日的
+  if (marketPhase() === "closed") return prevTradingDay(today); // 交易日 9:25 前：数据仍是上一交易日的
   return today;
 }
 
@@ -100,9 +124,9 @@ function marketPhase() {
   const today = bj.toISOString().slice(0, 10);
   if (!isTradingDay(today)) return "closed";
   const min = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-  if (min >= 570 && min < 900) return "trading"; // 9:30~15:00
+  if (min >= 565 && min < 900) return "trading"; // 9:25（集合竞价开盘价定出）~15:00
   if (min >= 900) return "afterClose";
-  return "closed"; // 交易日凌晨~9:30，数据仍是上一交易日的
+  return "closed"; // 交易日凌晨~9:25，数据仍是上一交易日的
 }
 
 // 日期串对应交易日 15:00（北京）的时间戳；非交易日往前找最近交易日的收盘点
@@ -164,6 +188,7 @@ module.exports = {
   marketPhase,
   isLunchBreak,
   bjDateStr,
+  cacheIsToday,
   isCacheFresh,
   isAShareIndex,
   expectedIndexDay,
