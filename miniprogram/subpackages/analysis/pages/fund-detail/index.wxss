@@ -58,6 +58,14 @@
 .mh-value{font-size:30rpx;font-weight:600;color:#1A1A1A}
 .mh-value.up{color:var(--up)}
 .mh-value.down{color:#2E8B57}
+/* 回本进度（只在该持仓亏损时出现）：进度条走品牌色，文案全部是数据陈述 */
+.rebate-wrap{margin-top:18rpx;padding-top:16rpx;border-top:1rpx solid #F5F5F5}
+.rebate-head{display:flex;justify-content:space-between;align-items:baseline}
+.rebate-title{font-size:24rpx;color:#333}
+.rebate-gap{font-size:22rpx;color:#999}
+.rebate-bar{height:10rpx;background:#F0F0F0;border-radius:6rpx;margin-top:12rpx;overflow:hidden}
+.rebate-fill{height:100%;background:var(--primary);border-radius:6rpx}
+.rebate-foot{font-size:20rpx;color:#BBB;margin-top:10rpx}
 
 .tab-bar{display:flex;background:#FFF;margin:16rpx 24rpx 0;border-radius:20rpx;overflow:hidden}
 .tab-item{flex:1;text-align:center;padding:24rpx 0;font-size:28rpx;color:#999}

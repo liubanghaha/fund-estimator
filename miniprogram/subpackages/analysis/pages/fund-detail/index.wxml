@@ -116,11 +116,20 @@
           <view class="mh-label">单位净值</view>
           <view class="mh-value">{{actualNav || nav || '--'}}</view>
         </view>
-        <view wx:if="{{quarterNet != null && quarterNet !== 0}}" class="mh-item">
-          <view class="mh-label">近3月变动</view>
-          <view class="mh-value {{quarterNet > 0 ? 'up' : 'down'}}">{{quarterNet > 0 ? '+' : ''}}{{quarterNet}}</view>
+          <view wx:if="{{quarterNet != null && quarterNet !== 0}}" class="mh-item">
+            <view class="mh-label">近3月变动</view>
+            <view class="mh-value {{quarterNet > 0 ? 'up' : 'down'}}">{{quarterNet > 0 ? '+' : ''}}{{quarterNet}}</view>
+          </view>
         </view>
-      </view>
+        <!-- 回本进度（陪伴线）：只在当前净值低于成本时出现；只说事实——还差多少、净值要从 A 到 B -->
+        <view wx:if="{{rebate}}" class="rebate-wrap">
+          <view class="rebate-head">
+            <text class="rebate-title">回本进度 {{rebate.pct}}%</text>
+            <text class="rebate-gap">净值涨 {{rebate.gap}}% 回本</text>
+          </view>
+          <view class="rebate-bar"><view class="rebate-fill" style="width:{{rebate.pct}}%"></view></view>
+          <view class="rebate-foot">成本 {{rebate.cost}} → 现值 {{rebate.now}}<text wx:if="{{estimateTime}}"> · 估算 {{estimateTime}}</text></view>
+        </view>
       <!-- 分平台明细：同一基金多笔时展开（点某笔可修改/校准/加减仓/删除这一笔） -->
       <view wx:if="{{holdingRecords.length > 1}}" class="mr-list">
         <view class="mr-head">共 {{holdingRecords.length}} 笔<text class="mr-hint">点某笔可单独操作</text></view>

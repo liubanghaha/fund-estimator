@@ -39,6 +39,7 @@ Page({
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
     estimateAccuracy: null, estimateAccuracyText: '',
+    rebate: null,
     turnoverRates: [],
     sameTypeRank: null,
     // 同类排名是否已"确认"（含该基金确实无排名）：false 表示这次没拿到（超时/解析失败/老缓存缺字段），
@@ -204,7 +205,7 @@ Page({
               actualChangeRate: actualCR,
               displayChangeRate: displayCR,
               peTemp: d.peTemp || this.data.peTemp,
-              ...this._accuracyFields(d),
+              ...this._accuracyFields(d), ...this._rebateField(),
             });
             if (d.history && d.history.length > 0) {
               this.setData({
@@ -249,6 +250,25 @@ Page({
 
   // ============ 缓存 ============
 
+  // 回本进度（陪伴线 B3）：只在"现值低于买入成本"时给，且只陈述事实（还差多少、净值要从 A 到 B）。
+  // 现值口径跟随页面：盘中用估算净值、其余用已公布净值，与头部数字同源；不做摊薄/加仓推演（那是另一件事）
+  _rebateField(hdOverride) {
+    const hd = hdOverride || this.data.holdingData;
+    const cost = hd ? parseFloat(hd.buyPrice) : NaN;
+    const now = this.data.showEstimate
+      ? parseFloat(this.data.estimatedNav)
+      : (parseFloat(this.data.nav) || parseFloat(this.data.actualNav));
+    if (!(cost > 0) || !(now > 0) || now >= cost) return { rebate: null };
+    return {
+      rebate: {
+        pct: Math.max(0, Math.min(100, Math.round((now / cost) * 100))),
+        gap: (((cost / now) - 1) * 100).toFixed(1),
+        cost: cost.toFixed(4),
+        now: now.toFixed(4),
+      },
+    };
+  },
+
   // 估算误差徽章（信任线：自曝误差）—— 文案在这里算好（WXML 不能调方法）。
   // 样本少也照实显示样本数（藏样本数就成了自欺）；还没有样本（台账刚起步）返回空文案不显示
   _accuracyFields(resp) {
@@ -278,7 +298,7 @@ Page({
         e.estimatedChangeRate, actualCR),
       actualDate: e.actualDate || this.data.actualDate,
       peTemp: e.peTemp || this.data.peTemp,
-      ...this._accuracyFields(e),
+      ...this._accuracyFields(e), ...this._rebateField(),
     });
     // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
     if (e.actualDate && e.actualNav) {
@@ -566,7 +586,7 @@ Page({
           actualChangeRate: actualCR,
           displayChangeRate: displayCR,
           peTemp: d.peTemp || this.data.peTemp,
-          ...this._accuracyFields(d),
+          ...this._accuracyFields(d), ...this._rebateField(),
         });
       }
     } catch (e) { console.error("获取估值失败:", e); }
@@ -1099,6 +1119,7 @@ Page({
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
       },
+      ...this._rebateField({ buyPrice: buyPrice.toFixed(4) }),
     });
     this._rawHolding = null;
   },
@@ -1132,6 +1153,7 @@ Page({
         totalReturn: totalReturn.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
       },
+      ...this._rebateField({ buyPrice: buyPrice.toFixed(4) }),
     });
   },
 
