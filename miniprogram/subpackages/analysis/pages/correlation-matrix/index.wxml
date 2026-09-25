@@ -38,6 +38,13 @@
       </view>
     </view>
 
+    <!-- 2. 温度位置（持仓温度 vs 全市场当日分布；数据不全时整卡不显示） -->
+    <view wx:if="{{tempStatMine}}" class="card">
+      <view class="card-title">🌡 温度位置</view>
+      <view class="temp-stat">{{tempStatMine}}</view>
+      <view wx:if="{{tempStatMarket}}" class="temp-stat">{{tempStatMarket}}</view>
+    </view>
+
     <!-- 2. 持仓穿透 -->
     <view wx:if="{{assetAllocation && assetAllocation.items.length > 0}}" class="card">
       <view class="card-title">🏭 行业穿透<text wx:if="{{assetAllocation.coverage != null}}" style="float:right;font-size:20rpx;color:#BBB;font-weight:400;line-height:1.5">覆盖持仓 {{assetAllocation.coverage}}%</text></view>

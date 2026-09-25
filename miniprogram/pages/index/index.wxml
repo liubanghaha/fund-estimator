@@ -248,7 +248,7 @@
           <view class="empty-hint">长按持仓可移动到本分组</view>
         </view>
 
-        <view wx:if="{{updateTime}}" class="update-time">估算时间：{{updateTime}}<text wx:if="{{stale}}" class="stale-badge" bind:tap="_silentRefresh">更新失败</text></view>
+        <view wx:if="{{updateTime}}" class="update-time">估算时间：{{updateTime}}<text wx:if="{{navProgressText}}" class="nav-progress"> · {{navProgressText}}</text><text wx:if="{{stale}}" class="stale-badge" bind:tap="_silentRefresh">更新失败</text></view>
       </view>
     </view>
   </scroll-view>

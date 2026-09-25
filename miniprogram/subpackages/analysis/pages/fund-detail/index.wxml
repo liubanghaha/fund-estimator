@@ -69,6 +69,9 @@
       </view>
     </view>
 
+    <!-- 估算误差徽章（信任线：自曝误差）：样本由 snapshotEstimateDeviation 每日 15:30 写入台账 -->
+    <view wx:if="{{estimateAccuracyText}}" class="acc-line">{{estimateAccuracyText}}</view>
+
     <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
       <view class="section-title">风险指标<text class="risk-period-tip">近一年</text></view>
       <view class="risk-grid">
@@ -81,6 +84,8 @@
         </view>
       </view>
       <view class="risk-explain">最大回撤＝一年内从最高点最多跌了多少；夏普比率＝每承受一份波动换来多少收益（＞1 较好）</view>
+      <!-- 温度分位（信任线）：把"温度 0.82"放回它自己的历史分布里，给数字一个水平感；窗口天数如实显示 -->
+      <view wx:if="{{peTemp && peTemp.tempPercentile}}" class="risk-explain">当前温度处于近 {{peTemp.tempPercentile.days}} 天的 {{peTemp.tempPercentile.pct}}% 分位</view>
     </view>
 
     <!-- 我的持仓 -->

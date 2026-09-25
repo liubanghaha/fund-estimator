@@ -85,6 +85,7 @@ Page({
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
     alertEditPeAlert: false,
     alertQuotaText: '', alertQuotaWarn: false,
+    navProgressText: '',   // 净值公布进度（仅交易日盘后显示，如"净值已公布 4/7 只 · 收益还会更新"）
     // 分组
     groups: [],
     activeGroup: "all",
@@ -679,17 +680,11 @@ Page({
       });
       return;
     }
-    // 消费 _autoPull 标记（onShow 自动刷新可能通过 scroll-view 触发），避免残留绕过防抖
-    const isAuto = this._autoPull;
-    this._autoPull = false;
-    // 5s 防抖：scroll-view refresher 可被快速连续触发，避免连发请求
-    const now = Date.now();
-    if (!isAuto && this._lastFetch && now - this._lastFetch < 5000) {
-      this.setData({ refresherTriggered: false });
-      wx.showToast({ title: "刚刚已刷新", icon: "none" });
-      return;
-    }
-    this._lastFetch = now;
+    // 下拉永远走真实刷新。原来这里有个 5 秒防抖 + 「刚刚已刷新」toast，体验像"下拉被拒绝"；
+    // 而 utils/api.js 对只读请求本来就有同窗口（5s）的请求去重，连甩也不会多发网络请求 ——
+    // 所以拦这一次没有收益，只有负面观感。刷新失败时由 fetchPortfolio 清掉 _lastFetch，
+    // 保证用户马上再下拉能真的重试（不会被"上次失败"挡住）
+    this._lastFetch = Date.now();
     subscribe.silentDailyAuth("index_pull"); // 用户手势时机：已授权用户每天静默补一次推送额度
     this.setData({ refresherTriggered: true });
     Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
@@ -718,8 +713,19 @@ Page({
         // groups（标签渲染）需字符串数组：_mergeGroups 已兼容对象数组（取 name）
         const groups = this._mergeGroups(d.groups || []);
         const groupSummary = this._computeGroupSummary(activeGroup, d.groups || []);
+        // 净值公布进度：只在交易日盘后显示（已公布净值属于"今天"的持仓数 / 总数）。
+        // 晚间用户最困惑的就是"收益为什么还在变"，这行把原因直接说清；全部公布后告知"已确定"，
+        // 用户就知道不用再刷了。数据来自每只持仓的 actualDate（服务端已回传，不需要新接口）
+        const bjToday = marketTime.bjDateStr();
+        const pubCount = holdings.filter((h) => h.actualDate === bjToday).length;
+        const navProgressText = (holdings.length > 0 && marketTime.marketPhase() === "afterClose")
+          ? (pubCount >= holdings.length
+              ? `净值已全部公布（${holdings.length} 只）· 今日收益已确定`
+              : `净值已公布 ${pubCount}/${holdings.length} 只 · 收益还会更新`)
+          : "";
         this.setData({
           loadError: false, stale: false, dataReady: true,
+          navProgressText,
           holdings, allUpdated, displayHoldings, groupCounts: counts, groups,
           groupSummary, platformRows, platformList,
           platformsData: d.platforms || [],
@@ -763,9 +769,12 @@ Page({
       }
       // 业务失败（code!==0）也必须落地加载态，否则首次进入会永远停在“加载中...”
       this.setData({ dataReady: true, loadError: this.data.holdings.length === 0, stale: this.data.holdings.length > 0 });
+      // 刷新失败：清掉时间戳，避免"上次失败"占着 30s 窗口挡住下一次自动/手动刷新
+      this._lastFetch = 0;
       return false;
     } catch (e) {
       this.setData({ dataReady: true, loadError: this.data.holdings.length === 0, stale: this.data.holdings.length > 0 });
+      this._lastFetch = 0;
       console.error("获取持仓失败:", e);
       return false;
     }

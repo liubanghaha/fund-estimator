@@ -38,6 +38,7 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
+    estimateAccuracy: null, estimateAccuracyText: '',
     turnoverRates: [],
     sameTypeRank: null,
     // 同类排名是否已"确认"（含该基金确实无排名）：false 表示这次没拿到（超时/解析失败/老缓存缺字段），
@@ -203,6 +204,7 @@ Page({
               actualChangeRate: actualCR,
               displayChangeRate: displayCR,
               peTemp: d.peTemp || this.data.peTemp,
+              ...this._accuracyFields(d),
             });
             if (d.history && d.history.length > 0) {
               this.setData({
@@ -247,6 +249,16 @@ Page({
 
   // ============ 缓存 ============
 
+  // 估算误差徽章（信任线：自曝误差）—— 文案在这里算好（WXML 不能调方法）。
+  // 样本少也照实显示样本数（藏样本数就成了自欺）；还没有样本（台账刚起步）返回空文案不显示
+  _accuracyFields(resp) {
+    const acc = resp && resp.estimateAccuracy !== undefined ? resp.estimateAccuracy : this.data.estimateAccuracy;
+    if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "" };
+    const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
+    const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
+    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）` };
+  },
+
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）
   _applyEstimate(e, cached) {
     const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
@@ -266,6 +278,7 @@ Page({
         e.estimatedChangeRate, actualCR),
       actualDate: e.actualDate || this.data.actualDate,
       peTemp: e.peTemp || this.data.peTemp,
+      ...this._accuracyFields(e),
     });
     // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
     if (e.actualDate && e.actualNav) {
@@ -553,6 +566,7 @@ Page({
           actualChangeRate: actualCR,
           displayChangeRate: displayCR,
           peTemp: d.peTemp || this.data.peTemp,
+          ...this._accuracyFields(d),
         });
       }
     } catch (e) { console.error("获取估值失败:", e); }

@@ -5,6 +5,10 @@
  * 所以对已授权用户在用户手势回调里（首页下拉刷新）每天静默调一次补充额度。
  */
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
+// 新模板「基金异动提醒」（基金名称/估值异动）：单基金提醒优先用它，文案不再是"被测量用户：<基金名>"。
+// 额度按模板独立记账：一次弹窗同时请求两个，用户勾哪个就为哪个记额度（服务端按 templateId 分行记）
+const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
+const TMPL_IDS = [TEMPLATE_ID, TEMPLATE_ID_FUND];
 const SCENE = "closing_brief";
 const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7 天频控）
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
@@ -14,6 +18,19 @@ const KEY_ALWAYS_ALLOW = "brief_always_allow";    // 「总是保持以上选择
 const KEY_ALERT_DAY = "alert_auth_day";   // 提醒类授权的请求日期（每天最多弹一次授权窗）
 const DECLINE_COOLDOWN = 7 * 24 * 3600 * 1000;
 const track = require("./track.js"); // P0-0 sub_authorize 事件
+
+// 授权结果落库：accept 了哪个模板就给哪个模板 +1 额度（一次弹窗可能两个都勾了）。
+// 返回本次拿到的额度条数（0~2）；等云端两笔记账都写完再 resolve，避免 UI 重读额度时还没加上
+function _authAccepted(res) {
+  const accepted = TMPL_IDS.filter((id) => res && res[id] === "accept");
+  if (accepted.length > 0) {
+    try { wx.setStorageSync(KEY_AUTHED, Date.now()); } catch (e) { /* ignore */ }
+  }
+  return Promise.all(accepted.map((id) => wx.cloud.callFunction({
+    name: "dailyBriefing",
+    data: { action: "auth", scene: SCENE, templateId: id },
+  }).catch(() => null))).then(() => accepted.length);
+}
 
 function canPrompt() {
   try {
@@ -51,24 +68,18 @@ function dismissPrompt(src) {
 function requestAuth(src) {
   return new Promise((resolve) => {
     wx.requestSubscribeMessage({
-      tmplIds: [TEMPLATE_ID],
+      tmplIds: TMPL_IDS,
       success(res) {
-        if (res[TEMPLATE_ID] === "accept") {
-          try {
-            wx.setStorageSync(KEY_AUTHED, Date.now());
-          } catch (e) { /* ignore */ }
-          // 额度已由微信侧授予；云函数记录失败不影响授权状态
-          wx.cloud.callFunction({
-            name: "dailyBriefing",
-            data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
-          }).catch(() => {});
-          try { track.subAuthorize({ src: src || "", mode: "prompt", result: "accept" }); } catch (e) { /* ignore */ }
-          resolve({ ok: true });
-        } else {
-          _markDeclined();
-          try { track.subAuthorize({ src: src || "", mode: "prompt", result: "reject" }); } catch (e) { /* ignore */ }
-          resolve({ ok: false, reason: "reject" });
-        }
+        _authAccepted(res).then((added) => {
+          if (added > 0) {
+            try { track.subAuthorize({ src: src || "", mode: "prompt", result: "accept" }); } catch (e) { /* ignore */ }
+            resolve({ ok: true, added });
+          } else {
+            _markDeclined();
+            try { track.subAuthorize({ src: src || "", mode: "prompt", result: "reject" }); } catch (e) { /* ignore */ }
+            resolve({ ok: false, reason: "reject" });
+          }
+        });
       },
       fail(err) {
         const msg = (err && err.errMsg) || "";
@@ -87,22 +98,17 @@ function requestAuth(src) {
 function requestQuotaTopUp(src) {
   return new Promise((resolve) => {
     wx.requestSubscribeMessage({
-      tmplIds: [TEMPLATE_ID],
+      tmplIds: TMPL_IDS,
       success(res) {
-        if (res[TEMPLATE_ID] === "accept") {
-          try { wx.setStorageSync(KEY_AUTHED, Date.now()); } catch (e) { /* ignore */ }
-          // 等云端记账完成再返回，避免 UI 重新读额度时还没加上的竞态
-          wx.cloud.callFunction({
-            name: "dailyBriefing",
-            data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
-          }).then(() => {
+        _authAccepted(res).then((added) => {
+          if (added > 0) {
             try { track.subAuthorize({ src: src || "", mode: "topup", result: "accept" }); } catch (e) { /* ignore */ }
-            resolve({ ok: true, added: 1 });
-          }).catch(() => resolve({ ok: false, added: 0, errMsg: "授权成功，但额度记账失败，请再点一次" }));
-        } else {
-          try { track.subAuthorize({ src: src || "", mode: "topup", result: "reject" }); } catch (e) { /* ignore */ }
-          resolve({ ok: false, added: 0, errMsg: "你点了取消，未授权" });
-        }
+            resolve({ ok: true, added });
+          } else {
+            try { track.subAuthorize({ src: src || "", mode: "topup", result: "reject" }); } catch (e) { /* ignore */ }
+            resolve({ ok: false, added: 0, errMsg: "你点了取消，未授权" });
+          }
+        });
       },
       fail(err) {
         try { track.subAuthorize({ src: src || "", mode: "topup", result: "fail" }); } catch (e) { /* ignore */ }
@@ -122,15 +128,8 @@ function requestAlertAuth(src) {
     if (wx.getStorageSync(KEY_ALERT_DAY) === today) {
       if (hasAuthed()) {
         wx.requestSubscribeMessage({
-          tmplIds: [TEMPLATE_ID],
-          success(res) {
-            if (res[TEMPLATE_ID] === "accept") {
-              wx.cloud.callFunction({
-                name: "dailyBriefing",
-                data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
-              }).catch(() => {});
-            }
-          },
+          tmplIds: TMPL_IDS,
+          success(res) { _authAccepted(res); },
           fail() { /* 静默失败不影响保存 */ },
         });
       }
@@ -169,16 +168,14 @@ function silentDailyAuth(src) {
     return;
   }
   wx.requestSubscribeMessage({
-    tmplIds: [TEMPLATE_ID],
+    tmplIds: TMPL_IDS,
     success(res) {
-      if (res[TEMPLATE_ID] === "accept") {
-        wx.cloud.callFunction({
-          name: "dailyBriefing",
-          data: { action: "auth", scene: SCENE, templateId: TEMPLATE_ID },
-        }).catch(() => {});
-        try { track.subAuthorize({ src: src || "", mode: "silent", result: "accept" }); } catch (e) { /* ignore */ }
-      }
-      _probeAlwaysAllow();
+      _authAccepted(res).then((added) => {
+        if (added > 0) {
+          try { track.subAuthorize({ src: src || "", mode: "silent", result: "accept" }); } catch (e) { /* ignore */ }
+        }
+        _probeAlwaysAllow();
+      });
     },
     fail() {
       try { track.subAuthorize({ src: src || "", mode: "silent", result: "fail" }); } catch (e) { /* ignore */ }
@@ -188,14 +185,14 @@ function silentDailyAuth(src) {
 }
 
 // 探测「总是保持以上选择」勾选状态并缓存：itemSettings 仅在用户勾选后返回。
-// 勾选了（accept）→ 静默场景保持每天；未勾选 → 记弹窗时间戳走 7 天降频。
+// 两个模板都勾了才算「总是允许」——否则静默调用仍会弹窗，按未勾选走 7 天降频
 function _probeAlwaysAllow() {
   wx.getSetting({
     withSubscriptions: true,
     success(res) {
       try {
         const itemSettings = (res.subscriptionsSetting && res.subscriptionsSetting.itemSettings) || {};
-        const alwaysAllow = itemSettings[TEMPLATE_ID] === "accept";
+        const alwaysAllow = TMPL_IDS.every((id) => itemSettings[id] === "accept");
         wx.setStorageSync(KEY_ALWAYS_ALLOW, alwaysAllow);
         if (!alwaysAllow) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
       } catch (e) { /* ignore */ }
@@ -235,4 +232,4 @@ function optOutRecall() {
   }).catch(() => {});
 }
 
-module.exports = { TEMPLATE_ID, requestAuth, requestAlertAuth, requestQuotaTopUp, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };
+module.exports = { TEMPLATE_ID, TEMPLATE_ID_FUND, requestAuth, requestAlertAuth, requestQuotaTopUp, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };

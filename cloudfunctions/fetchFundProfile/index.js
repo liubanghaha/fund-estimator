@@ -101,6 +101,7 @@ exports.main = async (event) => {
 
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
+
     return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, rankOk, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
   } catch (e) {
     console.error("获取基金信息失败:", e);

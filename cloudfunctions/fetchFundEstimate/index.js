@@ -11,19 +11,46 @@ exports.main = async (event) => {
   if (!fundCode) return { code: 400, msg: "请提供基金代码" };
 
   try {
-    const [estimate, peTemp] = await Promise.all([
+    const todayStr = td.bjDateStr();
+    const [estimate, peTemp, estimateAccuracy] = await Promise.all([
       fetchSelfEstimate(fundCode, src),
       fetchTemperature(fundCode),
+      fetchEstimateAccuracy(fundCode, todayStr),
     ]);
     return {
       code: 0, msg: "success",
-      data: { ...estimate, peTemp },
+      data: { ...estimate, peTemp, estimateAccuracy },
     };
   } catch (e) {
     console.error("获取估值失败:", e.message);
     return { code: 500, msg: "获取估值失败" };
   }
 };
+
+// 近 30 天估算误差（信任线：自曝误差，数据由 snapshotEstimateDeviation 每日 15:30 写入台账）
+// 无样本返回 null（客户端不显示徽章），样本少也照实显示样本数——藏样本数就成了自欺
+async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
+  try {
+    const start = _addDays(todayStr, -days);
+    // 台账 _id = `${fundCode}_${YYYY-MM-DD}`，按 _id 区间查走主键索引（不必依赖 fundCode 索引）
+    const res = await db.collection("fund_estimate_deviations")
+      .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
+      .field({ date: true, estRate: true, actualRate: true, diff: true })
+      .limit(60).get();
+    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number");
+    if (rows.length === 0) return null;
+    const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
+    // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
+    const dirRows = rows.filter((r) => Math.abs(r.actualRate) >= 0.05 && typeof r.estRate === "number");
+    const hitRate = dirRows.length >= 5
+      ? Math.round((dirRows.filter((r) => (r.estRate >= 0) === (r.actualRate >= 0)).length / dirRows.length) * 100)
+      : null;
+    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate };
+  } catch (e) {
+    console.warn("[fetchFundEstimate] 误差台账读取失败:", e.message);
+    return null;
+  }
+}
 
 // GZTIME 是否属于今日：兼容 "YYYY-MM-DD HH:mm:ss" 与 "MM-DD HH:mm:ss" 两种盘中格式
 function _gdIsToday(gztime, todayStr) {
@@ -134,30 +161,39 @@ async function computeSelfChangeRate(fundCode) {
   return null;
 }
 
-async function fetchTemperature(fundCode) {
-  try {
-    // 逐基金取最新记录：定时任务可能只写完部分基金（超时截断），
-    // 直接按 date 降序取本基金最新温度——永远与列表页 getPortfolio 同源
-    const res = await db.collection("fund_temperatures")
-      .where({ fundCode })
-      .orderBy("date", "desc").limit(1)
-      .field({ signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWithData: true, totalStocks: true, warnings: true, isETF: true })
-      .get();
-    if (res.data && res.data.length > 0) {
-      const t = res.data[0];
-      return {
-        signal: t.signal,
-        label: ft.sanitizeLabel(t.label),
-        normPE: t.normPE,
-        weightedPE: t.weightedPE,
-        coverage: t.coverage,
-        stocksWithData: t.stocksWithData,
-        totalStocks: t.totalStocks,
-        warnings: t.warnings || [],
-        isETF: t.isETF || false,
-      };
-    }
-  } catch (e) { /* ignore */ }
+  async function fetchTemperature(fundCode) {
+    try {
+      // 逐基金取最近记录（原为只取最新 1 条）：多取一批是为了算"当前温度在它自己的历史里处于什么分位"。
+      // 定时任务可能只写完部分基金（超时截断），按 date 降序取本基金最新的一批——永远与列表页 getPortfolio 同源
+      const res = await db.collection("fund_temperatures")
+        .where({ fundCode })
+        .orderBy("date", "desc").limit(90)
+        .field({ signal: true, label: true, normPE: true, weightedPE: true, coverage: true, stocksWithData: true, totalStocks: true, warnings: true, isETF: true })
+        .get();
+      if (res.data && res.data.length > 0) {
+        const t = res.data[0];
+        // 历史分位（信任线：给"温度 0.82"一个水平感）：最新值落在本基金近 N 天分布中的位置。
+        // 样本少于 20 天不出分位（样本太少的分位数会误导）；窗口天数如实回传，不用"近一年/三年"这种话撑场面
+        const hist = res.data.map((r) => r.normPE).filter((v) => typeof v === "number");
+        let tempPercentile = null;
+        if (hist.length >= 20 && typeof t.normPE === "number") {
+          const below = hist.filter((v) => v <= t.normPE).length;
+          tempPercentile = { days: hist.length, pct: Math.round((below / hist.length) * 100) };
+        }
+        return {
+          signal: t.signal,
+          label: ft.sanitizeLabel(t.label),
+          normPE: t.normPE,
+          weightedPE: t.weightedPE,
+          coverage: t.coverage,
+          stocksWithData: t.stocksWithData,
+          totalStocks: t.totalStocks,
+          warnings: t.warnings || [],
+          isETF: t.isETF || false,
+          tempPercentile,
+        };
+      }
+    } catch (e) { /* ignore */ }
   // 缺失温度不做请求内重计算（每只持仓股一个 HTTP 会拖垮请求），凌晨定时任务会补全
   return null;
 }

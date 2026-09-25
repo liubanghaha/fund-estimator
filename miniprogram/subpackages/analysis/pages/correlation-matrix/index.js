@@ -5,6 +5,7 @@ Page({
   data: {
     theme: "blue",
     healthScore: null,
+    tempStatMine: '', tempStatMarket: '',
     assetAllocation: null,
     fundCodes: [],
     fundNames: [],
@@ -81,6 +82,23 @@ Page({
 
   // 行业集中度提示（再平衡视角的数据现实版：基金组合无股债大类数据，以行业集中度替代）。
   // 阈值：单一行业 ≥45% 或前三行业 ≥70%。纯事实陈述，无调整建议（合规红线 #2）
+  // 温度位置文案：持仓按 signal 计数；市场按当日分布算占比。数据不全返回空串（不显示）
+  _tempStat(holdings, dist) {
+    const cnt = { low: 0, mid: 0, high: 0 };
+    (holdings || []).forEach((h) => {
+      const sig = h.peTemp && h.peTemp.signal;
+      if (cnt[sig] !== undefined) cnt[sig]++;
+    });
+    const mine = cnt.low + cnt.mid + cnt.high;
+    if (!mine) return { mine: "", market: "" };
+    const total = dist ? (dist.low || 0) + (dist.mid || 0) + (dist.high || 0) : 0;
+    const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
+    return {
+      mine: `你的持仓 ${mine} 只有温度：偏高 ${cnt.high} · 适中 ${cnt.mid} · 偏低 ${cnt.low}`,
+      market: total > 0 ? `全市场 ${total} 只：偏高 ${pct(dist.high)}% · 适中 ${pct(dist.mid)}% · 偏低 ${pct(dist.low)}%` : "",
+    };
+  },
+  
   _concentrationTip(assetAllocation) {
     const raw = assetAllocation && assetAllocation.items;
     if (!raw || !raw.length) return "";
@@ -128,6 +146,18 @@ Page({
         return;
       }
 
+      // 温度位置：把持仓温度放回全市场分布里看（横向那半；纵向的历史分位在基金详情页）。
+      // 市场分布优先取本次响应（仅 withAnalysis 返回），没有则回落首页写的 temp_dist_cache ——
+      // 两者同源口径（fetchMarketOverview 的三次计数）；都没有就不显示，不拿半截数据充数
+      let tempDist = d.tempDistribution || null;
+      if (!tempDist) {
+        try {
+          const c = wx.getStorageSync("temp_dist_cache");
+          const dd = c && c.dist;
+          if (dd && (dd.low + dd.mid + dd.high) > 0) tempDist = dd;
+        } catch (e) { /* ignore */ }
+      }
+      const tempStat = this._tempStat(d.holdings, tempDist);
       // 先收起 loading 再渲染数据：健康分圆环是 canvas，处于 loading 的 wx:else 分支之外，
       // 若先 setData 数据后收 loading，绘制时 canvas 节点尚未挂载 → 圆环空白
       const concTip = this._concentrationTip(d.assetAllocation);
@@ -136,6 +166,8 @@ Page({
         healthScore: d.healthScore || null,
         assetAllocation: d.assetAllocation || null,
         concentrationTip: concTip,
+        tempStatMine: tempStat.mine,
+        tempStatMarket: tempStat.market,
       }, () => {
         if (d.healthScore) this._drawHealthRing(d.healthScore.score);
         // 无持仓分析内容（健康/穿透均空）时默认落费用与复盘 tab，避免首屏空态

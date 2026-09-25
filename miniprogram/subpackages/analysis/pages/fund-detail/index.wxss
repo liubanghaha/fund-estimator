@@ -33,6 +33,8 @@
 .nav-big.down{color:#2E8B57}
 .nav-ref{font-size:22rpx;color:#BBB}
 .nav-date{font-size:22rpx;color:#BBB}
+/* 估算误差徽章：主卡下方一行次要信息，比净值日期略深（它是"自曝误差"的信任凭证） */
+.acc-line{font-size:22rpx;color:#999;text-align:center;margin-top:12rpx}
 
 .nav-change-col{text-align:right}
 .nav-change-label{font-size:24rpx;color:#999;margin-bottom:10rpx}

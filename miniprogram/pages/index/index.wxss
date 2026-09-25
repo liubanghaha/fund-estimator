@@ -176,6 +176,8 @@
 .update-time{text-align:center;font-size:22rpx;color:#BBB;padding:16rpx 0}
 /* 更新失败标记：点按重新拉取 */
 .stale-badge{font-size:20rpx;color:var(--up);margin-left:8rpx}
+/* 净值公布进度（仅交易日盘后出现）：比估算时间更重要一点的信息，用略深的灰区分 */
+.nav-progress{color:#999}
 
 /* 分组标签 */
 /* 平台栏（页面最顶部的一级维度）：下划线式页签，与下方"基金分组"胶囊区分开，右侧固定管理入口 */

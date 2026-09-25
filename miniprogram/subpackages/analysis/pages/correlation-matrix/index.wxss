@@ -8,6 +8,8 @@
 
 .card{background:#FFF;border-radius:var(--radius-card);padding:24rpx;margin-bottom:16rpx;box-shadow:var(--shadow-card);}
 .card-title{font-size:28rpx;font-weight:600;color:#333;margin-bottom:20rpx}
+/* 温度位置两行：纯数据陈述，小字灰 */
+.temp-stat{font-size:24rpx;color:#666;line-height:1.8}
 .card-desc{font-weight:400;font-size:22rpx;color:#BBB}
 
 /* 健康分 */

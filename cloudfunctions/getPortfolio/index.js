@@ -396,6 +396,23 @@ exports.main = async (event) => {
     // 资产配置：按行业聚合持仓穿透（correlation-matrix 等仅需列表的调用可传 withAnalysis:false 跳过）
     let assetAllocation = null;
     let healthScore = null;
+    // 全市场温度分布（仅分析页请求时算，避免首页 30s 轮询白跑三次计数）：
+    // 让用户看到"我的持仓温度"相对全市场的位置，是持仓温度分位的横向那一半。
+    // 口径与 fetchMarketOverview 的事件分享卡一致（date 走索引的三次计数）
+    let tempDistribution = null;
+    if (withAnalysis !== false) {
+      try {
+        const day = fd.formatBJDate();
+        const [lowRes, midRes, highRes] = await Promise.all([
+          db.collection("fund_temperatures").where({ date: day, signal: "low" }).count(),
+          db.collection("fund_temperatures").where({ date: day, signal: "mid" }).count(),
+          db.collection("fund_temperatures").where({ date: day, signal: "high" }).count(),
+        ]);
+        const total = (lowRes.total || 0) + (midRes.total || 0) + (highRes.total || 0);
+        if (total > 0) tempDistribution = { low: lowRes.total || 0, mid: midRes.total || 0, high: highRes.total || 0, total };
+      } catch (e) { console.warn("[getPortfolio] 温度分布计算失败:", e.message); }
+    }
+
     if (withAnalysis !== false) {
     try {
       // 行业聚合走 _shared 共享实现（与行情页 fetchMarketOverview 完全同口径）：
@@ -573,6 +590,7 @@ exports.main = async (event) => {
         tempDebug,
         assetAllocation,
         healthScore,
+        tempDistribution,
         groups,
       },
     };

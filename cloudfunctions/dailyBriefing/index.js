@@ -14,6 +14,12 @@ const WX_APPID = "wxb95098fe432ed765";
 // 模板「温度数据通知」（信息查询类目，模板编号 38431）：
 // thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
+// 新模板「基金异动提醒」（关键词=基金名称、估值异动，仅两个字段）：给单基金提醒专用，
+// 文案不再是"被测量用户：<基金名>"。额度**按（用户 × 模板）分开记账**（subscriptions 每模板一行）：
+// 发单基金提醒时优先用有余量的新模板、新额度用完自然回落旧模板 —— 老用户没授权新模板之前
+// 继续走旧模板，不会出现"提醒发不出去"的空窗。
+// 播报类（收盘小结/净值/周报）payload 是 4 个字段，只能走旧模板，不参与这个切换
+const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
 const SCENE = "closing_brief";          // 场景标识：收盘小结（subscriptions 按多场景设计，后续净值播报/定投提醒共用本集合）
 const PAGE_PORTFOLIO = "subpackages/analysis/pages/profit-detail/index"; // 收益类推送落地：收益走势页
 const PAGE_FUND = "subpackages/analysis/pages/fund-detail/index";        // 单基金提醒落地：基金详情页
@@ -66,11 +72,17 @@ async function handleAlertGet() {
   if (!OPENID) return { code: -1, msg: "无用户身份" };
   const r = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const doc = r.data[0];
-  // 推送额度一并返回：提醒能否送达只取决于额度，客户端要把状态显式告诉用户
+  // 推送额度一并返回：提醒能否送达只取决于额度，客户端要把状态显式告诉用户。
+  // 额度按（用户 × 模板）记账，这里给客户端的是两个模板的合计（用户视角只关心"总共能发几条"）
   const sub = await db.collection("subscriptions").where({ _openid: OPENID, scene: SCENE }).get().catch(() => ({ data: [] }));
-  const quota = (sub.data || []).reduce((a, x) => a + Math.max(0, x.quota || 0), 0);
+  const quotaOf = (isFund) => (sub.data || []).reduce((a, x) => {
+    const isFundRow = x.templateId === TEMPLATE_ID_FUND;
+    return isFundRow === isFund ? a + Math.max(0, x.quota || 0) : a;
+  }, 0);
+  const quotaNew = quotaOf(true);
+  const quota = quotaNew + quotaOf(false);
   // data=settings 保持向后兼容，globalOn 顶层返回（全局涨跌提醒开关）
-  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn), quota, peCache: (doc && doc.peCache) || {} };
+  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn), quota, quotaNew, peCache: (doc && doc.peCache) || {} };
 }
 
 async function handleAlertSet({ settings, globalOn }) {
@@ -131,6 +143,61 @@ async function handleAlertSrc({ src }) {
   return { code: 0 };
 }
 
+// ---- 订阅额度：按（用户 × 模板）分桶 ----
+// 一次授权 = 一条额度，且**按模板独立**：同一个人可能有两行（旧模板一行、新模板一行）。
+// 所有读订阅的地方都必须按 openid 合并，否则"一个用户两行"会让播报重复发送。
+async function loadQuotaBuckets(dryRun, positiveOnly = true) {
+  const where = { scene: SCENE };
+  if (!dryRun && positiveOnly) where.quota = _.gt(0);
+  const rows = await readAll("subscriptions", where, ["_openid", "quota", "templateId"]);
+  const buckets = {};
+  rows.forEach((r) => {
+    if (!r._openid) return;
+    const q = Math.max(0, r.quota || 0);
+    const b = buckets[r._openid] || (buckets[r._openid] = { old: 0, new: 0, total: 0 });
+    if (r.templateId === TEMPLATE_ID_FUND) b.new += q; else b.old += q;
+    b.total += q;
+  });
+  return buckets;
+}
+// 播报类（4 字段，只能走旧模板）的收件人：旧模板有余量才发得出去
+function briefRecipients(buckets, dryRun) {
+  return Object.entries(buckets)
+    .filter(([, b]) => dryRun || b.old > 0)
+    .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new }));
+}
+// 单基金提醒用哪个模板：优先新模板（文案正确），没新额度回落旧模板，两个都没有 → null
+function pickAlertTemplate(b) {
+  if (!b) return null;
+  if (b.new > 0) return TEMPLATE_ID_FUND;
+  if (b.old > 0) return TEMPLATE_ID;
+  return null;
+}
+// 单基金提醒的 payload：两个模板字段数不同、映射也不同（value 上限 20 字）
+function buildAlertPayload(tmplId, fundName, text) {
+  const fund = String(fundName || "持仓基金").slice(0, 20);
+  const body = String(text || "").slice(0, 20);
+  if (tmplId === TEMPLATE_ID_FUND) return { thing1: { value: fund }, thing2: { value: body } };
+  return { thing1: { value: "韭菜估值宝" }, thing2: { value: fund }, thing3: { value: body }, time4: { value: _bjTimeStr() } };
+}
+// 扣某模板的额度（同模板可能多行，只扣有余量的行；旧模板用 neq 兜住"缺 templateId"的老数据）
+function quotaWhere(openid, tmplId, extra) {
+  const where = Object.assign({ _openid: openid, scene: SCENE }, extra || {});
+  where.templateId = tmplId === TEMPLATE_ID_FUND ? TEMPLATE_ID_FUND : _.neq(TEMPLATE_ID_FUND);
+  return where;
+}
+async function consumeQuota(openid, tmplId) {
+  await db.collection("subscriptions").where(quotaWhere(openid, tmplId, { quota: _.gt(0) }))
+    .update({ data: { quota: _.inc(-1), updatedAt: Date.now() } })
+    .catch((e) => console.warn("[dailyBriefing] 扣额度失败:", e.message));
+}
+// 43101（用户已取消该模板订阅）→ 该模板额度归零校准
+async function zeroQuota(openid, tmplId) {
+  await db.collection("subscriptions").where(quotaWhere(openid, tmplId))
+    .update({ data: { quota: 0, updatedAt: Date.now() } })
+    .catch((e) => console.warn("[dailyBriefing] 归零额度失败:", e.message));
+}
+
 // ---- action: alertPush ----
 // snapshotProfit 盘中检测命中后批量委托发送（发送逻辑单点在本函数：额度/日志/43101 归零）
 // pushes: [{ openid, scene, fundCode, kind, fundName, text }]
@@ -143,45 +210,39 @@ async function handleAlertPush({ pushes }) {
   if (!TEMPLATE_ID) return { code: -1, msg: "TEMPLATE_ID 未配置" };
   const token = await getAccessToken();
   const today = td.bjDateStr();
-  let sent = 0, failed = 0, noQuota = 0;
+  let sent = 0, failed = 0, noQuota = 0, sentNew = 0;
   // 发送前先查额度（原来不查：没额度也照发，微信 43101 拒绝 → 每小时重试、日志刷屏，
   // 用户侧看不到任何东西）。额度够才发，不够就等下一次检查——授权到位后自然补发
-  const subRows = await readAll("subscriptions", { scene: SCENE }, ["_openid", "quota"]);
-  const quotaLeft = {};
-  subRows.forEach((x) => { quotaLeft[x._openid] = (quotaLeft[x._openid] || 0) + Math.max(0, x.quota || 0); });
+  const buckets = await loadQuotaBuckets(false, false);
   // 全量分页处理：命中数超过单轮上限时不截断（截断会静默漏发且无日志）
   for (let start = 0; start < pushes.length; start += 200) {
   for (const p of pushes.slice(start, start + 200)) {
-    if (!(quotaLeft[p.openid] > 0)) { noQuota++; continue; }
-    const brief = {
-      thing1: { value: "韭菜估值宝" },
-      thing2: { value: String(p.fundName || "持仓基金").slice(0, 20) },
-      thing3: { value: String(p.text || "").slice(0, 20) },
-      time4: { value: _bjTimeStr() },
-    };
+    const b = buckets[p.openid];
+    const tmplId = pickAlertTemplate(b);
+    if (!tmplId) { noQuota++; continue; }
+    const brief = buildAlertPayload(tmplId, p.fundName, p.text);
     const logId = await createLog(p.openid, today, p.scene || "rate_alert", p.fundCode, p.kind);
     try {
-      const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&src=push&lid=${logId}`, brief, tmplId);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE, quota: _.gt(0) }).update({
-        data: { quota: _.inc(-1), updatedAt: Date.now() }
-      });
-      quotaLeft[p.openid] = Math.max(0, (quotaLeft[p.openid] || 0) - 1);
+      await consumeQuota(p.openid, tmplId);
+      if (tmplId === TEMPLATE_ID_FUND) { b.new = Math.max(0, b.new - 1); sentNew++; }
+      else b.old = Math.max(0, b.old - 1);
+      b.total = b.new + b.old;
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await db.collection("subscriptions").where({ _openid: p.openid, scene: SCENE }).update({
-          data: { quota: 0, updatedAt: Date.now() }
-        });
+        await zeroQuota(p.openid, tmplId);
+        if (tmplId === TEMPLATE_ID_FUND) { b.new = 0; b.total = b.old; } else { b.old = 0; b.total = b.new; }
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
     }
   }
   }
-  return { code: 0, sent, failed, noQuota };
+  return { code: 0, sent, failed, noQuota, sentNew };
 }
 
 // 基于日期串的纯日期偏移（UTC 计算，北京日期串无时区歧义）
@@ -192,22 +253,25 @@ function addDays(dateStr, n) {
 }
 
 // ---- action: auth ----
-// 前端 requestSubscribeMessage accept 后调用。一次授权 = 一次发送额度（quota +1）。
+// 前端 requestSubscribeMessage accept 后调用。一次授权 = 一次发送额度（quota +1），**按模板独立记账**：
+// 客户端一次弹窗可以勾两个模板，accept 哪个就为哪个模板 +1（所以 where 要带 templateId，
+// 否则新模板的授权会把旧模板那行覆盖掉）
 async function handleAuth({ scene = SCENE, templateId = TEMPLATE_ID }) {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: -1, msg: "无用户身份" };
-  const found = await db.collection("subscriptions").where({ _openid: OPENID, scene }).get();
+  const tid = templateId === TEMPLATE_ID_FUND ? TEMPLATE_ID_FUND : TEMPLATE_ID;
+  const found = await db.collection("subscriptions").where({ _openid: OPENID, scene, templateId: tid }).get();
   const now = Date.now();
   if (found.data.length > 0) {
     await db.collection("subscriptions").doc(found.data[0]._id).update({
-      data: { quota: _.inc(1), templateId, updatedAt: now }
+      data: { quota: _.inc(1), templateId: tid, updatedAt: now }
     });
   } else {
     await db.collection("subscriptions").add({
-      data: { _openid: OPENID, scene, templateId, quota: 1, createdAt: now, updatedAt: now }
+      data: { _openid: OPENID, scene, templateId: tid, quota: 1, createdAt: now, updatedAt: now }
     });
   }
-  return { code: 0 };
+  return { code: 0, templateId: tid };
 }
 
 // ---- action: trackOpen ----
@@ -233,12 +297,16 @@ async function handleRecallPush({ targets, variant }) {
   if (!Array.isArray(targets) || targets.length === 0) return { code: 0, sent: 0, failed: 0 };
   const token = await getAccessToken();
   const today = td.bjDateStr();
-  // 召回与用户主动订阅的播报/提醒共用模板额度池：只对本地 quota>=2 的用户发，
-  // 避免运营召回挤掉用户主动订阅的收盘播报/涨跌提醒（微信额度不足时 43101 静默漏发）
-  const subRows = await readAll("subscriptions", {}, ["_openid", "scene", "quota"]);
-  const quotaMap = {};
-  subRows.forEach(s => { quotaMap[s._openid] = (quotaMap[s._openid] || 0) + Math.max(0, s.quota || 0); });
-  const eligible = targets.filter(t => !t.recallOptOut && (quotaMap[t.openid] || 0) >= 2);
+  // 召回与用户主动订阅的播报/提醒共用额度池：只对本地**旧模板** quota>=2 的用户发
+  // （召回消息走旧模板），避免运营召回挤掉用户主动订阅的收盘播报/涨跌提醒。
+  // 用 buckets 按 openid 合并（一个用户可能有两行，别重复召回），并按 openid 去重 targets
+  const buckets = await loadQuotaBuckets(false, false);
+  const seen = new Set();
+  const eligible = targets.filter(t => {
+    if (!t || !t.openid || seen.has(t.openid)) return false;
+    seen.add(t.openid);
+    return !t.recallOptOut && ((buckets[t.openid] || {}).old || 0) >= 2;
+  });
   let skipped = targets.length - eligible.length;
   let sent = 0, failed = 0;
   const useB = variant === "b";
@@ -258,16 +326,12 @@ async function handleRecallPush({ targets, variant }) {
       const errcode = await sendSubscribe(token, t.openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE, quota: _.gt(0) }).update({
-        data: { quota: _.inc(-1), updatedAt: Date.now() }
-      });
+      await consumeQuota(t.openid, TEMPLATE_ID);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await db.collection("subscriptions").where({ _openid: t.openid, scene: SCENE }).update({
-          data: { quota: 0, updatedAt: Date.now() }
-        });
+        await zeroQuota(t.openid, TEMPLATE_ID);
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
@@ -355,7 +419,10 @@ async function runBriefing(dryRun, force) {
   const prevDay = td.lastTradingDay(addDays(dataDay, -1));
 
   // 1. 订阅读者（quota>0；dryRun 不发送不扣额度，不过滤额度便于文案验证）
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
+  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  const buckets = await loadQuotaBuckets(dryRun);
+  const subs = briefRecipients(buckets, dryRun);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   // 1b. 配了提醒规则的用户：播报给提醒留 1 条额度（一次性订阅共用额度池，
   //     播报吃干后盘中提醒全部 43101——2026-09-09 实测就是这么丢的）
@@ -420,17 +487,13 @@ async function runBriefing(dryRun, force) {
         const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
         if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
         await finishLog(logId, "sent", "");
-        await db.collection("subscriptions").doc(sub._id).update({
-          data: { quota: _.inc(-1), updatedAt: Date.now() }
-        });
+        await consumeQuota(sub._openid, TEMPLATE_ID);
         sent++;
       } catch (e) {
         const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
         // 43101 = 用户已取消订阅：微信侧额度无法查询，用错误码把本地 quota 归零校准漂移
         if (errCode === 43101) {
-          await db.collection("subscriptions").doc(sub._id).update({
-            data: { quota: 0, updatedAt: Date.now() }
-          });
+          await zeroQuota(sub._openid, TEMPLATE_ID);
         }
         await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
         failed++;
@@ -456,7 +519,10 @@ async function runPeAlerts(force, dryRun) {
     return { code: 0, msg: `非交易日 ${today} 跳过` };
   }
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
+  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  const buckets = await loadQuotaBuckets(dryRun);
+  const subs = briefRecipients(buckets, dryRun);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName"]);
   const byUser = {};
@@ -496,7 +562,10 @@ async function runNavBrief(force, dryRun) {
   }
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
 
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
+  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  const buckets = await loadQuotaBuckets(dryRun);
+  const subs = briefRecipients(buckets, dryRun);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   // 有提醒规则的用户：净值播报同样给提醒留 1 条额度（否则 21:30 吃干、次日上午提醒全部发不出）
   const alertUserSet = await alertUserOpenids();
@@ -609,16 +678,12 @@ async function runNavBrief(force, dryRun) {
       const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
-        data: { quota: _.inc(-1), updatedAt: Date.now() }
-      });
+      await consumeQuota(sub._openid, TEMPLATE_ID);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await db.collection("subscriptions").doc(sub._id).update({
-          data: { quota: 0, updatedAt: Date.now() }
-        });
+        await zeroQuota(sub._openid, TEMPLATE_ID);
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
@@ -682,7 +747,10 @@ async function runWeeklyBrief(force, dryRun) {
     d = addDays(d, -1);
   }
 
-  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
+  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  const buckets = await loadQuotaBuckets(dryRun);
+  const subs = briefRecipients(buckets, dryRun);
   const alertUserSet = await alertUserOpenids();   // 同净值播报：给提醒留额度
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
@@ -780,16 +848,12 @@ async function runWeeklyBrief(force, dryRun) {
       const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
-        data: { quota: _.inc(-1), updatedAt: Date.now() }
-      });
+      await consumeQuota(sub._openid, TEMPLATE_ID);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await db.collection("subscriptions").doc(sub._id).update({
-          data: { quota: 0, updatedAt: Date.now() }
-        });
+        await zeroQuota(sub._openid, TEMPLATE_ID);
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
@@ -861,27 +925,21 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
       continue;
     }
     if (!accessToken) continue;
-    const brief = {
-      thing1: { value: "韭菜估值宝" },
-      thing2: { value: String(first.fundName).slice(0, 20) },
-      thing3: { value: text.slice(0, 20) },
-      time4: { value: _bjTimeStr() },
-    };
+    // 单基金提醒按额度分流：有新模板额度就走新模板（文案是"基金名称 + 估值异动"，不再是
+    // "被测量用户：<基金名>"），否则回落旧模板；targets 已保证旧模板有余量，所以必有一个可用
+    const tmplId = (sub.quotaNew > 0) ? TEMPLATE_ID_FUND : TEMPLATE_ID;
+    const brief = buildAlertPayload(tmplId, first.fundName, text);
     const logId = await createLog(sub._openid, dataDay, "pe_alert", first.fundCode, first.up ? "up" : "down");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&src=push&lid=${logId}`, brief);
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&src=push&lid=${logId}`, brief, tmplId);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await db.collection("subscriptions").where({ _id: sub._id, quota: _.gt(0) }).update({
-        data: { quota: _.inc(-1), updatedAt: Date.now() }
-      });
+      await consumeQuota(sub._openid, tmplId);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await db.collection("subscriptions").doc(sub._id).update({
-          data: { quota: 0, updatedAt: Date.now() }
-        });
+        await zeroQuota(sub._openid, tmplId);
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
     }
@@ -1081,10 +1139,11 @@ async function getAccessToken() {
 }
 
 // 返回 errcode：0 = 成功；43101 = 用户已拒收
-async function sendSubscribe(token, touser, page, data) {
+// templateId 可传：单基金提醒可能走新模板「基金异动提醒」，其余（播报/召回）都是旧模板
+async function sendSubscribe(token, touser, page, data, templateId) {
   const r = await httpPost(`/cgi-bin/message/subscribe/send?access_token=${token}`, {
     touser,
-    template_id: TEMPLATE_ID,
+    template_id: templateId || TEMPLATE_ID,
     page,
     miniprogram_state: MINI_STATE,
     lang: "zh_CN",
