@@ -251,15 +251,14 @@ Page({
   // ============ 缓存 ============
 
   // 回本进度（陪伴线 B3）：只在"现值低于买入成本"时给，且只陈述事实（还差多少、净值要从 A 到 B）。
-  // ⚠️ 现值口径必须与页面"单位净值"那行完全一致（盘中用估算净值；其余 actualNav 优先，缺失才回退 nav）：
-  //    nav 是涨跌基准（前一日净值），拿它当现值会把亏损持仓判成已回本 —— 001717 就这么漏过：
-  //    基准 3.445 > 成本 3.428 被判盈利，而真实现值 3.29 是亏的。不做摊薄/加仓推演（那是另一件事）
+  // ⚠️ 现值必须与卡片同源 —— 直接用页面统一的 `calc.selectNav`（卡片算持有金额/累计收益用的就是它），
+  //    不要自己写分支：`nav` 是涨跌基准（前一日净值），把它当现值会把亏损持仓判成已回本
+  //    （001717 就这么漏过：基准 3.445 > 成本 3.428 被判盈利，而最新已公布净值 3.29 是亏的）。
+  //    不做摊薄/加仓推演（那是另一件事）
   _rebateField(hdOverride) {
     const hd = hdOverride || this.data.holdingData;
     const cost = hd ? parseFloat(hd.buyPrice) : NaN;
-    const now = this.data.showEstimate
-      ? parseFloat(this.data.estimatedNav)
-      : (parseFloat(this.data.actualNav) || parseFloat(this.data.nav));
+    const now = calc.selectNav(this.data.nav, this.data.actualNav, this.data.estimatedNav);
     if (!(cost > 0) || !(now > 0) || now >= cost) return { rebate: null };
     return {
       rebate: {
