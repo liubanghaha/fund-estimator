@@ -27,10 +27,15 @@ exports.main = async (event = {}) => {
   try {
     // 定时触发器分流：三个 timer 共用本函数
     if (event.Type === "Timer") {
-      // 名字必须与 config.json 的触发器一致：navBriefTimer=21:30 净值播报、weeklyBriefTimer=周六周报，
-      // 其余（closingBriefTimer）走 15:30 收盘小结。原来判的是 confirmBriefTimer（配置里没这个名字）
-      // → runNavBrief 永不触发、21:30 实际跑成了被查重挡掉的收盘小结
+      // ⚠️ 线上触发器以 cloudbaserc.json 为部署源（函数目录 config.json 不生效）：
+      //    confirmBriefTimer = 20:00-23:40 每 20 分钟 → 收盘小结（自带"净值确认门"：
+      //    等官方净值全部公布后才发，23:00 档兜底按估算，见 runBriefing 第 4.5 步）；
+      //    peAlertTimer = 15:35 → 温度变化提醒（独立一轮，不再等净值确认，见 runPeAlerts）；
+      //    weeklyBriefTimer = 周六 10:00 周报。
+      // 15:30 收盘小结 / 21:30 净值播报两个触发器在 51fbf65 被有意删除（收盘播报改"净值确认后发"），
+      // 别再加回来；navBriefTimer 分支保留给手动 action=navBrief，线上没有这个触发器
       if (event.TriggerName === "navBriefTimer") return await runNavBrief(false, false);
+      if (event.TriggerName === "peAlertTimer") return await runPeAlerts(false, false);
       if (event.TriggerName === "weeklyBriefTimer") return await runWeeklyBrief(false);
       return await runBriefing(false, false);
     }
@@ -44,6 +49,7 @@ exports.main = async (event = {}) => {
     if (event.action === "alertSrc") return await handleAlertSrc(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
+    if (event.action === "peAlerts") return await runPeAlerts(!!event.force, !!event.dryRun);
     if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);
     return await runBriefing(!!event.dryRun, !!event.force);
   } catch (e) {
@@ -433,15 +439,51 @@ async function runBriefing(dryRun, force) {
   }
   console.log(`[dailyBriefing] subs=${subs.length} targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} dryRun=${dryRun}`);
 
-  // 6. PE 温度变化提醒（单基金粒度，每日一次；与收盘小结共用 token，dryRun 只记日志不发送）
-  let peSent = 0;
+  // 6. 温度变化提醒已独立成一轮（peAlertTimer 15:35 → runPeAlerts）：
+  //    原来挂在这里，会被上面第 4.5 步的"净值确认门"挡住 —— 净值没全公布的那几轮直接 return，
+  //    实际要等到净值确认档或 23:00 兜底档才发（用户实测"深夜才到"）。
+  //    别把 checkPeAlerts 加回来（会重复检测；虽然 push_logs 会查重，但两处发送点没意义）
+  return { code: 0, msg: `发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
+}
+
+// ---- 独立一轮：温度变化提醒（peAlertTimer 15:35）----
+// 为什么独立：PE 温度基于"上一交易日收盘"的估值，凌晨 03:00 的定时任务就算好了，不需要等
+// 当天净值公布。原来它挂在 runBriefing 里（净值确认门之后），净值没全公布的那几轮直接 return
+// → 实际要等到确认档或 23:00 兜底档才发得出去（用户实测"深夜才到"）。
+async function runPeAlerts(force, dryRun) {
+  const today = td.bjDateStr();
+  if (!dryRun && !force && !td.isTradingDay(today)) {
+    return { code: 0, msg: `非交易日 ${today} 跳过` };
+  }
+  const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
+  const subs = await readAll("subscriptions", dryRun ? { scene: SCENE } : { scene: SCENE, quota: _.gt(0) }, ["_openid", "quota"]);
+  if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName"]);
+  const byUser = {};
+  holdings.forEach(h => {
+    if (!h._openid || !h.fundCode) return;
+    (byUser[h._openid] = byUser[h._openid] || []).push(h);
+  });
+  // 给当天的收盘小结留 1 条额度（与播报侧「quota<2 不发」同一条规则）：温度提醒先跑，
+  // 不能把额度吃干让用户晚上收不到收盘小结。额度不足这轮不发，且**不更新基线**（peCache），
+  // 所以信号变化不会丢 —— 额度补上后（或次日）仍按原基线比对并发出
+  let heldForBrief = 0;
+  const targets = subs.filter(s => byUser[s._openid]).filter(s => {
+    if (dryRun || (s.quota || 0) >= 2) return true;
+    heldForBrief++;
+    return false;
+  });
+  if (targets.length === 0) return { code: 0, msg: `无目标用户（给收盘小结留额度 ${heldForBrief}）` };
+  const todaySigs = await loadSignals(dataDay);
+  const accessToken = dryRun ? null : await getAccessToken();
+  let sent = 0;
   try {
-    peSent = await checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, dryRun);
+    sent = await checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, dryRun);
   } catch (e) {
     console.warn("[dailyBriefing] PE 提醒检测失败:", e.message);
   }
-
-  return { code: 0, msg: `发送 ${sent}，失败 ${failed}，跳过 ${skipped}，PE提醒 ${peSent}${dryRun ? "（dryRun）" : ""}` };
+  console.log(`[dailyBriefing][peAlerts] subs=${subs.length} targets=${targets.length} heldForBrief=${heldForBrief} sent=${sent} dataDay=${dataDay} dryRun=${dryRun}`);
+  return { code: 0, msg: `温度提醒：发送 ${sent}，留额度 ${heldForBrief}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // ---- 净值播报（交易日 21:30）：官方净值发布后的当日真实收益 ----

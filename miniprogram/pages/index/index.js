@@ -84,6 +84,7 @@ Page({
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
     alertEditPeAlert: false,
+    alertQuotaText: '', alertQuotaWarn: false,
     // 分组
     groups: [],
     activeGroup: "all",
@@ -565,6 +566,22 @@ Page({
   onAlertUpper(e) { this.setData({ alertEditUpper: e.detail.value }); },
   onAlertLower(e) { this.setData({ alertEditLower: e.detail.value }); },
   onAlertPeToggle(e) { this.setData({ alertEditPeAlert: !this.data.alertEditPeAlert }); },
+  // 弹层里的推送额度提示：一次性订阅，一次授权=一条；额度=0 时提醒触发了也发不出去。
+  // 只显示在设置弹层（打开时拉一次云端额度）：用户不会去猜"为什么没收到提醒"
+  _refreshAlertQuota(fundCode) {
+    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
+      .then((r) => {
+        if (this.data.alertEditFundCode !== fundCode) return; // 弹层已切基金/已关闭，丢弃
+        const quota = ((r && r.result) || {}).quota || 0;
+        this.setData({
+          alertQuotaWarn: quota <= 0,
+          alertQuotaText: quota > 0
+            ? `推送额度 ${quota} 条 · 触发后发微信通知`
+            : "推送额度 0 条 · 触发也发不出微信通知，去「我的 → 提醒管理」补充",
+        });
+      })
+      .catch(() => {});
+  },
   onSaveAlert() {
     const { alertEditFundCode, alertEditUpper, alertEditLower, alertEditPeAlert } = this.data;
     const upper = parseFloat(alertEditUpper);
@@ -1474,10 +1491,14 @@ Page({
         if (res.tapIndex === 0) {
           wx.navigateTo({ url: `/pages/add-holding/index?id=${id}` });
         } else if (res.tapIndex === 1) {
-          self.setData({ showAlertEdit: true, alertEditFundCode: h.fundCode, alertEditFundName: h.fundName });
+          self.setData({
+            showAlertEdit: true, alertEditFundCode: h.fundCode, alertEditFundName: h.fundName,
+            alertQuotaText: '', alertQuotaWarn: false,
+          });
           const settings = wx.getStorageSync('alertSettings') || {};
           const s = settings[h.fundCode] || { upper: 3, lower: -3 };
           self.setData({ alertEditUpper: String(s.upper || ''), alertEditLower: String(s.lower || ''), alertEditPeAlert: !!s.peAlert });
+          self._refreshAlertQuota(h.fundCode);
         } else if (res.tapIndex === 2) {
           self.moveHoldingToGroup(null, null, { ids: [id], field: "platform", title: "设置账户" });
         } else if (res.tapIndex === 3) {

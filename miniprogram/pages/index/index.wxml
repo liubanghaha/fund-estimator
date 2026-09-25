@@ -362,6 +362,7 @@
           <view class="pe-switch-dot"></view>
         </view>
       </view>
+      <view class="alert-quota-hint {{alertQuotaWarn ? 'warn' : ''}}" wx:if="{{alertQuotaText}}">{{alertQuotaText}}</view>
       <view class="col-edit-close" bind:tap="onSaveAlert">保存</view>
     </view>
   </view>

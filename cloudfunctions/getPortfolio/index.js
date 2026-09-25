@@ -358,7 +358,9 @@ exports.main = async (event) => {
     try {
       const snapRes = await db.collection("profit_snapshots").where({ _openid: uid, date: today }).get();
       snapDebug = { openid: uid, date: today, found: snapRes.data ? snapRes.data.length : 0 };
-      if (snapRes.data && snapRes.data.length > 0) {
+      // 只认交易日的"今日"快照：休市日库里可能残留历史假点（2026-09-25 中秋那批），
+      // 直接返回会与 displayDay 的上一交易日口径同屏矛盾 → 交下方回退分支取最近交易日曲线
+      if (td.isTradingDay(today) && snapRes.data && snapRes.data.length > 0) {
         intradaySnapshots = snapRes.data[0].points || [];
         snapDebug.points = intradaySnapshots.length;
       } else {
@@ -366,7 +368,8 @@ exports.main = async (event) => {
         // 交易时段缺失不回退，交由下方"快照兜底"写当天新点，避免混合两日曲线
         const bj = new Date(Date.now() + 8 * 3600000);
         const bjMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-        const inTradingNow = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && fd.inTradingWindow(bjMin);
+        // 节假日也算非交易时段（否则休市日会走"不回退"分支，今日曲线空白却显示 -- 的当日收益）
+        const inTradingNow = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && fd.inTradingWindow(bjMin) && td.isTradingDay(today);
         if (!inTradingNow) {
           const start = fd.formatBJDate(new Date(Date.now() - 30 * 86400000));
           const fbRes = await db.collection("profit_snapshots")
@@ -375,8 +378,10 @@ exports.main = async (event) => {
             .limit(60)
             .get();
           const rows = (fbRes.data || []).sort((a, b) => b.date.localeCompare(a.date));
-          const lastRow = rows[0];
-          if (lastRow && lastRow.date < today && lastRow.points && lastRow.points.length > 0) {
+          // 取最近一个"早于今天"的有快照日期：今天自己那份在休市日不可信（可能是历史假点），
+          // 用 rows[0] 会因为它就是今天而整段不回退，曲线反而空白
+          const lastRow = rows.find((r) => r.date < today);
+          if (lastRow && lastRow.points && lastRow.points.length > 0) {
             intradaySnapshots = lastRow.points;
             snapDate = lastRow.date;
             snapDebug.fallback = lastRow.date;
@@ -504,12 +509,13 @@ exports.main = async (event) => {
     });
 
     // ---- 快照兜底：定时任务（snapshotProfit）未写快照时，用户打开小程序也能留点 ----
-    // 仅在交易时段补（与定时任务语义一致），距上一点 >= 1 分钟才写（快照已分钟粒度，与新定时同步）
+    // 仅在交易日交易时段补（与定时任务语义一致，含节假日判断：休市日写会造"股市没开却有当日曲线"
+    // 的假点，2026-09-25 中秋 + 2026-06-13 周六都这么留下过），距上一点 >= 1 分钟才写
     try {
       const _bj = new Date(Date.now() + 8 * 3600000);
       const _day = _bj.getUTCDay();
       const _min = _bj.getUTCHours() * 60 + _bj.getUTCMinutes();
-      const _inTrading = _day >= 1 && _day <= 5 && fd.inTradingWindow(_min);
+      const _inTrading = _day >= 1 && _day <= 5 && fd.inTradingWindow(_min) && td.isTradingDay(today);
       if (_inTrading) {
         const _last = intradaySnapshots[intradaySnapshots.length - 1];
         // 时间解析防御：time 缺失/格式异常时 parseInt 得 NaN（.slice 对 null 会直接抛错）——NaN 时跳过本轮兜底写点

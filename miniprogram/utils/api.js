@@ -1,3 +1,5 @@
+const marketTime = require("./market-time");
+
 const api = {
   // 请求去重缓存：只读请求 5s 窗口内复用结果（含已完成的结果），写操作不缓存，避免双击吞操作
   _pending: {},
@@ -353,9 +355,9 @@ const api = {
   async fetchIndexIntradayTencent(indexCode) {
     const S = { "000001": "sh000001", "399001": "sz399001", "000300": "sh000300", "399006": "sz399006", "HSTECH": "hkHSTECH", "HSI": "hkHSI" };
     const code = S[indexCode] || "";
-    // 今日日期 (YYYYMMDD)
-    const d = new Date();
-    const today = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    // 今日日期（北京，YYYYMMDD）：接口返回的 date 就是北京日期，
+    // 用设备本地日期在非 +8 时区会判错
+    const today = marketTime.bjDateStr().replace(/-/g, "");
     return new Promise((resolve) => {
       wx.request({
         url: `https://web.ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data&code=${code}`,
@@ -370,14 +372,12 @@ const api = {
             const stockData = (json.data && json.data[code]) || {};
             const points = (stockData.data && stockData.data.data) || [];
             const apiDate = (stockData.data && stockData.data.date) || '';
-            // 日期校验：交易时段只认今日，非交易时段允许旧数据
-            // 时段边界含 9:25 集合竞价段（与 marketTime.marketPhase 的"今天"起点一致）
-            if (apiDate !== today) {
-              const now = new Date();
-              const day = now.getDay();
-              const totalMin = now.getHours() * 60 + now.getMinutes();
-              const inTrading = day >= 1 && day <= 5 && totalMin >= 565 && totalMin <= 900;
-              if (inTrading) { resolve({ code: 500, msg: "非今日数据" }); return; }
+            // 日期校验：盘中只认今日，非盘中允许旧数据（盘前/盘后/休市都该用最近交易日那条分时）
+            // 判据必须走 marketPhase（含节假日表 + 北京时间，9:25 起点与云端一致）：
+            // 原来只判"周几 + 时段"，工作日休市（2026-09-25 中秋）会把上一交易日的分时判成
+            // "非今日数据"整段丢弃 → 当天走势图只剩"我的收益"一条线，指数对比线凭空消失
+            if (apiDate !== today && marketTime.marketPhase() === "trading") {
+              resolve({ code: 500, msg: "非今日数据" }); return;
             }
             if (points.length < 2) { resolve({ code: 500, msg: "分时数据不足" }); return; }
             // 从同一响应中取昨日收盘价（qt.sh000001[4]）

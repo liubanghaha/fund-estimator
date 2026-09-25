@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 const fd = require("./_shared/fund-data");
+const td = require("./_shared/trading-day");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
@@ -15,13 +16,15 @@ exports.main = async (event) => {
     const bjDay = (now.getUTCDay() + (now.getUTCHours() + 8 >= 24 ? 1 : 0)) % 7;
     const bjHours = (now.getUTCHours() + 8) % 24;
     const totalMin = bjHours * 60 + now.getUTCMinutes();
-    const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    const today = fd.formatBJDate();   // 北京日期（原来按 UTC 取，非交易时段会差一天）
     const time = `${String(bjHours).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
 
-    // 非交易时段返回空快照。todayProfitRate 必须为 null（而非占位 0）：
+    // 非交易时段/非交易日返回空快照。todayProfitRate 必须为 null（而非占位 0）：
     // 0 是"确认为零收益"的真值语义，占位 0 曾把客户端冻结期缓存里的正确收益洗成 0
-    // 时段边界（含 9:25 集合竞价段）与 getPortfolio 的"今天"起点一致，见 fd.OPEN_MIN
-    const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin);
+    // 时段边界（含 9:25 集合竞价段）与 getPortfolio 的"今天"起点一致，见 fd.OPEN_MIN；
+    // 节假日也要挡（cron/前端只判"周内"）：休市日库里只有 snapshotProfit 写的历史假点，
+    // 当今日返回会让走势页出现"股市没开却有今日曲线"
+    const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin) && td.isTradingDay(today);
     if (!inTrading) {
       return { code: 0, data: { intradaySnapshots: [], todayProfitRate: null, updateTime: "", inTrading: false } };
     }

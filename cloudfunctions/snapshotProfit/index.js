@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
 const fd = require("./_shared/fund-data");
+const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { force, dryRun } = event || {}; // force=true：跳过交易时段判断 + 只算不写（供部署后验证）
@@ -16,13 +17,27 @@ exports.main = async (event) => {
     const bj = new Date(Date.now() + 8 * 3600000);
     const bjDay = bj.getUTCDay();
     const totalMin = bj.getUTCHours() * 60 + bj.getUTCMinutes();
-    const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin);
-    if (!force && !inTrading) return { code: 0, msg: "非交易时段跳过" };
     const today = fd.formatBJDate();
     const time = fd.formatBJTime();
+    // 交易日历守卫：cron 只能表达"周内"，节假日必须查表（2026-09-25 中秋就这样漏过）。
+    // 漏了它会在休市日拿上一交易日的行情/净值当今天算，误发涨跌提醒（2026-09-25 实发一条）
+    const isTradingDay = td.isTradingDay(today);
+    const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin);
+    if (!force && !(inTrading && isTradingDay)) {
+      return { code: 0, msg: isTradingDay ? "非交易时段跳过" : "非交易日跳过" };
+    }
+    // 涨跌提醒检测起点 09:35：9:25-9:30 只有竞价缺口、自算口径失真最大，而提醒额度很贵，
+    // 不该被开盘噪音吃掉（快照点仍从 9:25 起写，当日曲线起点不变）
+    const alertAllowed = !!force || totalMin >= ALERT_START_MIN;
 
     // 1. 读取全部持仓（field 投影 + 游标分页，旧实现 100 条/页读 87 页耗时过长）
-    const holdings = await readAllHoldings();
+    //    h5_ 前缀 = H5/网页版时期的历史账号（实测 1243 个 vs 小程序侧 161 个有持仓），
+    //    已确认 H5 侧不再运营、这些人也不进小程序 —— 给它们每轮算+写快照是纯浪费
+    //    （曾占写入量约 88%），这里整批排除。注意：不删它们的持仓数据（老用户召回要用）
+    const allHoldings = await readAllHoldings();
+    const holdings = allHoldings.filter(h => !String(h._openid || "").startsWith("h5_"));
+    const skippedLegacy = allHoldings.length - holdings.length;
+    if (skippedLegacy > 0) console.log(`[snapshotProfit] 排除 h5_ 历史账号持仓 ${skippedLegacy} 条`);
     if (holdings.length === 0) return { code: 0, msg: "无持仓" };
     const userMap = {};
     holdings.forEach(h => {
@@ -49,7 +64,7 @@ exports.main = async (event) => {
     // rate=数据源一口径（每基金新浪估值优先，缺值回退自算）、rateSelf=自算口径；
     // 快照点两值并存，读取端按用户数据源偏好展示，切换源历史曲线立即变化
     for (const [openid, userHoldings] of Object.entries(userMap)) {
-      let totalWeightedRate = 0, totalWeightedSelf = 0, totalBase = 0;
+      let totalWeightedRate = 0, totalWeightedSelf = 0, totalBase = 0, ratedBase = 0;
       for (const h of userHoldings) {
         const fr = fundRateMap[h.fundCode];
         const nav = navMap[h.fundCode] || (parseFloat(h.buyPrice) > 0 ? parseFloat(h.buyPrice) : 0);
@@ -60,9 +75,13 @@ exports.main = async (event) => {
           totalWeightedSelf += selfRate * weight;
           totalWeightedRate += (fr && fr.rateSina != null ? fr.rateSina : selfRate) * weight;
           totalBase += weight;
+          // 该基金今日至少有一个口径有数据（自算或数据源一）才有资格进"有估算"的基数
+          if (fr && (typeof fr.rate === "number" || fr.rateSina != null)) ratedBase += weight;
         }
       }
-      if (totalBase <= 0) continue; // 无有效数据不写假 0 点
+      // 无有效数据不写假 0 点。ratedBase 这一条专治"行情源给旧数据"：全组合都算不出今日估算时
+      // 加权和恒为 0，写下去就是一条假 0（客户端会把"确认为零收益"当真值）
+      if (totalBase <= 0 || ratedBase <= 0) continue;
       const rate = +((totalWeightedRate / totalBase)).toFixed(2);
       const rateSelf = +((totalWeightedSelf / totalBase)).toFixed(2);
       // 金额（元）= Σ(基准市值 × 收益率)/100 = 加权和/100，用未舍入值算：客户端只有 2 位小数
@@ -90,7 +109,9 @@ exports.main = async (event) => {
     //    （每日每基金一次由 push_logs 查重保证；提醒独立于快照写入，预算外仍执行）
     let alertSent = 0, alertHits = [];
     try {
-      const r = await checkRateAlerts(userMap, fundRateMap, today, el, !!dryRun);
+      const r = alertAllowed
+        ? await checkRateAlerts(userMap, fundRateMap, today, el, !!dryRun)
+        : { sent: 0, hits: [] };
       alertSent = r.sent;
       alertHits = r.hits || [];
     } catch (e) {
@@ -100,6 +121,7 @@ exports.main = async (event) => {
     return {
       code: 0, msg: "ok", time, dryRun: !!dryRun || !!force,
       users: Object.keys(userMap).length, written, funds: fundCodes.length, stocks: stockCount,
+      skippedLegacy,
       alertSent, alertHits, sample, costMs: el(),
     };
   } catch (e) {
@@ -108,11 +130,17 @@ exports.main = async (event) => {
   }
 };
 
-// 盘中涨跌提醒：读 alert_settings 比对单基金估算涨跌阈值，命中（每日每用户一次，
-// 多只同时命中取绝对涨幅最大的一条，防推送轰炸与额度烧穿）
-// 后委托 dailyBriefing.alertPush 批量发送——发送/额度/日志单点在 dailyBriefing 维护
+// 盘中涨跌提醒：读 alert_settings 比对单基金估算涨跌阈值，命中后委托 dailyBriefing.alertPush
+// 批量发送——发送/额度/日志单点在 dailyBriefing 维护。
+// 查重粒度 = 每用户每只基金每天一条（原来按 openid 查重，一只基金的噪音命中就吃掉该用户
+// 当天全部提醒），外加每用户每日总上限 ALERT_DAILY_CAP 条；同一轮里多只命中只取
+// |涨幅| 最大的一条，防推送轰炸与额度烧穿。
 // globalOn=true 的用户全部持仓按默认阈值（±3，与客户端弹窗默认一致）兜底提醒
 const ALERT_GLOBAL_DEFAULT = { upper: 3, lower: -3 };
+// 涨跌提醒检测起点（北京时间分钟数）：09:35 = 开盘后 5 分钟，避开集合竞价段噪音
+const ALERT_START_MIN = 575;
+// 每用户每天最多几条涨跌提醒（一次性订阅额度池有限，防止一次行情波动把额度烧穿）
+const ALERT_DAILY_CAP = 3;
 
 async function checkRateAlerts(userMap, fundRateMap, today, el, dryRun) {
   const alertDocs = await readAllSimple("alert_settings", {}, { _openid: true, settings: true, globalOn: true, src: true });
@@ -120,22 +148,28 @@ async function checkRateAlerts(userMap, fundRateMap, today, el, dryRun) {
   const alertMap = {};
   alertDocs.forEach(d => { alertMap[d._openid] = d; });
 
-  // 当天已发送提醒的用户查重（openid 粒度：每用户每日一条）
-  const fired = await readAllSimple("push_logs", { scene: "rate_alert", date: today, status: "sent" }, { _openid: true });
-  const firedSet = new Set(fired.map(l => l._openid));
+  // 当天已发送提醒的查重（fundCode 粒度：每用户每只基金每日一条）
+  const fired = await readAllSimple("push_logs", { scene: "rate_alert", date: today, status: "sent" }, { _openid: true, fundCode: true });
+  const firedKeys = new Set(fired.map(l => `${l._openid}|${l.fundCode || ""}`));
+  const firedCount = {};
+  fired.forEach(l => { firedCount[l._openid] = (firedCount[l._openid] || 0) + 1; });
 
   // 每用户只保留 |rate| 最大的一条命中
   const best = {};
   for (const [openid, userHoldings] of Object.entries(userMap)) {
-    if (firedSet.has(openid)) continue;
+    if ((firedCount[openid] || 0) >= ALERT_DAILY_CAP) continue;
     const doc = alertMap[openid];
     if (!doc) continue;
     const settings = doc.settings || {};
     // 触发口径跟随用户数据源偏好：src=self → 自算；默认/无 src（老用户）→ 数据源一（缺值回退自算）
     const userSelf = doc.src === "self";
     for (const h of userHoldings) {
+      if (firedKeys.has(`${openid}|${h.fundCode}`)) continue;
       const s = settings[h.fundCode] || (doc.globalOn ? ALERT_GLOBAL_DEFAULT : null);
       if (!s) continue;
+      // 提醒管理页的单条停用开关（旧数据无 enabled 字段视为启用）：此前只有 PE 提醒判了它，
+      // 被关掉的涨跌规则服务端照样推
+      if (s.enabled === false) continue;
       const fr = fundRateMap[h.fundCode];
       if (!fr || typeof fr.rate !== "number") continue;
       const rate = userSelf ? fr.rate : (fr.rateSina != null ? fr.rateSina : fr.rate);
@@ -322,12 +356,22 @@ async function buildGlobalFundRates(fundCodes, startTime) {
   // 3) 全量股票行情只拉一次（所有基金持仓股并集，10 批并发，限预算）
   const stockSet = new Set();
   Object.values(holdingsMap).forEach(list => list.forEach(h => { if (h.stockCode) stockSet.add(h.stockCode); }));
-  const stockPriceMap = await fetchAllStockPrices([...stockSet], startTime);
+  const allCodes = [...stockSet];
+  const stockPriceMap = await fetchAllStockPrices(allCodes, startTime);
 
-  // 4) 逐基金计算加权涨跌
+  // 3b) A 股行情源活性闸门：A 股交易时段里行情日期必然是今天，若所有 A 股行情都不是今天，
+  //     说明行情源给的是上一交易日的旧数据（休市但交易日历漏了、或行情源停更/降级）——
+  //     此时整段跳过自算口径，免得把旧涨跌当今日估算写进快照、触发误报。
+  //     港股/美股不参与判定：美股在 A 股白天天然是昨夜收盘，港股有自己的节假日
+  const feedLive = _aShareFeedLive(allCodes, stockPriceMap, today);
+  if (!feedLive) console.warn("[snapshotProfit] A 股行情非今日，跳过自算口径 t=" + el() + "ms");
+
+  // 4) 逐基金计算加权涨跌。行情源给旧数据时自算留空（rate=null），但**仍然建条目**：
+  //    下一步的数据源一（新浪）自带日期校验，它若有今日估值就该照常生效（两家源互相独立）
   for (const code of fundCodes) {
     const holdings = holdingsMap[code];
     if (!holdings || holdings.length === 0) continue;
+    if (!feedLive) { fundRateMap[code] = { rate: null, rateSina: null }; continue; }
     let totalRatio = 0, weightedChange = 0;
     for (const h of holdings) {
       const price = stockPriceMap[h.stockCode];
@@ -431,3 +475,17 @@ function _gdIsToday(gztime, todayStr) {
   const gd = String(gztime || "").trim();
   return gd.slice(0, 10) === todayStr || gd.slice(0, 5) === todayStr.slice(5);
 }
+
+// A 股行情源是否活着：持仓里有 A 股代码（6 位数字）时，要求至少一条 A 股行情日期=今天；
+// 全是港股/美股时不判定（这些市场的"最新"天然可能不是今天，如美股在 A 股白天是昨夜收盘）
+function _aShareFeedLive(codes, priceMap, todayStr) {
+  const aCodes = codes.filter(c => /^\d{6}$/.test(String(c).trim()));
+  if (aCodes.length === 0) return true;
+  return aCodes.some(c => {
+    const p = priceMap[c];
+    return !!p && p.date === todayStr;
+  });
+}
+
+// 仅供本地单测（/tmp 桩 DB）直接调提醒逻辑用，不是云函数入口（入口恒为 main）
+exports.__test = { checkRateAlerts, ALERT_DAILY_CAP, ALERT_START_MIN };

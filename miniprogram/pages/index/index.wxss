@@ -296,6 +296,9 @@
 .col-edit-btns{display:flex;gap:16rpx}
 .col-edit-btn{width:52rpx;height:52rpx;display:flex;align-items:center;justify-content:center;background:#F5F5F5;border-radius:8rpx;font-size:26rpx;color:#666}
 .col-edit-btn.disabled{opacity:.3}
+/* 提醒设置弹层的推送额度提示：额度=0 时提醒触发了也发不出去（一次性订阅，一次授权=一条） */
+.alert-quota-hint{font-size:22rpx;color:#999;line-height:1.5;margin-top:16rpx}
+.alert-quota-hint.warn{color:#E4393C}
 .col-edit-close{margin-top:24rpx;text-align:center;background:var(--primary);color:#FFF;border-radius:8rpx;padding:16rpx 0;font-size:28rpx}
 
 /* 版本更新日志 */

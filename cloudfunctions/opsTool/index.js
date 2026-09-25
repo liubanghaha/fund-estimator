@@ -291,7 +291,8 @@ exports.main = async (event) => {
       const now = Date.now();
       const _ = db.command;
 
-      // 1) 额度池：有额度 + 未退订召回（额度与双条同池，发送窗口须避开 15:30/21:30 扣费点）
+      // 1) 额度池：有额度 + 未退订召回（额度与双条同池，发送窗口须避开扣费点：
+      //    15:35 温度提醒 / 20:00-23:40 收盘小结。15:30、21:30 两个旧触发器已不存在）
       const subs = await readAll("subscriptions", 5000);
       const pool = subs.filter((s) => (!s.scene || s.scene === "closing_brief") && (s.quota || 0) > 0 && !s.recallOptOut);
 

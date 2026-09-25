@@ -101,7 +101,7 @@
         {
           "name": "snapshotTimer",
           "type": "timer",
-          "config": "0 * 9-15 * * 1-5 *"
+          "config": "0 */2 9-15 * * 1-5 *"
         }
       ]
     },
@@ -194,6 +194,11 @@
           "name": "confirmBriefTimer",
           "type": "timer",
           "config": "0 0,20,40 20-23 * * 1-5 *"
+        },
+        {
+          "name": "peAlertTimer",
+          "type": "timer",
+          "config": "0 35 15 * * 1-5 *"
         },
         {
           "name": "weeklyBriefTimer",

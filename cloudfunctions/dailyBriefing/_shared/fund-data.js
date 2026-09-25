@@ -255,10 +255,19 @@ function fetchStockPricesTencent(codes, opts = {}) {
             const curr = parseFloat(fields[3]);
             const prev = parseFloat(fields[4]);
             if (!isNaN(prev) && !isNaN(curr) && prev > 0) {
+              // fields[30]=行情时间戳，三种格式：沪深 20260924161444、港股 2026/09/25 10:02:30、
+              // 美股 2026-09-24 16:00:01。休市/停牌时它是最后一次成交时刻——调用方靠它判断
+              // 行情是不是"今天的"（休市日腾讯给的是上一交易日的涨跌，别当今日估算用）
+              const rawTs = String(fields[30] || "").replace(/\D/g, "");
+              const quoteDate = rawTs.length >= 8
+                ? `${rawTs.slice(0, 4)}-${rawTs.slice(4, 6)}-${rawTs.slice(6, 8)}`
+                : null;
               map[code] = {
                 price: curr,
                 prevClose: prev,
                 changeRate: +(((curr - prev) / prev) * 100).toFixed(2),
+                market: qtCode.slice(0, 2),   // sh|sz|hk|us
+                date: quoteDate,              // 行情所属日期 YYYY-MM-DD
               };
             }
           }
