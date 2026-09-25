@@ -174,8 +174,9 @@ async function main() {
     }
   }
 
-  console.log("\n🏁 全部测试完成，关闭连接...");
-  await mp.close();
+  console.log("\n🏁 全部测试完成，断开连接...");
+  // 只断连接：mp.close() = App.exit + Tool.close，会顺手关掉开发者工具（本脚本是 connect 上来的）
+  mp.disconnect();
 }
 
 main().catch((e) => {

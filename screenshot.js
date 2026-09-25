@@ -115,7 +115,8 @@ async function main() {
   }
 
   console.log('\n🎉 截图完成！文件保存在 vibe-coding/ 目录');
-  await miniProgram.close();
+  // 只断连接：miniProgram.close() = App.exit + Tool.close，会把开发者工具关掉
+  miniProgram.disconnect();
 }
 
 main().catch(async (err) => {

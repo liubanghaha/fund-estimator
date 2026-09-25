@@ -55,7 +55,9 @@ async function main() {
     }
   }
 
-  await miniProgram.close();
+  // 只断连接：mp.close() 的实现是 App.exit + Tool.close，会把开发者工具本身关掉
+  // （本脚本是 connect 上来的，不拥有这个实例）
+  miniProgram.disconnect();
   console.log("\ndone");
 }
 
