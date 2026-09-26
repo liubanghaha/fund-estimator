@@ -201,6 +201,13 @@ Page({
         if (c.tb != null) this._baseMarket = parseFloat(c.tb) || 0;
         else if (c.s && parseFloat(c.s.tpr)) this._baseMarket = ((parseFloat(c.s.tp) || 0) / parseFloat(c.s.tpr) * 100) || 0;
         this._tpDay = calc.formatDate(new Date(c.ts || 0)); // 缓存里的当天收益属于写入那天
+        // 分时点回种：同日/最近交易日的点直接画（0ms），跨天/非交易日的点拒绝（假日毒数据拦截）
+        const sn = c.snaps;
+        if (sn && sn.day && sn.points && sn.points.length > 20 && marketTime.isTradingDay(sn.day)
+            && (sn.day === marketTime.bjDateStr() || sn.day === marketTime.lastTradingDay())) {
+          this._profitSnapshots = sn.points.slice().sort((x, y) => x.time.localeCompare(y.time));
+          this._snapDate = sn.day;
+        }
         this._cacheApplied = true;
         this.setData({
           loading: false,
@@ -755,7 +762,10 @@ Page({
       const hasIndex = Object.values(idxMap).some(arr => arr && arr.length);
       if (hasIndex) {
         this._retryCount = 0;
-        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, tb: this._baseMarket || 0, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now(), actualDate: allDaily.length ? allDaily[allDaily.length - 1].date : "" } });
+        // 当天分时点随缓存持久化：同日再进页面，曲线从本地秒出（不等 portfolioLight）
+        const snapsForCache = (this._profitSnapshots || []).length
+          ? { day: this._snapDate || today, points: this._profitSnapshots } : undefined;
+        wx.setStorage({ key: CACHE, data: { d: allDaily, dc: dcFinal, idx: this._indexDaily, im: idxMap, ed: earliestCreate, tc: totalCost, tb: this._baseMarket || 0, s: { tp: tp.toFixed(2), tpr: parseFloat(d.todayProfitRate || 0), w, m, y, wr: weekProfitRate, mr: monthProfitRate, yr: yearProfitRate }, cal, ts: Date.now(), actualDate: allDaily.length ? allDaily[allDaily.length - 1].date : "", snaps: snapsForCache } });
       } else {
         this._retryCount = (this._retryCount || 0) + 1;
         if (this._retryCount <= 3) setTimeout(() => this._fetch(), 2000);
