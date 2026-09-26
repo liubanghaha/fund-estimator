@@ -20,7 +20,8 @@
         "pages/fund-detail/index",
         "pages/profit-detail/index",
         "pages/fund-compare/index",
-        "pages/correlation-matrix/index"
+        "pages/correlation-matrix/index",
+        "pages/review/index"
       ]
     }
   ],

@@ -1,0 +1,9 @@
+{
+  "name": "temperatureBacktest",
+  "version": "1.0.0",
+  "description": "温度公开回测：温度分桶后统计其后 N 个交易日净值表现，方法论可对账",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

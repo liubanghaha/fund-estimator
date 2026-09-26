@@ -1,0 +1,9 @@
+{
+  "name": "snapshotQuarterlyHoldings",
+  "version": "1.0.0",
+  "description": "季报持仓快照：捕获每期季报的前十大重仓股，作为经理风格漂移监测的数据底座",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

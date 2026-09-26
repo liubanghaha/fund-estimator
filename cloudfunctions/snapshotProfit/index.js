@@ -27,8 +27,11 @@ exports.main = async (event) => {
       return { code: 0, msg: isTradingDay ? "非交易时段跳过" : "非交易日跳过" };
     }
     // 涨跌提醒检测起点 09:35：9:25-9:30 只有竞价缺口、自算口径失真最大，而提醒额度很贵，
-    // 不该被开盘噪音吃掉（快照点仍从 9:25 起写，当日曲线起点不变）
-    const alertAllowed = !!force || totalMin >= ALERT_START_MIN;
+    // 不该被开盘噪音吃掉（快照点仍从 9:25 起写，当日曲线起点不变）。
+    // force 是人工补数入口，**任何时段都不真发提醒**——第一版公式 `!!dryRun || totalMin>=575`
+    // 只挡住了凌晨的 force，交易日晚上 20:30 force 验证部署时 totalMin 远超 575 照样真发
+    //（二轮审查抓到）。dryRun 任何时段都可跑检测（只算不发）
+    const alertAllowed = !!dryRun || (!force && totalMin >= ALERT_START_MIN);
 
     // 1. 读取全部持仓（field 投影 + 游标分页，旧实现 100 条/页读 87 页耗时过长）
     //    h5_ 前缀 = H5/网页版时期的历史账号（实测 1243 个 vs 小程序侧 161 个有持仓），

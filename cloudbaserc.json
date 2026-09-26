@@ -120,6 +120,34 @@
       ]
     },
     {
+      "name": "snapshotQuarterlyHoldings",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "quarterlySnapshotTimer",
+          "type": "timer",
+          "config": "0 0 4 * * 1-5 *"
+        }
+      ]
+    },
+    {
+      "name": "refreshRedemptionFees",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "redemptionFeeTimer",
+          "type": "timer",
+          "config": "0 0 5 * * 1-5 *"
+        }
+      ]
+    },
+    {
       "name": "computeFundTemperature",
       "timeout": 300,
       "runtime": "Nodejs20.19",
@@ -143,6 +171,20 @@
       "timeout": 20,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "temperatureBacktest",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "tempBacktestTimer",
+          "type": "timer",
+          "config": "0 30 20 * * 1-5 *"
+        }
+      ]
     },
     {
       "name": "computeCorrelation",

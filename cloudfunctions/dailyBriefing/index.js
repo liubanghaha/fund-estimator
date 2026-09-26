@@ -522,7 +522,12 @@ async function runPeAlerts(force, dryRun) {
   // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
   // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
   const buckets = await loadQuotaBuckets(dryRun);
-  const subs = briefRecipients(buckets, dryRun);
+  // ⚠️ PE 收件人不能复用 briefRecipients——它过滤 old>0（播报类只能走旧模板），
+  // 会把"只授权了新模板"的用户挡在外面，而 PE 恰是唯一用新模板的消息（checkPeAlerts 按
+  // quotaNew 分流），那批人恰恰是新模板的目标人群。这里直接从额度桶构建，old=0/new>0 也放行
+  const subs = Object.entries(buckets)
+    .filter(([, b]) => dryRun || b.total > 0)
+    .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new }));
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName"]);
   const byUser = {};
@@ -530,12 +535,13 @@ async function runPeAlerts(force, dryRun) {
     if (!h._openid || !h.fundCode) return;
     (byUser[h._openid] = byUser[h._openid] || []).push(h);
   });
-  // 给当天的收盘小结留 1 条额度（与播报侧「quota<2 不发」同一条规则）：温度提醒先跑，
-  // 不能把额度吃干让用户晚上收不到收盘小结。额度不足这轮不发，且**不更新基线**（peCache），
-  // 所以信号变化不会丢 —— 额度补上后（或次日）仍按原基线比对并发出
+  // 给当天的收盘小结留 1 条额度：小结只能走旧模板，所以按"PE 发送后旧模板还剩几条"算——
+  // PE 优先消费新模板：new>=1 时 old 原样保留（old=0 的用户本来收不到播报，直接放行）；
+  // 没有新额度才吃 old，那时要求 old>=2（发完剩 1 条给小结）。额度不足这轮不发，
+  // 且**不更新基线**（peCache），信号变化不会丢——额度补上后仍按原基线比对
   let heldForBrief = 0;
   const targets = subs.filter(s => byUser[s._openid]).filter(s => {
-    if (dryRun || (s.quota || 0) >= 2) return true;
+    if (dryRun || (s.quotaNew || 0) >= 1 || (s.quotaOld || 0) >= 2) return true;
     heldForBrief++;
     return false;
   });
@@ -909,7 +915,9 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
         cacheChanged = true;
       }
     });
-    if (cacheChanged) {
+    if (cacheChanged && !dryRun) {
+      // dryRun 只算不发也**不落基线**：否则手动验证一次就把当日信号消费掉，
+      // 真实那轮（15:35）比对 base===cur 不再命中，温度变化提醒静默丢失
       await db.collection("alert_settings").doc(doc._id).update({
         data: { peCache, updatedAt: Date.now() }
       }).catch(() => {});

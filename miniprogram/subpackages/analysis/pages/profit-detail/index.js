@@ -5,8 +5,8 @@ const marketTime = require("../../../../utils/market-time");
 const track = require("../../../../utils/track.js");
 
 // v3：周/月/年收益改为「含当天」口径（旧算法写的周/月/年数字直接作废重算），并与首页当天收益对齐
-const CACHE = "profit_detail_cache_v3";
-const INTRADAY_CACHE_PREFIX = "intraday_v2_";
+const CACHE = "profit_detail_cache_v4"; // v4：丢弃旧版缓存的假日假快照点（服务端已删源数据，手机本地缓存必须强制重拉一次）
+const INTRADAY_CACHE_PREFIX = "intraday_v3_"; // v3：作废旧版缓存的垃圾序列（09-26 上午旧码把假日假数据画进缓存钉了一整个自然日）
 const IDX_HIST_CACHE = "idx_hist_cache";
 const chartUtil = require("../../../../utils/chart");
 const subscribe = require("../../../../utils/subscribe");
@@ -76,7 +76,9 @@ Page({
     try { wx.setStorageSync("jtbd_survey_done", Date.now()); } catch (e) { /* ignore */ }
   },
   onJtbdAnswer(e) {
-    const answer = e.currentTarget.dataset.answer;
+    const raw = e.currentTarget.dataset.answer;
+    // 「其他」单独记 other（选项文案可能微调，埋点值保持稳定可统计）
+    const answer = raw === "其他" ? "other" : raw;
     track.track("jtbd_survey", { answer });
     this._jtbdDone();
   },
@@ -99,7 +101,7 @@ Page({
     if (options && options.src === "push") {
       try {
         if (!wx.getStorageSync("jtbd_survey_done")) {
-          this.setData({ showJtbdSurvey: true, jtbdOptions: ["看盘中估值", "缓解看盘焦虑", "记录和管理持仓"] });
+          this.setData({ showJtbdSurvey: true, jtbdOptions: ["看盘中估值", "缓解看盘焦虑", "记录和管理持仓", "其他"] });
         }
       } catch (e) { /* ignore */ }
     }
@@ -157,6 +159,8 @@ Page({
   onUnload() {
     this._destroyed = true;
     this._stopPolling();
+    // 动画期顺延的重绘定时器：页面销毁后不再触发（避免死页面上跑 canvas 查询重试）
+    if (this._animRedrawTimer) { clearTimeout(this._animRedrawTimer); this._animRedrawTimer = null; }
   },
 
   onPullDownRefresh() {
@@ -169,11 +173,16 @@ Page({
     let cacheUsable = true;
     try {
       const c = wx.getStorageSync(CACHE);
-      // 开盘后不认隔日缓存：里面存的"当天收益/日历今日格"顶着"今日"的名头，隔日就是上一交易日的数。
-      // 只跳过"应用缓存"这一步、不提前 return——尾部还要走 _quickFirstPaint 的轻量接口补今日值，
-      // 否则首屏会一直等到最重的全年聚合返回。休市相位（周末/节假日/9:25 前）照认，那本就是最近一份有效数据
-      cacheUsable = !c || marketTime.cacheIsToday(c.ts);
-      if (cacheUsable && c && c.d && c.d.length && c.idx && c.idx.length) {
+      // 跨天缓存也先上屏（体感优化，2026-09-26 用户实测"冷启动停顿 1-2s 像网络慢"）：
+      // 此前隔日缓存整份跳过，冷启动空白等全年聚合 1~2.5s。周/月/年、日历、图都是历史累计，
+      // 跨天数据依然正确；跨天污染由 _tpDay + _withTodayClose 的既有守卫拦截（今日格/今日收盘点
+      // 不认隔日数）。唯一不能顶着"今日"名头的是当日收益卡——按相位决定：
+      // 休市（displayDay=最近交易日=缓存日）照显；盘中/盘后（displayDay=今天）置 "--" 待 _fetch 覆盖
+      const phase = marketTime.marketPhase();
+      const cacheToday = marketTime.cacheIsToday(c && c.ts);
+      const showCachedToday = cacheToday || phase === "closed";
+      cacheUsable = !!c && !!c.d && c.d.length && !!c.idx && c.idx.length && !!c.s;
+      if (cacheUsable) {
         this._allDaily = c.d;
         this._dailyChange = c.dc;
         // 当日条目只可能在真实交易日注入成功后才存在，属合法数据，留待 _fetch() 刷新验证
@@ -196,11 +205,13 @@ Page({
         this.setData({
           loading: false,
           totalCost: c.tc,
-          todayProfit: c.s.tp, todayProfitRate: c.s.tpr,
+          todayProfit: showCachedToday ? c.s.tp : "--",
+          todayProfitRate: showCachedToday ? c.s.tpr : "--",
+          //（卡片就绪标志）缓存直出的收益是真实冻结值，末端对齐自此生效
           ...this._periodSummary(c.s.tpr, c.s.tp),
           earliestDate: c.ed || c.d[0] ? (c.ed || c.d[0].date) : "",
           availableMonths: c.cal.months || [], selectedMonth: c.cal.sm || "",
-          availableYears: c.cal.years || [], selectedYear: c.cal.sy || "",
+          availableYears: c.cal.yrs || [], selectedYear: c.cal.sy || "",
           dayCalendar: c.cal.days || [], monthCalendar: c.cal.mons || [], yearData: c.cal.yrs || [],
         });
         setTimeout(() => this._draw(), 150);
@@ -232,10 +243,23 @@ Page({
     api.portfolioLight().then((r) => {
       const d = r.result && r.result.data;
       if (!d) return;
-      // 非交易时段、以及盘内但当天还没有快照点时，portfolioLight 回 todayProfitRate:null
+      // 非交易时段：portfolioLight 回退"最近交易日的分钟点"（snapDate 标注所属日）。
+      // 只补画当天曲线，绝不动收益数值——冻结期缓存里的收益是正确值，那套
+      // inTrading===false / todayProfitRate==null 守卫就是防"非交易时段把缓存洗成 0"
+      // （profit-chart-card-mismatch 的教训）。此前这条路径当天曲线整段空白。
+      if (d.inTrading === false) {
+        if (d.intradaySnapshots && d.intradaySnapshots.length && !(this._profitSnapshots || []).length) {
+          this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
+          this._snapDate = d.snapDate || "";
+          this._updateAsOf();
+          this._draw();
+        }
+        return;
+      }
+      // 盘内但当天还没有快照点时，portfolioLight 回 todayProfitRate:null
       // （无真实数据语义）——直接应用会把缓存里正确的收益值洗成 0，
       // 并连锁污染图例与曲线末端对齐点（末端被对齐到 0 后画在 Y 轴顶端外，视觉上成"翘尾"）
-      if (d.inTrading === false || d.todayProfitRate == null) return;
+      if (d.todayProfitRate == null) return;
       if (d.intradaySnapshots && d.intradaySnapshots.length) {
         this._profitSnapshots = d.intradaySnapshots.slice().sort((a, b) => a.time.localeCompare(b.time));
       }
@@ -243,6 +267,7 @@ Page({
       const rate = parseFloat(d.todayProfitRate || 0);
       // 金额优先用快照点里存的（写入时用未舍入收益率算），没有才用「基准市值 × 2 位收益率」
       const tpSrv = d.todayProfit != null ? (parseFloat(d.todayProfit) || 0).toFixed(2) : null;
+      this._cardReady = true;
       this.setData({ loading: false, todayProfitRate: rate, todayProfit: tpSrv != null ? tpSrv : this._amountFromRate(rate) });
       this._updateAsOf();
       this._draw();
@@ -456,6 +481,7 @@ Page({
       const hBase = this._baseMarketOfCache(pc);
       if (hBase > 0) this._baseMarket = hBase;
       this._tpDay = calc.formatDate(new Date(pc.ts)); // 这份当天收益属于首页取数那天
+      this._cardReady = true;
       this.setData({
         todayProfit: pc.todayProfit, todayProfitRate: pc.todayProfitRate,
         ...this._periodSummary(pc.todayProfitRate, pc.todayProfit),
@@ -596,7 +622,8 @@ Page({
       const idxMap = {};
       const idxTasks = this.data.availableIndices.map(i => this._idx(i.code, historyDays));
       const [pfRes, ...idxResults] = await Promise.all([
-        api.getPortfolio(historyDays),
+        // withAnalysis:false：收益页不用健康分/行业穿透/温度分布，跳过省一段服务端计算
+        api.getPortfolio(historyDays, { withAnalysis: false }),
         ...idxTasks,
       ]);
     this.data.availableIndices.forEach((i, n) => { idxMap[i.code] = idxResults[n] || []; });
@@ -613,6 +640,15 @@ Page({
         return;
       }
       const d = pfRes.result.data;
+      const today = calc.formatDate(now);
+
+      // 跨 9:25：交易日开盘前页面预载的是"上一交易日"的回退点（_snapDate 标注归属日），
+      // 当天新点开始产生后旧日序列必须让位——否则下面的点数守卫（newSnaps >= 旧值才替换）
+      // 会让旧日曲线一直钉到下午点数追平为止（二轮审查 P1）
+      if (this._snapDate && this._snapDate !== today) {
+        this._profitSnapshots = [];
+        this._snapDate = "";
+      }
 
       // getPortfolio 的日内快照为空（当天快照上游尚未写入）时不清空已有数据——
       // 避免与 _quickFirstPaint 竞态把已就绪的今日快照打回空；有数据时取更长的一份（更新）
@@ -621,6 +657,7 @@ Page({
         : [];
       if (newSnaps.length >= (this._profitSnapshots || []).length) {
         this._profitSnapshots = newSnaps;
+        this._snapDate = d.snapDate || "";
       }
 
       const hs = d.holdings || [];
@@ -628,7 +665,6 @@ Page({
 
       const totalCost = hs.reduce((s, h) => s + h.buyPrice * h.shares, 0);
       const navMap = d.navHistoryMap || {};
-      const today = calc.formatDate(now);
 
       // 日变动
       const dc = {};
@@ -686,6 +722,7 @@ Page({
       const weekProfitRate = summ.weekProfitRate, monthProfitRate = summ.monthProfitRate, yearProfitRate = summ.yearProfitRate;
       const w = summ.weekProfit, m = summ.monthProfit, y = summ.yearProfit;
 
+      this._cardReady = true; // 卡片值为服务端口径，末端对齐自此生效
       this._allDaily = allDaily;
       this._dailyChange = dcFinal;
       this._indexDaily = idxMap[this.data.compareIndex] || [];
@@ -1092,6 +1129,9 @@ Page({
   // 卡片与快照值一致时（差异 < 0.02）不生效，保持曲线原生走势。
   // 不可变：传入数组可能是 _todayCaches 的缓存对象，复制末端点生成新数组返回，不动缓存
   _alignEndWithOfficial(result) {
+    // 卡片值未就绪（页面初始 "0.00"）时不做末端对齐：否则无缓存冻结首屏的曲线末端
+    // 会被对齐到 0.00%（与 _quickFirstPaint "不动数值"守卫同类错误，方向相反）
+    if (!this._cardReady) return result;
     if (!result || !result.length) return result;
     const rate = parseFloat(this.data.todayProfitRate);
     if (!(rate > -100 && rate < 100)) return result;
@@ -1168,14 +1208,16 @@ Page({
     const trading = this._isTradingNow();
     const memCache = this._todayCaches[indexCode];
     if (memCache && memCache.data && memCache.data.length > 0
+        && this._todayCacheFresh(memCache)
         && (trading || this._cacheCoversSession(memCache.data))) {
       this._renderToday(w, h, memCache.data, compareLabel);
       return;
     }
 
     const storageData = this._loadTodayCache(indexCode);
-    if (storageData && (trading || this._cacheCoversSession(storageData))) {
-      this._renderToday(w, h, storageData, compareLabel);
+    if (storageData && this._todayCacheFresh(storageData)
+        && (trading || this._cacheCoversSession(storageData.data))) {
+      this._renderToday(w, h, storageData.data, compareLabel);
       return;
     }
 
@@ -1216,9 +1258,26 @@ Page({
       const rh = res[0].height || h;
       this._realW = rw;
       this._realH = rh;
-      // 进场动画只在"首次出图/切回今日/换对比指数"时播放，30s 轮询刷新不重播（否则每 30 秒重画一次很烦）
-      const animate = !this._todayAnimated;
-      if (animate) this._todayAnimated = true;
+      // 进场动画只在"首次出图/切回今日/换对比指数"时播放，30s 轮询刷新不重播（否则每 30 秒重画一次很烦）。
+      // 空数据（3s 等待截止时的兜底渲染）不消耗动画首播权——否则真数据晚到后的绘制变成
+      // 无动画静态图，首次进入"曲线不是慢慢画出来的"（2026-09-26 用户实测，部署后冷启动必现）
+      const animate = !this._todayAnimated && data.length > 2;
+      if (animate) {
+        this._todayAnimated = true;
+        this._animUntil = Date.now() + 1250; // 动画在飞窗口（duration 1200 + 余量）
+      }
+      // 动画播放中收到静态重绘（如 _fetch 完成后的全量重绘）：顺延到动画播完再画——
+      // 否则首次进入的渐进动画被无动画重绘拦腰截断，视觉上"曲线不是慢慢画出来的"。
+      // 与 onSelectIndex 的"等动画播完(1.2s)再后台补最新分钟"是同一类问题（2026-09-26 用户实测）
+      if (!animate && this._animUntil && Date.now() < this._animUntil) {
+        if (!this._animRedrawTimer) {
+          this._animRedrawTimer = setTimeout(() => {
+            this._animRedrawTimer = null;
+            this._drawToday();
+          }, this._animUntil - Date.now() + 30);
+        }
+        return;
+      }
       chartUtil.drawIntradayChartAnimated(res[0].node, {
         w: rw, h: rh, data,
         labelA: '我的收益', labelB: compareLabel,
@@ -1238,20 +1297,35 @@ Page({
   _saveTodayCache(data) {
     const indexCode = this.data.compareIndex || '000001';
     const today = calc.formatDate(new Date());
-    const cache = { date: today, data, ts: Date.now() };
+    // 源指纹：序列由哪一批快照点构建。加载时与当前快照数不符 → 判定过期重建，
+    // 防止"底层快照日已换（如服务端回退日修正）而画好的序列被缓存钉死一整个自然日"
+    const cache = { date: today, data, ts: Date.now(), src: { n: (this._profitSnapshots || []).length } };
     this._todayCaches = this._todayCaches || {};
     this._todayCaches[indexCode] = cache;
     try { wx.setStorageSync(INTRADAY_CACHE_PREFIX + indexCode, cache); } catch (e) {}
   },
 
+  // 缓存有效性（严格）：日期是今天，且"构建时的源快照点数"与当前一致。
+  // 快照未就绪（n=0）时也一律不放行——此前的 n=0 放行让中毒缓存先渲染出去，
+  // 而指数分时又因"缓存已覆盖收盘"不再拉取，平线被钉死一整个自然日（2026-09-26 实测）。
+  // 代价是非交易时段首次进入多一次轻量指数请求，换正确性
+  _todayCacheFresh(cache) {
+    if (!cache || !cache.data || !cache.data.length) return false;
+    if (cache.date !== calc.formatDate(new Date())) return false;
+    if (!cache.src) return false;
+    return cache.src.n === (this._profitSnapshots || []).length;
+  },
+
   _loadTodayCache(indexCode) {
     this._todayCaches = this._todayCaches || {};
-    if (this._todayCaches[indexCode]) return null;
+    // 返回缓存对象（含 src 指纹/date），调用方用 _todayCacheFresh 校验后取 .data 渲染——
+    // 此前返回裸数组导致对象形状校验恒 false、storage 秒开分支成死代码
+    if (this._todayCaches[indexCode]) return this._todayCaches[indexCode];
     try {
       const cached = wx.getStorageSync(INTRADAY_CACHE_PREFIX + indexCode);
       if (cached && cached.date === calc.formatDate(new Date()) && cached.data && cached.data.length > 0) {
         this._todayCaches[indexCode] = cached;
-        return cached.data;
+        return cached;
       }
     } catch (e) {}
     return null;
@@ -1266,11 +1340,11 @@ Page({
     const code = this.data.compareIndex || '000001';
     this._todayCaches = this._todayCaches || {};
     const mem = this._todayCaches[code];
-    if (mem && mem.data && mem.data.length) return !this._cacheCoversSession(mem.data);
+    if (mem && mem.data && mem.data.length) return !this._todayCacheFresh(mem) || !this._cacheCoversSession(mem.data);
     try {
       const cached = wx.getStorageSync(INTRADAY_CACHE_PREFIX + code);
-      if (cached && cached.date === calc.formatDate(new Date()) && cached.data && cached.data.length) {
-        return !this._cacheCoversSession(cached.data);
+      if (cached && cached.data && cached.data.length) {
+        return !this._todayCacheFresh(cached) || !this._cacheCoversSession(cached.data);
       }
     } catch (e) {}
     return true;

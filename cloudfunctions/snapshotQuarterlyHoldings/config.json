@@ -1,0 +1,12 @@
+{
+  "runtime": "Nodejs20.19",
+  "timeout": 300,
+  "concurrency": 1,
+  "triggers": [
+    {
+      "name": "quarterlySnapshotTimer",
+      "type": "timer",
+      "config": "0 0 4 * * 1-5 *"
+    }
+  ]
+}

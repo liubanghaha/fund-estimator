@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const https = require("https");
 const db = cloud.database();
+const _ = db.command;
 
 // 拉取基金前十大持仓股（本季度）
 async function fetchHoldings(fundCode) {
@@ -99,19 +100,61 @@ exports.main = async (event) => {
   const codes = fundCodes.slice(0, 20);
 
   try {
-    // 1. 并行拉取每只基金的持仓股（限 10 只/批 + 100ms，避免用户传大量基金时瞬时并发被风控）
+    // 1. 持仓来源：温度表 detailPEs 优先（凌晨任务已按季报备好，零外网、周末也可用），
+    //    缺的基金才走东财实时兜底——此前每只基金都现拉一次季报（12 只 ≈ 12 次东财请求），
+    //    资产分析每次进入都慢（2026-09-26 用户实测）。反解口径与东财实时抓取一致：
+    //    按代码去重 → 截取前十大 → 剔除 <0.1% 的零星持仓
+    const holdingsMap = {};   // fundCode → [{stockCode, stockName, navRatio}]
+    const bjToday = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+    const tempMap = {};
+    try {
+      for (let i = 0; i < codes.length; i += 100) {
+        const res = await db.collection("fund_temperatures")
+          .where({ fundCode: _.in(codes.slice(i, i + 100)), date: bjToday })
+          .field({ fundCode: true, detailPEs: true })
+          .get();
+        (res.data || []).forEach((t) => {
+          if (t.detailPEs && t.detailPEs.length) tempMap[t.fundCode] = t.detailPEs;
+        });
+      }
+      // 凌晨任务偶发漏跑的基金逐只取最新一条温度（.detailPEs 即最近一期季报持仓）
+      const missTemp = codes.filter((c) => !tempMap[c]);
+      for (const c of missTemp) {
+        try {
+          const res = await db.collection("fund_temperatures")
+            .where({ fundCode: c }).orderBy("date", "desc").limit(1)
+            .field({ fundCode: true, detailPEs: true })
+            .get();
+          const t = (res.data || [])[0];
+          if (t && t.detailPEs && t.detailPEs.length) tempMap[c] = t.detailPEs;
+        } catch (e) { /* 单只失败走兜底 */ }
+      }
+      const norm = (detailPEs) => {
+        const seen = new Set();
+        const rows = [];
+        (detailPEs || []).forEach((p) => {
+          if (!p || !p.code || seen.has(p.code)) return;
+          seen.add(p.code);
+          rows.push({ stockCode: p.code, stockName: p.name, navRatio: p.ratio || 0 });
+        });
+        return rows.slice(0, 10).filter((r) => r.navRatio >= 0.1);
+      };
+      Object.keys(tempMap).forEach((c) => { holdingsMap[c] = norm(tempMap[c]); });
+    } catch (e) { console.warn("[computeCorrelation] 温度表持仓读取失败，全部走实时兜底:", e.message); }
+
+    // 2. 温度表没有的基金并行拉东财（限 10 只/批 + 100ms，避免瞬时并发被风控）
+    const missing = codes.filter((c) => !holdingsMap[c] || holdingsMap[c].length === 0);
     const CONCURRENT = 10;
-    const allHoldings = [];
-    for (let i = 0; i < codes.length; i += CONCURRENT) {
-      const batch = codes.slice(i, i + CONCURRENT);
+    for (let i = 0; i < missing.length; i += CONCURRENT) {
+      const batch = missing.slice(i, i + CONCURRENT);
       const results = await Promise.all(batch.map(async (code) => {
         try {
           const list = await fetchHoldings(code);
           return { code, list };
         } catch (e) { return { code, list: [] }; }
       }));
-      allHoldings.push(...results);
-      if (i + CONCURRENT < codes.length) {
+      results.forEach(({ code, list }) => { if (list.length > 0) holdingsMap[code] = list; });
+      if (i + CONCURRENT < missing.length) {
         await new Promise(r => setTimeout(r, 100));
       }
     }
@@ -120,7 +163,8 @@ exports.main = async (event) => {
     const stockFundMap = {};   // stockCode → [{fundCode, fundName, navRatio}]
     const fundNames = {};      // for display (we get names from event)
 
-    allHoldings.forEach(({ code, list }) => {
+    Object.keys(holdingsMap).forEach((code) => {
+      const list = holdingsMap[code];
       fundStockMap[code] = list;
       list.forEach(h => {
         if (!stockFundMap[h.stockCode]) stockFundMap[h.stockCode] = [];

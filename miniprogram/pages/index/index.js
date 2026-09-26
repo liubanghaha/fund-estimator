@@ -341,6 +341,7 @@ Page({
     const userInfo = wx.getStorageSync("userInfo");
     if (userInfo && userInfo.loggedIn) {
       this._loadPortfolio();
+      this._warmCloudFns();
       return;
     }
     this._stopPolling();
@@ -354,6 +355,27 @@ Page({
         this.setData({ dataReady: true, loadError: this.data.holdings.length === 0 });
       }
     });
+  },
+
+  // 会话级云函数预热（每次启动只发一轮）：把用户常走路径（收益页/详情页/资产分析/复盘中心）
+  // 依赖的云函数提前打热。每个函数的会话首调都有 1-2s 冷启动，此前用户每进一个新页面
+  // 就撞上一次（2026-09-26 "停顿 1-2s 像网络慢"的真正大头）。全部 fire-and-forget，
+  // 与首页自身加载并行，冷启动成本落进浏览首页的时间里；调用量约 +5 次/会话，可忽略
+  _warmCloudFns() {
+    const app = getApp();
+    if (app._fnsWarmed) return;
+    app._fnsWarmed = true;
+    api.portfolioLight().catch(() => {});                 // 收益页绿线
+    wx.cloud.callFunction({ name: "temperatureBacktest" }).catch(() => {}); // 复盘中心·温度回测（读缓存，轻）
+    try {
+      const pc = wx.getStorageSync("portfolio_cache") || {};
+      const codes = [...new Set((pc.holdings || []).map((h) => h.fundCode).filter(Boolean))];
+      if (codes.length > 0) {
+        api.fetchFundEstimate(codes[0]).catch(() => {});  // 详情页/复盘中心轻量估值路径
+        api.holdingCheck(codes[0]).catch(() => {});       // 详情页/复盘中心持仓检查
+      }
+      if (codes.length >= 2) api.computeCorrelation(codes.slice(0, 12)).catch(() => {}); // 资产分析重合度
+    } catch (e) { /* ignore */ }
   },
 
   _loadPortfolio() {
@@ -371,6 +393,7 @@ Page({
       // （改持仓/加减仓后总市值不更新）。必须一并清掉内存缓存，force_refresh 才真正生效。
       this._portfolioCache = null;
       this._cacheTs = 0;
+      this._fullLoaded = false; // 新持仓不在"上一轮数据"里，轮询必须先走一次全量补 60 日位置
     }
     // 交易日时钟判缓存新鲜度：盘中 30s 短 TTL；盘后净值发布(actualDate=今天)即冻结；
     // 周末/节假日/早盘全天免拉（数据只在交易日变化）
@@ -483,6 +506,12 @@ Page({
 
   onTempInfoTap() {
     this.setData({ showTempInfo: !this.data.showTempInfo });
+  },
+
+  // 温度公开回测页（从温度说明浮层进入）
+  onTempBacktest() {
+    this.setData({ showTempInfo: false });
+    wx.navigateTo({ url: "/subpackages/analysis/pages/review/index?tab=temp" });
   },
 
   // 列顺序调整入口：原为「长按表头」隐藏手势，现收进批量模式顶部栏的「列设置」
@@ -692,12 +721,30 @@ Page({
     });
   },
 
-  async fetchPortfolio() {
+  async fetchPortfolio(opts = {}) {
     try {
-      const res = await api.getPortfolio();
+      // 轻量模式（withNav60:false）：跳过每只基金 3 页的 60 日净值历史——那是给"60 日位置"
+      // 信号用的，日频不变；30 秒轮询用它可省约 3/4 的东财上游请求，全平台一起变快
+      const res = await api.getPortfolio(null, opts && opts.withNav60 === false ? { withNav60: false } : {});
       if (res.result && res.result.code === 0) {
         const d = res.result.data || {};
+        // 成功即更新 _lastFetch：盘后补刷的 30 分钟节流和 onShow 的 30 秒去重都吃这个时间戳
+        //（此前只有下拉刷新/失败清零会写，导致盘后补刷实际每 30 秒一次——二轮审查 P1）
+        this._lastFetch = Date.now();
+        if (!(opts && opts.withNav60 === false)) this._fullLoaded = true;
         let holdings = (d.holdings || []);
+        if (opts && opts.withNav60 === false) {
+          // 轻量轮询不回传 60 日位置信号：从上一轮完整数据带回（估标识/温度/费率档不受影响）
+          const prev = new Map((this.data.holdings || []).map((h) => [h.fundCode, h]));
+          holdings.forEach((h) => {
+            const p = prev.get(h.fundCode);
+            if (p) {
+              if (h.navHigh == null) h.navHigh = p.navHigh;
+              if (h.navLow == null) h.navLow = p.navLow;
+              if (h.position == null) h.position = p.position;
+            }
+          });
+        }
         holdings = this.formatHoldings(holdings, d.totalAmount);
         holdings = this.sortHoldings(holdings);
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
@@ -780,11 +827,15 @@ Page({
     }
   },
 
-  // 静默后台刷新：缓存已渲染，后台拉取最新数据完成后更新界面，不显示下拉动画/loading
+  // 静默后台刷新：缓存已渲染，后台拉取最新数据完成后更新界面，不显示下拉动画/loading。
+  // 轮询走轻量模式（不带 60 日净值历史）：位置信号日频不变，从上一轮数据带回。
+  // ⚠️ 会话首次拉取必须全量——隔日冷启动时没有"上一轮数据"可回填，轻量会让
+  // "60 日位置/距一年高点"两列全天空白（2026-09-26 二轮审查 P1）
   _silentRefresh() {
     if (this._silentFetching) return;
     this._silentFetching = true;
-    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
+    const light = this._fullLoaded === true;
+    Promise.all([this.fetchPortfolio(light ? { withNav60: false } : {}), this.fetchIndices()]).finally(() => {
       this._silentFetching = false;
     });
   },
@@ -814,6 +865,14 @@ Page({
   _startPhaseWatch() {
     this._stopPhaseWatch();
     this._phaseTimer = setInterval(() => {
+      // 盘后补刷：净值 19:00 后陆续公布，页面一直开着时每 30 分钟静默刷一次（轻量），
+      // "净值已公布 X/N 只"进度行和当日收益才不会停在 15:00 的旧值
+      if (this.data.batchMode) return;
+      if (marketTime.marketPhase() === "afterClose" && this.data.holdings.length
+        && Date.now() - (this._lastFetch || 0) > 30 * 60 * 1000) {
+        this._silentRefresh();
+        return;
+      }
       if (!isTradingTime()) return;
       this._stopPhaseWatch();
       this._loadPortfolio();
@@ -878,8 +937,35 @@ Page({
         // 占比/距一年高点（新列预计算）
         _ratioText: total > 0 && mv > 0 ? (mv / total * 100).toFixed(1) + '%' : '--',
         _ddText: (hi > 0 && cn > 0) ? ((cn - hi) / hi * 100).toFixed(1) + '%' : '--',
+        _feeBadge: this._feeBadge(h),
       };
     });
+  },
+
+  // 费率阶梯轻标：持有天数距下一档费率边界 ≤14 天且下一档更低时，提示"X天后赎回费 A%→B%"。
+  // 数据来自 fund_redemption_fees 缓存（getPortfolio 挂 feeTiers）；buyDate/费率缺失不显示；
+  // 多笔合并行取最早 buyDate（费率档跟买入日走，先进先出口径下最早那笔最先跨档）
+  _feeBadge(h) {
+    if (!h.feeTiers || !h.feeTiers.length) return null;
+    let buy = h.buyDate;
+    if (h._members && h._members.length > 1) {
+      buy = h._members.reduce((min, m) => (m.buyDate && (!min || m.buyDate < min)) ? m.buyDate : min, "");
+    }
+    if (!buy) return null;
+    const held = Math.floor((Date.now() - new Date(buy + "T00:00:00").getTime()) / 86400000);
+    if (!(held >= 0)) return null;
+    const tiers = h.feeTiers;
+    let idx = -1;
+    for (let i = 0; i < tiers.length; i++) {
+      if (tiers[i].maxDays == null || held < tiers[i].maxDays) { idx = i; break; }
+    }
+    if (idx === -1) return null; // 已在最后一档（长期持有费率）
+    const cur = tiers[idx], next = tiers[idx + 1];
+    if (!next || cur.maxDays == null) return null;
+    if (typeof cur.rate !== 'number' || typeof next.rate !== 'number' || next.rate >= cur.rate) return null;
+    const days = cur.maxDays - held;
+    if (days < 1 || days > 14) return null;
+    return `${days}天后赎回费 ${cur.rate}%→${next.rate}%`;
   },
 
   sortHoldings(list, field, order) {
@@ -1112,10 +1198,11 @@ Page({
   // 悬浮＋：只放"操作"。资产分析与持仓体检同类（组合级诊断），挪到「我的」挨着体检
   onFabTap() {
     wx.showActionSheet({
-      itemList: ["新增持仓", "加减仓"],
+      itemList: ["新增持仓", "加减仓", "复盘中心"],
       success: (r) => {
         if (r.tapIndex === 0) this.onAdd();
         else if (r.tapIndex === 1) this.onAdjust();
+        else if (r.tapIndex === 2) this.onReview();
       },
     });
   },
@@ -1243,6 +1330,11 @@ Page({
     }
     const pf2 = this.data.activePlatform;
     wx.navigateTo({ url: "/pages/adjust-holding/index" + (pf2 && pf2 !== "all" && pf2 !== "summary" ? `?platform=${encodeURIComponent(pf2)}` : "") });
+  },
+
+  // 复盘中心（回本中心 + 温度回测的整合入口，默认打开回本 tab）
+  onReview() {
+    wx.navigateTo({ url: "/subpackages/analysis/pages/review/index" });
   },
 
   onCorrelation() {

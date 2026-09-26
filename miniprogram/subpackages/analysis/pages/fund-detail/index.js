@@ -16,7 +16,7 @@ Page({
     // 涨跌幅文本（两位小数，WXML 不能用方法格式化）；由 updateDisplay 统一重算
     estimatedChangeRateText: "--", displayChangeRateText: "--",
     actualNav: "", actualDate: "", actualChangeRate: null,
-    navHistory: [], displayHistory: [], displayCount: 30,
+    navHistory: [], displayHistory: [], displayCount: 5,
     todayReturn: null, weekReturn: null, monthReturn: null,
     threeMonthReturn: null, sixMonthReturn: null, yearReturn: null, threeYearReturn: null,
     profile: null, manager: null, holdings: [], quarterLabel: "", prevDataIncomplete: false,
@@ -60,6 +60,49 @@ Page({
     }
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     this.setData({ fundCode: options.fundCode, fundName });
+    // 持仓态预填（防头部闪跳）：checkHolding 比概览晚到一拍，首帧会先渲染"单位净值"卡、
+    // 约一秒后跳成"当日收益"卡。首页的 portfolio_cache 是同步本地存储、逐笔带 getPortfolio
+    // 预计算字段——命中即按它预置持仓态（合计口径：金额逐笔相加、成本=市值−累计收益），
+    // checkHolding/enrichHoldingData 回来后无缝覆盖。缓存超过 3 天不预填（防闪现陈旧数值）
+    try {
+      const pc = wx.getStorageSync("portfolio_cache") || {};
+      const mine = (pc.holdings || []).filter((h) => h && h.fundCode === options.fundCode);
+      const num = (v) => parseFloat(v) || 0;
+      if (mine.length > 0 && pc.ts && Date.now() - pc.ts < 3 * 86400000) {
+        // 当日收益只在缓存属于今天时预填：隔日缓存的 todayProfit 是那一天的口径，
+        // 当"今日收益"展示是错语义（份额/成本/累计收益不受影响）
+        const pcIsToday = marketTime.bjDateStr() === calc.formatDate(new Date(pc.ts));
+        const shares = mine.reduce((s, h) => s + num(h.shares), 0);
+        const marketValue = mine.reduce((s, h) => s + num(h.marketValue), 0);
+        const totalReturn = mine.reduce((s, h) => s + num(h.totalReturn), 0);
+        const todayProfit = mine.reduce((s, h) => s + num(h.todayProfit), 0);
+        const cost = marketValue - totalReturn;
+        const buyPrice = shares > 0 && cost > 0 ? cost / shares : num(mine[0].buyPrice);
+        this._rawHoldings = mine;
+        this._rawHolding = { ...mine[0], shares, buyPrice, marketValue, holdingReturn: totalReturn };
+        this.setData({
+          hasHolding: true,
+          holdingId: mine[0]._id,
+          holdingRecords: mine.map((r) => ({
+            id: r._id,
+            platform: r.platform || "未分配",
+            group: r.group || "",
+            shares: (num(r.shares) || num(r.amount) || 0).toFixed(2),
+            marketValue: num(r.marketValue).toFixed(2),
+            buyPrice: (num(r.buyPrice) || num(r.nav) || 0).toFixed(4),
+            holdingReturn: num(r.holdingReturn).toFixed(2),
+          })),
+          holdingData: {
+            shares: shares.toFixed(2),
+            buyPrice: buyPrice.toFixed(4),
+            marketValue: marketValue.toFixed(2),
+            todayProfit: pcIsToday ? todayProfit.toFixed(2) : "",
+            totalReturn: totalReturn.toFixed(2),
+            totalReturnRate: cost > 0 ? ((totalReturn / cost) * 100).toFixed(2) : "0.00",
+          },
+        });
+      }
+    } catch (e) { /* ignore */ }
     // 导航栏标题用"基金名(代码)"：微信搜一搜按页面标题收录，基金名+代码是搜索主词
     wx.setNavigationBarTitle({ title: `${fundName}(${options.fundCode})` });
     this._firstLoad = true;
@@ -210,8 +253,8 @@ Page({
             if (d.history && d.history.length > 0) {
               this.setData({
                 navHistory: d.history,
-                displayHistory: d.history.slice(0, 30),
-                displayCount: 30,
+                displayHistory: d.history.slice(0, 5),
+                displayCount: 5,
                 actualNav: this.data.actualNav || (d.history[0].nav != null ? d.history[0].nav.toFixed(4) : ""),
                 actualDate: d.history[0].date,
                 actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (d.history[0].changeRate || 0),
@@ -309,8 +352,8 @@ Page({
       }]);
       this.setData({
         navHistory: merged,
-        displayHistory: merged.slice(0, 30),
-        displayCount: 30,
+        displayHistory: merged.slice(0, 5),
+        displayCount: 5,
       });
       this.calcReturns(merged);
       // 缓存断档（隔了多个交易日才进）→ 单点合并补不齐中间日期，后台全量补拉历史
@@ -361,8 +404,8 @@ Page({
         actualDate: cached.actualDate, displayChangeRate: cacheToday ? cached.displayChangeRate : null,
         peTemp: cached.peTemp || null,
         navHistory: cached.history,
-        displayHistory: (cached.history || []).slice(0, 30),
-        displayCount: 30,
+        displayHistory: (cached.history || []).slice(0, 5),
+        displayCount: 5,
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cacheToday ? (cached.holdingData || null) : null,
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
@@ -482,7 +525,10 @@ Page({
           const gRes = await api.watchlistGetGroups();
           if (gRes.result && gRes.result.code === 0) groups = gRes.result.data || [];
         } catch (e) { /* 忽略 */ }
-        const itemList = [...groups, "不分组", "新建分组"];
+        // ActionSheet 的 itemList 上限 6 条：分组多于 4 个时列表会变成 7+ 条，
+        // 微信直接 fail 且无 fail 提示——表现就是"加自选点了没反应"（实测 5 个分组即触发）。
+        // 超出部分截断，用户仍可走「新建分组」；上限是微信组件限制，全量分组选择器需自定义弹层
+        const itemList = [...groups.slice(0, 4), "不分组", "新建分组"];
         wx.showActionSheet({
           itemList,
           success: async (r) => {
@@ -523,13 +569,9 @@ Page({
   },
 
   updateDisplay() {
-    const now = new Date();
-    const day = now.getDay();
-    const hour = now.getHours();
-    const min = now.getMinutes();
-    const isTrading = day >= 1 && day <= 5 &&
-      (hour > 9 || (hour === 9 && min >= 0)) &&
-      (hour < 15 || (hour === 15 && min <= 30));
+    // isTrading 用 marketPhase（节假日表 + 9:25 边界，与全站口径一致）：
+    // 旧写法"周几 && 9:00–15:30"用设备时间、不查节假日——工作日休市会把估算框照常显示出来
+    const isTrading = marketTime.marketPhase() === "trading";
     const displayChangeRate = calc.selectChangeRate(
       this.data.nav, this.data.actualNav,
       this.data.estimatedChangeRate, this.data.actualChangeRate,
@@ -604,8 +646,8 @@ Page({
           if (days >= 800 || history.length < days - 20) this._historyMaxed = true;
           this.setData({
             navHistory: history,
-            displayHistory: history.slice(0, 30),
-            displayCount: 30,
+            displayHistory: history.slice(0, 5),
+            displayCount: 5,
             actualNav: this.data.actualNav || (history[0].nav != null ? history[0].nav.toFixed(4) : ""),
             actualDate: history[0].date,
             actualChangeRate: this.data.actualChangeRate != null ? this.data.actualChangeRate : (history[0].changeRate || 0),
@@ -960,7 +1002,17 @@ Page({
       const list = res.result.list && res.result.list.length
         ? res.result.list
         : (res.result.data ? [res.result.data] : []);
-      if (!list.length) return;
+      if (!list.length) {
+        // DB 真相 = 已不持有（卖出后/深链进入）。必须显式清态：onLoad 的 portfolio_cache
+        // 预填会置 hasHolding=true（3 天 TTL），不清的话"幽灵持仓卡"粘住整个页面生命周期，
+        // holdingId 还指向已删记录（校准写 0 行却提示成功）。网络/服务端异常走上面的 return
+        // 与 catch，不清（保留预填待重试）
+        this._rawHoldings = null;
+        this._rawHolding = null;
+        this._lastRawHolding = null; // 不同步清的话 _saveCache 的 `rawHolding || _lastRawHolding` 会把幽灵持仓写回缓存
+        this.setData({ hasHolding: false, holdingId: null, holdingData: null, holdingRecords: [] });
+        return;
+      }
       this._rawHoldings = list;
       this._rawHolding = this._aggregateHoldings(list); // 头部/我的持仓按合计口径（与单笔一致）
       this.setData({
@@ -981,11 +1033,19 @@ Page({
   },
 
   // 多笔 → 合计成"一笔"：份额相加、买入净值按份额加权、市值/收益相加。
-  // 口径与单笔完全一致（enrichHoldingData 拿到合计后照原逻辑算），页面头部不会因为多账户而算错
+  // 口径与单笔完全一致（enrichHoldingData 拿到合计后照原逻辑算），页面头部不会因为多账户而算错。
+  // 旧 schema { amount, nav } 的 amount 是持仓金额不是份额（与 getPortfolio 同式修复）——
+  // 直接 num(r.shares || r.amount) 累加会把金额当份额，回本进度可以差一倍
   _aggregateHoldings(list) {
     const num = (v) => parseFloat(v) || 0;
-    const shares = list.reduce((s, r) => s + num(r.shares || r.amount), 0);
-    const cost = list.reduce((s, r) => s + num(r.buyPrice || r.nav) * num(r.shares || r.amount), 0);
+    const sharesOf = (r) => {
+      const s = num(r.shares);
+      if (s > 0) return s;
+      const price = num(r.buyPrice) || num(r.nav);
+      return price > 0 ? num(r.amount) / price : 0;
+    };
+    const shares = list.reduce((s, r) => s + sharesOf(r), 0);
+    const cost = list.reduce((s, r) => s + (num(r.buyPrice) || num(r.nav)) * sharesOf(r), 0);
     const marketValue = list.reduce((s, r) => s + num(r.marketValue), 0);
     const holdingReturn = list.reduce((s, r) => s + num(r.holdingReturn), 0);
     return {
@@ -1174,11 +1234,11 @@ Page({
     });
   },
   onShowMore() {
-    // 分页展示：默认 30 条，每次追加 30 条（displayHistory 独立于 navHistory）
-    const n = this.data.displayCount + 30;
+    // 分页展示：默认 5 条（用户拍板），每次追加 20 条（displayHistory 独立于 navHistory）
+    const n = this.data.displayCount + 20;
     this.setData({ displayCount: n, displayHistory: this.data.navHistory.slice(0, n) });
   },
-  onShowLess() { this.setData({ displayCount: 30, displayHistory: this.data.navHistory.slice(0, 30) }); },
+  onShowLess() { this.setData({ displayCount: 5, displayHistory: this.data.navHistory.slice(0, 5) }); },
   onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
@@ -1388,6 +1448,23 @@ Page({
 	      },
 	    });
 	  },
+
+  // 复盘中心·温度回测 tab（聚合统计，与单基金温度同源口径）
+  onTempBacktest() {
+    wx.navigateTo({ url: "/subpackages/analysis/pages/review/index?tab=temp" });
+  },
+
+  // 复盘中心·回本中心 tab（带当前基金上下文深链）
+  onRecoveryCenter() {
+    const { fundCode, fundName } = this.data;
+    if (!fundCode || fundCode === "undefined") {
+      wx.showToast({ title: "基金信息异常", icon: "none" });
+      return;
+    }
+    wx.navigateTo({
+      url: `/subpackages/analysis/pages/review/index?tab=recover&fundCode=${fundCode}&fundName=${encodeURIComponent(fundName || "")}`,
+    });
+  },
 
   // ---- 定投回测 ----
   onToggleDCA() {

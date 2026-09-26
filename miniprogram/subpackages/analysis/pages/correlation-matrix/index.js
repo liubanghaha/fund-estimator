@@ -138,7 +138,8 @@ Page({
       }
       if (!d) {
         // withNav60:false 跳过历史净值拉取（本页只需持仓列表 + 健康分），减小响应与耗时
-        const res = await api.getPortfolio(0, { withNav60: false, withAnalysis: true });
+        // withEstimates:false：本页不做实时估值展示，跳过估值管线（省 ~50 次上游请求）
+        const res = await api.getPortfolio(0, { withNav60: false, withAnalysis: true, withEstimates: false });
         d = res.result && res.result.data;
       }
       if (!d || !d.holdings || d.holdings.length === 0) {

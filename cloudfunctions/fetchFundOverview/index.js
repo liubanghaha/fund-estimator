@@ -12,11 +12,13 @@ exports.main = async (event) => {
   const estSrc = src === "self" ? "self" : "sina";
 
   try {
-    const [estimate, history, profileData, peTemp] = await Promise.all([
+    const todayStr = fd.formatBJDate();
+    const [estimate, history, profileData, peTemp, estimateAccuracy] = await Promise.all([
       fetchEstimate(fundCode, estSrc),
       fd.fetchNAVHistory(fundCode, 260),
       fetchProfileData(fundCode),
       fetchPeTemp(fundCode),
+      fetchEstimateAccuracy(fundCode, todayStr),
     ]);
     return {
       code: 0, msg: "success",
@@ -26,6 +28,7 @@ exports.main = async (event) => {
         profile: profileData.profile,
         manager: profileData.manager,
         peTemp,
+        estimateAccuracy,
       },
     };
   } catch (e) {
@@ -202,19 +205,52 @@ async function fetchProfileData(fundCode) {
 
 async function fetchPeTemp(fundCode) {
   try {
-    // 取本基金最新一条温度（与 fetchFundEstimate.fetchTemperature 同口径）：
-    // 当天任务偶发失败/未跑到时兜底最近一次，详情页温度不因单日缺数消失
+    // 取本基金最近 90 条温度（与 fetchFundEstimate.fetchTemperature 同口径）：
+    // 当天任务偶发失败/未跑到时兜底最近一次；顺带算温度分位——
+    // 首次访问详情页只走概览接口，不同步这段的话分位要等二次刷新才出现
     const res = await db.collection("fund_temperatures")
       .where({ fundCode })
-      .orderBy("date", "desc").limit(1)
+      .orderBy("date", "desc").limit(90)
       .field({ signal: true, label: true, normPE: true })
       .get();
     if (res.data && res.data.length > 0) {
       const t = res.data[0];
-      return { signal: t.signal, label: ft.sanitizeLabel(t.label), normPE: t.normPE };
+      // 历史分位（信任线：给"温度 0.82"一个水平感）：与 fetchFundEstimate 同式，样本 <20 不出
+      const hist = res.data.map((r) => r.normPE).filter((v) => typeof v === "number");
+      let tempPercentile = null;
+      if (hist.length >= 20 && typeof t.normPE === "number") {
+        const below = hist.filter((v) => v <= t.normPE).length;
+        tempPercentile = { days: hist.length, pct: Math.round((below / hist.length) * 100) };
+      }
+      return { signal: t.signal, label: ft.sanitizeLabel(t.label), normPE: t.normPE, tempPercentile };
     }
   } catch (e) { /* ignore */ }
   return null;
+}
+
+// 近 30 天估算误差（与 fetchFundEstimate.fetchEstimateAccuracy 同口径）：概览带一份，
+// 详情页首访（无缓存历史走 overview）也能直接看到徽章，不必等二次刷新
+async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
+  try {
+    const start = _addDays(todayStr, -days);
+    // 台账 _id = `${fundCode}_${YYYY-MM-DD}`，按 _id 区间查走主键索引
+    const res = await db.collection("fund_estimate_deviations")
+      .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
+      .field({ date: true, estRate: true, actualRate: true, diff: true })
+      .limit(60).get();
+    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number");
+    if (rows.length === 0) return null;
+    const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
+    // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
+    const dirRows = rows.filter((r) => Math.abs(r.actualRate) >= 0.05 && typeof r.estRate === "number");
+    const hitRate = dirRows.length >= 5
+      ? Math.round((dirRows.filter((r) => (r.estRate >= 0) === (r.actualRate >= 0)).length / dirRows.length) * 100)
+      : null;
+    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate };
+  } catch (e) {
+    console.warn("[fetchFundOverview] 误差台账读取失败:", e.message);
+    return null;
+  }
 }
 
 // 数据所属日（净值/估算口径）：当日 9:25 起（含盘后当晚）为今日——盘中估算/晚间精确；

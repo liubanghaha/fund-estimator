@@ -1,0 +1,9 @@
+{
+  "name": "refreshRedemptionFees",
+  "version": "1.0.0",
+  "description": "赎回费分档缓存：从东财 F10 费率页解析各基金的赎回费率阶梯，供首页费率倒计时轻标使用",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -3,6 +3,7 @@ const fd = require("./_shared/fund-data");
 const td = require("./_shared/trading-day");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
+const _ = db.command;
 
 // 轻量轮询接口：仅返回盘中收益率快照，用于高频轮询
 // 替代原先每 15 秒调一次重型的 getPortfolio
@@ -26,6 +27,26 @@ exports.main = async (event) => {
     // 当今日返回会让走势页出现"股市没开却有今日曲线"
     const inTrading = bjDay >= 1 && bjDay <= 5 && fd.inTradingWindow(totalMin) && td.isTradingDay(today);
     if (!inTrading) {
+      // 非交易时段回退"最近一个交易日的分钟点"（snapDate 标注所属日）：收益页缓存新鲜路径
+      // 不跑全量 getPortfolio，此前这里回空占位导致周末/节假日打开时当天曲线整段空白。
+      // 数值字段（todayProfitRate/todayProfit）仍为 null —— 沿用"非交易时段不动数值"的守卫，
+      // 防止把缓存里正确的收益洗成 0（profit-chart-card-mismatch 的教训），客户端只读画曲线
+      try {
+        const start = fd.formatBJDate(new Date(Date.now() - 30 * 86400000));
+        const fb = await db.collection("profit_snapshots")
+          .where({ _openid: OPENID, date: _.gte(start) })
+          .field({ date: true, points: true })
+          .limit(60).get();
+        const rows = (fb.data || []).sort((a, b) => b.date.localeCompare(a.date));
+        // ≤today 且是交易日：交易日盘后取当天自己的点，周末/节假日回退最近交易日
+        //（假日假点已删 + 写入侧有守卫，这里再用 isTradingDay 兜一层）
+        const lastRow = rows.find((r) => r.date <= today && td.isTradingDay(r.date));
+        if (lastRow && lastRow.points && lastRow.points.length > 0) {
+          return { code: 0, data: { intradaySnapshots: lastRow.points, snapDate: lastRow.date, todayProfitRate: null, updateTime: "", inTrading: false } };
+        }
+      } catch (e) {
+        console.warn("[portfolioLight] 非交易时段回退读取失败:", e.message);
+      }
       return { code: 0, data: { intradaySnapshots: [], todayProfitRate: null, updateTime: "", inTrading: false } };
     }
 

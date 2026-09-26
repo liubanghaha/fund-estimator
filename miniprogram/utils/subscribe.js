@@ -20,16 +20,21 @@ const DECLINE_COOLDOWN = 7 * 24 * 3600 * 1000;
 const track = require("./track.js"); // P0-0 sub_authorize 事件
 
 // 授权结果落库：accept 了哪个模板就给哪个模板 +1 额度（一次弹窗可能两个都勾了）。
-// 返回本次拿到的额度条数（0~2）；等云端两笔记账都写完再 resolve，避免 UI 重读额度时还没加上
+// 返回 { added, ok }：added=accept 条数；added>0 且 ok=false = 微信侧授权成功但云端记账失败
+// ——额度没加上，UI 必须提示"请再点一次"，静默吞掉会让"补充额度"变假成功
 function _authAccepted(res) {
   const accepted = TMPL_IDS.filter((id) => res && res[id] === "accept");
   if (accepted.length > 0) {
     try { wx.setStorageSync(KEY_AUTHED, Date.now()); } catch (e) { /* ignore */ }
   }
+  if (accepted.length === 0) return Promise.resolve({ added: 0, ok: true });
   return Promise.all(accepted.map((id) => wx.cloud.callFunction({
     name: "dailyBriefing",
     data: { action: "auth", scene: SCENE, templateId: id },
-  }).catch(() => null))).then(() => accepted.length);
+  }).then(() => true).catch(() => false))).then((results) => {
+    const failed = results.filter((r) => !r).length;
+    return { added: accepted.length - failed, ok: failed === 0 };
+  });
 }
 
 function canPrompt() {
@@ -70,10 +75,13 @@ function requestAuth(src) {
     wx.requestSubscribeMessage({
       tmplIds: TMPL_IDS,
       success(res) {
-        _authAccepted(res).then((added) => {
-          if (added > 0) {
+        _authAccepted(res).then((r) => {
+          if (r.added > 0 && r.ok) {
             try { track.subAuthorize({ src: src || "", mode: "prompt", result: "accept" }); } catch (e) { /* ignore */ }
-            resolve({ ok: true, added });
+            resolve({ ok: true, added: r.added });
+          } else if (r.added > 0) {
+            // 微信侧已 accept 但额度没记上：不能按成功处理（服务端额度不够照样不发）
+            resolve({ ok: false, reason: "授权成功，但额度记账失败，请再点一次" });
           } else {
             _markDeclined();
             try { track.subAuthorize({ src: src || "", mode: "prompt", result: "reject" }); } catch (e) { /* ignore */ }
@@ -100,10 +108,13 @@ function requestQuotaTopUp(src) {
     wx.requestSubscribeMessage({
       tmplIds: TMPL_IDS,
       success(res) {
-        _authAccepted(res).then((added) => {
-          if (added > 0) {
+        _authAccepted(res).then((r) => {
+          if (r.added > 0 && r.ok) {
             try { track.subAuthorize({ src: src || "", mode: "topup", result: "accept" }); } catch (e) { /* ignore */ }
-            resolve({ ok: true, added });
+            resolve({ ok: true, added: r.added });
+          } else if (r.added > 0) {
+            try { track.subAuthorize({ src: src || "", mode: "topup", result: "accept" }); } catch (e) { /* ignore */ }
+            resolve({ ok: false, added: 0, errMsg: "授权成功，但额度记账失败，请再点一次" });
           } else {
             try { track.subAuthorize({ src: src || "", mode: "topup", result: "reject" }); } catch (e) { /* ignore */ }
             resolve({ ok: false, added: 0, errMsg: "你点了取消，未授权" });
@@ -141,13 +152,16 @@ function requestAlertAuth(src) {
 }
 
 // 已授权用户的静默攒额度：必须挂在用户手势回调中（如首页下拉刷新 onScrollRefresh）。
-// 勾了「总是保持以上选择」的用户无感 accept，保持每天一次；
-// 未勾的用户调用会弹授权弹窗，降频为 7 天最多一次（避免每次下拉都被打扰）。
+// 按「总是保持以上选择」的勾选状态按模板区分：勾了哪个模板就静默请求哪个（微信侧无感通过）；
+// 没勾过的模板混在同一次请求里会为它弹窗——对只勾过旧模板的老用户，带上新模板等于体验倒退
+//（新模板额度由显式手势的 requestAuth/补充额度攒）。一个都没勾 → 7 天降频弹窗
 function silentDailyAuth(src) {
   if (!hasAuthed()) return;
+  const allow = _alwaysAllowFlags();
+  const silentIds = TMPL_IDS.filter((id) => (id === TEMPLATE_ID ? allow.old : allow.new));
   try {
-    // 未勾「总是允许」时调用必弹窗：距上次弹窗不足 7 天则跳过
-    if (!wx.getStorageSync(KEY_ALWAYS_ALLOW)) {
+    if (silentIds.length === 0) {
+      // 一个都没勾「总是允许」时调用必弹窗：距上次弹窗不足 7 天则跳过
       const lastPopup = wx.getStorageSync(KEY_SILENT_POPUP) || 0;
       if (lastPopup && Date.now() - lastPopup < 7 * 24 * 3600 * 1000) return;
     }
@@ -160,7 +174,7 @@ function silentDailyAuth(src) {
     const count = sameDay ? rec.count || 0 : 0;
     // 一次授权 = 一条额度，而提醒和播报都要用；勾了「总是保持以上选择」的用户是无感的，
     // 所以每天最多补 3 次（间隔 >=3 小时），保证盘中提醒和收盘/净值播报都有额度可用
-    const max = wx.getStorageSync(KEY_ALWAYS_ALLOW) ? 3 : 1;
+    const max = silentIds.length > 0 ? 3 : 1;
     if (count >= max) return;
     if (sameDay && rec.ts && Date.now() - rec.ts < 3 * 3600 * 1000) return;
     wx.setStorageSync(KEY_SILENT_DAY, { date: today, count: count + 1, ts: Date.now() });
@@ -168,10 +182,12 @@ function silentDailyAuth(src) {
     return;
   }
   wx.requestSubscribeMessage({
-    tmplIds: TMPL_IDS,
+    // 一个都没勾「总是允许」时必须回退全量模板：空 tmplIds 微信直接 fail（不弹窗），
+    // fail 回调又武装 7 天静默期 → 永无弹窗、永无补额（2026-09-26 二轮审查 P1）
+    tmplIds: silentIds.length ? silentIds : TMPL_IDS,
     success(res) {
-      _authAccepted(res).then((added) => {
-        if (added > 0) {
+      _authAccepted(res).then((r) => {
+        if (r && r.added > 0) {
           try { track.subAuthorize({ src: src || "", mode: "silent", result: "accept" }); } catch (e) { /* ignore */ }
         }
         _probeAlwaysAllow();
@@ -184,21 +200,35 @@ function silentDailyAuth(src) {
   });
 }
 
-// 探测「总是保持以上选择」勾选状态并缓存：itemSettings 仅在用户勾选后返回。
-// 两个模板都勾了才算「总是允许」——否则静默调用仍会弹窗，按未勾选走 7 天降频
+// 探测「总是保持以上选择」勾选状态并缓存（按模板分开存）：itemSettings 仅在用户勾选后返回。
+// 只要在微信侧勾过其中一个模板，静默调用就不会为那个模板弹窗；两个都没勾才走弹窗降频
 function _probeAlwaysAllow() {
   wx.getSetting({
     withSubscriptions: true,
     success(res) {
       try {
         const itemSettings = (res.subscriptionsSetting && res.subscriptionsSetting.itemSettings) || {};
-        const alwaysAllow = TMPL_IDS.every((id) => itemSettings[id] === "accept");
-        wx.setStorageSync(KEY_ALWAYS_ALLOW, alwaysAllow);
-        if (!alwaysAllow) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
+        const flags = {
+          old: itemSettings[TEMPLATE_ID] === "accept",
+          new: itemSettings[TEMPLATE_ID_FUND] === "accept",
+        };
+        wx.setStorageSync(KEY_ALWAYS_ALLOW, flags);
+        if (!flags.old && !flags.new) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
       } catch (e) { /* ignore */ }
     },
     fail() { /* 探测失败保持现状：下次仍按未勾选场景降频 */ },
   });
+}
+
+// 读勾选状态（旧格式布尔兼容：true 视为旧模板总是允许；新模板由下一次探测自愈）
+function _alwaysAllowFlags() {
+  try {
+    const v = wx.getStorageSync(KEY_ALWAYS_ALLOW);
+    if (v && typeof v === "object") return { old: !!v.old, new: !!v.new };
+    return { old: v === true, new: false };
+  } catch (e) {
+    return { old: false, new: false };
+  }
 }
 
 // 推送落地追踪：首页 _handleEntry 检测 src=push&lid=推送日志ID 后调用，补 openedAt

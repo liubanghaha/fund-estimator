@@ -167,6 +167,7 @@
 .temp-tooltip-formula{font-size:22rpx;color:#E0E0E0;line-height:1.8;margin-bottom:10rpx}
 .temp-tooltip-item{margin-bottom:2rpx}
 .temp-tooltip-rule{font-size:22rpx;color:#8CC265;line-height:1.5;display:block;margin-bottom:8rpx}
+.temp-tooltip-backtest{font-size:22rpx;color:var(--primary);display:block;margin-bottom:8rpx}
 .temp-tooltip-disclaimer{font-size:18rpx;color:#6B6F80;line-height:1.4;display:block;margin-top:4rpx}
 .temp-tooltip-update{font-size:18rpx;color:#6B6F80;line-height:1.4;display:block;margin-top:2rpx}
 .batch-check{width:36rpx;height:36rpx;border:2rpx solid #CCC;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20rpx;flex-shrink:0}
@@ -205,6 +206,8 @@
 .group-badge{display:inline-block;background:rgba(255,255,255,.25);color:#FFF;font-size:20rpx;padding:4rpx 14rpx;border-radius:16rpx;margin-bottom:8rpx}
 
 .group-tag{font-size:20rpx;color:#78868F;background:#EEF1F3;padding:2rpx 10rpx;border-radius:6rpx;margin-left:8rpx;vertical-align:middle}
+
+.fee-badge{font-size:20rpx;color:#B26A00;background:#FFF4E5;padding:2rpx 10rpx;border-radius:6rpx;margin-top:6rpx;display:inline-block}
 
 .platform-summary{margin:0 4rpx;background:#FFF;border-radius:0 0 12rpx 12rpx;padding:4rpx 0 8rpx}
 .ps-row{display:flex;align-items:center;padding:22rpx 28rpx;border-top:1rpx solid #F5F5F5}

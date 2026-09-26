@@ -602,7 +602,9 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
             date: item.FSRQ,
             nav: parseFloat(item.DWJZ) || 0,
             cumulativeNav: parseFloat(item.LJJZ) || 0,
-            changeRate: parseFloat(item.JZZZL) || 0,
+            // JZZZL 缺失/空串（货币基金、部分债基、当日未公布）置 null：伪造 0% 会把
+            // "缺数即弃"的下游守卫（误差台账/温度回测）全部变成死代码
+            changeRate: (item.JZZZL === "" || item.JZZZL == null) ? null : (parseFloat(item.JZZZL) || 0),
           }));
           resolve(list);
         } catch (e) {
@@ -614,10 +616,11 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
     req.on("error", () => resolve([]));
   });
 
-  // 分批限并发（每批 3 页），避免页数多时瞬时大量请求打东财接口
+  // 分批限并发（每批 5 页）：260~280 天要 11-14 页，3 页/批时详情页/收益页首屏
+  // 光拉历史就要 5 轮往返；5 页/批 3 轮完成。瞬时 5 个 lsjz GET 在东财容忍范围内
   const pageIndexes = Array.from({ length: pages }, (_, i) => i + 1);
   const results = [];
-  const CONCURRENT = 3;
+  const CONCURRENT = 5;
   const pump = async () => {
     while (pageIndexes.length) {
       const batch = pageIndexes.splice(0, CONCURRENT);

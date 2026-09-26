@@ -1,0 +1,12 @@
+{
+  "runtime": "Nodejs20.19",
+  "timeout": 300,
+  "concurrency": 1,
+  "triggers": [
+    {
+      "name": "tempBacktestTimer",
+      "type": "timer",
+      "config": "0 30 20 * * 1-5 *"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+<view class="page {{theme === 'red' ? 'theme-red' : 'theme-blue'}}">
+  <!-- tab 栏（fund-detail 同款 hidden 切换模式） -->
+  <view class="tab-bar">
+    <view class="tab-item {{activeTab === 'recover' ? 'active' : ''}}" data-tab="recover" bind:tap="onTabTap">回本中心</view>
+    <view class="tab-item {{activeTab === 'temp' ? 'active' : ''}}" data-tab="temp" bind:tap="onTabTap">温度回测</view>
+  </view>
+
+  <!-- ==================== 回本中心 ==================== -->
+  <view hidden="{{activeTab !== 'recover'}}">
+    <view class="disclaimer">历史数据与成本演算，不构成任何建议。</view>
+
+    <!-- 亏损持仓列表（首页缓存直出，秒开；点选查看单只明细） -->
+    <view wx:if="{{fundList.length}}" class="card">
+      <view class="card-title">亏损持仓<text class="card-sub">共 {{fundList.length}} 只 · 点选看明细</text></view>
+      <view class="fl-row {{fundCode === item.fundCode ? 'fl-active' : ''}}" wx:for="{{fundList}}" wx:key="fundCode"
+        bind:tap="onSwitchFund" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
+        <view class="fl-info">
+          <view class="fl-name">{{item.fundName}}</view>
+          <view class="fl-bar"><view class="fl-fill" style="width:{{item.pct}}%"></view></view>
+          <view wx:if="{{fundCode === item.fundCode && progress}}" class="fl-detail">成本 {{progress.cost}} → 现值 {{progress.now}}<text wx:if="{{estimateTime}}"> · 估算 {{estimateTime}}</text></view>
+        </view>
+        <view class="fl-right">
+          <view class="fl-pct">{{item.pct}}%</view>
+          <view class="fl-gap">涨{{item.gap}}% 回本</view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{!fundList.length && !loading && !fundCode}}" class="empty-box">
+      <view class="empty-main">当前没有亏损持仓</view>
+      <view class="empty-sub">回本工具按持仓品种的亏损情况展示；温度回测在右侧 tab。</view>
+    </view>
+
+    <view wx:if="{{loading && fundCode}}" class="loading-text">加载明细中…</view>
+    <view wx:elif="{{loadError && fundCode}}" class="empty-box"><view class="empty-main">{{loadError}}</view></view>
+
+    <block wx:if="{{!loading && fundCode}}">
+      <!-- 摊薄演算 -->
+      <view wx:if="{{holding}}" class="card">
+        <view class="card-title">摊薄演算</view>
+        <view class="chips">
+          <view class="chip" bind:tap="onQuick" data-pct="10">+10% 演算</view>
+          <view class="chip" bind:tap="onQuick" data-pct="25">+25% 演算</view>
+          <view class="chip" bind:tap="onQuick" data-pct="50">+50% 演算</view>
+        </view>
+        <view class="input-row">
+          <input class="amount-input" type="digit" value="{{diluteAmount}}" placeholder="演算金额（元）" bindinput="onAmountInput" />
+          <text class="input-unit">元</text>
+        </view>
+        <view wx:if="{{dilute}}" class="dilute-result">
+          按 {{dilute.amountText}} 元演算：成本 {{dilute.costText}} → {{dilute.newCostText}}，回本所需涨幅 {{dilute.gapFrom}}% → {{dilute.gapTo}}%
+        </view>
+        <view class="dilute-note">仅为成本演算，不构成任何建议；实际以交易确认净值为准。追加投入会增加该品种的仓位与风险敞口。</view>
+      </view>
+
+      <!-- 历史修复分布（800 天长序列，两阶段加载中显示计算中） -->
+      <view class="card">
+        <view class="card-title">历史修复分布<text class="card-sub">{{epLoading ? '计算中…' : ep.startDate + ' ~ ' + ep.endDate + ' 净值'}}</text></view>
+        <view wx:if="{{epError}}" class="ep-none">修复分布加载失败，下拉刷新重试。</view>
+        <block wx:elif="{{!epLoading && ep.total > 0}}">
+          <view class="ep-sum">净值回撤 ≥{{gapText}}% 的回撤共 <text class="ep-strong">{{ep.total}}</text> 次：
+          修复最快 {{ep.fast}} 天 · 中位 {{ep.med}} 天 · 最慢 {{ep.slow}} 天<text wx:if="{{ep.unrecovered > 0}}">，其中 {{ep.unrecovered}} 次到样本期末仍未修复</text>。</view>
+          <view class="ep-row" wx:for="{{ep.list}}" wx:key="idx" wx:for-item="e">
+            <view class="ep-depth">{{e.depth}}%</view>
+            <view class="ep-bar-wrap"><view class="ep-bar {{e.fail ? 'fail' : ''}}" style="width:{{e.pct}}%"></view></view>
+            <view class="ep-days {{e.fail ? 'fail-text' : ''}}">{{e.daysText}}</view>
+          </view>
+          <view wx:if="{{ep.total > 10}}" class="ep-more">仅展示最深的 10 次</view>
+        </block>
+        <view wx:elif="{{!epLoading}}" class="ep-none">样本期内未出现过 ≥{{gapText}}% 的回撤（最深 {{ep.maxDepth}}%），历史参考有限。</view>
+        <view class="ep-note">修复天数 = 谷底日到收复前高的天数，按品种自身历史净值统计，不代表未来。</view>
+      </view>
+
+      <view wx:if="{{!holding}}" class="card no-holding">未持有该品种，成本相关模块不展示。</view>
+    </block>
+  </view>
+
+  <!-- ==================== 温度回测 ==================== -->
+  <view hidden="{{activeTab !== 'temp'}}">
+    <view class="disclaimer">本页为历史数据统计，不构成预测或建议。</view>
+
+    <view wx:if="{{tLoading}}" class="loading-text">温度回测对账中…</view>
+
+    <view wx:elif="{{tNotReady || tError}}" class="empty-box">
+      <view class="empty-main">{{tNotReady ? '回测数据生成中' : tError}}</view>
+      <view class="empty-sub">回测在每个交易日收盘后生成，晚点再来看。</view>
+      <view class="retry-btn" bind:tap="onRetryBacktest">再试一次</view>
+    </view>
+
+    <block wx:else>
+      <!-- 首屏人话结论：温度有没有区分度，一句话说清 -->
+      <view class="concl-card">
+        <view class="concl-what">温度 = 详情页里的估值偏低 / 偏高。这个页面用真实数据检验它有没有区分度。</view>
+        <view class="concl-big">{{tStats.headline.spreadText}}</view>
+        <view class="concl-horizon">{{tStats.headline.window}} 个交易日窗口 · {{tStats.dateFrom}} ~ {{tStats.dateTo}}<text wx:if="{{tStats.headline.context}}"> · {{tStats.headline.context}}</text></view>
+        <view class="concl-sub">覆盖 {{tStats.fundCountText}} · 样本 {{tStats.sampleCountText}} · 每个交易日收盘后更新</view>
+      </view>
+
+      <!-- 每个窗口的对比条形图 -->
+      <view class="h-card" wx:for="{{tStats.rows}}" wx:key="h" wx:for-item="row">
+        <view class="h-title">{{row.label}}</view>
+        <view class="g-row {{g.dim ? 'g-dim' : ''}}" wx:for="{{row.groups}}" wx:key="key" wx:for-item="g">
+          <view class="g-label {{g.cls}}">{{g.label}}</view>
+          <view class="g-metrics">
+            <view class="g-bar-wrap"><view class="g-bar {{g.cls}}" style="width:{{g.barW}}%"></view></view>
+            <view class="g-sub">平均 {{g.meanText}} · 之后上涨占 {{g.posRate}}%<text wx:if="{{g.dim}}"> · 样本少仅供参考</text></view>
+          </view>
+        </view>
+        <view class="h-spread" wx:if="{{row.spreadText}}">→ {{row.spreadText}}</view>
+      </view>
+
+      <view class="method-card">
+        <view class="m-title">口径说明</view>
+        <view class="m-line">1. 每天把被跟踪的品种按当时的温度分成三组，统计其后 5/10/20 个交易日的实际涨跌（官方口径，分红除息已调整）。</view>
+        <view class="m-line">2. 同一品种的不同日期也各计一条样本；窗口互相重叠，样本间不独立。</view>
+        <view class="m-line">3. 这是"温度指标灵不灵"的历史对账，不是任何预测或建议；样本少的分组仅供参考。</view>
+      </view>
+    </block>
+  </view>
+</view>

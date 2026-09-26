@@ -183,6 +183,13 @@
             </view>
             <view class="ps-arrow">›</view>
           </view>
+          <view wx:if="{{holdings.length >= 1}}" class="ps-row" bind:tap="onReview">
+            <view class="ps-main">
+              <view class="ps-name">📈 复盘中心</view>
+              <view class="ps-sub">回本工具 · 温度回测</view>
+            </view>
+            <view class="ps-arrow">›</view>
+          </view>
           <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置账户」归入某个账户</view>
         </view>
 
@@ -214,6 +221,7 @@
                   <view wx:if="{{batchMode}}" class="batch-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
                   <view class="name-text">{{item.fundName}}</view>
                   <view class="code-text"><text wx:if="{{item.estimateUpdated}}" class="updated-tag">✓</text>{{item.fundCode}}<text wx:if="{{item._tag}}" class="group-tag">{{item._tag}}</text></view>
+                  <view wx:if="{{item._feeBadge}}" class="fee-badge">{{item._feeBadge}}（以公告为准）</view>
                 </view>
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
@@ -330,6 +338,7 @@
         <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
       </view>
       <view class="temp-tooltip-rule">{{lt}} 0.75 温度偏低 · 0.75～1.25 温度适中 · {{gt}} 1.25 温度偏高</view>
+      <view class="temp-tooltip-backtest" catch:tap="onTempBacktest">📈 查看温度历史回测 ›</view>
       <view class="temp-tooltip-disclaimer">估算数据仅供参考，不构成投资建议</view>
       <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
     </view>

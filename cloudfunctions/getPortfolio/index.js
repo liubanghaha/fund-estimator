@@ -9,7 +9,7 @@ const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
-  const { historyDays, testOpenid, withAnalysis, withNav60, src, debug } = event || {};
+  const { historyDays, testOpenid, withAnalysis, withNav60, src, debug, withEstimates } = event || {};
   const estSrc = src === "self" ? "self" : "sina"; // sina=数据源一（新浪实时估值）优先；self=数据源二（自算）优先
   const uid = testOpenid || OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
@@ -32,7 +32,7 @@ exports.main = async (event) => {
         const res = await db.collection("holdings")
           .where(lastId ? { _openid: uid, _id: _.gt(lastId) } : { _openid: uid })
           .orderBy("_id", "asc") // 游标分页显式定序，不依赖底层默认序
-          .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, group: true, platform: true })
+          .field({ fundCode: true, fundName: true, shares: true, amount: true, buyPrice: true, nav: true, marketValue: true, holdingReturn: true, createTime: true, buyDate: true, group: true, platform: true })
           .limit(PAGE)
           .get();
         const rows = res.data || [];
@@ -53,15 +53,21 @@ exports.main = async (event) => {
     let updateTime = "";
     const navHistoryMap = {};
 
-    // 批量请求估值（N 合 1），再并行获取东方财富最新净值与历史净值
-    // 历史净值合并为一次请求（max(60, historyDays)），内存拆分 nav60，避免重复拉取
     const codes = [...new Set(holdings.map((h) => h.fundCode))];
-    // 自算与数据源一互不依赖 → 并行，避免串行叠加延迟（新浪多批时会明显拖慢首页）；
-    // 新浪给 15s 总预算：到点用已拿到的部分，宁缺不拖垮函数（getPortfolio 超时 60s）
-    const [tiantianMap, sinaMap] = await Promise.all([
-      computeSelfEstimates(codes, _startTime),
-      fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
-    ]);
+    // withEstimates=false：跳过整条实时估值管线（自算行情 + 新浪批量 + 每只最新净值）。
+    // 资产分析页只用持仓权重/行业穿透/健康分，不需要实时估值——不跳过的话每次进页
+    // 都要打 ~50 次上游请求（2026-09-26 用户实测"持仓分析 2-3s"的真正大头）。
+    // 跳过后市值回落到 DB 存储值（快照任务每日更新），当日收益/涨跌字段置空
+    const skipEst = withEstimates === false;
+    let tiantianMap = {}, sinaMap = {};
+    if (!skipEst) {
+      // 自算与数据源一互不依赖 → 并行，避免串行叠加延迟（新浪多批时会明显拖慢首页）；
+      // 新浪给 15s 总预算：到点用已拿到的部分，宁缺不拖垮函数（getPortfolio 超时 60s）
+      [tiantianMap, sinaMap] = await Promise.all([
+        computeSelfEstimates(codes, _startTime),
+        fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
+      ]);
+    }
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 60);
     // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控。
@@ -69,7 +75,7 @@ exports.main = async (event) => {
     const CONCURRENT = 8;
     const uniqueCodes = [...new Set(holdings.map((h) => h.fundCode))];
     const navByCode = {};
-    for (let i = 0; i < uniqueCodes.length; i += CONCURRENT) {
+    for (let i = 0; !skipEst && i < uniqueCodes.length; i += CONCURRENT) {
       const batch = uniqueCodes.slice(i, i + CONCURRENT);
       const batchResults = await Promise.all(batch.map(async (code) => {
         try {
@@ -107,6 +113,9 @@ exports.main = async (event) => {
     });
 
     const enriched = [];
+    // 兜底快照的新鲜度闸门：本请求里至少有一只持仓拿到"今日"数据（净值已公布或新浪估算日期=今天）。
+    // 防未来节假日表外的假交易日（isTradingDay 按工作日兜底）把上一交易日收益写成今日假点
+    let anyFreshEst = false;
 
     for (const { h, tiantian, eastmoney, navHistory, nav60 } of resultsList) {
       // 向后兼容：旧数据用 amount/nav 字段（金额/净值），新数据用 shares/buyPrice
@@ -134,7 +143,9 @@ exports.main = async (event) => {
       let todayProfitAmount = 0;
 
       if (historyDays && navHistory) {
-        navHistoryMap[h.fundCode] = navHistory;
+        // 只回传 date/nav 两列（消费方收益页的日变动/市值序列只用这两列）：
+        // 原始行含 cumulativeNav/changeRate 四列，280 天 × 每基金全量回传会多出几百 KB 传输
+        navHistoryMap[h.fundCode] = navHistory.map((x) => ({ date: x.date, nav: x.nav }));
       }
 
       // OCR 导入兜底：当 shares 或 buyPrice 为 0 时，用 OCR 提取的市值/收益反推
@@ -172,6 +183,7 @@ exports.main = async (event) => {
       if (estRate != null) {
         console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
+      if (!skipEst && (estimateUpdated || sinaToday)) anyFreshEst = true;
 
       // 涨跌基准净值：今日收益与收益率的比较基准，必须与所用算式配对——
       //  - 估算模式（今日净值未公布）：估算涨跌幅的基准是「最新已公布净值」，即东财 list[0]
@@ -351,6 +363,22 @@ exports.main = async (event) => {
       });
     } catch (e) { console.warn("[getPortfolio] 读取 PE 温度失败:", e.message); }
 
+    // 赎回费分档（refreshRedemptionFees 每日刷新的缓存）：只读挂到持仓行，
+    // 客户端拿 buyDate 算"临近费率档切换"轻标。读缓存不拉外网，失败不影响主链路
+    try {
+      const feeCodes = [...new Set(enriched.map(h => h.fundCode))];
+      const feeMap = {};
+      const FEE_BATCH = 100;
+      for (let i = 0; i < feeCodes.length; i += FEE_BATCH) {
+        const res = await db.collection("fund_redemption_fees")
+          .where({ fundCode: _.in(feeCodes.slice(i, i + FEE_BATCH)), ok: true })
+          .field({ fundCode: true, tiers: true })
+          .get();
+        (res.data || []).forEach(f => { if (f.tiers && f.tiers.length) feeMap[f.fundCode] = f.tiers; });
+      }
+      enriched.forEach(h => { if (feeMap[h.fundCode]) h.feeTiers = feeMap[h.fundCode]; });
+    } catch (e) { console.warn("[getPortfolio] 读取赎回费分档失败:", e.message); }
+
     // 查询当天收益快照；非交易日/当天无快照时回退最近一个有快照的交易日（走势图对比完整分时）
     let intradaySnapshots = [];
     let snapDate = today;
@@ -378,9 +406,11 @@ exports.main = async (event) => {
             .limit(60)
             .get();
           const rows = (fbRes.data || []).sort((a, b) => b.date.localeCompare(a.date));
-          // 取最近一个"早于今天"的有快照日期：今天自己那份在休市日不可信（可能是历史假点），
-          // 用 rows[0] 会因为它就是今天而整段不回退，曲线反而空白
-          const lastRow = rows.find((r) => r.date < today);
+          // 取最近一个"早于今天的交易日"的有快照日期：今天自己那份在休市日不可信（可能是历史假点），
+          // 用 rows[0] 会因为它就是今天而整段不回退，曲线反而空白。
+          // 必须跳过非交易日文档（如 2026-09-25 中秋上下午错写的假日假点——冻结在同值、
+          // 画出来就是一条平线）：isTradingDay 查表判断，表外年份按工作日兜底
+          const lastRow = rows.find((r) => r.date < today && td.isTradingDay(r.date));
           if (lastRow && lastRow.points && lastRow.points.length > 0) {
             intradaySnapshots = lastRow.points;
             snapDate = lastRow.date;
@@ -533,7 +563,7 @@ exports.main = async (event) => {
       const _day = _bj.getUTCDay();
       const _min = _bj.getUTCHours() * 60 + _bj.getUTCMinutes();
       const _inTrading = _day >= 1 && _day <= 5 && fd.inTradingWindow(_min) && td.isTradingDay(today);
-      if (_inTrading) {
+      if (_inTrading && anyFreshEst) {
         const _last = intradaySnapshots[intradaySnapshots.length - 1];
         // 时间解析防御：time 缺失/格式异常时 parseInt 得 NaN（.slice 对 null 会直接抛错）——NaN 时跳过本轮兜底写点
         const _lastMin = _last && typeof _last.time === "string"
