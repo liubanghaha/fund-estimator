@@ -14,7 +14,7 @@
     <!-- Tab：持仓分析（健康/穿透/重合） | 费用与复盘（费用账单/影子账户） -->
     <view class="tab-bar">
       <view class="tab-item {{activeTab === 'holding' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="holding">持仓分析</view>
-      <view class="tab-item {{activeTab === 'cost' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="cost">费用与复盘</view>
+      <view class="tab-item {{activeTab === 'cost' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="cost">账单</view>
     </view>
 
     <!-- ===== Tab 1：持仓分析 ===== -->
@@ -105,7 +105,7 @@
         <view class="hero-num">{{amountVisible ? ('¥' + feeCard.annualFee) : '¥****'}}</view>
         <view class="hero-sub">综合费率 {{feeCard.totalRate}}%/年 · 按 {{feeCard.fundCount}} 只持仓市值估算</view>
       </view>
-      <view class="fee-list-title">费率最高的持仓<text wx:if="{{feeCard.hasSales}}" class="fee-list-note">含销售服务费</text></view>
+      <view class="fee-list-title">各持仓费率（费率降序）<text wx:if="{{feeCard.hasSales}}" class="fee-list-note">含销售服务费</text></view>
       <view class="fee-row" wx:for="{{feeCard.items}}" wx:key="fundName">
         <view class="fee-row-top">
           <text class="fee-row-name">{{item.fundName}}</text>
@@ -116,7 +116,76 @@
           <text class="fee-row-fee">约 {{amountVisible ? item.fee : '****'}} 元/年</text>
         </view>
       </view>
+      <view wx:if="{{feeTotalCount > 3}}" class="show-more" bind:tap="onToggleFeeAll">{{feeShowAll ? '收起' : '展开全部 ' + feeTotalCount + ' 只'}}</view>
       <view class="card-footnote">收益为名义口径，未扣除上述持有费用；费率取自基金公告，不含申赎费用</view>
+    </view>
+
+    <!-- 行为成本（按年分组：操作概览/归因分布/赎回费演算，年度报告 hero 同源） -->
+    <view wx:if="{{billCard && billCard.years.length}}" class="card">
+      <view class="card-title">🧾 行为成本<text class="card-sub">按年 · 按公告费率估算</text><text wx:if="{{billHasRows}}" class="bill-cal" bind:tap="onCalibrateBill">按实际账单校准</text></view>
+
+      <view class="year-group" wx:for="{{billCard.years}}" wx:for-item="y" wx:for-index="yi" wx:key="year">
+        <view class="yg-head">
+          <text class="yg-year">{{y.year}} 年</text>
+          <text class="yg-ops">{{y.trades.total}} 次操作（买 {{y.trades.buy}} / 卖 {{y.trades.sell}}）</text>
+        </view>
+
+        <view wx:if="{{y.redemption.rows.length > 0}}" class="hero-block">
+          <view class="hero-label">赎回费估算</view>
+          <view class="hero-num">¥{{y.redemption.total}}</view>
+          <view class="hero-sub">卖出 {{y.trades.sell}} 笔<text wx:if="{{y.redemption.shortCount > 0}}"> · 其中短持 {{y.redemption.shortCount}} 笔 {{y.redemption.shortFee}} 元</text><text wx:if="{{y.redemption.calibratedCount > 0}}"> · {{y.redemption.calibratedCount}} 笔已按实际校准</text></view>
+        </view>
+
+        <view class="fee-list-title">操作归因<text class="fee-list-note" wx:if="{{y.untagged > 0}}">未记录 {{y.untagged}} 笔</text></view>
+        <block wx:if="{{y.reasons.length > 0}}">
+          <view class="reason-row" wx:for="{{y.reasons}}" wx:key="reason" wx:for-item="g">
+            <text class="reason-name">{{g.reason}}</text>
+            <view class="reason-track"><view class="reason-fill" style="width:{{g.pct}}%"></view></view>
+            <text class="reason-count">{{g.count}} 笔</text>
+          </view>
+        </block>
+        <view wx:else class="reason-empty">操作时未记录归因</view>
+
+        <block wx:if="{{y.redemption.rows.length > 0}}">
+          <view class="fee-list-title">赎回费明细<text class="fee-list-note">按持有天数套费率分档 · 先进先出</text></view>
+          <view class="fee-row" wx:for="{{y.displayRows}}" wx:key="index" wx:for-item="r">
+            <view class="fee-row-top">
+              <text class="fee-row-name">{{r.fundName}}</text>
+              <text class="fee-row-fee {{r.feeCls}}">{{r.feeText}}</text>
+            </view>
+            <view class="fee-row-bottom">
+              <text class="fee-row-meta">{{r.date}} 卖出 · 持有 {{r.holdDays}} 天<text wx:if="{{r.short}}"> · 短持惩罚档</text></text>
+            </view>
+          </view>
+          <view wx:if="{{y.rowsTotal > 3}}" class="show-more" bind:tap="onExpandYear" data-index="{{yi}}">{{y.expanded ? '收起' : '展开全部 ' + y.rowsTotal + ' 笔'}}</view>
+        </block>
+      </view>
+
+      <view class="card-footnote">按公告费率×持有天数估算（先进先出，不含申购费；持有超过免费期的不计费）。平台优惠、基金转换、后端收费等实际费用以交易确认单为准。仅回顾事实，不构成任何建议</view>
+    </view>
+
+    <!-- 校准弹层：按平台实际账单逐笔修正赎回费（留空 = 回到估算） -->
+    <view wx:if="{{showBillCal}}" class="cal-mask" bind:tap="onBillCalCancel">
+      <view class="cal-card" catch:tap>
+        <view class="cal-title">按实际账单校准</view>
+        <view class="cal-desc">填入平台实际扣除的赎回费，留空表示按公告费率估算</view>
+        <scroll-view scroll-y class="cal-scroll">
+          <view class="cal-item" wx:for="{{billCalRows}}" wx:key="txId">
+            <view class="cal-item-info">
+              <view class="cal-item-name">{{item.fundName}}</view>
+              <view class="cal-item-meta">{{item.meta}}</view>
+            </view>
+            <view class="cal-item-input">
+              <input type="digit" value="{{item.value}}" placeholder="{{item.placeholder}}" data-index="{{index}}" bindinput="onBillCalInput" />
+              <text class="cal-item-unit">元</text>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="cal-btns">
+          <button class="cal-btn ghost" bind:tap="onBillCalCancel">取消</button>
+          <button class="cal-btn primary" bind:tap="onBillCalSave" loading="{{billCalSaving}}" disabled="{{billCalSaving}}">保存</button>
+        </view>
+      </view>
     </view>
 
     <!-- 影子账户（自收益页迁入：行为复盘属深度洞察） -->
@@ -138,7 +207,7 @@
       <view class="card-footnote">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成投资建议</view>
     </view>
 
-    <view wx:if="{{!feeCard && !showShadowCard}}" class="empty">
+    <view wx:if="{{!feeCard && !showShadowCard && !billCard}}" class="empty">
       <view>暂无费用与复盘数据</view>
       <view class="empty-hint">持有基金后可查看费用账单；有过卖出记录后会生成影子账户</view>
       <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>

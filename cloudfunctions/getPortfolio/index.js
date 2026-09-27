@@ -839,8 +839,11 @@ async function handleFeeSummary(openid) {
       const res = await db.collection("fund_fees").where({ fundCode: _.in(codes) }).get();
       const now = Date.now();
       (res.data || []).forEach((r) => {
-        if (r.ts && now - r.ts < 30 * 86400000) feeMap[r.fundCode] = r;
-        else missing.push(r.fundCode);
+        if (!(r.ts && now - r.ts < 30 * 86400000)) { missing.push(r.fundCode); return; }
+        // 全 0 条目 = 当年抓取失败被写入的毒数据：视为缺失重拉，否则该基金费用被 0 污染一个月
+        const ratesOk = r.ok === true || ((parseFloat(r.mgmt) || 0) + (parseFloat(r.trust) || 0) + (parseFloat(r.sales) || 0)) > 0;
+        if (!ratesOk) { missing.push(r.fundCode); return; }
+        feeMap[r.fundCode] = r;
       });
     } catch (e) { missing.push(...codes); }
     codes.forEach((c) => { if (!feeMap[c] && missing.indexOf(c) < 0) missing.push(c); });
@@ -849,8 +852,8 @@ async function handleFeeSummary(openid) {
       const batch = missing.slice(i, i + CONCURRENT);
       await Promise.all(batch.map(async (code) => {
         const fees = await fetchFundFees(code);
-        const doc = { fundCode: code, mgmt: fees.mgmt, trust: fees.trust, sales: fees.sales, ts: Date.now() };
-        feeMap[code] = doc;
+        const doc = { fundCode: code, mgmt: fees.mgmt, trust: fees.trust, sales: fees.sales, ts: Date.now(), ok: fees.ok === true };
+        if (doc.ok) feeMap[code] = doc; // 失败不进 feeMap 也不落缓存：下轮重拉，绝不拿全 0 冒充费率
         try { await db.collection("fund_fees").doc(code).set({ data: doc }); } catch (e2) { /* 写缓存失败下次重拉 */ }
       }));
     }
@@ -888,7 +891,7 @@ async function handleFeeSummary(openid) {
       totalRate: +(annualFee / totalValue * 100).toFixed(2), // 加权综合费率 %/年
       annualFee: +annualFee.toFixed(0),                      // 预计年费用（元）
       hasSales: items.some((i) => i.hasSales) || false,
-      items: items.slice(0, 3),
+      items, // 全量返回（费率降序），条数截断交给客户端分段展示（默认 3 条 + 展开全部）
       fundCount: held.length,
     } };
   } catch (e) {
@@ -909,12 +912,15 @@ async function fetchFundFees(code) {
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
-          const d = JSON.parse(body).Datas || {};
-          resolve({ mgmt: parseFloat(d.MGREXP) || 0, trust: parseFloat(d.TRUSTEXP) || 0, sales: parseFloat(d.SALESEXP) || 0 });
-        } catch (e) { resolve({ mgmt: 0, trust: 0, sales: 0 }); }
+          const parsed = JSON.parse(body);
+          if (!parsed || !("Datas" in parsed)) return resolve({ mgmt: 0, trust: 0, sales: 0, ok: false });
+          const d = parsed.Datas || {};
+          // 真实 0 费率的品种这里会得到 0 且 ok=true——零费率是事实，不与抓取失败混淆
+          resolve({ mgmt: parseFloat(d.MGREXP) || 0, trust: parseFloat(d.TRUSTEXP) || 0, sales: parseFloat(d.SALESEXP) || 0, ok: true });
+        } catch (e) { resolve({ mgmt: 0, trust: 0, sales: 0, ok: false }); }
       });
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve({ mgmt: 0, trust: 0, sales: 0 }); });
-    req.on("error", () => resolve({ mgmt: 0, trust: 0, sales: 0 }));
+    req.setTimeout(8000, () => { req.destroy(); resolve({ mgmt: 0, trust: 0, sales: 0, ok: false }); });
+    req.on("error", () => resolve({ mgmt: 0, trust: 0, sales: 0, ok: false }));
   });
 }

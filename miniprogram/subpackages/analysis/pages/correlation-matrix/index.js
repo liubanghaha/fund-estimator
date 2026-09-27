@@ -1,5 +1,9 @@
 const api = require("../../../../utils/api");
 const marketTime = require("../../../../utils/market-time");
+// 本页 SWR 缓存（健康分/行业穿透/温度位置）：打开先秒出上次结果、后台刷新；
+// 持仓签名不一致（加减仓/换基金）即失效；6 小时内且签名一致时免拉网络
+const PAGE_CACHE = "asset_analysis_page_v1";
+const PAGE_CACHE_TTL = 6 * 3600000;
 
 Page({
   data: {
@@ -14,7 +18,9 @@ Page({
     loading: true,
     loadError: false,
     showAllIndustries: false,
-    activeTab: "holding", // holding=持仓分析（健康/穿透/重合） | cost=费用与复盘（费用账单/影子）
+    activeTab: "holding", // holding=持仓分析（健康/穿透/重合） | cost=账单（费用/行为成本/影子）
+    feeShowAll: false, feeTotalCount: 0,
+    showBillCal: false, billCalRows: [], billCalSaving: false, billHasRows: false,
     amountVisible: true,
     feeCard: null,
     showShadowCard: false, shadowTotal: null, shadowTop: [],
@@ -24,21 +30,22 @@ Page({
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
-    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
   },
 
   onLoad() {
         this.fetchAll();
         this._loadFee();    // 费用账单（从收益页迁入：成本结构属深度洞察）
+        this._loadBill();   // 行为成本（归因分布+赎回费演算，年度报告 hero 同源）
         this._loadShadow(); // 影子账户（从收益页迁入：行为复盘属深度洞察）
   },
 
-  // 费用账单：持仓加权综合费率 + 预计年费用（云侧费率缓存 30 天 + 本地 7 天）
+  // 费用账单：持仓加权综合费率 + 预计年费用（云侧费率缓存 30 天 + 本地 7 天）。
+  // v2：明细从"服务端 top3 截断"改为全量返回，旧本地缓存（只含 3 条）必须作废重拉
   _loadFee() {
     try {
-      const c = wx.getStorageSync("fee_cache_v1");
+      const c = wx.getStorageSync("fee_cache_v2");
       if (c && c.ts && Date.now() - c.ts < 7 * 86400000 && c.data && c.data.hasData) {
-        this.setData({ feeCard: c.data });
+        this._applyFeeCard(c.data);
         return;
       }
     } catch (e) { /* ignore */ }
@@ -46,11 +53,85 @@ Page({
       const d = res.result && res.result.code === 0 && res.result.data;
       if (!d || !d.hasData) return;
       const maxRate = (d.items || []).reduce((m, i) => Math.max(m, i.rate || 0), 0) || 1;
-      // 相对条宽在 JS 侧算好（wxml 不便做除法）
       d.items = (d.items || []).map((i) => ({ ...i, barPct: Math.round((i.rate || 0) / maxRate * 100) }));
-      try { wx.setStorageSync("fee_cache_v1", { ts: Date.now(), data: d }); } catch (e) { /* ignore */ }
-      this.setData({ feeCard: d });
+      // 先落盘再应用：_applyFeeCard 不重复算 barPct（缓存里的 items 已带）
+      try { wx.setStorageSync("fee_cache_v2", { ts: Date.now(), data: d }); } catch (e) { /* ignore */ }
+      this._applyFeeCard(d);
     }).catch(() => { /* ignore */ });
+  },
+
+  // 费用明细默认显示费率最高的 3 只 + "展开全部"（与赎回明细同款交互）；
+  // 全量数据由服务端返回（不再 top3 截断），这里只做展示层分段
+  _applyFeeCard(d) {
+    const maxRate = (d.items || []).reduce((m, i) => Math.max(m, i.rate || 0), 0) || 1;
+    const items = (d.items || []).map((i) => ({ ...i, barPct: Math.round((i.rate || 0) / maxRate * 100) }));
+    this._feeAllItems = items;
+    this.setData({ feeCard: { ...d, items: items.slice(0, 3) }, feeTotalCount: items.length });
+  },
+
+  onToggleFeeAll() {
+    const showAll = !this.data.feeShowAll;
+    const all = this._feeAllItems || [];
+    this.setData({ feeShowAll: showAll, "feeCard.items": showAll ? all : all.slice(0, 3) });
+  },
+
+  // 校准弹层：列出全部年份的卖出记录，预填当前值、占位提示估算值
+  onCalibrateBill() {
+    const years = (this.data.billCard && this.data.billCard.years) || [];
+    const rows = [];
+    years.forEach((y) => {
+      (y.redemption.rows || []).forEach((r) => {
+        if (!r.txId) return;
+        rows.push({
+          txId: r.txId,
+          fundName: r.fundName,
+          meta: `${y.year}-${r.date.slice(5)} · 持有 ${r.holdDays != null ? r.holdDays + ' 天' : '--'} · 估算 ${r.fee == null ? '未知' : r.fee + ' 元'}`,
+          value: r.calibrated ? String(r.actualFee) : "",
+          placeholder: "填实际费用", // 不重复 meta 行的估算值：占位提示"填什么"，估算在左侧文案里
+        });
+      });
+    });
+    if (!rows.length) { wx.showToast({ title: '暂无可校准的卖出记录', icon: 'none' }); return; }
+    this.setData({ showBillCal: true, billCalRows: rows });
+  },
+
+  onBillCalInput(e) {
+    const idx = e.currentTarget.dataset.index;
+    this.setData({ ['billCalRows[' + idx + '].value']: e.detail.value });
+  },
+
+  onBillCalCancel() { this.setData({ showBillCal: false }); },
+
+  async onBillCalSave() {
+    if (this.data.billCalSaving) return;
+    const items = (this.data.billCalRows || []).map((r) => ({
+      txId: r.txId,
+      actualFee: r.value === "" ? null : parseFloat(r.value),
+    }));
+    this.setData({ billCalSaving: true });
+    try {
+      const res = await api.behaviorBillCalibrate(items);
+      const ok = res.result && res.result.code === 0;
+      if (!ok) { wx.showToast({ title: '保存失败，请重试', icon: 'none' }); return; }
+      this.setData({ showBillCal: false });
+      wx.showToast({ title: '已按实际账单校准', icon: 'success' });
+      this._loadBill(); // 重新拉取：总额与行状态随之更新
+    } catch (e) {
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ billCalSaving: false });
+    }
+  },
+
+  onExpandYear(e) {
+    const idx = e.currentTarget.dataset.index;
+    const y = this.data.billCard && this.data.billCard.years[idx];
+    if (!y) return;
+    const expanded = !y.expanded;
+    this.setData({
+      ['billCard.years[' + idx + '].expanded']: expanded,
+      ['billCard.years[' + idx + '].displayRows']: expanded ? y.redemption.rows : y.redemption.rows.slice(0, 3),
+    });
   },
 
   // 影子账户：卖出记录的"如果没卖"事实演算
@@ -62,6 +143,31 @@ Page({
         .sort((a, b) => Math.abs(b.shadow) - Math.abs(a.shadow)).slice(0, 3)
         .map((i) => ({ ...i, dateShort: i.date ? i.date.slice(5).replace("-", "/") : "" }));
       this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTop: top });
+    }).catch(() => { /* ignore */ });
+  },
+
+  // 行为成本：按年聚合操作次数/归因分布 + 赎回费 FIFO 演算（云函数 behaviorBill，全部历史陈述）
+  _loadBill() {
+    api.behaviorBill().then((res) => {
+      const r = res.result && res.result.code === 0 ? res.result : null;
+      const d = r && r.data;
+      if (!d) return;
+      const maxCount = (d.reasons || []).reduce((m, i) => Math.max(m, i.count), 0) || 1;
+      const reasons = (d.reasons || []).map((i) => ({ ...i, pct: Math.round((i.count / maxCount) * 100) }));
+      // 按年分组：每年明细默认 3 条，超出走"展开"（按年独立开关）。
+      // 行展示态：已校准(✓ 实际值) / 免赎回费 / 待校准（无买入批次算不出）/ 估算值
+      const decorate = (r) => ({
+        ...r,
+        feeText: r.calibrated ? `${r.actualFee} 元` : (r.fee == null ? '待校准' : (r.fee > 0 ? `${r.fee} 元` : '免赎回费')),
+        feeCls: r.calibrated ? 'fee-cal' : (r.short ? 'fee-short' : (r.fee == null ? 'fee-todo' : (r.fee === 0 ? 'fee-free' : ''))),
+      });
+      const years = (d.years || []).map((y) => {
+        const all = (y.redemption.rows || []).map(decorate);
+        return { ...y, redemption: { ...y.redemption, rows: all },
+          displayRows: all.slice(0, 3), rowsTotal: all.length, expanded: false };
+      });
+      const billHasRows = years.some((y) => y.redemption.rows.length > 0);
+      this.setData({ billCard: { years }, billHasRows });
     }).catch(() => { /* ignore */ });
   },
   onTabTap(e) {
@@ -126,20 +232,55 @@ Page({
     this.setData({ showAllIndustries: !this.data.showAllIndustries });
   },
 
+  // 持仓签名（代码 + 市值）：加减仓/换基金后必须重算，防止展示旧持仓的分析结果
+  _sigOf(holdings) {
+    return (holdings || []).map((h) => `${h.fundCode}:${h.marketValue || 0}`).sort().join("|");
+  },
+  _readPageCache() {
+    try { return wx.getStorageSync(PAGE_CACHE) || null; } catch (e) { return null; }
+  },
+  // 渲染分析结果（健康分/穿透/温度位置）：缓存路径与网络路径共用，
+  // 顺带处理健康分圆环绘制与"无分析内容时默认落账单 tab"
+  _applyPayload(p) {
+    this.setData({ loading: false, ...p }, () => {
+      if (p.healthScore) this._drawHealthRing(p.healthScore.score);
+      if (!p.healthScore && (!p.assetAllocation || !p.assetAllocation.items || !p.assetAllocation.items.length)) {
+        this.setData({ activeTab: "cost" });
+      }
+    });
+  },
+
   async fetchAll() {
     this.setData({ loading: true, loadError: false });
     try {
+      const portfolioCache = wx.getStorageSync("portfolio_cache") || {};
+      const homeHoldings = portfolioCache.holdings || [];
       // 重合度预取与组合数据并行：基金代码在首页缓存里同步可取，不必等 getPortfolio
       // 返回——手机上省一次串行云函数往返（≈0.5-1s）。代码集若与最终持仓不一致，
       // 下方主流程会用正确的 codes 再跑一次（幂等，多的那次只当预热）
-      const pcCodes = [...new Set(((wx.getStorageSync("portfolio_cache") || {}).holdings || []).map((h) => h.fundCode).filter(Boolean))];
+      const pcCodes = [...new Set(homeHoldings.map((h) => h.fundCode).filter(Boolean))];
       if (pcCodes.length >= 2) this._ensureCorrelation(pcCodes, null);
-      // 1. 获取持仓 + 健康分 + 资产配置（优先读首页缓存；交易日时钟判新鲜度，冻结态不重复拉）
-      let d;
-      const portfolioCache = wx.getStorageSync("portfolio_cache");
-      if (portfolioCache && portfolioCache.holdings && portfolioCache.updateTime &&
-          marketTime.isCacheFresh(portfolioCache, { estimateTtl: 300000 })) {
-        d = portfolioCache;
+
+      const sig = this._sigOf(homeHoldings);
+      // 首页缓存新鲜（盘中 5 分钟 / 盘后冻结 / 周末全天）→ 直接用它，零网络
+      const homeFresh = homeHoldings.length > 0 && !!portfolioCache.updateTime &&
+        marketTime.isCacheFresh(portfolioCache, { estimateTtl: 300000 });
+      const cached = this._readPageCache();
+      const cacheUsable = !!(cached && cached.data && (!sig || !cached.sig || cached.sig === sig));
+      const cacheFresh = cacheUsable && Date.now() - (cached.ts || 0) < PAGE_CACHE_TTL;
+
+      // SWR：首页缓存不新鲜时，先用本页缓存秒出上次结果（此前是空白转圈等云函数）
+      if (!homeFresh && cacheUsable) this._applyPayload(cached.data);
+
+      // 1. 取组合数据
+      let d = homeFresh ? portfolioCache : null;
+      // 本页缓存还新且签名一致 → 免拉网络：只补 fundCodes（重合度用），不重复渲染（已用缓存渲染过）
+      if (!d && cacheFresh && homeHoldings.length > 0) {
+        const codes = [...new Set(homeHoldings.map((h) => h.fundCode))];
+        const names = homeHoldings.map((h) => h.fundName);
+        this.setData({ fundCodes: codes, fundNames: names, loading: false });
+        if (codes.length >= 2) await this._ensureCorrelation(codes, names);
+        return;
       }
       if (!d) {
         // withNav60:false 跳过历史净值拉取（本页只需持仓列表 + 健康分），减小响应与耗时
@@ -148,6 +289,7 @@ Page({
         d = res.result && res.result.data;
       }
       if (!d || !d.holdings || d.holdings.length === 0) {
+        // 首页缓存与网络都不可用：若刚才已用本页缓存渲染则保留，否则收尾空态
         this.setData({ loading: false });
         return;
       }
@@ -167,20 +309,16 @@ Page({
       // 先收起 loading 再渲染数据：健康分圆环是 canvas，处于 loading 的 wx:else 分支之外，
       // 若先 setData 数据后收 loading，绘制时 canvas 节点尚未挂载 → 圆环空白
       const concTip = this._concentrationTip(d.assetAllocation);
-      this.setData({
-        loading: false,
+      const payload = {
         healthScore: d.healthScore || null,
         assetAllocation: d.assetAllocation || null,
         concentrationTip: concTip,
         tempStatMine: tempStat.mine,
         tempStatMarket: tempStat.market,
-      }, () => {
-        if (d.healthScore) this._drawHealthRing(d.healthScore.score);
-        // 无持仓分析内容（健康/穿透均空）时默认落费用与复盘 tab，避免首屏空态
-        if (!d.healthScore && (!d.assetAllocation || !d.assetAllocation.items || !d.assetAllocation.items.length)) {
-          this.setData({ activeTab: "cost" });
-        }
-      });
+      };
+      this._applyPayload(payload);
+      // 写本页缓存（下次进入先秒出；持仓签名变化即失效）
+      try { wx.setStorageSync(PAGE_CACHE, { ts: Date.now(), sig, data: payload }); } catch (e) { /* ignore */ }
 
       // 同一基金多账户会重复出现 → 去重，否则重合度会把同一只基金算两次
       const fundCodes = [...new Set(d.holdings.map(h => h.fundCode))];

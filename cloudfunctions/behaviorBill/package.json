@@ -1,0 +1,9 @@
+{
+  "name": "behaviorBill",
+  "version": "1.0.0",
+  "description": "行为成本账单：按年聚合用户操作次数/归因分布，并按费率分档 FIFO 演算赎回费",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

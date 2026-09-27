@@ -179,7 +179,7 @@
           <view wx:if="{{holdings.length >= 2}}" class="ps-row" bind:tap="onCorrelation">
             <view class="ps-main">
               <view class="ps-name">📊 资产分析</view>
-              <view class="ps-sub">持仓分析 · 费用与复盘</view>
+              <view class="ps-sub">健康分 · 穿透 · 账单</view>
             </view>
             <view class="ps-arrow">›</view>
           </view>

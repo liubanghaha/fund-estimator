@@ -36,7 +36,7 @@ Page({
     ],
     canvasHRpx: 0,
     asOfTime: "",
-    amountVisible: true, // 金额隐藏跟随首页全局开关（隐私）
+    amountVisible: true, // 金额不做隐藏（隐藏开关只管首页持仓列表，2026-09-26 用户拍板）
     reviewCard: null, // 当前 tab 的周期复盘（组合 vs 沪深300/强弱/操作）
     signVisible: false, showSignModal: false, signRendering: false, signPeriod: "week", signTitle: "周签",
     signTabLabel: { today: "今日", week: "本周", month: "本月", year: "本年" },
@@ -89,7 +89,6 @@ Page({
 
   onLoad(options) {
     // 金额隐藏跟随首页全局开关（隐私：金额 → ****，百分比保留）
-    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     this.setData({ showBriefBanner: subscribe.canPrompt() && !subscribe.hasAuthed() });
     // 召回推送落地：查推送类型，召回类显示一键退订横幅（双条播报不受影响）
     if (options && options.src === "push" && options.lid) {
@@ -136,7 +135,6 @@ Page({
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     // 金额隐藏开关也同步（首页切换后返回本页立即生效）
-    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     // 周期签入口：周/月/年 tab 显示对应签（当天 tab 无签），签数据为"至今"口径
     this.setData({ signVisible: this.data.activeTab !== "today" });
     this._adoptHomePortfolio(); // 从首页切回来：若首页那份更新过，先把当天收益对齐再决定是否重拉

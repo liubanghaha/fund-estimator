@@ -22,7 +22,6 @@ Page({
     const bjYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
     const year = parseInt(options && options.year, 10) || (bjYear - 1);
     this.setData({ theme: wx.getStorageSync("theme") || "red", year });
-    try { this.setData({ amountVisible: wx.getStorageSync("amountVisible") !== false }); } catch (e) { /* ignore */ }
     track.track("annual_report_open", { year });
     this._load(year);
   },

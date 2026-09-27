@@ -5,7 +5,7 @@ const api = {
   _pending: {},
   _pendingTs: {},
   READ_ONLY_FUNCS: [
-    "userLogin", "searchFund", "getPortfolio", "portfolioLight",
+    "userLogin", "searchFund", "getPortfolio", "portfolioLight", "behaviorBill",
     "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
     "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview", "fetchMarketSnapshot", "fetchNews",
     "batchFetchEstimate", "computeCorrelation",
@@ -193,6 +193,14 @@ const api = {
   // 费用账单：持仓加权综合费率 + 预计年费用（费率云端缓存 30 天）
   feeSummary() {
     return this.getPortfolio(0, { action: "feeSummary" });
+  },
+  // 行为成本账单（资产分析页：操作概览/归因分布/赎回费演算，全部历史陈述）
+  behaviorBill(year) {
+    return this.callFunction("behaviorBill", year ? { year } : {});
+  },
+  // 按笔校准赎回费（items: [{txId, actualFee|null}]，null = 清除校准回到估算）
+  behaviorBillCalibrate(items) {
+    return this.callFunction("behaviorBill", { action: "saveCalibration", items });
   },
   // 影子账户：卖出记录 × 最新官方净值的"如果没卖"演算（服务端算好逐笔与汇总）
   transactionShadow() {

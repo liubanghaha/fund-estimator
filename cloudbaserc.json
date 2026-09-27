@@ -8,80 +8,8 @@
   },
   "functions": [
     {
-      "name": "createCollection",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "fetchFundEstimate",
+      "name": "batchAddHoldings",
       "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "fetchFundNAVHistory",
-      "timeout": 30,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "fetchFundProfile",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "getPortfolio",
-      "timeout": 60,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "ocrScreenshot",
-      "timeout": 60,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "searchFund",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "manageWatchlist",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "userLogin",
-      "timeout": 10,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "fetchMarketIndex",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "ocrTransaction",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "manageHolding",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "manageTransaction",
-      "timeout": 15,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
@@ -92,60 +20,22 @@
       "handler": "index.main"
     },
     {
-      "name": "snapshotProfit",
-      "timeout": 120,
+      "name": "behaviorBill",
+      "timeout": 20,
       "runtime": "Nodejs20.19",
-      "handler": "index.main",
-      "concurrency": 1,
-      "triggers": [
-        {
-          "name": "snapshotTimer",
-          "type": "timer",
-          "config": "0 */2 9-15 * * 1-5 *"
-        }
-      ]
+      "handler": "index.main"
     },
     {
-      "name": "snapshotEstimateDeviation",
-      "timeout": 120,
+      "name": "bindMigrationCode",
+      "timeout": 30,
       "runtime": "Nodejs20.19",
-      "handler": "index.main",
-      "concurrency": 1,
-      "triggers": [
-        {
-          "name": "estimateDeviationTimer",
-          "type": "timer",
-          "config": "0 30 15 * * 1-5 *"
-        }
-      ]
+      "handler": "index.main"
     },
     {
-      "name": "snapshotQuarterlyHoldings",
-      "timeout": 300,
+      "name": "computeCorrelation",
+      "timeout": 30,
       "runtime": "Nodejs20.19",
-      "handler": "index.main",
-      "concurrency": 1,
-      "triggers": [
-        {
-          "name": "quarterlySnapshotTimer",
-          "type": "timer",
-          "config": "0 0 4 * * 1-5 *"
-        }
-      ]
-    },
-    {
-      "name": "refreshRedemptionFees",
-      "timeout": 300,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main",
-      "concurrency": 1,
-      "triggers": [
-        {
-          "name": "redemptionFeeTimer",
-          "type": "timer",
-          "config": "0 0 5 * * 1-5 *"
-        }
-      ]
+      "handler": "index.main"
     },
     {
       "name": "computeFundTemperature",
@@ -161,82 +51,8 @@
       ]
     },
     {
-      "name": "fetchFundOverview",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "dcaBacktest",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "temperatureBacktest",
-      "timeout": 300,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main",
-      "concurrency": 1,
-      "triggers": [
-        {
-          "name": "tempBacktestTimer",
-          "type": "timer",
-          "config": "0 30 20 * * 1-5 *"
-        }
-      ]
-    },
-    {
-      "name": "computeCorrelation",
-      "timeout": 30,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "bindMigrationCode",
-      "timeout": 30,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "getMigrationCode",
-      "timeout": 10,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "submitFeedback",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "portfolioLight",
+      "name": "createCollection",
       "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "batchAddHoldings",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "migrateFundTempIndexes",
-      "timeout": 120,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "opsShare",
-      "timeout": 15,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
-      "name": "opsTool",
-      "timeout": 30,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
@@ -269,8 +85,50 @@
       }
     },
     {
+      "name": "dcaBacktest",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundEstimate",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundNAVHistory",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundOverview",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchFundProfile",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchMarketIndex",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
       "name": "fetchMarketOverview",
       "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "fetchMarketSnapshot",
+      "timeout": 15,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
@@ -281,14 +139,162 @@
       "handler": "index.main"
     },
     {
+      "name": "getMigrationCode",
+      "timeout": 10,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "getPortfolio",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageHolding",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageTransaction",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "manageWatchlist",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "migrateFundTempIndexes",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "ocrScreenshot",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "ocrTransaction",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "opsShare",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "opsTool",
+      "timeout": 30,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "portfolioLight",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "refreshRedemptionFees",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "redemptionFeeTimer",
+          "type": "timer",
+          "config": "0 0 5 * * 1-5 *"
+        }
+      ]
+    },
+    {
+      "name": "searchFund",
+      "timeout": 15,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "snapshotEstimateDeviation",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "estimateDeviationTimer",
+          "type": "timer",
+          "config": "0 30 15 * * 1-5 *"
+        }
+      ]
+    },
+    {
+      "name": "snapshotProfit",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "snapshotTimer",
+          "type": "timer",
+          "config": "0 */2 9-15 * * 1-5 *"
+        }
+      ]
+    },
+    {
+      "name": "snapshotQuarterlyHoldings",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "quarterlySnapshotTimer",
+          "type": "timer",
+          "config": "0 0 4 * * 1-5 *"
+        }
+      ]
+    },
+    {
+      "name": "submitFeedback",
+      "timeout": 20,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
+    },
+    {
+      "name": "temperatureBacktest",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "tempBacktestTimer",
+          "type": "timer",
+          "config": "0 30 20 * * 1-5 *"
+        }
+      ]
+    },
+    {
       "name": "trackReport",
       "timeout": 10,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
     {
-      "name": "fetchMarketSnapshot",
-      "timeout": 15,
+      "name": "userLogin",
+      "timeout": 10,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     }

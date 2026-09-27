@@ -21,8 +21,76 @@ const ft = require("./_shared/fund-temperature");
  *       - 非窗口期 → 从 fund_temperatures 读取缓存，无缓存才拉取
  *    3. 批量查询所有持仓股的 PE+PB+行业（行情接口） + 历史PE区间（估值接口）
  *    4. 每只股票打分 → 基金加权汇总 → 写入 fund_temperatures
+ *
+ *  行业快照回填（2026-09-27 新增）：行情主源（东财 lvb）带行业字段，但降级到腾讯源时
+ *  无行业 → 历史代码硬写"其他" → 行业穿透在"半导体 / 科技 / 其他"之间漂移
+ *  （实测 2026-09-26 缺行业 221 只 vs 09-27 缺 0 只）。行业几乎不变，故：
+ *  取值 = 当日主源行业 → 缺失时回填 stock_industries 快照（最近一次已知）→ 仍无才"其他"；
+ *  当日拿到的有效行业写回快照表。event.seedIndustries=true 可一次性从历史温度表灌种子。
  */
+// ---- 行业快照（stock_industries：_id=股票代码 → { industry, updatedAt }）----
+const BAD_INDUSTRY = new Set(["", "-", "其他", "其它", "未知", "null"]);
+function goodIndustry(v) {
+  const t = String(v || "").trim();
+  return t && !BAD_INDUSTRY.has(t) ? t : "";
+}
+async function readIndustrySnapshot(codes) {
+  const map = {};
+  try {
+    for (let i = 0; i < codes.length; i += 100) {
+      const res = await db.collection("stock_industries")
+        .where({ _id: _.in(codes.slice(i, i + 100)) })
+        .field({ industry: true })
+        .get();
+      (res.data || []).forEach((d) => { const g = goodIndustry(d.industry); if (g) map[d._id] = g; });
+    }
+  } catch (e) { /* 集合未建（首次运行）时忽略：当日行业照常用，下次跑就有快照 */ }
+  return map;
+}
+async function upsertIndustrySnapshot(list) {
+  try {
+    for (let i = 0; i < list.length; i += 50) {
+      const chunk = list.slice(i, i + 50);
+      await Promise.all(chunk.map((x) =>
+        db.collection("stock_industries").doc(x.code)
+          .set({ data: { industry: x.industry, updatedAt: Date.now() } })
+          .catch(() => {})
+      ));
+    }
+  } catch (e) { console.warn("[computeFundTemperature] 行业快照写入失败:", e.message); }
+}
+
+let industrySnapStat = null; // 本轮行业快照命中/新学计数（写入状态文档供观测）
+
 exports.main = async (event) => {
+  // 一次性运维动作：从历史温度表灌行业种子（回填快照、加速收敛）
+  if (event && event.seedIndustries) {
+    const t0 = Date.now();
+    const from = new Date(Date.now() + 8 * 3600000 - 3 * 86400000).toISOString().slice(0, 10);
+    const seen = {};
+    let scanned = 0;
+    for (let skip = 0; skip < 30000; skip += 200) {
+      if (Date.now() - t0 > 90000) break; // 预算保护：没扫完的下次任务自然补全
+      const res = await db.collection("fund_temperatures")
+        .where({ date: _.gte(from) })
+        .field({ detailPEs: true })
+        .skip(skip).limit(200).get();
+      const rows = res.data || [];
+      scanned += rows.length;
+      rows.forEach((r) => {
+        (r.detailPEs || []).forEach((p) => {
+          const g = goodIndustry(p.industry);
+          if (g && p.code && !seen[p.code]) seen[p.code] = g;
+        });
+      });
+      if (rows.length < 200) break;
+    }
+    const list = Object.entries(seen).map(([code, industry]) => ({ code, industry }));
+    await upsertIndustrySnapshot(list);
+    const out = { code: 0, scanned, stocks: list.length, costMs: Date.now() - t0 };
+    console.log(`[computeFundTemperature] 行业种子灌入 ${JSON.stringify(out)}`);
+    return out;
+  }
   const today = fd.formatBJDate();
   const _startTime = Date.now();
   const inWindow = isInReportWindow();
@@ -104,19 +172,30 @@ exports.main = async (event) => {
       } else {
         console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
       }
+      // 行业快照回填：当日主源缺失（降级到腾讯源）时用最近一次已知行业补上，
+      // 保证行业穿透的粒度稳定（不因行情源波动在"半导体/科技/其他"之间跳）
+      const snap = await readIndustrySnapshot(codes);
+      industrySnapStat = { total: codes.length, hit: Object.keys(snap).length };
+      const learned = [];
       codes.forEach(code => {
         const live = liveData[code] || {};
         const hist = histData[code] || {};
+        const fresh = goodIndustry(live.industry);
+        const industry = fresh || snap[code] || "其他";
+        if (fresh && fresh !== snap[code]) learned.push({ code, industry: fresh });
         stockMap[code] = {
           pe: live.pe || null,
           pb: live.pb || null,
           price: live.price || null,
-          industry: live.industry || "其他",
+          industry,
           peHistory: hist.peYears || [],
           pbHistory: hist.pbYears || [],
           totalYears: hist.totalYears || 0,
         };
       });
+      industrySnapStat.learned = learned.length;
+      console.log(`[computeFundTemperature] 行业快照：命中 ${industrySnapStat.hit}/${industrySnapStat.total}，本轮新学 ${industrySnapStat.learned}`);
+      if (learned.length > 0) await upsertIndustrySnapshot(learned);
     }
 
     const withHist = Object.values(stockMap).filter(s => s.totalYears > 0).length;
@@ -170,7 +249,7 @@ exports.main = async (event) => {
     results.forEach(r => { dist[r.signal] = (dist[r.signal] || 0) + 1; });
     console.log(`[computeFundTemperature] 完成 ${results.length} 只 (低估:${dist.low} 正常:${dist.mid} 高估:${dist.high} 无数据:${dist.nodata})`);
     await db.collection("app_config").doc("temp_task_status").set({
-      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist }
+      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat }
     }).catch(() => {});
     return { code: 0, data: { count: results.length, date: today, signalDist: dist } };
   } catch (e) {
