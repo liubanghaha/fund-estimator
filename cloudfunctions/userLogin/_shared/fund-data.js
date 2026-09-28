@@ -642,12 +642,18 @@ function fetchNAVHistory(fundCode, totalNeeded, opts = {}) {
 // 涨跌基准是上一交易日已公布净值（worth 字段可能是今日已公布的，不可当基准）。
 // 解析只取数字/日期字段，并以「日期」字段锚定位置——基金名称含逗号时按固定下标会整体错位。
 // opts.budgetMs：整体预算（毫秒）。到点即停止续批、返回已拿到的部分——估值是"有则优先、
-// 无则回退自算"，不能为凑齐全量把调用方的函数预算耗尽（快照任务每分钟跑，全平台基金要十几批；
+// 不能为凑齐全量把调用方的函数预算耗尽（快照任务每分钟跑，全平台基金要十几批；
 // 持仓上百只的用户同样会叠出多批）。
+//
+// 重试（2026-09-28 加）：这条接口偶发整批零返回（实测同一天 14:44 有 81/158 个账号同时缺值、
+// 13:22 有 44 个），原实现一次超时就整体放弃 → 下游只能退回自算，同一行数字悄悄换口径。
+// 现在：首轮用常规超时，缺值的代码用短超时补一轮（3s 足够一次正常轻请求，实测 ~200ms）。
+// ⚠️ 缺值里混着"本就无覆盖"的标的（债券/968），所以重试只是再试一次、不做无限重试；
+// 首轮出现"整批零返回"才算取数失败并打日志（否则持有债券基金的用户每次调用都会刷日志）。
 function fetchSinaEstimates(codes, opts = {}) {
   const map = {};
   if (!codes || codes.length === 0) return Promise.resolve(map);
-  const { timeoutMs = 8000, batchSize = 60, budgetMs = 0 } = opts;
+  const { timeoutMs = 8000, batchSize = 60, budgetMs = 0, retryTimeoutMs = 3000 } = opts;
 
   const fetchBatch = (batch, perTimeout) => new Promise((resolve) => {
     const list = batch.map((c) => `fu_${c}`).join(",");
@@ -657,6 +663,7 @@ function fetchSinaEstimates(codes, opts = {}) {
       const chunks = [];
       res.on("data", (c) => { chunks.push(c); });
       res.on("end", () => {
+        let hit = 0;
         try {
           // 按 latin1 取字节：只解析 ASCII 数字/日期，中文名称不参与取值故无需 GBK 解码
           const body = Buffer.concat(chunks).toString("latin1");
@@ -681,28 +688,121 @@ function fetchSinaEstimates(codes, opts = {}) {
               time: (parts[di - 6] || "").slice(0, 5),   // 数据时间，统一为 HH:mm（与自算路径 formatBJTime 一致）
               date: parts[di].trim(),                     // 估算所属日 YYYY-MM-DD
             };
+            hit++;
           }
         } catch (e) { /* ignore */ }
-        resolve();
+        resolve({ ok: true, hit });
       });
     });
-    req.setTimeout(perTimeout, () => { req.destroy(); resolve(); });
-    req.on("error", () => resolve());
+    req.setTimeout(perTimeout, () => { req.destroy(); resolve({ ok: false, hit: 0 }); });
+    req.on("error", () => resolve({ ok: false, hit: 0 }));
   });
 
   return (async () => {
     const started = Date.now();
-    for (let i = 0; i < codes.length; i += batchSize) {
-      let perTimeout = timeoutMs;
-      if (budgetMs > 0) {
-        const remain = budgetMs - (Date.now() - started);
-        if (remain <= 0) break; // 预算用尽：停止续批，用已拿到的那部分
-        perTimeout = Math.min(timeoutMs, remain);
+    let pending = [...codes];
+    let failBatches = 0; // 首轮"整批零返回"的批次数：这才是取数失败，需要日志
+    let missedAtFirstRound = 0;
+    for (let round = 1; round <= 2 && pending.length > 0; round++) {
+      const roundTimeout = round === 1 ? timeoutMs : retryTimeoutMs;
+      const stillMissing = [];
+      for (let i = 0; i < pending.length; i += batchSize) {
+        const batch = pending.slice(i, i + batchSize);
+        let perTimeout = roundTimeout;
+        if (budgetMs > 0) {
+          const remain = budgetMs - (Date.now() - started);
+          if (remain <= 0) { stillMissing.push(...batch); continue; } // 预算用尽：停止续批，用已拿到的那部分
+          perTimeout = Math.min(roundTimeout, remain);
+        }
+        const r = await fetchBatch(batch, perTimeout);
+        if (round === 1 && r.hit === 0) failBatches++;
+        // 缺值集合按"响应里有没有这只"判：部分返回时只补缺的那些
+        batch.forEach((c) => { if (!map[c]) stillMissing.push(c); });
       }
-      await fetchBatch(codes.slice(i, i + batchSize), perTimeout);
+      if (round === 1) missedAtFirstRound = stillMissing.length;
+      pending = stillMissing;
+    }
+    if (failBatches > 0) {
+      console.warn(`[fetchSinaEstimates] 首轮 ${failBatches} 批零返回、缺 ${missedAtFirstRound} 只，重试后仍缺 ${pending.length} 只：${pending.slice(0, 6).join(",")}`);
     }
     return map;
   })();
+}
+
+// ---------------- 数据源一（新浪）最近值缓存 ----------------
+// 用途：新浪偶发整批取数失败时，下游**不换源**——沿用同源的最近一次值，而不是悄悄换成自算口径
+// （2026-09-28 实测：同一行数字在两个源之间跳变，主动基金两源差约 1pp；自算只覆盖前十大重仓）。
+// 写入方只有 snapshotProfit（每 2 分钟一轮，本来就把全平台新浪值拉一遍，零额外上游请求）；
+// 读取方是四个估值入口（getPortfolio / fetchFundEstimate / batchFetchEstimate / fetchFundOverview）。
+const EST_CACHE_COLLECTION = "fund_estimate_cache";
+// 盘中沿用上限：盘中源头在动，太久说明长时间取不到，宁缺也不静默冻结一个旧数
+const SINA_STALE_TRADING_MS = 30 * 60 * 1000;
+
+// 同源最近值能否沿用：必须与请求同一"数据所属日"（避免把上一交易日的值当今日），且时效内。
+// 盘后/午休/周末新浪自己也不再更新（实测最后一版 16:04-16:06），当日值直接可用；
+// 盘中则限 30 分钟。
+function staleCacheUsable(cached, todayStr, now) {
+  if (!cached || cached.rate == null || cached.date !== todayStr) return false;
+  const bj = new Date(now + 8 * 3600000);
+  const live = bj.getUTCDay() >= 1 && bj.getUTCDay() <= 5 && inTradingWindow(bj.getUTCHours() * 60 + bj.getUTCMinutes());
+  if (!live) return true;
+  return now - (cached.ts || 0) <= SINA_STALE_TRADING_MS;
+}
+
+// 估值源选择：四个估值入口共用一套口径，避免各页各写一条分支而漂移。
+// pref = "sina"（数据源一）| "self"（数据源二）；入参里的 sinaRate/selfRate 都已由调用方做过日期校验
+// 返回 { rate, source, time, nav }，rate === null 表示今日暂无估值（调用方按"未出估值"处理）；
+// nav 只在数据源一有对应金额时给出（估算净值），沿用缓存值时一并带上，避免"涨跌有值、估算净值空"
+function pickEstimate({ pref, sinaRate, sinaTime, sinaNav, selfRate, selfTime, cached, todayStr, now }) {
+  if (pref === "self") {
+    // 数据源二：自算优先，缺失时用新浪兜底（保持原行为）
+    if (selfRate != null) return { rate: selfRate, source: "self", time: selfTime || "", nav: null };
+    if (sinaRate != null) return { rate: sinaRate, source: "sina", time: sinaTime || "", nav: sinaNav != null ? sinaNav : null };
+    return { rate: null, source: "", time: "", nav: null };
+  }
+  // 数据源一：本轮新浪 → 同源最近值 → 自算（仅"从无新浪值"的无覆盖标的，或长时间取不到）
+  if (sinaRate != null) return { rate: sinaRate, source: "sina", time: sinaTime || "", nav: sinaNav != null ? sinaNav : null };
+  if (staleCacheUsable(cached, todayStr, now)) {
+    return { rate: cached.rate, source: "sina", time: cached.time || "", nav: cached.nav != null ? cached.nav : null };
+  }
+  if (selfRate != null) return { rate: selfRate, source: "self", time: selfTime || "", nav: null };
+  return { rate: null, source: "", time: "", nav: null };
+}
+
+// 读同源最近值。⚠️ 必须分块：快照任务一次要补的缺值可达 300 只（整批失败那一轮），
+// 早期版本 `_.in(list.slice(0,200))` 会把 200 之后静默丢掉 —— 恰恰在最需要它的时候（整批失败）
+// 让部分基金又退回了自算，等于修复只做了一半
+async function readEstimateCache(db, codes) {
+  const out = {};
+  const list = [...new Set((codes || []).filter(Boolean))];
+  const CHUNK = 100;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    try {
+      const res = await db.collection(EST_CACHE_COLLECTION)
+        .where({ _id: db.command.in(list.slice(i, i + CHUNK)) })
+        .field({ rate: true, time: true, nav: true, date: true, ts: true })
+        .limit(CHUNK)
+        .get();
+      (res.data || []).forEach((d) => { out[d._id] = d; });
+    } catch (e) {
+      console.warn("[readEstimateCache] 读取失败:", e.message);
+    }
+  }
+  return out;
+}
+
+// 批量写回本轮拿到的今日值（只由 snapshotProfit 调用；分块串行，避免瞬发几百个写）
+async function writeEstimateCache(db, entries) {
+  const list = (entries || []).filter((e) => e && e.fundCode && e.rate != null && e.date);
+  if (list.length === 0) return 0;
+  const CHUNK = 50;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    await Promise.all(list.slice(i, i + CHUNK).map((e) => db.collection(EST_CACHE_COLLECTION)
+      .doc(e.fundCode)
+      .set({ data: { fundCode: e.fundCode, rate: e.rate, time: e.time || "", nav: e.nav != null ? e.nav : null, date: e.date, ts: e.ts || Date.now() } })
+      .catch(() => {})));
+  }
+  return list.length;
 }
 
 module.exports = {
@@ -721,6 +821,11 @@ module.exports = {
   isValidHoldings,
   fetchStockPricesTencent,
   fetchSinaEstimates,
+  pickEstimate,
+  staleCacheUsable,
+  readEstimateCache,
+  writeEstimateCache,
+  EST_CACHE_COLLECTION,
   fetchLatestNavEastMoney,
   fetchLatestNavMNF,
   fetchNAVHistory,

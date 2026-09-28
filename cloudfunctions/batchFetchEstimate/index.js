@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+const db = cloud.database();
 const fd = require("./_shared/fund-data");
 const td = require("./_shared/trading-day");
 const https = require("https");
@@ -140,6 +141,16 @@ exports.main = async (event) => {
       fetchLatestNavsBatched(codes),
     ]);
 
+    // 数据源一：本轮缺值的基金取"同源最近值"（缺值不换源，口径见 fd.pickEstimate）
+    let estCacheMap = {};
+    if (estSrc === "sina") {
+      const missCodes = codes.filter((c) => {
+        const s = sinaMap[c];
+        return !(s && s.date != null && _gdIsToday(s.date, todayStr) && s.changeRate != null);
+      });
+      if (missCodes.length > 0) estCacheMap = await fd.readEstimateCache(db, missCodes);
+    }
+
     const data = {};
     codes.forEach((code, i) => {
       const em = emResults[i] || {};
@@ -147,28 +158,34 @@ exports.main = async (event) => {
       const sn = sinaMap[code] || {};
       const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
       const nav = em.actualNav != null ? em.actualNav : null;
-      // 净值已公布用精确值；未公布按所选源（sina=数据源一优先，self=数据源二优先），互相兜底
+      // 净值已公布用精确值；未公布按所选源（口径见 _shared/fund-data.pickEstimate：数据源一 =
+      // 本轮新浪 → 同源最近值 → 自算；数据源二 = 自算优先、新浪兜底）
       // 判据用 displayDay（9:25 起=今天），不是硬比 todayStr——后者在 9:25 前/周末会把
       // 上一交易日的已确定净值误判成"今日未公布"，再据此编出假估算
       const displayDay = _dataDay(todayStr);
-      let estimatedChangeRate = null, estimateTime = "", source = "";
+      let estimatedChangeRate = null, estimateTime = "", source = "", estNavFromSource = null;
       if (em.actualDate === displayDay) {
         estimatedChangeRate = em.actualChangeRate != null ? em.actualChangeRate : null;
         source = "nav";
-      } else if (estSrc === "sina" && sinaToday) {
-        estimatedChangeRate = sn.changeRate; estimateTime = sn.time || ""; source = "sina";
-      } else if (est.estimatedChangeRate != null) {
-        estimatedChangeRate = est.estimatedChangeRate; estimateTime = est.estimateTime || ""; source = "self";
-      } else if (sinaToday) {
-        estimatedChangeRate = sn.changeRate; estimateTime = sn.time || ""; source = "sina";
       } else {
+        const pick = fd.pickEstimate({
+          pref: estSrc,
+          sinaRate: sinaToday ? sn.changeRate : null, sinaTime: sn.time || "", sinaNav: sn.nav,
+          selfRate: est.estimatedChangeRate != null ? est.estimatedChangeRate : null,
+          selfTime: est.estimateTime || "",
+          cached: estCacheMap[code] || null,
+          todayStr, now: Date.now(),
+        });
+        estimatedChangeRate = pick.rate;
+        estimateTime = pick.time;
+        estNavFromSource = pick.nav;
         // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不拿上一交易日涨幅顶替，
         // 留 null 让列表显示 --（与首页/详情页同一约定）
-        estimatedChangeRate = null; source = "nav";
+        source = pick.source || "nav";
       }
       // 估算净值：数据源一直用新浪给的估算净值，数据源二/兜底按最新净值 × (1 + 估算涨跌%)
-      const estimatedNav = (source === "sina" && sn.nav != null)
-        ? sn.nav
+      const estimatedNav = (source === "sina" && estNavFromSource != null)
+        ? estNavFromSource
         : ((estimatedChangeRate != null && nav != null)
           ? +(nav * (1 + estimatedChangeRate / 100)).toFixed(4)
           : null);

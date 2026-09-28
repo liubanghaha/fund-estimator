@@ -95,22 +95,28 @@ async function fetchSelfEstimate(fundCode, src) {
     computeSelfChangeRate(fundCode),
   ]);
 
-  // 4. 组装（净值未公布）：按所选源优先（sina=数据源一优先、self=数据源二优先），互相兜底后回退昨日涨幅
-  //    新浪对无覆盖标的（债券基金/968 互认）返回空，或数据非当日（停更标的）→ 视为不可用
+  // 4. 组装（净值未公布）：口径统一走 _shared/fund-data.pickEstimate——
+  //    数据源一 = 本轮新浪 → 同源最近值（fund_estimate_cache，缺值不换源）→ 自算；
+  //    数据源二 = 自算优先、新浪兜底。新浪对无覆盖标的（债券基金/968 互认）返回空，或数据非当日 → 视为不可用
   const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
 
-  let estRate, estTime, source;
-  if (estSrc === "sina" && sinaToday) {
-    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
-  } else if (selfChangeRate != null) {
-    estRate = selfChangeRate; estTime = fd.formatBJTime(); source = "self";
-  } else if (sinaToday) {
-    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
-  } else {
-    // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不留"上一交易日涨幅"冒充今日，
-    // 置 null 让详情页显示 --（与 getPortfolio / batchFetchEstimate 同一约定）
-    estRate = null; estTime = ""; source = "nav";
+  let cached = null;
+  if (estSrc === "sina" && !sinaToday) {
+    const m = await fd.readEstimateCache(db, [fundCode]);
+    cached = m[fundCode] || null;
   }
+  const selfTime = fd.formatBJTime();
+  const pick = fd.pickEstimate({
+    pref: estSrc,
+    sinaRate: sinaToday ? sn.changeRate : null, sinaTime: sn.time || "", sinaNav: sn.nav,
+    selfRate: selfChangeRate, selfTime,
+    cached, todayStr, now: Date.now(),
+  });
+  // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不留"上一交易日涨幅"冒充今日，
+  // 置 null 让详情页显示 --（与 getPortfolio / batchFetchEstimate 同一约定）
+  const estRate = pick.rate;
+  const estTime = pick.time;
+  const source = pick.source || "nav";
 
   // nav 要与 actualNav 保持一致，避免前端 selectChangeRate 误判
   const baseNav = em.actualNav;
@@ -118,7 +124,7 @@ async function fetchSelfEstimate(fundCode, src) {
   return {
     fundCode,
     nav: baseNav || em.actualNav || null,
-    estimatedNav: source === "sina" ? (sn.nav || null) : null,
+    estimatedNav: pick.nav != null ? pick.nav : null,
     estimatedChangeRate: estRate,
     estimateTime: estTime,
     source,

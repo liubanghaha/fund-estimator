@@ -175,8 +175,10 @@
             <view class="ps-arrow">›</view>
           </view>
           <view wx:if="{{!platformRows.length}}" class="ps-empty">还没有账户：新增持有时选一个账户，或点顶部「+」新建</view>
-          <!-- 总览页是分析的天然入口（分析按整个组合算，不按账户切） -->
-          <view wx:if="{{holdings.length >= 2}}" class="ps-row" bind:tap="onCorrelation">
+          <!-- 总览页是分析的天然入口（分析按整个组合算，不按账户切）。
+               门槛 1 只而非 2 只：重合度确实要 ≥2 只，但健康分/穿透/账单单只也有数据，
+               与「我的」页入口口径保持一致（那边不设门槛，由分析页自己给空态） -->
+          <view wx:if="{{holdings.length >= 1}}" class="ps-row" bind:tap="onCorrelation">
             <view class="ps-main">
               <view class="ps-name">📊 资产分析</view>
               <view class="ps-sub">健康分 · 穿透 · 账单</view>

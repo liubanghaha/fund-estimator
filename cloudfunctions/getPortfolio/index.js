@@ -68,6 +68,17 @@ exports.main = async (event) => {
         fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
       ]);
     }
+    // 数据源一：本轮缺值的基金取"同源最近值"（缺值不换源，口径见 fd.pickEstimate/注释）。
+    // 只在真的缺值时才读这张表，正常轮次零额外读
+    let estCacheMap = {};
+    if (!skipEst && estSrc === "sina") {
+      const todayForCache = fd.formatBJDate();
+      const missCodes = codes.filter((c) => {
+        const s = sinaMap[c];
+        return !(s && s.date != null && _gdIsToday(s.date, todayForCache) && s.changeRate != null);
+      });
+      if (missCodes.length > 0) estCacheMap = await fd.readEstimateCache(db, missCodes);
+    }
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 60);
     // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控。
@@ -170,16 +181,21 @@ exports.main = async (event) => {
       // lastTradingDay 含当天（9/10 凌晨直接传今天会返回 9/10），取"上一交易日"须从昨天回找
       const displayDay = openedToday ? todayStr : td.lastTradingDay(addDays(todayStr, -1));
       const estimateUpdated = eastmoney.actualDate === displayDay;
-      // 估算源选择：sina=数据源一（新浪估值当日有效时覆盖自算）；self=数据源二（自算优先，新浪兜底）
+      // 估算源选择（sina=数据源一 / self=数据源二，口径见 _shared/fund-data.pickEstimate）：
+      // 数据源一优先新浪，新浪本轮缺值时沿用同源最近值（estCacheMap），只有无覆盖标的/长时间取不到才退自算
       const sn = sinaMap[h.fundCode] || {};
       // 这里恒比 todayStr（今日估算的日期必须是今天）；不用 displayDay——9:25 前/周末新浪那份
       // 属于上一交易日，本就该丢弃，交给下面的"无今日估值"分支
       const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
-      let estRate = tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : (sinaToday ? sn.changeRate : null);
-      let estSource = tiantian.estimatedChangeRate != null ? "self" : (sinaToday ? "sina" : "");
-      if (estSrc === "sina" && sinaToday && tiantian.estimatedChangeRate != null) {
-        estRate = sn.changeRate; estSource = "sina";
-      }
+      const pick = fd.pickEstimate({
+        pref: estSrc,
+        sinaRate: sinaToday ? sn.changeRate : null, sinaTime: sn.time || "", sinaNav: sn.nav,
+        selfRate: tiantian.estimatedChangeRate != null ? tiantian.estimatedChangeRate : null,
+        selfTime: tiantian.estimateTime || "",
+        cached: estCacheMap[h.fundCode] || null,
+        todayStr, now: Date.now(),
+      });
+      const estRate = pick.rate, estSource = pick.source;
       if (estRate != null) {
         console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
@@ -217,7 +233,8 @@ exports.main = async (event) => {
         todayChangeRate = null;
       }
 
-      if (estRate != null) { updateTime = estSource === "sina" ? (sn.time || "") : (tiantian.estimateTime || ""); }
+      // 估算时间：随所选口径走（沿用同源最近值时这里自然是那条记录的时间，不是当前时间）
+      if (estRate != null) updateTime = pick.time;
 
       const costValue = buyPrice * shares;
       const marketValue = currentNav != null ? currentNav * shares : dbMarketValue;

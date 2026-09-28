@@ -65,28 +65,31 @@ async function fetchEstimate(fundCode, estSrc) {
     computeSelfEstimate(fundCode),
   ]);
 
-  // 4. 组装（净值未公布）：按所选源优先，三层兜底
+  // 4. 组装（净值未公布）：口径统一走 _shared/fund-data.pickEstimate——
+  //    数据源一 = 本轮新浪 → 同源最近值（fund_estimate_cache，缺值不换源）→ 自算；数据源二 = 自算 → 新浪兜底
   const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
 
-  let estRate = null, estTime = "", source = "nav";
-  if (estSrc === "sina" && sinaToday) {
-    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
-  } else if (selfEstimate != null) {
-    estRate = selfEstimate; estTime = fd.formatBJTime(); source = "self";
-  } else if (sinaToday) {
-    estRate = sn.changeRate; estTime = sn.time || ""; source = "sina";
-  } else {
-    // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 置 null，别拿上一交易日涨幅
-    // 冒充今日（与 getPortfolio / batchFetchEstimate / fetchFundEstimate 同一约定）
-    estRate = null; source = "nav";
+  let cached = null;
+  if (estSrc === "sina" && !sinaToday) {
+    const m = await fd.readEstimateCache(db, [fundCode]);
+    cached = m[fundCode] || null;
   }
+  const pick = fd.pickEstimate({
+    pref: estSrc,
+    sinaRate: sinaToday ? sn.changeRate : null, sinaTime: sn.time || "", sinaNav: sn.nav,
+    selfRate: selfEstimate, selfTime: fd.formatBJTime(),
+    cached, todayStr, now: Date.now(),
+  });
+  // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 置 null，别拿上一交易日涨幅
+  // 冒充今日（与 getPortfolio / batchFetchEstimate / fetchFundEstimate 同一约定）
+  const estRate = pick.rate;
 
   return {
     nav: em.actualNav || null,
-    estimatedNav: source === "sina" ? (sn.nav || null) : null,
+    estimatedNav: pick.nav != null ? pick.nav : null,
     estimatedChangeRate: estRate,
-    estimateTime: estTime,
-    source,
+    estimateTime: pick.time,
+    source: pick.source || "nav",
     actualNav: em.actualNav,
     actualDate: em.actualDate,
     actualChangeRate: em.actualChangeRate,

@@ -1198,11 +1198,10 @@ Page({
   // 悬浮＋：只放"操作"。资产分析与持仓体检同类（组合级诊断），挪到「我的」挨着体检
   onFabTap() {
     wx.showActionSheet({
-      itemList: ["新增持仓", "加减仓", "复盘中心"],
+      itemList: ["新增持仓", "加减仓"],
       success: (r) => {
         if (r.tapIndex === 0) this.onAdd();
         else if (r.tapIndex === 1) this.onAdjust();
-        else if (r.tapIndex === 2) this.onReview();
       },
     });
   },
@@ -1338,9 +1337,8 @@ Page({
   },
 
   onCorrelation() {
-    const holdings = this.data.holdings;
-    if (holdings.length < 2) {
-      wx.showToast({ title: "至少需要2条记录", icon: "none" });
+    if (!this.data.holdings.length) {
+      wx.showToast({ title: "先添加一笔持仓", icon: "none" });
       return;
     }
     wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });

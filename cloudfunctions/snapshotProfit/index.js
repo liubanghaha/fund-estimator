@@ -64,8 +64,8 @@ exports.main = async (event) => {
     const sample = [];
     const pending = [];
     // 聚合（纯内存，快）：每位用户算双口径加权收益率——
-    // rate=数据源一口径（每基金新浪估值优先，缺值回退自算）、rateSelf=自算口径；
-    // 快照点两值并存，读取端按用户数据源偏好展示，切换源历史曲线立即变化
+    // rate=数据源一口径（每基金：本轮新浪 → 同源最近值 → 自算，见 buildGlobalFundRates 第 5 步）、
+    // rateSelf=自算口径；快照点两值并存，读取端按用户数据源偏好展示，切换源历史曲线立即变化
     for (const [openid, userHoldings] of Object.entries(userMap)) {
       let totalWeightedRate = 0, totalWeightedSelf = 0, totalBase = 0, ratedBase = 0;
       for (const h of userHoldings) {
@@ -76,10 +76,10 @@ exports.main = async (event) => {
         if (weight > 0) {
           const selfRate = fr ? fr.rate : 0;
           totalWeightedSelf += selfRate * weight;
-          totalWeightedRate += (fr && fr.rateSina != null ? fr.rateSina : selfRate) * weight;
+          totalWeightedRate += (fr && fr.rateOut != null ? fr.rateOut : selfRate) * weight;
           totalBase += weight;
           // 该基金今日至少有一个口径有数据（自算或数据源一）才有资格进"有估算"的基数
-          if (fr && (typeof fr.rate === "number" || fr.rateSina != null)) ratedBase += weight;
+          if (fr && (typeof fr.rate === "number" || fr.rateOut != null)) ratedBase += weight;
         }
       }
       // 无有效数据不写假 0 点。ratedBase 这一条专治"行情源给旧数据"：全组合都算不出今日估算时
@@ -174,8 +174,15 @@ async function checkRateAlerts(userMap, fundRateMap, today, el, dryRun) {
       // 被关掉的涨跌规则服务端照样推
       if (s.enabled === false) continue;
       const fr = fundRateMap[h.fundCode];
-      if (!fr || typeof fr.rate !== "number") continue;
-      const rate = userSelf ? fr.rate : (fr.rateSina != null ? fr.rateSina : fr.rate);
+      if (!fr) continue;
+      // 触发口径必须与用户所选源严格一致，且不用陈旧值（沿用缓存的值只用于展示与曲线）：
+      //  数据源二：本轮自算；数据源一：本轮新浪，本轮缺值时只有"从无新浪值"的无覆盖标的
+      //  （债券/968，展示层对它们也是自算口径）才退自算，有覆盖但这一轮没取到 → 这一轮不触发。
+      //  ⚠️ sinaCovered 用 === false 判，不能用 falsy：取数整段被跳过（预算耗尽）时它是 undefined，
+      //  那时"不知道有没有覆盖"，宁可漏一条也不能退回自算口径触发（那正是要消灭的误报姿势）。
+      //  宁可漏一条，也不拿另一个源或几十秒前的值去触发（2026-09-25 误报的教训）
+      const rate = userSelf ? fr.rate : (fr.rateSina != null ? fr.rateSina : (fr.sinaCovered === false ? fr.rate : null));
+      if (typeof rate !== "number") continue;
       let kind = "";
       if (s.upper > 0 && rate >= s.upper) kind = "up";
       else if (s.lower < 0 && rate <= s.lower) kind = "down";
@@ -388,23 +395,59 @@ async function buildGlobalFundRates(fundCodes, startTime) {
   }
 
   // 5) 数据源一估值（新浪实时估值；无覆盖标的如债券基金/968 互认缺值，停更标的按日期判定剔除）：
-  //    快照双口径（新浪 rateSina + 自算 rate）并存，读取端按用户数据源偏好选值；
-  //    新浪缺值时该基金在"数据源一"聚合中回退自算（rateSina=null → 用 rate）
+  //    快照双口径（数据源一 rate + 自算 rateSelf）并存，读取端按用户数据源偏好选值。
+  //    ⚠️ "数据源一口径"的构成必须与四个估值入口一致（_shared/fund-data.pickEstimate）：
+  //    本轮新浪 → 同源最近值缓存（缺值不换源）→ 自算（仅无覆盖标的/长时间取不到）。
+  //    否则首页卡片（走 getPortfolio）与收益页曲线（读本任务写的点）会在缺值那几分钟各讲一个数
   try {
-    if (Object.keys(fundRateMap).length > 0 && el() < 90000) {
+    // 条件是"有持仓基金"而不是"有 fundRateMap"：缓存写入要覆盖前者（后者只是快照聚合的范围）
+    if (fundCodes.length > 0 && el() < 90000) {
       // 全平台基金要十几批，新浪降级时不能让它吃到 120s 超时被杀（那会让整分钟快照全丢）：
       // 预算 = 距 100s 还剩多少，留 20s 给聚合与分批写库
+      const todayStr = fd.formatBJDate();
+      // ⚠️ 取数范围是"全部持仓基金"，不是 Object.keys(fundRateMap)：后者只含"有自算持仓数据"的
+      // 基金（实测 536/772），而剩下那 200 多只同样有人在看，且它们**连自算值都没有**——
+      // 缺值时没有同源最近值可沿用，会直接从估值变成 "--"（2026-09-28 实测：新浪能给 657 只，
+      // 早先只缓存了 507 只，差的 150 只正好是这批）。
+      const allCodes = [...new Set([...fundCodes, ...Object.keys(fundRateMap)])];
       const sinaBudget = Math.min(30000, 100000 - el());
       const sinaMap = sinaBudget > 1000
-        ? await fd.fetchSinaEstimates(Object.keys(fundRateMap), { budgetMs: sinaBudget })
+        ? await fd.fetchSinaEstimates(allCodes, { budgetMs: sinaBudget })
         : {};
-      const todayStr = fd.formatBJDate();
-      Object.keys(fundRateMap).forEach(code => {
+      // 本轮拿到的今日值 → 写回"数据源一最近值"缓存（供四个入口缺值时沿用）
+      const cacheEntries = [];
+      allCodes.forEach((code) => {
+        const s = sinaMap[code];
+        if (s && s.date != null && (_gdIsToday(s.date, todayStr)) && s.changeRate != null) {
+          cacheEntries.push({ fundCode: code, rate: s.changeRate, time: s.time || "", nav: s.nav, date: todayStr, ts: Date.now() });
+        }
+      });
+      // 快照"数据源一口径"只对 fundRateMap 里的基金算（聚合按它们加权）
+      const missCodes = [];
+      Object.keys(fundRateMap).forEach((code) => {
         const s = sinaMap[code];
         if (s && s.date != null && (_gdIsToday(s.date, todayStr)) && s.changeRate != null) {
           fundRateMap[code].rateSina = s.changeRate;
+        } else {
+          missCodes.push(code);
         }
       });
+      // 本轮缺值：读同源最近值续上（有缓存记录 = 该基金有覆盖，只是这一轮没取到）
+      let cacheMap = {};
+      if (missCodes.length > 0) cacheMap = await fd.readEstimateCache(db, missCodes);
+      const nowTs = Date.now();
+      Object.keys(fundRateMap).forEach((code) => {
+        const fr = fundRateMap[code];
+        const cached = cacheMap[code] || null;
+        fr.sinaCovered = fr.rateSina != null || cached != null;
+        fr.rateOut = fr.rateSina != null
+          ? fr.rateSina
+          : (fd.staleCacheUsable(cached, todayStr, nowTs) ? cached.rate : null);
+      });
+      if (cacheEntries.length > 0) {
+        const n = await fd.writeEstimateCache(db, cacheEntries);
+        console.log(`[snapshotProfit] 数据源一最近值缓存写入 ${n} 只（持仓基金 ${allCodes.length} 只）t=${el()}ms`);
+      }
     }
   } catch (e) { console.warn("[snapshotProfit] 数据源一估值获取失败:", e.message); }
 
