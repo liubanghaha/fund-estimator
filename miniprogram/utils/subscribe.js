@@ -6,9 +6,12 @@
  */
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
 // 新模板「基金异动提醒」（基金名称/估值异动）：单基金提醒优先用它，文案不再是"被测量用户：<基金名>"。
-// 额度按模板独立记账：一次弹窗同时请求两个，用户勾哪个就为哪个记额度（服务端按 templateId 分行记）
+// 额度按模板独立记账：一次弹窗同时请求三个，用户勾哪个就为哪个记额度（服务端按 templateId 分行记）
 const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
-const TMPL_IDS = [TEMPLATE_ID, TEMPLATE_ID_FUND];
+// 播报模板「收益到账通知」（收益来源/温馨提示/收益时间）：收盘小结/净值播报/周报优先用它，
+// 标签不再错配（旧模板是"测量账号/被测量用户"）。同样按模板独立记额度
+const TEMPLATE_ID_BRIEF = "xmA8hb_yaI2AWl1Ulhh4J8pE1eBn09udmAvu68beu8s";
+const TMPL_IDS = [TEMPLATE_ID, TEMPLATE_ID_FUND, TEMPLATE_ID_BRIEF];
 const SCENE = "closing_brief";
 const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7 天频控）
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
@@ -158,7 +161,7 @@ function requestAlertAuth(src) {
 function silentDailyAuth(src) {
   if (!hasAuthed()) return;
   const allow = _alwaysAllowFlags();
-  const silentIds = TMPL_IDS.filter((id) => (id === TEMPLATE_ID ? allow.old : allow.new));
+  const silentIds = TMPL_IDS.filter((id) => (id === TEMPLATE_ID ? allow.old : id === TEMPLATE_ID_FUND ? allow.new : allow.brief));
   try {
     if (silentIds.length === 0) {
       // 一个都没勾「总是允许」时调用必弹窗：距上次弹窗不足 7 天则跳过
@@ -201,7 +204,7 @@ function silentDailyAuth(src) {
 }
 
 // 探测「总是保持以上选择」勾选状态并缓存（按模板分开存）：itemSettings 仅在用户勾选后返回。
-// 只要在微信侧勾过其中一个模板，静默调用就不会为那个模板弹窗；两个都没勾才走弹窗降频
+// 只要在微信侧勾过其中一个模板，静默调用就不会为那个模板弹窗；三个都没勾才走弹窗降频
 function _probeAlwaysAllow() {
   wx.getSetting({
     withSubscriptions: true,
@@ -211,9 +214,10 @@ function _probeAlwaysAllow() {
         const flags = {
           old: itemSettings[TEMPLATE_ID] === "accept",
           new: itemSettings[TEMPLATE_ID_FUND] === "accept",
+          brief: itemSettings[TEMPLATE_ID_BRIEF] === "accept",
         };
         wx.setStorageSync(KEY_ALWAYS_ALLOW, flags);
-        if (!flags.old && !flags.new) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
+        if (!flags.old && !flags.new && !flags.brief) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
       } catch (e) { /* ignore */ }
     },
     fail() { /* 探测失败保持现状：下次仍按未勾选场景降频 */ },
@@ -224,10 +228,10 @@ function _probeAlwaysAllow() {
 function _alwaysAllowFlags() {
   try {
     const v = wx.getStorageSync(KEY_ALWAYS_ALLOW);
-    if (v && typeof v === "object") return { old: !!v.old, new: !!v.new };
-    return { old: v === true, new: false };
+    if (v && typeof v === "object") return { old: !!v.old, new: !!v.new, brief: !!v.brief };
+    return { old: v === true, new: false, brief: false };
   } catch (e) {
-    return { old: false, new: false };
+    return { old: false, new: false, brief: false };
   }
 }
 

@@ -11,14 +11,20 @@ const fd = require("./_shared/fund-data");
 const WX_APPID = "wxb95098fe432ed765";
 
 // ===== 配置 =====
-// 模板「温度数据通知」（信息查询类目，模板编号 38431）：
-// thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间
+// 播报模板「收益到账通知」（信息查询类目，2026-09-28 选用）：
+// thing1=收益来源 thing2=温馨提示 time3=收益时间 —— 只选了 3 个自由文本/时间关键词，
+// **刻意避开"收益金额/收益率/账户余额"这类金额或数字类型字段**（它们对负值不友好，而播报十有八九
+// 是亏损），所以金额与涨跌幅都塞进 thing2（20 字以内）。旧模板字段标签错配（"测量账号/被测量用户"）
+// 就是被它替换的原因：tag 与内容终于对得上。
+const TEMPLATE_ID_BRIEF = "xmA8hb_yaI2AWl1Ulhh4J8pE1eBn09udmAvu68beu8s";
+// 旧模板「温度数据通知」（信息查询类目，模板编号 38431）：
+// thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间 —— 退居兜底
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
-// 新模板「基金异动提醒」（关键词=基金名称、估值异动，仅两个字段）：给单基金提醒专用，
+// 单基金提醒模板「基金异动提醒」（关键词=基金名称、估值异动，仅两个字段）：
 // 文案不再是"被测量用户：<基金名>"。额度**按（用户 × 模板）分开记账**（subscriptions 每模板一行）：
 // 发单基金提醒时优先用有余量的新模板、新额度用完自然回落旧模板 —— 老用户没授权新模板之前
 // 继续走旧模板，不会出现"提醒发不出去"的空窗。
-// 播报类（收盘小结/净值/周报）payload 是 4 个字段，只能走旧模板，不参与这个切换
+// 播报三类（收盘小结/净值/周报）同样走"有播报模板额度就用它、否则回落旧模板"的分流（见 pickBriefTemplate）
 const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
 const SCENE = "closing_brief";          // 场景标识：收盘小结（subscriptions 按多场景设计，后续净值播报/定投提醒共用本集合）
 const PAGE_PORTFOLIO = "subpackages/analysis/pages/profit-detail/index"; // 收益类推送落地：收益走势页
@@ -54,6 +60,7 @@ exports.main = async (event = {}) => {
     if (event.action === "alertSet") return await handleAlertSet(event);
     if (event.action === "alertSrc") return await handleAlertSrc(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
+    if (event.action === "briefTest") return await handleBriefTest(event);
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
     if (event.action === "peAlerts") return await runPeAlerts(!!event.force, !!event.dryRun);
     if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);
@@ -63,6 +70,33 @@ exports.main = async (event = {}) => {
     return { code: -1, msg: e.message };
   }
 };
+
+// ---- action: briefTest ----
+// 仅服务端调用（CLI/定时器）：给单个 openid 试发一条指定模板的消息。
+// 为什么要它：订阅消息的字段名是**按关键词顺序编号**的（thing1/time3…），微信对未知字段直接
+// 报 47003，而播报是"到点全量发"——猜错字段名就是全体用户收不到。新模板上线前先用它打一发
+// 真消息验证（2026-09-28 加「收益到账通知」时加）。dryRun 只回 payload 不发送，便于比对映射
+async function handleBriefTest({ openid, name, data, time, templateId, dryRun }) {
+  const { OPENID } = cloud.getWXContext();
+  if (OPENID) return { code: -1, msg: "拒绝客户端调用" };
+  if (!openid) return { code: -1, msg: "缺 openid" };
+  const tmplId = [TEMPLATE_ID_BRIEF, TEMPLATE_ID_FUND, TEMPLATE_ID].indexOf(templateId) >= 0 ? templateId : TEMPLATE_ID_BRIEF;
+  const legacy = {
+    thing1: { value: "韭菜估值宝" },
+    thing2: { value: String(name || "我的持仓").slice(0, 20) },
+    thing3: { value: String(data || "").slice(0, 20) },
+    time4: { value: time || _bjTimeStr() },
+  };
+  const payload = buildBriefPayload(tmplId, legacy);
+  if (dryRun) return { code: 0, msg: "dryRun", templateId: tmplId, payload };
+  const token = await getAccessToken();
+  const errcode = await sendSubscribe(token, openid, PAGE_PORTFOLIO, payload, tmplId);
+  return {
+    code: errcode === 0 ? 0 : 500,
+    msg: errcode === 0 ? "已发送" : "发送失败 errcode=" + errcode,
+    errcode, templateId: tmplId, payload,
+  };
+}
 
 // ---- action: alertGet / alertSet ----
 // 提醒设置上云（换设备同步）。settings 结构同客户端 storage.alertSettings：
@@ -154,17 +188,71 @@ async function loadQuotaBuckets(dryRun, positiveOnly = true) {
   rows.forEach((r) => {
     if (!r._openid) return;
     const q = Math.max(0, r.quota || 0);
-    const b = buckets[r._openid] || (buckets[r._openid] = { old: 0, new: 0, total: 0 });
-    if (r.templateId === TEMPLATE_ID_FUND) b.new += q; else b.old += q;
+    const b = buckets[r._openid] || (buckets[r._openid] = { old: 0, new: 0, brief: 0, total: 0 });
+    if (r.templateId === TEMPLATE_ID_FUND) b.new += q;
+    else if (r.templateId === TEMPLATE_ID_BRIEF) b.brief += q;
+    else b.old += q; // 旧模板：ne 两新模板（含缺 templateId 的历史行）
     b.total += q;
   });
   return buckets;
 }
-// 播报类（4 字段，只能走旧模板）的收件人：旧模板有余量才发得出去
+// 播报类（收盘小结/净值/周报）的收件人：播报模板或旧模板有余量才发得出去
 function briefRecipients(buckets, dryRun) {
   return Object.entries(buckets)
-    .filter(([, b]) => dryRun || b.old > 0)
-    .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new }));
+    .filter(([, b]) => dryRun || b.brief > 0 || b.old > 0)
+    .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new, quotaBrief: b.brief }));
+}
+// 播报用哪个模板：优先「收益到账通知」（标签与内容对得上），没额度回落旧模板，都没有 → null
+function pickBriefTemplate(b) {
+  if (!b) return null;
+  if (b.quotaBrief > 0) return TEMPLATE_ID_BRIEF;
+  if (b.quotaOld > 0) return TEMPLATE_ID;
+  return null;
+}
+// 播报发送（带旧模板兜底）：优先发「收益到账通知」，发不出去且旧模板还有额度时用旧模板重试一次。
+// 为什么兜底：播报是"到点全量发"，模板侧出问题（字段规范变化/模板下线）或**微信侧授权已被消耗**
+// （一次性订阅一发即用尽；本地额度还没减到 0 时就会撞上）都会让该用户当天一条都收不到。
+// 返回值 failedTemplates 列出所有尝试失败过的模板，调用方据此按模板归零本地额度
+async function sendBriefPayload(token, sub, page, brief) {
+  const first = pickBriefTemplate(sub);
+  if (!first) return { ok: false, skipped: true, errcode: 0, tmplId: null, failedTemplates: [] };
+  const attempt = (tmplId) => sendSubscribe(token, sub._openid, page, buildBriefPayload(tmplId, brief), tmplId);
+  let tmplId = first;
+  let errcode = await attempt(tmplId);
+  const failedTemplates = errcode === 0 ? [] : [tmplId];
+  if (errcode !== 0 && tmplId === TEMPLATE_ID_BRIEF && (sub.quotaOld || 0) > 0) {
+    console.warn(`[dailyBriefing] 播报模板发送失败 errcode=${errcode}，回落旧模板重试`);
+    tmplId = TEMPLATE_ID;
+    errcode = await attempt(tmplId);
+    if (errcode !== 0) failedTemplates.push(tmplId);
+  }
+  return { ok: errcode === 0, errcode, tmplId, failedTemplates };
+}
+
+// 播报 payload：旧模板 4 字段（账号/用户/数据/时间）；播报模板 3 字段（收益来源/温馨提示/收益时间）。
+// 入参 brief 恒为旧模板形状（push_logs 里的 content 也一直是它，运维报表按那个读）——
+// 这里只做发送时的字段映射，不改日志内容
+// ⚠️ 字段名按**模板库原模板的关键词位置**编号，不是我们勾选时的顺序：本模板是
+// 收益来源=thing3、温馨提示=thing5、收益时间=date2（「我的模板 → 详情」里能看到
+// {{thing3.DATA}} 这类占位符）。按勾选顺序猜成 thing1/thing2/time3 会被微信拒 47003。
+// 另：收益时间是 date 类型（只到日，样例 "2019-11-19"），带时分会被判格式不符
+function buildBriefPayload(tmplId, brief) {
+  if (tmplId !== TEMPLATE_ID_BRIEF || !brief) return brief;
+  const name = (brief.thing2 && brief.thing2.value) || "我的持仓";
+  const data = (brief.thing3 && brief.thing3.value) || "";
+  const rawTime = (brief.time4 && brief.time4.value) || "";
+  const dateVal = rawTime.replace(/\s+\d{1,2}:\d{2}\s*$/, "").trim() || _bjDateOnly();
+  return {
+    thing3: { value: String(name).slice(0, 20) },   // 收益来源
+    thing5: { value: String(data).slice(0, 20) },   // 温馨提示
+    date2: { value: String(dateVal).slice(0, 20) }, // 收益时间（date：只到日）
+  };
+}
+
+// 北京日期（不带时分）：date 类型字段用
+function _bjDateOnly() {
+  const bj = new Date(Date.now() + 8 * 3600000);
+  return `${bj.getUTCFullYear()}年${bj.getUTCMonth() + 1}月${bj.getUTCDate()}日`;
 }
 // 单基金提醒用哪个模板：优先新模板（文案正确），没新额度回落旧模板，两个都没有 → null
 function pickAlertTemplate(b) {
@@ -180,10 +268,12 @@ function buildAlertPayload(tmplId, fundName, text) {
   if (tmplId === TEMPLATE_ID_FUND) return { thing1: { value: fund }, thing2: { value: body } };
   return { thing1: { value: "韭菜估值宝" }, thing2: { value: fund }, thing3: { value: body }, time4: { value: _bjTimeStr() } };
 }
-// 扣某模板的额度（同模板可能多行，只扣有余量的行；旧模板用 neq 兜住"缺 templateId"的老数据）
+// 扣某模板的额度（同模板可能多行，只扣有余量的行；旧模板排除两个新模板，兜住"缺 templateId"的老数据）
 function quotaWhere(openid, tmplId, extra) {
   const where = Object.assign({ _openid: openid, scene: SCENE }, extra || {});
-  where.templateId = tmplId === TEMPLATE_ID_FUND ? TEMPLATE_ID_FUND : _.neq(TEMPLATE_ID_FUND);
+  where.templateId = tmplId === TEMPLATE_ID_FUND ? TEMPLATE_ID_FUND
+    : tmplId === TEMPLATE_ID_BRIEF ? TEMPLATE_ID_BRIEF
+    : _.neq(TEMPLATE_ID_FUND).and(_.neq(TEMPLATE_ID_BRIEF));
   return where;
 }
 async function consumeQuota(openid, tmplId) {
@@ -254,12 +344,12 @@ function addDays(dateStr, n) {
 
 // ---- action: auth ----
 // 前端 requestSubscribeMessage accept 后调用。一次授权 = 一次发送额度（quota +1），**按模板独立记账**：
-// 客户端一次弹窗可以勾两个模板，accept 哪个就为哪个模板 +1（所以 where 要带 templateId，
+// 客户端一次弹窗可以勾三个模板，accept 哪个就为哪个模板 +1（所以 where 要带 templateId，
 // 否则新模板的授权会把旧模板那行覆盖掉）
 async function handleAuth({ scene = SCENE, templateId = TEMPLATE_ID }) {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: -1, msg: "无用户身份" };
-  const tid = templateId === TEMPLATE_ID_FUND ? TEMPLATE_ID_FUND : TEMPLATE_ID;
+  const tid = [TEMPLATE_ID, TEMPLATE_ID_FUND, TEMPLATE_ID_BRIEF].indexOf(templateId) >= 0 ? templateId : TEMPLATE_ID;
   const found = await db.collection("subscriptions").where({ _openid: OPENID, scene, templateId: tid }).get();
   const now = Date.now();
   if (found.data.length > 0) {
@@ -475,25 +565,30 @@ async function runBriefing(dryRun, force) {
       const rateInfo = resolveRate(byUser[sub._openid], confirmation, rateMap[sub._openid], totalMarket[sub._openid]);
       const brief = buildBrief(sub._openid, byUser[sub._openid], rateInfo ? rateInfo.base : totalMarket[sub._openid], rateInfo ? rateInfo.rate : rateMap[sub._openid], todaySigs, prevSigs, !rateInfo || !rateInfo.confirmed);
       if (!brief) { skipped++; continue; } // 无快照且温度无变化，不发不扣额度
+      // 模板分流：有「收益到账通知」额度就发它（标签与内容对得上），否则回落旧模板；都没有 → 这轮不发
+      const tmplId = pickBriefTemplate(sub);
+      if (!tmplId) { skipped++; continue; }
       if (dryRun) {
         await db.collection("push_logs").add({
-          data: { _openid: sub._openid, scene: SCENE, date: dataDay, status: "dry_run", content: brief, sentAt: Date.now(), openedAt: null }
+          data: { _openid: sub._openid, scene: SCENE, date: dataDay, status: "dry_run", content: brief, tmplId, sentAt: Date.now(), openedAt: null }
         });
         sent++;
         continue;
       }
       const logId = await createLog(sub._openid, dataDay);
       try {
-        const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
-        if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+        const send = await sendBriefPayload(accessToken, sub, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
+        if (!send.ok) throw Object.assign(new Error("subscribe/send errcode=" + send.errcode), { errCode: send.errcode, tmplId: send.tmplId, failedTemplates: send.failedTemplates });
         await finishLog(logId, "sent", "");
-        await consumeQuota(sub._openid, TEMPLATE_ID);
+        await consumeQuota(sub._openid, send.tmplId);
         sent++;
       } catch (e) {
         const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
         // 43101 = 用户已取消订阅：微信侧额度无法查询，用错误码把本地 quota 归零校准漂移
         if (errCode === 43101) {
-          await zeroQuota(sub._openid, TEMPLATE_ID);
+          for (const t of (e.failedTemplates && e.failedTemplates.length ? e.failedTemplates : [e.tmplId || tmplId])) {
+          await zeroQuota(sub._openid, t);
+        }
         }
         await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
         failed++;
@@ -672,24 +767,29 @@ async function runNavBrief(force, dryRun) {
       thing3: { value: text.slice(0, 20) },
       time4: { value: _bjTimeStr() },
     };
+    // 模板分流（同收盘小结）：有「收益到账通知」额度就走它
+    const tmplId = pickBriefTemplate(sub);
+    if (!tmplId) { skipped++; continue; }
     if (dryRun) {
       await db.collection("push_logs").add({
-        data: { _openid: sub._openid, scene: "nav_brief", date: dataDay, status: "dry_run", content: brief, sentAt: Date.now(), openedAt: null }
+        data: { _openid: sub._openid, scene: "nav_brief", date: dataDay, status: "dry_run", content: brief, tmplId, sentAt: Date.now(), openedAt: null }
       });
       sent++;
       continue;
     }
     const logId = await createLog(sub._openid, dataDay, "nav_brief");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
-      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      const send = await sendBriefPayload(accessToken, sub, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
+      if (!send.ok) throw Object.assign(new Error("subscribe/send errcode=" + send.errcode), { errCode: send.errcode, tmplId: send.tmplId, failedTemplates: send.failedTemplates });
       await finishLog(logId, "sent", "");
-      await consumeQuota(sub._openid, TEMPLATE_ID);
+      await consumeQuota(sub._openid, send.tmplId);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await zeroQuota(sub._openid, TEMPLATE_ID);
+        for (const t of (e.failedTemplates && e.failedTemplates.length ? e.failedTemplates : [e.tmplId || tmplId])) {
+          await zeroQuota(sub._openid, t);
+        }
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
@@ -842,24 +942,29 @@ async function runWeeklyBrief(force, dryRun) {
       thing3: { value: text.slice(0, 20) },
       time4: { value: _bjTimeStr() },
     };
+    // 模板分流（同收盘小结）：有「收益到账通知」额度就走它
+    const tmplId = pickBriefTemplate(sub);
+    if (!tmplId) { skipped++; continue; }
     if (dryRun) {
       await db.collection("push_logs").add({
-        data: { _openid: sub._openid, scene: "weekly_brief", date: today, status: "dry_run", content: brief, sentAt: Date.now(), openedAt: null }
+        data: { _openid: sub._openid, scene: "weekly_brief", date: today, status: "dry_run", content: brief, tmplId, sentAt: Date.now(), openedAt: null }
       });
       sent++;
       continue;
     }
     const logId = await createLog(sub._openid, today, "weekly_brief");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
-      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      const send = await sendBriefPayload(accessToken, sub, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
+      if (!send.ok) throw Object.assign(new Error("subscribe/send errcode=" + send.errcode), { errCode: send.errcode, tmplId: send.tmplId, failedTemplates: send.failedTemplates });
       await finishLog(logId, "sent", "");
-      await consumeQuota(sub._openid, TEMPLATE_ID);
+      await consumeQuota(sub._openid, send.tmplId);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await zeroQuota(sub._openid, TEMPLATE_ID);
+        for (const t of (e.failedTemplates && e.failedTemplates.length ? e.failedTemplates : [e.tmplId || tmplId])) {
+          await zeroQuota(sub._openid, t);
+        }
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
