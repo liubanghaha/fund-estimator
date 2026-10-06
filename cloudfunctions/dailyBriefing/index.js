@@ -18,13 +18,15 @@ const WX_APPID = "wxb95098fe432ed765";
 // 就是被它替换的原因：tag 与内容终于对得上。
 const TEMPLATE_ID_BRIEF = "xmA8hb_yaI2AWl1Ulhh4J8pE1eBn09udmAvu68beu8s";
 // 旧模板「温度数据通知」（信息查询类目，模板编号 38431）：
-// thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间 —— 退居兜底
+// thing1=测量账号 thing2=被测量用户 thing3=测量数据 time4=测量时间
+// ⚠️ 2026-09-29/30 前后已从微信账号删除（2026-10-05 gettemplate 实证）。常量保留仅供 briefTest
+// 复现与额度记账兼容，**任何发送路径都不得再引用**——回落到它必撞 40037（9/30 起 69 条 failed 的根因，10/05 修复）
 const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
 // 单基金提醒模板「基金异动提醒」（关键词=基金名称、估值异动，仅两个字段）：
 // 文案不再是"被测量用户：<基金名>"。额度**按（用户 × 模板）分开记账**（subscriptions 每模板一行）：
-// 发单基金提醒时优先用有余量的新模板、新额度用完自然回落旧模板 —— 老用户没授权新模板之前
-// 继续走旧模板，不会出现"提醒发不出去"的空窗。
-// 播报三类（收盘小结/净值/周报）同样走"有播报模板额度就用它、否则回落旧模板"的分流（见 pickBriefTemplate）
+// 发单基金提醒只走本模板（2026-10-05 起不再回落旧模板——旧模板已删，见 TEMPLATE_ID 注释）；
+// 没额度就跳过本轮，用户重新授权后自愈。
+// 播报三类（收盘小结/净值/周报）走「收益到账通知」模板（BRIEF）；旧模板 2026-09 底已从账号删除、回落链 2026-10-05 移除（见 pickBriefTemplate）
 const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
 const SCENE = "closing_brief";          // 场景标识：收盘小结（subscriptions 按多场景设计，后续净值播报/定投提醒共用本集合）
 const PAGE_PORTFOLIO = "subpackages/analysis/pages/profit-detail/index"; // 收益类推送落地：收益走势页
@@ -107,11 +109,15 @@ async function handleAlertGet() {
   const r = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const doc = r.data[0];
   // 推送额度一并返回：提醒能否送达只取决于额度，客户端要把状态显式告诉用户。
-  // 额度按（用户 × 模板）记账，这里给客户端的是两个模板的合计（用户视角只关心"总共能发几条"）
+  // 额度按（用户 × 模板）记账，这里给客户端的是两个模板的合计（用户视角只关心"总共能发几条"）。
+  // 旧模板行（templateId 非两个有效模板）是死额度——模板已删、永远发不出，**不计入合计**，
+  // 否则用户看到"有额度"而发送侧在跳过（同类"没生效"误解的惯犯）
   const sub = await db.collection("subscriptions").where({ _openid: OPENID, scene: SCENE }).get().catch(() => ({ data: [] }));
   const quotaOf = (isFund) => (sub.data || []).reduce((a, x) => {
     const isFundRow = x.templateId === TEMPLATE_ID_FUND;
-    return isFundRow === isFund ? a + Math.max(0, x.quota || 0) : a;
+    const isBriefRow = x.templateId === TEMPLATE_ID_BRIEF;
+    if (isFund) return isFundRow ? a + Math.max(0, x.quota || 0) : a;
+    return isBriefRow ? a + Math.max(0, x.quota || 0) : a;
   }, 0);
   const quotaNew = quotaOf(true);
   const quota = quotaNew + quotaOf(false);
@@ -139,22 +145,6 @@ async function handleAlertSet({ settings, globalOn }) {
     });
   }
   return { code: 0 };
-}
-
-// 有"启用中"提醒规则的用户集合（播报给提醒留额度的判断依据；量级千级，整表读）
-async function alertUserOpenids() {
-  try {
-    const docs = await readAll("alert_settings", {}, ["_openid", "settings", "globalOn"]);
-    const set = new Set();
-    docs.forEach((d) => {
-      if (d.globalOn) { set.add(d._openid); return; }
-      const st = d.settings || {};
-      if (Object.keys(st).some((k) => st[k] && st[k].enabled !== false)) set.add(d._openid);
-    });
-    return set;
-  } catch (e) {
-    return new Set();
-  }
 }
 
 // ---- action: alertSrc ----
@@ -199,34 +189,25 @@ async function loadQuotaBuckets(dryRun, positiveOnly = true) {
 // 播报类（收盘小结/净值/周报）的收件人：播报模板或旧模板有余量才发得出去
 function briefRecipients(buckets, dryRun) {
   return Object.entries(buckets)
-    .filter(([, b]) => dryRun || b.brief > 0 || b.old > 0)
+    .filter(([, b]) => dryRun || b.brief > 0)
     .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new, quotaBrief: b.brief }));
 }
-// 播报用哪个模板：优先「收益到账通知」（标签与内容对得上），没额度回落旧模板，都没有 → null
+// 播报用哪个模板：只认「收益到账通知」的额度。旧模板已从微信账号删除（见 TEMPLATE_ID 注释），
+// 老的"回落旧模板"只会撞 40037 → 没有 BRIEF 额度直接返回 null（调用方按 skipped 处理）
 function pickBriefTemplate(b) {
   if (!b) return null;
   if (b.quotaBrief > 0) return TEMPLATE_ID_BRIEF;
-  if (b.quotaOld > 0) return TEMPLATE_ID;
   return null;
 }
-// 播报发送（带旧模板兜底）：优先发「收益到账通知」，发不出去且旧模板还有额度时用旧模板重试一次。
-// 为什么兜底：播报是"到点全量发"，模板侧出问题（字段规范变化/模板下线）或**微信侧授权已被消耗**
-// （一次性订阅一发即用尽；本地额度还没减到 0 时就会撞上）都会让该用户当天一条都收不到。
+// 播报发送：只发「收益到账通知」。原"回落旧模板重试"的兜底已删——旧模板已从微信账号删除
+// （见 TEMPLATE_ID 注释），回落必撞 40037，且发送失败不扣授权额度、每 20 分钟轮询会全天空转。
+// 模板侧故障（字段规范变化/授权被消耗）由"归零本地额度 + 跳过本轮"承接，用户重新授权后自愈。
 // 返回值 failedTemplates 列出所有尝试失败过的模板，调用方据此按模板归零本地额度
 async function sendBriefPayload(token, sub, page, brief) {
-  const first = pickBriefTemplate(sub);
-  if (!first) return { ok: false, skipped: true, errcode: 0, tmplId: null, failedTemplates: [] };
-  const attempt = (tmplId) => sendSubscribe(token, sub._openid, page, buildBriefPayload(tmplId, brief), tmplId);
-  let tmplId = first;
-  let errcode = await attempt(tmplId);
-  const failedTemplates = errcode === 0 ? [] : [tmplId];
-  if (errcode !== 0 && tmplId === TEMPLATE_ID_BRIEF && (sub.quotaOld || 0) > 0) {
-    console.warn(`[dailyBriefing] 播报模板发送失败 errcode=${errcode}，回落旧模板重试`);
-    tmplId = TEMPLATE_ID;
-    errcode = await attempt(tmplId);
-    if (errcode !== 0) failedTemplates.push(tmplId);
-  }
-  return { ok: errcode === 0, errcode, tmplId, failedTemplates };
+  const tmplId = pickBriefTemplate(sub);
+  if (!tmplId) return { ok: false, skipped: true, errcode: 0, tmplId: null, failedTemplates: [] };
+  const errcode = await sendSubscribe(token, sub._openid, page, buildBriefPayload(tmplId, brief), tmplId);
+  return { ok: errcode === 0, errcode, tmplId, failedTemplates: errcode === 0 ? [] : [tmplId] };
 }
 
 // 播报 payload：旧模板 4 字段（账号/用户/数据/时间）；播报模板 3 字段（收益来源/温馨提示/收益时间）。
@@ -255,10 +236,12 @@ function _bjDateOnly() {
   return `${bj.getUTCFullYear()}年${bj.getUTCMonth() + 1}月${bj.getUTCDate()}日`;
 }
 // 单基金提醒用哪个模板：优先新模板（文案正确），没新额度回落旧模板，两个都没有 → null
+// 单基金提醒只走「基金异动提醒」。旧模板已从微信账号删除（见 TEMPLATE_ID 注释），
+// 老的"没新额度回落旧模板"必撞 40037（9/30 rate_alert 57 条 failed 的根因）→ 返回 null，
+// 调用方按 noQuota 跳过（不发不记失败）
 function pickAlertTemplate(b) {
   if (!b) return null;
   if (b.new > 0) return TEMPLATE_ID_FUND;
-  if (b.old > 0) return TEMPLATE_ID;
   return null;
 }
 // 单基金提醒的 payload：两个模板字段数不同、映射也不同（value 上限 20 字）
@@ -346,10 +329,10 @@ function addDays(dateStr, n) {
 // 前端 requestSubscribeMessage accept 后调用。一次授权 = 一次发送额度（quota +1），**按模板独立记账**：
 // 客户端一次弹窗可以勾三个模板，accept 哪个就为哪个模板 +1（所以 where 要带 templateId，
 // 否则新模板的授权会把旧模板那行覆盖掉）
-async function handleAuth({ scene = SCENE, templateId = TEMPLATE_ID }) {
+async function handleAuth({ scene = SCENE, templateId = TEMPLATE_ID_BRIEF }) {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: -1, msg: "无用户身份" };
-  const tid = [TEMPLATE_ID, TEMPLATE_ID_FUND, TEMPLATE_ID_BRIEF].indexOf(templateId) >= 0 ? templateId : TEMPLATE_ID;
+  const tid = [TEMPLATE_ID_BRIEF, TEMPLATE_ID_FUND, TEMPLATE_ID].indexOf(templateId) >= 0 ? templateId : TEMPLATE_ID_BRIEF;
   const found = await db.collection("subscriptions").where({ _openid: OPENID, scene, templateId: tid }).get();
   const now = Date.now();
   if (found.data.length > 0) {
@@ -380,22 +363,23 @@ async function handleTrackOpen(logId) {
 // P0-1 老用户召回发送：opsTool.recallSend（管理员校验）服务端委托，同 alertPush 安全模型。
 // targets: [{ openid, bucket }]，bucket ∈ 7d|14d|30d（决定 push_logs kind=recall_{bucket} 供频控与报表）
 // variant: 'a'=通用文案（默认）| 'b'=个性化文案（最早买入基金+最新温度，构造失败自动回退 a）
-// 文案走模板「温度数据通知」，纯数据陈述（合规红线 #2/#6：不含投资/收益/建议字样）
+// 文案走「收益到账通知」模板（2026-10-05 起；原「温度数据通知」已从微信账号删除，见 TEMPLATE_ID 注释），
+// 纯数据陈述（合规红线 #2/#6：不含投资/收益/建议字样）
 async function handleRecallPush({ targets, variant }) {
   const { OPENID } = cloud.getWXContext();
   if (OPENID) return { code: -1, msg: "拒绝客户端调用" };
   if (!Array.isArray(targets) || targets.length === 0) return { code: 0, sent: 0, failed: 0 };
   const token = await getAccessToken();
   const today = td.bjDateStr();
-  // 召回与用户主动订阅的播报/提醒共用额度池：只对本地**旧模板** quota>=2 的用户发
-  // （召回消息走旧模板），避免运营召回挤掉用户主动订阅的收盘播报/涨跌提醒。
+  // 召回与用户主动订阅的播报共用 BRIEF 额度池：只对本地 quotaBrief>=2 的用户发，
+  // 避免运营召回挤掉用户主动订阅的收盘播报/涨跌提醒（提醒走 FUND 池，与召回无关）。
   // 用 buckets 按 openid 合并（一个用户可能有两行，别重复召回），并按 openid 去重 targets
   const buckets = await loadQuotaBuckets(false, false);
   const seen = new Set();
   const eligible = targets.filter(t => {
     if (!t || !t.openid || seen.has(t.openid)) return false;
     seen.add(t.openid);
-    return !t.recallOptOut && ((buckets[t.openid] || {}).old || 0) >= 2;
+    return !t.recallOptOut && ((buckets[t.openid] || {}).brief || 0) >= 2;
   });
   let skipped = targets.length - eligible.length;
   let sent = 0, failed = 0;
@@ -413,15 +397,16 @@ async function handleRecallPush({ targets, variant }) {
     const kind = "recall_" + (["7d", "14d", "30d"].indexOf(t.bucket) !== -1 ? t.bucket : "7d");
     const logId = await createLog(t.openid, today, SCENE, "", kind);
     try {
-      const errcode = await sendSubscribe(token, t.openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, brief);
+      const payload = buildBriefPayload(TEMPLATE_ID_BRIEF, brief);
+      const errcode = await sendSubscribe(token, t.openid, `${PAGE_PORTFOLIO}?src=push&lid=${logId}`, payload, TEMPLATE_ID_BRIEF);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
-      await consumeQuota(t.openid, TEMPLATE_ID);
+      await consumeQuota(t.openid, TEMPLATE_ID_BRIEF);
       sent++;
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
-        await zeroQuota(t.openid, TEMPLATE_ID);
+        await zeroQuota(t.openid, TEMPLATE_ID_BRIEF);
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
       failed++;
@@ -510,14 +495,10 @@ async function runBriefing(dryRun, force) {
 
   // 1. 订阅读者（quota>0；dryRun 不发送不扣额度，不过滤额度便于文案验证）
   // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
-  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  // 否则播报会给同一人发两遍。播报只扣 BRIEF 池（2026-10-05 起三池独立：提醒走 FUND、播报走 BRIEF）
   const buckets = await loadQuotaBuckets(dryRun);
   const subs = briefRecipients(buckets, dryRun);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
-  // 1b. 配了提醒规则的用户：播报给提醒留 1 条额度（一次性订阅共用额度池，
-  //     播报吃干后盘中提醒全部 43101——2026-09-09 实测就是这么丢的）
-  const alertUserSet = await alertUserOpenids();
-
   // 2. 全量持仓按 openid 分组（同 snapshotProfit 模式：一次读全量，内存分组）
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue", "shares"]);
   const byUser = {};
@@ -547,19 +528,18 @@ async function runBriefing(dryRun, force) {
   }
 
   // 5. 分批发送（防重发：当天已成功发送过的用户跳过，覆盖 force 补发场景）
-  const sentLogs = await readAll("push_logs", { scene: SCENE, date: dataDay, status: "sent" }, ["_openid"]);
+  const sentLogs = await readAll("push_logs", { scene: SCENE, date: dataDay, status: "sent", kind: "" }, ["_openid"]);
+  // kind:"" 排除召回日志（recallPush 同 scene 落库但 kind=recall_*）——交易日发召回不能吞掉当晚小结
   const sentSet = new Set(sentLogs.map(l => l._openid));
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   // stable_token 官方建议每次业务调用时获取（未过期时接口自动复用同一 token）
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
+  let sent = 0, failed = 0, skipped = 0;
   for (let i = 0; i < runList.length; i += BATCH_SIZE) {
     const batch = runList.slice(i, i + BATCH_SIZE);
     for (const sub of batch) {
       if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
-      // 给提醒留额度：有提醒规则的用户至少留 1 条，quota<2 时本次播报不发（不报错、不写失败日志）
-      if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }
       // 官方净值口径：全确认按实际；未确认（23:00 兜底档）按"已发布实际+未发布估算"混合，
       // estimated 标志让文案区分估算部分，避免把兜底值误读为确认值
       const rateInfo = resolveRate(byUser[sub._openid], confirmation, rateMap[sub._openid], totalMarket[sub._openid]);
@@ -615,32 +595,26 @@ async function runPeAlerts(force, dryRun) {
   }
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
   // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
-  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  // 否则播报会给同一人发两遍。PE 提醒与涨跌提醒同池（FUND 模板），只看 new 桶——
+  // 旧模板已从微信账号删除（见 TEMPLATE_ID 注释），old 桶是发不出去的死额度
   const buckets = await loadQuotaBuckets(dryRun);
-  // ⚠️ PE 收件人不能复用 briefRecipients——它过滤 old>0（播报类只能走旧模板），
-  // 会把"只授权了新模板"的用户挡在外面，而 PE 恰是唯一用新模板的消息（checkPeAlerts 按
-  // quotaNew 分流），那批人恰恰是新模板的目标人群。这里直接从额度桶构建，old=0/new>0 也放行
+  // ⚠️ PE 收件人不能复用 briefRecipients——它过滤 brief>0（播报走 BRIEF 模板），而 PE 走
+  // FUND 模板，两者是独立额度池。这里直接从额度桶构建，只放行 new>0 的用户
   const subs = Object.entries(buckets)
-    .filter(([, b]) => dryRun || b.total > 0)
+    .filter(([, b]) => dryRun || b.new > 0)
     .map(([openid, b]) => ({ _openid: openid, quota: b.total, quotaOld: b.old, quotaNew: b.new }));
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName"]);
   const byUser = {};
   holdings.forEach(h => {
     if (!h._openid || !h.fundCode) return;
-    (byUser[h._openid] = byUser[h._openid] || []).push(h);
+    (byUser[h._openid] || []).push(h);
   });
-  // 给当天的收盘小结留 1 条额度：小结只能走旧模板，所以按"PE 发送后旧模板还剩几条"算——
-  // PE 优先消费新模板：new>=1 时 old 原样保留（old=0 的用户本来收不到播报，直接放行）；
-  // 没有新额度才吃 old，那时要求 old>=2（发完剩 1 条给小结）。额度不足这轮不发，
-  // 且**不更新基线**（peCache），信号变化不会丢——额度补上后仍按原基线比对
-  let heldForBrief = 0;
-  const targets = subs.filter(s => byUser[s._openid]).filter(s => {
-    if (dryRun || (s.quotaNew || 0) >= 1 || (s.quotaOld || 0) >= 2) return true;
-    heldForBrief++;
-    return false;
-  });
-  if (targets.length === 0) return { code: 0, msg: `无目标用户（给收盘小结留额度 ${heldForBrief}）` };
+  // 旧逻辑会"给收盘小结留 1 条旧模板额度"（old>=2 才放行）——小结 2026-09-28 起走 BRIEF 模板、
+  // 与 PE 的 FUND 池互不挤占，预留已无意义。PE 只看 new>=1；基线逻辑不变：这轮没发的用户
+  // **不更新基线**（peCache），信号变化不会丢——额度补上后仍按原基线比对
+  const targets = subs.filter(s => byUser[s._openid]).filter(s => dryRun || (s.quotaNew || 0) >= 1);
+  if (targets.length === 0) return { code: 0, msg: "无目标用户（无「基金异动提醒」额度）" };
   const todaySigs = await loadSignals(dataDay);
   const accessToken = dryRun ? null : await getAccessToken();
   let sent = 0;
@@ -649,8 +623,8 @@ async function runPeAlerts(force, dryRun) {
   } catch (e) {
     console.warn("[dailyBriefing] PE 提醒检测失败:", e.message);
   }
-  console.log(`[dailyBriefing][peAlerts] subs=${subs.length} targets=${targets.length} heldForBrief=${heldForBrief} sent=${sent} dataDay=${dataDay} dryRun=${dryRun}`);
-  return { code: 0, msg: `温度提醒：发送 ${sent}，留额度 ${heldForBrief}${dryRun ? "（dryRun）" : ""}` };
+  console.log(`[dailyBriefing][peAlerts] subs=${subs.length} targets=${targets.length} sent=${sent} dataDay=${dataDay} dryRun=${dryRun}`);
+  return { code: 0, msg: `温度提醒：发送 ${sent}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // ---- 净值播报（交易日 21:30）：官方净值发布后的当日真实收益 ----
@@ -664,12 +638,10 @@ async function runNavBrief(force, dryRun) {
   const dataDay = td.isTradingDay(today) ? today : td.lastTradingDay();
 
   // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
-  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  // 否则播报会给同一人发两遍。播报只扣 BRIEF 池（2026-10-05 起三池独立：提醒走 FUND、播报走 BRIEF）
   const buckets = await loadQuotaBuckets(dryRun);
   const subs = briefRecipients(buckets, dryRun);
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
-  // 有提醒规则的用户：净值播报同样给提醒留 1 条额度（否则 21:30 吃干、次日上午提醒全部发不出）
-  const alertUserSet = await alertUserOpenids();
 
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "shares"]);
   const byUser = {};
@@ -722,12 +694,10 @@ async function runNavBrief(force, dryRun) {
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0, pubCount = 0;
+  let sent = 0, failed = 0, skipped = 0, pubCount = 0;
   const devSamples = []; // 估算偏差样本（P1-6）：循环内收集，结束后 saveEstimateDeviation 汇总落库
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
-    // 给提醒留额度：有提醒规则的用户至少留 1 条（quota<2 时本条播报不发）
-    if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }
     const list = byUser[sub._openid] || [];
     let totalBase = 0, pubBase = 0, real = 0;
     list.forEach(h => {
@@ -802,8 +772,8 @@ async function runNavBrief(force, dryRun) {
     try { await saveEstimateDeviation(dataDay, devSamples); }
     catch (e) { console.error("[dailyBriefing][navBrief] estimate_deviation 异常:", e.message); }
   }
-  console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} heldForAlert=${heldForAlert} publishedFunds=${pubCount} dryRun=${dryRun}`);
-  return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}，留额度 ${heldForAlert}${dryRun ? "（dryRun）" : ""}` };
+  console.log(`[dailyBriefing][navBrief] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} publishedFunds=${pubCount} dryRun=${dryRun}`);
+  return { code: 0, msg: `净值播报：发送 ${sent}，失败 ${failed}，跳过 ${skipped}${dryRun ? "（dryRun）" : ""}` };
 }
 
 // ---- 估算偏差落库（P1-6 信任线底座）----
@@ -854,10 +824,9 @@ async function runWeeklyBrief(force, dryRun) {
   }
 
   // 额度按（用户 × 模板）分桶：同一用户可能有两行（旧/新模板各一行），必须按 openid 合并，
-  // 否则播报会给同一人发两遍。播报类 payload 是 4 字段、只能走旧模板，所以要求旧模板有余量
+  // 否则播报会给同一人发两遍。播报只扣 BRIEF 池（2026-10-05 起三池独立：提醒走 FUND、播报走 BRIEF）
   const buckets = await loadQuotaBuckets(dryRun);
   const subs = briefRecipients(buckets, dryRun);
-  const alertUserSet = await alertUserOpenids();   // 同净值播报：给提醒留额度
   if (subs.length === 0) return { code: 0, msg: "无有效订阅" };
 
   const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "marketValue"]);
@@ -907,10 +876,9 @@ async function runWeeklyBrief(force, dryRun) {
   const runList = dryRun ? targets.slice(0, DRY_RUN_LIMIT) : targets;
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
-  let sent = 0, failed = 0, skipped = 0, heldForAlert = 0;
+  let sent = 0, failed = 0, skipped = 0;
   for (const sub of runList) {
     if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
-    if (!dryRun && alertUserSet.has(sub._openid) && (sub.quota || 0) < 2) { heldForAlert++; continue; }   // 给提醒留额度
     const rates = dayRate[sub._openid];
     if (!rates) { skipped++; continue; } // 本周无快照（新用户/无持仓日）不发
     let mult = 1;
@@ -1020,9 +988,11 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
         cacheChanged = true;
       }
     });
-    if (cacheChanged && !dryRun) {
-      // dryRun 只算不发也**不落基线**：否则手动验证一次就把当日信号消费掉，
-      // 真实那轮（15:35）比对 base===cur 不再命中，温度变化提醒静默丢失
+    // 基线落库时机（2026-10-06 审查修正）：无命中时即时落；有命中时随发送结果落——
+    // 发送成功/43101（额度归零）才落，其他失败不落，下一轮 15:35 重新比对重试，
+    // 避免"先写基线后发送"把失败轮次的信号变化消费掉。dryRun 一律不落（否则手动
+    // 验证一次就把当日信号消费掉，真实那轮比对 base===cur 不再命中、提醒静默丢失）
+    if (cacheChanged && !dryRun && hits.length === 0) {
       await db.collection("alert_settings").doc(doc._id).update({
         data: { peCache, updatedAt: Date.now() }
       }).catch(() => {});
@@ -1038,9 +1008,10 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
       continue;
     }
     if (!accessToken) continue;
-    // 单基金提醒按额度分流：有新模板额度就走新模板（文案是"基金名称 + 估值异动"，不再是
-    // "被测量用户：<基金名>"），否则回落旧模板；targets 已保证旧模板有余量，所以必有一个可用
-    const tmplId = (sub.quotaNew > 0) ? TEMPLATE_ID_FUND : TEMPLATE_ID;
+    // 单基金提醒只走「基金异动提醒」（targets 已保证 quotaNew>=1）。旧模板已从账号删除
+    // （见 TEMPLATE_ID 注释），回落必撞 40037——这里保底再拦一次
+    if (!((sub.quotaNew || 0) > 0)) continue;
+    const tmplId = TEMPLATE_ID_FUND;
     const brief = buildAlertPayload(tmplId, first.fundName, text);
     const logId = await createLog(sub._openid, dataDay, "pe_alert", first.fundCode, first.up ? "up" : "down");
     try {
@@ -1049,12 +1020,23 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
       await finishLog(logId, "sent", "");
       await consumeQuota(sub._openid, tmplId);
       sent++;
+      if (cacheChanged) { // 发送成功：基线一并落库
+        await db.collection("alert_settings").doc(doc._id).update({
+          data: { peCache, updatedAt: Date.now() }
+        }).catch(() => {});
+      }
     } catch (e) {
       const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
       if (errCode === 43101) {
         await zeroQuota(sub._openid, tmplId);
+        if (cacheChanged) { // 额度已归零：落基线避免后续每轮空转
+          await db.collection("alert_settings").doc(doc._id).update({
+            data: { peCache, updatedAt: Date.now() }
+          }).catch(() => {});
+        }
       }
       await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      // 其他失败：不落基线，下一轮 15:35 重新比对重试（本轮信号不丢）
     }
   }
   return sent;
@@ -1256,7 +1238,8 @@ async function getAccessToken() {
 async function sendSubscribe(token, touser, page, data, templateId) {
   const r = await httpPost(`/cgi-bin/message/subscribe/send?access_token=${token}`, {
     touser,
-    template_id: templateId || TEMPLATE_ID,
+    // 旧模板已删（见 TEMPLATE_ID 注释），缺省改指 BRIEF 兜底；所有调用方都应显式传 templateId
+    template_id: templateId || TEMPLATE_ID_BRIEF,
     page,
     miniprogram_state: MINI_STATE,
     lang: "zh_CN",

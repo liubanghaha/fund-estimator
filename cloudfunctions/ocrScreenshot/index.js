@@ -283,6 +283,120 @@ function parseLegacy(lines) {
   return holdings.filter(h => { const k = h.marketValue; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
+// ========== 腾讯云 OCR（主源，2026-10-05 接入）==========
+// 密钥优先级：环境变量 → env.json（不提交 Git）→ app_config 集合 doc "tencent_ocr"（{secretId,secretKey}，
+// 改库即生效、无需重新部署）。未配置或格式不对（SecretId 应以 AKID 开头）时静默跳过本源，
+// 链路退回 百度 → 微信/OCR.space。占位串（如 config.json 里的 your-tencent-secret-id）按未配置处理。
+const db = cloud.database();
+let _txKeysCache = null; // { ts, keys|null }：命中后进程内复用；miss 缓存 5 分钟，避免每次识别都查库
+async function loadTencentKeys() {
+  let id = process.env.TC_SECRET_ID || "", key = process.env.TC_SECRET_KEY || "";
+  try {
+    const env = require("./env.json");
+    id = env.TC_SECRET_ID || id;
+    key = env.TC_SECRET_KEY || key;
+  } catch (e) { /* env.json 不存在则用环境变量 */ }
+  if (/^AKID/.test(id) && key) return { id, key };
+  const now = Date.now();
+  if (_txKeysCache && now - _txKeysCache.ts < 300000) return _txKeysCache.keys;
+  let keys = null;
+  try {
+    const r = await db.collection("app_config").doc("tencent_ocr").get();
+    const d = (r && r.data) || {};
+    if (/^AKID/.test(d.secretId || "") && d.secretKey) keys = { id: d.secretId, key: d.secretKey };
+  } catch (e) { /* 文档不存在/无权限 */ }
+  _txKeysCache = { ts: now, keys };
+  return keys;
+}
+
+let _txClientKeys = "";
+// TC3-HMAC-SHA256 签名直连 ocr.tencentcloudapi.com——**刻意不用 tencentcloud-sdk-nodejs-ocr**：
+// 2026-10-05 给该函数加这个依赖后，云端依赖安装失败、函数卡进 UpdateFailed，CLI 部署静默假成功
+// （API 调用成功 ≠ 安装成功），旧代码一直在跑。内置 crypto 自签零新依赖，避开这条坑。
+const crypto = require("crypto");
+function txRequest(keys, action, params, timeoutMs) {
+  const service = "ocr", host = "ocr.tencentcloudapi.com", version = "2018-11-19";
+  const payload = JSON.stringify(params || {});
+  const ts = Math.floor(Date.now() / 1000);
+  const date = new Date(ts * 1000).toISOString().slice(0, 10);
+  const hashedPayload = crypto.createHash("sha256").update(payload).digest("hex");
+  const canonical = `POST\n/\n\ncontent-type:application/json; charset=utf-8\nhost:${host}\n\ncontent-type;host\n${hashedPayload}`;
+  const toSign = `TC3-HMAC-SHA256\n${ts}\n${date}/${service}/tc3_request\n${crypto.createHash("sha256").update(canonical).digest("hex")}`;
+  const kDate = crypto.createHmac("sha256", "TC3" + keys.key).update(date).digest();
+  const kService = crypto.createHmac("sha256", kDate).update(service).digest();
+  const kSigning = crypto.createHmac("sha256", kService).update("tc3_request").digest();
+  const sig = crypto.createHmac("sha256", kSigning).update(toSign).digest("hex");
+  const https = require("https");
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: host, path: "/", method: "POST",
+      headers: {
+        "Host": host,
+        "Content-Type": "application/json; charset=utf-8",
+        "X-TC-Action": action,
+        "X-TC-Version": version,
+        "X-TC-Region": "ap-shanghai",
+        "X-TC-Timestamp": String(ts),
+        "Authorization": `TC3-HMAC-SHA256 Credential=${keys.id}/${date}/${service}/tc3_request, SignedHeaders=content-type;host, Signature=${sig}`,
+      },
+    }, (res) => {
+      res.setEncoding("utf8");
+      let d = "";
+      res.on("data", (c) => d += c);
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(d);
+          if (j.Response && j.Response.Error) reject(Object.assign(new Error(j.Response.Error.Message), { code: j.Response.Error.Code }));
+          else if (j.Response) resolve(j.Response);
+          else reject(new Error("bad response: " + d.slice(0, 120)));
+        } catch (e) { reject(new Error("bad json: " + d.slice(0, 120))); }
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error("timeout")); });
+    req.on("error", (e) => reject(e));
+    req.write(payload); req.end();
+  });
+}
+
+// 与客户端 30s 超时对齐的总预算内分段限流：任何一段超时都不拖垮整链
+function withTimeout(p, ms) {
+  let t;
+  const race = Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error("timeout")), ms); })]);
+  return race.finally(() => clearTimeout(t));
+}
+
+// 返回与 doBaiduOCR 同构的 { text, words, err }：words（词+坐标）供坐标布局解析器使用。
+// 走图片临时 URL（同生态直传），不用像百度那样下载+base64
+async function doTencentOCR(fileID) {
+  try {
+    const keys = await loadTencentKeys();
+    if (!keys) return { text: null, words: null, err: "no keys" };
+    const tr = await cloud.getTempFileURL({ fileList: [fileID] });
+    const url = tr.fileList && tr.fileList[0] && tr.fileList[0].tempFileURL;
+    if (!url) return { text: null, words: null, err: "no url" };
+    const res = await withTimeout(txRequest(keys, "GeneralAccurateOCR", { ImageUrl: url }, 10000), 11000);
+    const dets = (res && res.TextDetections) || [];
+    if (!dets.length) return { text: "", words: [], err: "empty" };
+    const words = dets
+      .filter((d) => d.ItemPolygon)
+      .map((d) => ({
+        words: d.DetectedText,
+        location: { left: d.ItemPolygon.X, top: d.ItemPolygon.Y, width: d.ItemPolygon.Width, height: d.ItemPolygon.Height },
+      }));
+    return { text: dets.map((d) => d.DetectedText).join("\n"), words, err: null };
+  } catch (e) {
+    return { text: null, words: null, err: (e && (e.code ? e.code + " " + e.message : e.message)) || "tencent fail" };
+  }
+}
+
+// 最终失败的原因归类，客户端据此区分文案（quota=额度耗尽 / timeout=超时 / no_text=没读出内容）
+function failReason(debug) {
+  const s = JSON.stringify(debug || {});
+  if (/101003|not enough market quota|limit reached|daily request limit|LimitExceeded|Arrears|UnauthorizedOperation/i.test(s)) return "quota";
+  if (/timeout/i.test(s)) return "timeout";
+  return "no_text";
+}
+
 // ========== OCR 引擎 ==========
 
 async function doWechatOCR(fileID) {
@@ -348,7 +462,7 @@ async function doOcrspaceOCR(fileID) {
         res.on("data", c => d += c);
         res.on("end", () => resolve(d));
       });
-      req.setTimeout(20000, () => { req.destroy(); reject(new Error("timeout")); });
+      req.setTimeout(8000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", e => reject(e));
       req.write(body);
       req.end();
@@ -372,6 +486,21 @@ async function doOcrspaceOCR(fileID) {
   return null;
 }
 
+// 百度 access_token 有效期 30 天，进程内缓存复用（原来每次识别都现取，白等 300-800ms）
+let _baiduToken = { token: null, ts: 0 };
+function fetchBaiduToken(https) {
+  const now = Date.now();
+  if (_baiduToken.token && now - _baiduToken.ts < 25 * 24 * 3600 * 1000) return Promise.resolve(_baiduToken.token);
+  return new Promise((resolve) => {
+    https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => { res.setEncoding("utf8");
+      let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
+    }).on("error", () => resolve(null));
+  }).then((token) => {
+    if (token) _baiduToken = { token, ts: now };
+    return token;
+  });
+}
+
 async function doBaiduOCR(fileID) {
   try {
     const r = await cloud.getTempFileURL({ fileList: [fileID] });
@@ -384,11 +513,7 @@ async function doBaiduOCR(fileID) {
       mod.get(url, (res) => { res.on("data", c => chunks.push(c)); res.on("end", () => resolve(Buffer.concat(chunks).toString("base64"))); }).on("error", () => resolve(null));
     });
     if (!imgBase64) return { text: null, words: null, err: "download fail" };
-    const tokenRes = await new Promise((resolve) => {
-      https.get(`https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`, (res) => { res.setEncoding("utf8");
-        let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).access_token); } catch (e) { resolve(null); } });
-      }).on("error", () => resolve(null));
-    });
+    const tokenRes = await fetchBaiduToken(https);
     if (!tokenRes) return { text: null, words: null, err: "token fail" };
     const body = `image=${encodeURIComponent(imgBase64)}&language_type=CHN_ENG`;
     // accurate 接口返回每个词的坐标 location，供布局解析器使用
@@ -398,7 +523,7 @@ async function doBaiduOCR(fileID) {
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }
       }, (res) => { res.setEncoding("utf8"); let d = ""; res.on("data", c => d += c); res.on("end", () => { try { const j = JSON.parse(d); if (j.error_msg) reject(new Error(j.error_msg)); else resolve(j); } catch (e) { reject(e); } }); });
       req.write(body); req.end();
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error("timeout")); });
+      req.setTimeout(8000, () => { req.destroy(); reject(new Error("timeout")); });
       req.on("error", (e) => reject(e));
     });
     const words = json.words_result || [];
@@ -610,14 +735,14 @@ function layoutParseWords(words) {
 async function runTextFallback(fileID) {
   const debug = {};
   const results = await Promise.all([
-    doWechatOCR(fileID).then(r => { debug.wx = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "wechat" }; }),
+    withTimeout(doWechatOCR(fileID), 8000).catch(() => null).then(r => { debug.wx = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "wechat" }; }),
     doOcrspaceOCR(fileID).then(r => { debug.ocrspace = { ok: !!r, len: r ? r.length : 0 }; return { t: r, m: "ocrspace" }; }),
   ]);
   let text = null, method = "none";
   for (const r of results) {
     if (r.t && r.t.length > 10) { text = r.t; method = r.m; break; }
   }
-  if (!text) return { code: 500, msg: "OCR识别失败", debug };
+  if (!text) return { code: 500, msg: "OCR识别失败", reason: failReason(debug), debug };
   console.log("[ocrScreenshot] fallback raw text (" + text.length + " chars):", text.slice(0, 300));
   const holdings = parseText(text);
   await enrichCodes(holdings);
@@ -630,7 +755,27 @@ const _run = async (event) => {
   if (!fileID) return { code: 400, msg: "请提供截图" };
   const t0 = Date.now();
 
-  // 主链路：百度 OCR（带词坐标）→ 布局解析
+  // 主链路：腾讯云 OCR（主源，带词坐标）→ 布局解析；百度备源；文本兜底（微信/OCR.space）
+  const tencent = await doTencentOCR(fileID);
+  if (tencent.err && tencent.err !== "no keys") console.warn("[ocrScreenshot] tencent ocr err:", tencent.err);
+  if (tencent.words && tencent.words.length >= 3) {
+    const layout = layoutParseWords(tencent.words);
+    console.log("[ocrScreenshot] tencent layout type:", layout.type, "holdings:", layout.holdings.length, "ms:", Date.now() - t0);
+    if (layout.type === "tx") {
+      // 交易流水页：持仓导入场景无输出（由加减仓入口识别）
+      return { code: 0, data: { raw: tencent.text, method: "tencent-layout", type: "tx", holdings: [], debug: { tencent: { ok: true } } } };
+    }
+    if (layout.holdings.length > 0) {
+      await enrichCodes(layout.holdings);
+      return {
+        code: 0,
+        data: { raw: tencent.text, method: "tencent-layout", type: layout.type, holdings: layout.holdings, debug: { tencent: { ok: true, ms: Date.now() - t0 } } },
+      };
+    }
+    // 腾讯读到了但布局解析不出 → 换百度再试一次（分词/切行不同可能出结果）
+  }
+
+  // 备源：百度 OCR（带词坐标）→ 布局解析
   const baidu = await doBaiduOCR(fileID);
   if (baidu.words && baidu.words.length >= 3) {
     const layout = layoutParseWords(baidu.words);

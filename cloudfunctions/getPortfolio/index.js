@@ -656,13 +656,17 @@ async function computeSelfEstimates(codes, startTime) {
   const _start = startTime || Date.now();
   const el = () => Date.now() - _start;
 
-  // 仅工作日计算（周一至周五），不限时段
-  // 盘中用实时股价，盘后用收盘价，净值公布后 enrichment 自动切到精确值
-  if (!fd.isBJWeekday()) {
-    console.log(`[computeSelfEstimates] 周末, 跳过自主估算`);
+  // 自算只在「交易日且已过 9:25（集合竞价价定出）」时段产出——"今日估算"的日期必须是今天：
+  // 假期/周末/交易日早盘（行情 date 仍是上一交易日）一律不产出，避免旧涨跌顶着今日估算展示
+  // （2026-10-06 审查；与 snapshotProfit 的行情活性闸门同族）。盘后收盘价仍属今日，照常估算，
+  // 净值公布后 enrichment 自动切到精确值。持仓股另有逐股 date 校验（见 3b）
+  const today = fd.formatBJDate();
+  const _bjNow = new Date(Date.now() + 8 * 3600000);
+  const _bjMin = _bjNow.getUTCHours() * 60 + _bjNow.getUTCMinutes();
+  if (!td.isTradingDay(today) || _bjMin < fd.OPEN_MIN) {
+    console.log(`[computeSelfEstimates] 非交易日或未开盘（today=${today} bjMin=${_bjMin}），跳过自主估算`);
     return map;
   }
-  const today = fd.formatBJDate();
 
   try {
     // 1. 持仓来源：温度表 detailPEs → fund_holdings_cache → 实时兜底（写入缓存）
@@ -773,6 +777,9 @@ async function computeSelfEstimates(codes, startTime) {
         for (const h of holdings) {
           const price = stockPriceMap[h.stockCode];
           if (!price || price.changeRate == null) continue;
+          // 逐股日期校验（YYYY-MM-DD 与 todayStr 直接比）：停牌/行情源停更的股，
+          // 其 changeRate 是旧交易日的，混进加权会把旧涨跌当今日估算（2026-10-06 审查）
+          if (price.date !== today) continue;
           totalRatio += h.navRatio;
           weightedChange += price.changeRate * h.navRatio;
         }

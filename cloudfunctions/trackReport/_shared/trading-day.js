@@ -48,4 +48,17 @@ function lastTradingDay(dateStr) {
   return d;
 }
 
-module.exports = { bjDateStr, isTradingDay, lastTradingDay, HOLIDAYS };
+// 严格晚于 dateStr 的下一个交易日（dateStr 缺省=今天）。跨节假日/周末顺延用，
+// 如场外基金 15:00 后提交的确认净值日；30 步上限与 lastTradingDay 同款（防表外年份死循环）
+function nextTradingDay(dateStr) {
+  let d = dateStr || bjDateStr();
+  for (let i = 0; i < 30; i++) {
+    const t = new Date(d + "T00:00:00Z");
+    t.setUTCDate(t.getUTCDate() + 1);
+    d = t.toISOString().slice(0, 10);
+    if (isTradingDay(d)) return d;
+  }
+  return d;
+}
+
+module.exports = { bjDateStr, isTradingDay, lastTradingDay, nextTradingDay, HOLIDAYS };
