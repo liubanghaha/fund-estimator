@@ -31,7 +31,8 @@
           <view class="rc-name-row">
             <text class="rc-name">{{item.fundName || '未知基金'}}</text>
           </view>
-          <text class="rc-date">{{item.date || '--'}}{{item.time ? ' ' + item.time : ''}}</text>
+          <text class="rc-date">申请 {{item.applyDate || item.date || '--'}}{{item.time ? ' ' + item.time : ''}}</text>
+          <text wx:if="{{item.applyDate && item.applyDate !== item.date}}" class="rc-confirm">{{item.rollReason}}，按 {{item.date}} 净值确认</text>
         </view>
         <input class="rc-amount-input" type="digit" value="{{item.amount}}" placeholder="金额" bind:input="onAmountInput" data-index="{{index}}"/>
       </view>

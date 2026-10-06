@@ -25,6 +25,9 @@ const PLATFORMS_CACHE_KEY = "local_platforms";
 const INDEX_CACHE_KEY = "index_cache";
 const GROUPS_CACHE_KEY = "holding_groups_cache";
 const POLL_INTERVAL = 30000; // 盘中轮询间隔 30 秒
+// 提醒检测起点（北京 9:35）：与服务端推送 snapshotProfit 的 ALERT_START_MIN 同值——
+// 集合竞价段（9:25 起）估值噪音大，过早判定会把瞬时越线弹成"涨超/跌超提醒"
+const ALERT_START_MIN = 575;
 
 // 交易时段判断
 function isTradingTime() {
@@ -39,6 +42,9 @@ Page({
     holdings: [],
     displayHoldings: [],
     amountVisible: true,
+    // 资产卡标签随相位：closed（节假日/周末/交易日 9:25 前）展示的是最近交易日数据，
+    // 标着"今日估算收益"会让人误读为今天的亏损（2026-10-06 审查）
+    cardLabel: "今日估算收益",
     totalAmount: "0.00",
     todayProfit: "0.00",
     todayProfitRate: "0.00",
@@ -147,7 +153,8 @@ Page({
     if (this.data.eventDay && this.data.eventHeadline) {
       // 极值日转发文案自动换公共数据卡标题（合规：纯温度分布陈述）
       title = this.data.eventHeadline;
-    } else if (token && hasHolding && p !== 0) {
+    } else if (token && hasHolding && this.data.amountVisible && Number.isFinite(p) && p !== 0) {
+      // 金额隐藏时分享标题也不带具体数字（与分享卡打码同口径）；NaN 防护（2026-10-06 审查）
       title = `我今日收益 ${p > 0 ? "+" : ""}${p.toFixed(2)} 元，你的基金温度多少？`;
     }
     // 分享确认埋点：onShareAppMessage 触发即用户已确认转发；带 token 与否是渠道归因的关键分叉
@@ -310,6 +317,7 @@ Page({
     this.setData({ theme });
     this._syncAlertSettingsDaily();
     this._maybeShowUpdateLog();
+    this._syncPhaseLabels();
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     this.maybeShowGuide(); // 新手导览（首笔持仓后一次性）
@@ -602,7 +610,8 @@ Page({
     wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
       .then((r) => {
         if (this.data.alertEditFundCode !== fundCode) return; // 弹层已切基金/已关闭，丢弃
-        const quota = ((r && r.result) || {}).quota || 0;
+        // 提醒只消耗 FUND 池，展示 quotaNew（合计含播报额度，会虚高误导）
+        const quota = ((r && r.result) || {}).quotaNew || 0;
         this.setData({
           alertQuotaWarn: quota <= 0,
           alertQuotaText: quota > 0
@@ -663,6 +672,14 @@ Page({
     this.setData({ alertTriggered: [] });
   },
   _checkAlerts() {
+    // 休市相位（周末/节假日全天、交易日 9:25 前）不评估：列表此时展示的是最近交易日的
+    // 冻结数据，拿它比阈值会在休市日反复弹"涨超/跌超提醒"（2026-10-05 国庆误报）。
+    // 与服务端推送同口径（snapshotProfit 有交易日守卫）；盘中/盘后照常评估。
+    if (marketTime.marketPhase() === "closed") return;
+    // 开盘前段（9:25–9:35）不判定：与服务端推送检测起点对齐（ALERT_START_MIN）——该时段
+    // 估值噪音大、易瞬时越线，而横幅不会自动消失、关掉后该基金 24h 不再提示，一次噪音
+    // 触发会把当天晚些的真实触发一并静音。盘后/晚间照常判定。
+    if (marketTime.bjMinutes() < ALERT_START_MIN) return;
     const settings = wx.getStorageSync('alertSettings') || {};
     const dismissed = wx.getStorageSync('alertDismissed') || {};
     const peCache = wx.getStorageSync('peSignalCache') || {};
@@ -867,6 +884,7 @@ Page({
     this._phaseTimer = setInterval(() => {
       // 盘后补刷：净值 19:00 后陆续公布，页面一直开着时每 30 分钟静默刷一次（轻量），
       // "净值已公布 X/N 只"进度行和当日收益才不会停在 15:00 的旧值
+      this._syncPhaseLabels();
       if (this.data.batchMode) return;
       if (marketTime.marketPhase() === "afterClose" && this.data.holdings.length
         && Date.now() - (this._lastFetch || 0) > 30 * 60 * 1000) {
@@ -1209,7 +1227,13 @@ Page({
   onToggleBatch() {
     const enter = !this.data.batchMode;
     const patch = { batchMode: enter, selectedCount: 0, allSelected: false };
-    if (enter) patch.batchAlertOn = false; // 刚进入还没选基金
+    if (enter) {
+      patch.batchAlertOn = false; // 刚进入还没选基金
+      // 清残留勾选：_checked 写在与 holdings 共享的行对象上，盘后/休市（缓存冻结不刷新）
+      // 再进批量模式时，上次的残留勾选会让"已选 0"与实际可删行不一致（2026-10-06 审查）
+      this.data.holdings.forEach(h => { if (h._checked) h._checked = false; });
+      patch.displayHoldings = this.data.displayHoldings.map(h => ({ ...h, _checked: false }));
+    }
     // 进批量模式要重算列表：_pickDisplay 在 batchMode 下逐笔显示，
     // 否则多账户基金的合并行会带着假 _id（"fund:xxx"），删除/移动分组静默失败还弹"成功"
     this.setData(patch, () => this.applyGroupFilter());
@@ -1344,16 +1368,24 @@ Page({
     wx.navigateTo({ url: "/subpackages/analysis/pages/correlation-matrix/index" });
   },
 
+  // 资产卡标签随相位切换（onShow + 相位定时器调用）
+  _syncPhaseLabels() {
+    const closed = marketTime.marketPhase() === "closed";
+    const label = closed ? "最新收益" : "今日估算收益";
+    if (this.data.cardLabel !== label) this.setData({ cardLabel: label });
+  },
+
   // ==== 新手导览（首笔持仓后一次性）====
   maybeShowGuide() {
     try {
       if (wx.getStorageSync("guide_pending_v1") && !wx.getStorageSync("guide_done_v1")) {
         this.setData({
           showGuide: true, guideIdx: 0,
+          // 文案与 2026-10 功能现状对齐（截图导入/多账户/复盘中心等），入口路径均已实测
           guidePages: [
-            { icon: "📊", title: "持仓一目了然", desc: "点击表头排序；左上角 ☰ 进入管理：分组、批量操作、列自定义、全局提醒" },
-            { icon: "🔔", title: "提醒与隐私", desc: "涨跌与温度变化提醒按基金设置，「我的 → 我的提醒」统一管理；右上「隐藏」一键隐藏金额" },
-            { icon: "🧰", title: "更多工具", desc: "行情中心看港美股指数与你的重仓股实时行情；收益页可生成本周周签；「我的 → 持仓体检」检查持仓数据" },
+            { icon: "📸", title: "截图导入持仓", desc: "把持仓 App 的持仓页截图发进来，基金和金额自动识别入账；支持按账户分组管理（持仓页右下角 ➕）" },
+            { icon: "📈", title: "实时估值与收益", desc: "首页看盘中估值与当日收益；点收益卡进收益页，日历、走势、周月年一目了然；右上「隐藏」一键隐藏金额" },
+            { icon: "🧭", title: "工具与提醒", desc: "「行情」看港美股指数；首页「复盘中心」算回本、温度回测；「我的」里持仓体检、资产分析；「我的提醒」按基金设涨跌提醒" },
           ],
         });
       }

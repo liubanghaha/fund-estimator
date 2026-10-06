@@ -1,17 +1,18 @@
 /**
  * 订阅消息「收盘播报」：授权引导 + 额度记录 + 推送落地追踪。
- * 模板「温度数据通知」与云函数 dailyBriefing 同源（一次性订阅：一次授权 = 一条发送额度）。
  * 攒额度机制：用户勾选「总是保持以上选择」后，后续调用静默 accept——
  * 所以对已授权用户在用户手势回调里（首页下拉刷新）每天静默调一次补充额度。
+ * ⚠️ 旧模板「温度数据通知」（A7Sc6sng…）已于 2026-09-29/30 前后被从微信账号删除：
+ * requestSubscribeMessage 的 tmplIds 带上失效模板会导致拉起失败（20001），2026-10-05 起
+ * 从请求列表移除，只请求下面两个有效模板。
  */
-const TEMPLATE_ID = "A7Sc6sngopPiROImJeqfi5K6ciJKTRrNzE1gug2tzuk";
-// 新模板「基金异动提醒」（基金名称/估值异动）：单基金提醒优先用它，文案不再是"被测量用户：<基金名>"。
-// 额度按模板独立记账：一次弹窗同时请求三个，用户勾哪个就为哪个记额度（服务端按 templateId 分行记）
+// 单基金提醒模板「基金异动提醒」（基金名称/估值异动）：单基金提醒只走它，文案不再是"被测量用户：<基金名>"。
+// 额度按模板独立记账：一次弹窗同时请求两个，用户勾哪个就为哪个记额度（服务端按 templateId 分行记）
 const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
-// 播报模板「收益到账通知」（收益来源/温馨提示/收益时间）：收盘小结/净值播报/周报优先用它，
-// 标签不再错配（旧模板是"测量账号/被测量用户"）。同样按模板独立记额度
+// 播报模板「收益到账通知」（收益来源/温馨提示/收益时间）：收盘小结/净值播报/周报只走它，
+// 标签不错配。同样按模板独立记额度
 const TEMPLATE_ID_BRIEF = "xmA8hb_yaI2AWl1Ulhh4J8pE1eBn09udmAvu68beu8s";
-const TMPL_IDS = [TEMPLATE_ID, TEMPLATE_ID_FUND, TEMPLATE_ID_BRIEF];
+const TMPL_IDS = [TEMPLATE_ID_FUND, TEMPLATE_ID_BRIEF];
 const SCENE = "closing_brief";
 const KEY_DECLINED = "brief_declined_at"; // 最近一次拒绝/关闭时间（7 天频控）
 const KEY_AUTHED = "brief_authed";        // 是否主动授权过
@@ -156,12 +157,12 @@ function requestAlertAuth(src) {
 
 // 已授权用户的静默攒额度：必须挂在用户手势回调中（如首页下拉刷新 onScrollRefresh）。
 // 按「总是保持以上选择」的勾选状态按模板区分：勾了哪个模板就静默请求哪个（微信侧无感通过）；
-// 没勾过的模板混在同一次请求里会为它弹窗——对只勾过旧模板的老用户，带上新模板等于体验倒退
-//（新模板额度由显式手势的 requestAuth/补充额度攒）。一个都没勾 → 7 天降频弹窗
+// 没勾过的模板混在同一次请求里会为它弹窗（新模板额度也可由显式手势的 requestAuth/补充额度攒）。
+// 一个都没勾 → 7 天降频弹窗
 function silentDailyAuth(src) {
   if (!hasAuthed()) return;
   const allow = _alwaysAllowFlags();
-  const silentIds = TMPL_IDS.filter((id) => (id === TEMPLATE_ID ? allow.old : id === TEMPLATE_ID_FUND ? allow.new : allow.brief));
+  const silentIds = TMPL_IDS.filter((id) => (id === TEMPLATE_ID_FUND ? allow.new : allow.brief));
   try {
     if (silentIds.length === 0) {
       // 一个都没勾「总是允许」时调用必弹窗：距上次弹窗不足 7 天则跳过
@@ -212,26 +213,26 @@ function _probeAlwaysAllow() {
       try {
         const itemSettings = (res.subscriptionsSetting && res.subscriptionsSetting.itemSettings) || {};
         const flags = {
-          old: itemSettings[TEMPLATE_ID] === "accept",
           new: itemSettings[TEMPLATE_ID_FUND] === "accept",
           brief: itemSettings[TEMPLATE_ID_BRIEF] === "accept",
         };
         wx.setStorageSync(KEY_ALWAYS_ALLOW, flags);
-        if (!flags.old && !flags.new && !flags.brief) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
+        if (!flags.new && !flags.brief) wx.setStorageSync(KEY_SILENT_POPUP, Date.now());
       } catch (e) { /* ignore */ }
     },
     fail() { /* 探测失败保持现状：下次仍按未勾选场景降频 */ },
   });
 }
 
-// 读勾选状态（旧格式布尔兼容：true 视为旧模板总是允许；新模板由下一次探测自愈）
+// 读勾选状态（旧格式兼容：老数据里的 old 字段/布尔 true 都对应已删除的旧模板，一律视为
+// 未勾选——让这批用户经由 silentDailyAuth 的弹窗降频重新授权两个有效模板）
 function _alwaysAllowFlags() {
   try {
     const v = wx.getStorageSync(KEY_ALWAYS_ALLOW);
-    if (v && typeof v === "object") return { old: !!v.old, new: !!v.new, brief: !!v.brief };
-    return { old: v === true, new: false, brief: false };
+    if (v && typeof v === "object") return { new: !!v.new, brief: !!v.brief };
+    return { new: false, brief: false };
   } catch (e) {
-    return { old: false, new: false, brief: false };
+    return { new: false, brief: false };
   }
 }
 
@@ -266,4 +267,4 @@ function optOutRecall() {
   }).catch(() => {});
 }
 
-module.exports = { TEMPLATE_ID, TEMPLATE_ID_FUND, requestAuth, requestAlertAuth, requestQuotaTopUp, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };
+module.exports = { TEMPLATE_ID_FUND, requestAuth, requestAlertAuth, requestQuotaTopUp, canPrompt, hasAuthed, dismissPrompt, silentDailyAuth, bindTrackOpen, getPushKind, optOutRecall };

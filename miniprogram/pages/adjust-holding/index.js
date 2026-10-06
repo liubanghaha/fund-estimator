@@ -158,7 +158,7 @@ Page({
       const hn = clean(h.fundName);
       return hn.includes(cn) || cn.includes(hn);
     });
-    if (idx >= 0) return idx;
+    if (idx >= 0) return this._preferPlatform(idx); // 多账户同基金：与第1层同口径优先当前账户
 
     // 第3层：去掉A/C后缀后再匹配
     const trimAC = (s) => s.replace(/[AC]$/, "");
@@ -167,7 +167,7 @@ Page({
       const hn = trimAC(clean(h.fundName));
       return hn.includes(tn) || tn.includes(hn);
     });
-    if (idx >= 0) return idx;
+    if (idx >= 0) return this._preferPlatform(idx);
 
     // 第4层：中文关键词重叠（至少3个连续相同中文字符）
     const chineseOnly = (s) => s.replace(/[^一-鿿]/g, "");
@@ -252,6 +252,8 @@ Page({
   },
 
   async doOCR(tempPath) {
+    if (this._ocrRunning) return; // 防重复触发（与 add-holding 对齐；loading 遮罩挡不住连点）
+    this._ocrRunning = true;
     this.setData({ ocrLoading: true, loadPercent: 0, screenshotUrl: tempPath });
     let pct = 0;
     this._loadTimer = setInterval(() => {
@@ -343,20 +345,23 @@ Page({
       } else {
         clearInterval(this._loadTimer);
         this.setData({ ocrLoading: false });
-        this._ocrFailRetry(tempPath);
+        this._ocrFailRetry(tempPath, this._ocrFailText(res.result));
       }
     } catch (e) {
       clearInterval(this._loadTimer);
       this.setData({ ocrLoading: false });
       this._ocrFailRetry(tempPath);
+    } finally {
+      this._ocrRunning = false;
     }
   },
 
   // 识别失败兜底：给「重试 / 换图」出路，而不是一句 toast 让用户自己重新找入口
-  _ocrFailRetry(tempPath) {
+  // reason：服务端失败原因文案（见 _ocrFailText），缺省用通用文案
+  _ocrFailRetry(tempPath, reason) {
     wx.showModal({
       title: '识别失败',
-      content: '可能是网络波动或截图不清晰，可重试或换张截图',
+      content: reason || '可能是网络波动或截图不清晰，可重试或换张截图',
       confirmText: '重试',
       cancelText: '换图',
       success: (r) => {
@@ -365,6 +370,14 @@ Page({
         else if (r.cancel) this.onImportScreenshot();
       },
     });
+  },
+
+  // 服务端失败原因 → 用户文案（reason: quota=额度耗尽 / timeout=超时 / 其他=通用文案）
+  _ocrFailText(result) {
+    const r = (result && result.reason) || "";
+    if (r === "quota") return "识别服务额度已用完，可稍后再试";
+    if (r === "timeout") return "识别超时（网络较慢或截图过大），可重试或换张截图";
+    return "";
   },
 
   onAmountInput(e) {
@@ -596,11 +609,20 @@ Page({
     this._confirming = false;
     const failed = matched.length - done;
     if (failed === 0) {
-      wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
-      this.setData({ ocrResults: [], reason: "" });
+      const unmatched = this.data.ocrResults.filter((item) => !item.matched);
+      if (unmatched.length === 0) {
+        wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
+        this.setData({ ocrResults: [], reason: "" });
+        wx.removeStorageSync("portfolio_cache");
+        wx.setStorageSync("portfolio_force_refresh", true);
+        setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
+        return;
+      }
+      // 有未匹配笔次：保留在列表让用户核对/删除，不静默丢弃（2026-10-06 审查）
+      this.setData({ ocrResults: unmatched, matchedCount: 0 });
+      wx.showToast({ title: `已处理 ${done} 笔，${unmatched.length} 笔未匹配到持仓`, icon: "none", duration: 2500 });
       wx.removeStorageSync("portfolio_cache");
       wx.setStorageSync("portfolio_force_refresh", true);
-      setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
       return;
     }
     // 部分失败：只移除成功笔次，失败笔次留在列表里可改后重试（原来会被整体清空丢数据）

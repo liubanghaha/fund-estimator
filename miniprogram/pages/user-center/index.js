@@ -106,6 +106,10 @@ Page({
     const r = await subscribe.requestAuth("user_center");
     this.setData({ briefSubmitting: false, briefAuthed: subscribe.hasAuthed() });
     if (r.ok) wx.showToast({ title: "已订阅收盘播报", icon: "none", duration: 2000 });
+    // "授权成功但额度记账失败"必须提示（subscribe.js 契约：静默吞掉会变成假成功）；用户取消不提示
+    else if (r.reason && r.reason !== "reject" && r.reason !== "fail") {
+      wx.showToast({ title: r.reason, icon: "none", duration: 2500 });
+    }
   },
 
   // 小程序无法直接打开公众号主页 → 弹二维码，长按识别关注（扫码是微信认可的关注路径）

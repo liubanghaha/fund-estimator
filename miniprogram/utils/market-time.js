@@ -40,6 +40,12 @@ function bjDateStr(offsetDays = 0) {
   return d.toISOString().slice(0, 10);
 }
 
+// 当前北京时间的一天内分钟数（0–1439）：与云端口径对齐的时段判定用（如提醒检测起点 9:35 = 575）
+function bjMinutes() {
+  const bj = _bjNow();
+  return bj.getUTCHours() * 60 + bj.getUTCMinutes();
+}
+
 // 当前"展示日"的 9:25 边界时间戳（与服务端 getPortfolio 的 openedToday/displayDay 同一套规则）：
 // 交易日 9:25 后=今天 9:25；交易日 9:25 前与周末/节假日=上一交易日 9:25
 function _displayDayStartTs() {
@@ -92,6 +98,19 @@ function prevTradingDay(dateStr) {
   const t = new Date((dateStr || bjDateStr()) + "T00:00:00Z");
   t.setUTCDate(t.getUTCDate() - 1);
   return lastTradingDay(t.toISOString().slice(0, 10));
+}
+
+// 严格晚于 dateStr 的下一个交易日（与云函数 _shared/trading-day.js 同款——两份日历成对维护）。
+// 手动加减仓的确认净值日顺延用：交易日 15 点后/非交易日提交 → nextTradingDay
+function nextTradingDay(dateStr) {
+  let d = dateStr || bjDateStr();
+  for (let i = 0; i < 30; i++) {
+    const t = new Date(d + "T00:00:00Z");
+    t.setUTCDate(t.getUTCDate() + 1);
+    d = t.toISOString().slice(0, 10);
+    if (isTradingDay(d)) return d;
+  }
+  return d;
 }
 
 // A股主要指数（与基金共用交易日历）：只有它们能按"序列是否覆盖到数据日"校验；
@@ -185,9 +204,11 @@ module.exports = {
   isTradingDay,
   lastTradingDay,
   prevTradingDay,
+  nextTradingDay,
   marketPhase,
   isLunchBreak,
   bjDateStr,
+  bjMinutes,
   cacheIsToday,
   isCacheFresh,
   isAShareIndex,

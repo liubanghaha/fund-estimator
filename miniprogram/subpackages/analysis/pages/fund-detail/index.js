@@ -835,7 +835,6 @@ Page({
       const opts = { w: rw, h: rh, ...this._getChartOpts(), data,
         padding: { top: 24, right: 24, bottom: 30, left: 52 },
         isReturn: result.isReturn };
-      const txMap = this.data.chartTxMap || {};
       // 曲线与买卖点标记一起画到目标画布：标记必须烘进离屏图，随动画一起露出
       const paint = (target) => {
       const ctx = chart.drawLineChart(target, opts);
@@ -844,42 +843,17 @@ Page({
       // 返回上一页再触摸会拿到别的页面的数据快照（十字线错位）
       this._lastDrawSnap = chart._lastDraw;
 
-      if (Object.keys(txMap).length > 0) {
-        const p = opts.padding;
-        // 必须与 drawLineChart 同一坐标系（opts.w/opts.h = 画布绘制尺寸）：
-        // 用 rw/rh（节点实测=CSS×dpr）会在手机上放大 2-3 倍，买卖点画出画布不可见
-        const pw = opts.w - p.left - p.right, ph = opts.h - p.top - p.bottom;
-        const vals = data.map(d => d.value);
-        const min = Math.min(...vals), max = Math.max(...vals);
-        const range = max - min || 0.01;
-        const yMin = min - range * 0.15, yMax = max + range * 0.15;
-        const xp = (i) => p.left + (pw / (data.length - 1)) * i;
-        const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
-        data.forEach((d, i) => {
-          const tx = txMap[d.date];
-          if (!tx) return;
-          const x = xp(i), y = yp(d.value);
-          // 白色描边：买卖点画在红色曲线上也清晰可见（密集周期视图不融线）
-          const dot = (r, fill) => {
-            ctx.beginPath(); ctx.arc(x, y, r + 1, 0, 2 * Math.PI);
-            ctx.fillStyle = '#FFFFFF'; ctx.fill();
-            ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
-            ctx.fillStyle = fill; ctx.fill();
-          };
-          if (tx.buys > 0 && tx.sells > 0) {
-            ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
-            ctx.fillStyle = '#FFFFFF'; ctx.fill();
-            ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
-            ctx.strokeStyle = '#2E8B57'; ctx.lineWidth = 1; ctx.stroke();
-            ctx.beginPath(); ctx.arc(x, y, 2, 0, 2 * Math.PI);
-            ctx.fillStyle = '#E4393C'; ctx.fill();
-          } else if (tx.buys > 0) {
-            dot(2, '#E4393C');
-          } else if (tx.sells > 0) {
-            dot(2, '#2E8B57');
-          }
-        });
-      }
+      // 必须与 drawLineChart 同一坐标系（opts.w/opts.h = 画布绘制尺寸）：
+      // 用 rw/rh（节点实测=CSS×dpr）会在手机上放大 2-3 倍，买卖点画出画布不可见
+      const p = opts.padding;
+      const pw = opts.w - p.left - p.right, ph = opts.h - p.top - p.bottom;
+      const vals = data.map(d => d.value);
+      const min = Math.min(...vals), max = Math.max(...vals);
+      const range = max - min || 0.01;
+      const yMin = min - range * 0.15, yMax = max + range * 0.15;
+      const xp = (i) => p.left + (pw / (data.length - 1)) * i;
+      const yp = (v) => p.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
+      this._paintTxDots(ctx, data, xp, yp);
       return ctx;
       };
 
@@ -894,6 +868,37 @@ Page({
       });
       this._chartAnimated = true;
       this._baseData = { data, opts, canvas, paint };
+    });
+  },
+
+  // 买卖点标记绘制：正常绘制（drawChart.paint）与十字线快速重绘（onChartTouch）共用。
+  // 坐标系由调用方给定（必须与 drawLineChart 一致），本方法只负责按 chartTxMap 画点
+  _paintTxDots(ctx, data, xp, yp) {
+    const txMap = this.data.chartTxMap || {};
+    if (Object.keys(txMap).length === 0) return;
+    data.forEach((d, i) => {
+      const tx = txMap[d.date];
+      if (!tx) return;
+      const x = xp(i), y = yp(d.value);
+      // 白色描边：买卖点画在红色曲线上也清晰可见（密集周期视图不融线）
+      const dot = (r, fill) => {
+        ctx.beginPath(); ctx.arc(x, y, r + 1, 0, 2 * Math.PI);
+        ctx.fillStyle = '#FFFFFF'; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = fill; ctx.fill();
+      };
+      if (tx.buys > 0 && tx.sells > 0) {
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = '#FFFFFF'; ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#2E8B57'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 2, 0, 2 * Math.PI);
+        ctx.fillStyle = '#E4393C'; ctx.fill();
+      } else if (tx.buys > 0) {
+        dot(2, '#E4393C');
+      } else if (tx.sells > 0) {
+        dot(2, '#2E8B57');
+      }
     });
   },
 
@@ -953,6 +958,8 @@ Page({
     const cx = xp(nearest), cy = yp(pt.value);
 
     chart._drawFastLine(ctx, this._lastDrawSnap, opts);
+    // 十字线快速重绘同样带上买卖点：快照只含折线，原来按住查看时点会消失（2026-10-06 用户反馈）
+    this._paintTxDots(ctx, data, xp, yp);
     ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx, p.top); ctx.lineTo(cx, opts.h - p.bottom); ctx.stroke();
     ctx.beginPath();

@@ -33,9 +33,10 @@ Page({
       wx.setStorageSync("alertSettings", settings);
       this._syncCloud(settings);
     }
-    // 推送额度（提醒能否真的送达只取决于它）
+    // 推送额度（提醒只消耗 FUND 池，必须看 quotaNew——合计值含播报额度，
+    // 只授权过播报的用户会看到"有额度"实际提醒全跳过，2026-10-06 审查）
     wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
-      .then((r) => this.setData({ quota: ((r && r.result) || {}).quota || 0, quotaLoaded: true }))
+      .then((r) => this.setData({ quota: ((r && r.result) || {}).quotaNew || 0, quotaLoaded: true }))
       .catch(() => this.setData({ quotaLoaded: true }));
     const globalOn = wx.getStorageSync("alertGlobalOn");
     // 基金名优先取首页持仓缓存（alertSettings 里只有 fundCode）

@@ -107,6 +107,13 @@
         </picker>
       </view>
       <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
+        <text class="label">提交时段</text>
+        <view class="phase-chips">
+          <view class="phase-chip {{!adjustLate ? 'active' : ''}}" bind:tap="onAdjustPhaseTap" data-late="0">15:00 前</view>
+          <view class="phase-chip {{adjustLate ? 'active' : ''}}" bind:tap="onAdjustPhaseTap" data-late="1">15:00 后</view>
+        </view>
+      </view>
+      <view wx:if="{{isEdit && showAdjustPicker}}" class="form-item">
         <text class="label">备注</text>
         <input class="input" value="{{adjustNote}}" bind:input="onAdjustNoteInput"
                placeholder="选填：操作理由" maxlength="100"/>

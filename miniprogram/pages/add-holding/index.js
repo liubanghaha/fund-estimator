@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const track = require("../../utils/track");
+const marketTime = require("../../utils/market-time");
 
 // 操作归因枚举（可选单选，纯记录无建议，默认不选）：与云函数 manageTransaction 白名单保持一致
 const REASONS = ["跌怕了", "涨急了", "要用钱", "按计划", "没忍住"];
@@ -35,6 +36,7 @@ Page({
     selectedGroup: "",
     adjustAmount: '', adjustAmountAbs: '', adjustSign: 1,
     adjustDate: '', adjustNote: '',
+    adjustLate: false,        // 提交时段：false=15:00 前 / true=15:00 后（提交时按节假日表算确认净值日）
     showAdjustPicker: false,
     // 操作归因（可选单选，默认不选）
     reason: "", reasons: REASONS,
@@ -177,7 +179,7 @@ Page({
         // 自动按名称匹配基金代码
         this.autoMatchCodes(funds);
       } else {
-        this._ocrFail(tempPath, '服务暂不可用');
+        this._ocrFail(tempPath, this._ocrFailText(ocrRes.result));
       }
     } catch (e) {
       wx.hideLoading();
@@ -186,6 +188,15 @@ Page({
     } finally {
       this._ocrRunning = false;
     }
+  },
+
+  // 服务端失败原因 → 用户文案（reason: quota=额度耗尽 / timeout=超时 / no_text=没读出内容 / 其他=服务异常）
+  _ocrFailText(result) {
+    const r = (result && result.reason) || "";
+    if (r === "quota") return "识别服务额度已用完，可稍后再试";
+    if (r === "timeout") return "识别超时（网络较慢或截图过大）";
+    if (r === "no_text") return "没识别出持仓内容，请确认截图是持仓页";
+    return "服务暂不可用";
   },
 
   // 识别失败兜底：给「重试 / 去搜索」两条出路
@@ -214,6 +225,7 @@ Page({
         const f = codesToSearch[idx++];
         try {
           const r = await this.searchFundCodeStrict(f.fundName);
+          if (f._userEdited) continue; // 用户已手动输入代码，别覆盖（2026-10-06 审查）
           if (r && r.confident) {
             f.fundCode = r.code;
           } else if (r && r.code) {
@@ -379,7 +391,11 @@ Page({
       if (!wx.getStorageSync("add_first_holding_done")) {
         track.track("add_first_holding");
         wx.setStorageSync("add_first_holding_done", Date.now());
-        wx.setStorageSync("guide_pending_v1", 1); // 首笔持仓后引导首页弹新手导览
+        // 新手导览只给"真新用户"：添加前本地已有持仓的不弹——该标记 2026-09 末才引入，
+        // 老用户设备上没有这个标记，不加门槛会在升级后首次添加时误弹新手导览（2026-10-06 反馈）
+        const cached = wx.getStorageSync("portfolio_cache") || {};
+        const hadHoldings = Array.isArray(cached.holdings) && cached.holdings.length > 0;
+        if (!hadHoldings) wx.setStorageSync("guide_pending_v1", 1); // 首笔持仓后引导首页弹新手导览
       }
     } catch (e) { /* ignore */ }
   },
@@ -388,6 +404,8 @@ Page({
     const idx = parseInt(e.currentTarget.dataset.index);
     const funds = [...this.data.ocrFunds];
     funds[idx].fundCode = e.detail.value;
+    funds[idx]._needConfirm = false; // 手动输入即视为已确认，「待确认」标签消失
+    funds[idx]._userEdited = true;   // 防止 autoMatchCodes 异步回来覆盖手输值（2026-10-06 审查）
     this.setData({ ocrFunds: funds });
   },
 
@@ -558,7 +576,18 @@ Page({
     this.setData({ showAdjustPicker: true });
   },
   onAdjustDateChange(e) {
-    this.setData({ adjustDate: e.detail.value });
+    const picked = e.detail.value;
+    // 非交易日（假期/周末）没有净值确认，选了直接顺延并提示（2026-10-06 用户反馈）
+    if (!marketTime.isTradingDay(picked)) {
+      const next = marketTime.nextTradingDay(picked);
+      this.setData({ adjustDate: picked });
+      wx.showToast({ title: `该日非交易日，按 ${next.slice(5)} 净值确认`, icon: "none", duration: 2200 });
+      return;
+    }
+    this.setData({ adjustDate: picked });
+  },
+  onAdjustPhaseTap(e) {
+    this.setData({ adjustLate: e.currentTarget.dataset.late === "1" });
   },
   onAdjustNoteInput(e) {
     this.setData({ adjustNote: e.detail.value });
@@ -651,7 +680,14 @@ Page({
 
       // 处理加减持仓
       if (adjAmount !== 0 && this._rawHolding) {
-        const adjDate = this.data.adjustDate || today;
+        // 交易记录的 date = 净值确认日：提交时段（15 点前/后）+ 节假日表在提交时自动顺延；
+        // 这里兜底重算一次防绕过。未选日期时按当天（北京）申请：假期/周末提交自动顺延
+        const applyDay = this.data.adjustDate || marketTime.bjDateStr();
+        const adjDate = marketTime.isTradingDay(applyDay) && !this.data.adjustLate
+          ? applyDay
+          : marketTime.nextTradingDay(applyDay);
+        const adjConfirmReason = !marketTime.isTradingDay(applyDay) ? "非交易日提交"
+          : (this.data.adjustLate ? "15点后提交" : "");
         const h = this._rawHolding;
         const type = adjAmount > 0 ? 'buy' : 'sell';
         const absAmount = Math.abs(adjAmount);
@@ -724,7 +760,7 @@ Page({
 
       wx.removeStorageSync('portfolio_cache');
       wx.setStorageSync('portfolio_force_refresh', true);
-      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', showAdjustPicker: false, reason: '', sellHoldDays: null, sellHoldWarn: false });
+      this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', adjustLate: false, showAdjustPicker: false, reason: '', sellHoldDays: null, sellHoldWarn: false });
 
       if (this.data._editIdx >= 0 && !isEdit) {
         const funds = [...this.data.ocrFunds];
@@ -757,7 +793,7 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         try {
-          await api.holdingRemove(id);
+          await api.holdingRemove(this.data.id);
           wx.showToast({ title: "已删除", icon: "success" });
           // 与其它写入路径一致：失效首页缓存，否则删除后切回首页仍显示旧总市值
           wx.removeStorageSync('portfolio_cache');
