@@ -4,6 +4,7 @@ const db = cloud.database();
 const _ = db.command;
 const fd = require("./_shared/fund-data");
 const ft = require("./_shared/fund-temperature");
+const td = require("./_shared/trading-day");
 
 /**
  * 定时任务：每日凌晨 3:00 计算所有持仓基金的估值温度
@@ -94,6 +95,13 @@ exports.main = async (event) => {
   const today = fd.formatBJDate();
   const _startTime = Date.now();
   const inWindow = isInReportWindow();
+  // 节假日守卫：周末/法定假日不算不写（cron 表达不了节假日，守卫只能放代码里）。
+  // 此前国庆 7 天每天写 ~1460 行死数据、每个周末同样——读侧虽已按交易日过滤，写侧也该封口。
+  // 手动运维动作（seedIndustries）不在此闸内
+  if (!td.isTradingDay(today)) {
+    console.log(`[computeFundTemperature] 非交易日 ${today} 跳过`);
+    return { code: 0, msg: `非交易日 ${today} 跳过` };
+  }
   console.log(`[computeFundTemperature] 开始计算 ${today}, 季报窗口期: ${inWindow}`);
 
   try {

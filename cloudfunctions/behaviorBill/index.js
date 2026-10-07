@@ -8,6 +8,7 @@ const _ = db.command;
  *
  * 按年分组的操作成本事实——全部历史数据陈述，零建议（合规红线 #2）：
  *   years[]   每年一组（倒序）：操作概览 / 归因分布（未记录单独计数）/ 赎回费演算
+ *   months[]  按月聚合（2026-10-07 月度复盘新增，倒序最近 24 个月，只出聚合不出明细行）
  *   赎回费演算：每笔卖出按"先进先出"匹配买入批次 → 持有天数 →
  *             套 fund_redemption_fees 的费率分档 → 演算费用；持有不足首个
  *             降档天数计为短持。演算值非账单实付，客户端标注"以交易确认单为准"
@@ -97,15 +98,18 @@ exports.main = async (event) => {
       (cres.data || []).forEach((c) => { if (c.txId && typeof c.actualFee === "number") calMap[c.txId] = c.actualFee; });
     } catch (e) { /* 集合未建（首次使用）时忽略 */ }
 
-    // 2) 一遍时间升序遍历：按年聚合（概览/归因）+ FIFO 配对（赎回费逐段套档）。
-    //    归因分布只计有标签的——未记录单独计数（untagged），避免与角注意义重复
+    // 2) 一遍时间升序遍历：按年聚合（概览/归因）+ 按月聚合（月度复盘用，只出聚合不出明细行）
+    //    + FIFO 配对（赎回费逐段套档）。归因分布只计有标签的——未记录单独计数（untagged），
+    //    避免与角注意义重复
     const yearsData = {};
     const yearOrder = [];
+    const monthsData = {};
     const byFund = {};
     const fundNames = {};
     for (const t of trades) {
       if (!t.date || !t.fundCode) continue;
       const y = t.date.slice(0, 4);
+      const mKey = t.date.slice(0, 7);
       const shares = parseFloat(t.shares) || 0;
       const price = parseFloat(t.price) || 0;
       const amount = parseFloat(t.amount) || +(shares * price).toFixed(2);
@@ -117,12 +121,26 @@ exports.main = async (event) => {
         distMap: {}, tagged: 0, untagged: 0,
         rows: [], computed: 0, uncomputed: 0, feeTotal: 0, shortCount: 0, shortFee: 0, calibratedCount: 0,
       });
+      const md = monthsData[mKey] || (monthsData[mKey] = {
+        month: mKey,
+        trades: { total: 0, buy: 0, sell: 0, buyAmount: 0, sellAmount: 0 },
+        distMap: {}, tagged: 0, untagged: 0,
+        redemption: { computed: 0, uncomputed: 0, total: 0, shortCount: 0, shortFee: 0, calibratedCount: 0 },
+      });
       yd.trades.total++;
-      if (t.reason) { yd.distMap[t.reason] = (yd.distMap[t.reason] || 0) + 1; yd.tagged++; }
-      else yd.untagged++;
+      md.trades.total++;
+      if (t.reason) {
+        yd.distMap[t.reason] = (yd.distMap[t.reason] || 0) + 1; yd.tagged++;
+        md.distMap[t.reason] = (md.distMap[t.reason] || 0) + 1; md.tagged++;
+      } else { yd.untagged++; md.untagged++; }
       if (type) {
         yd.trades[type]++;
-        if (amount > 0) yd.trades[type === "buy" ? "buyAmount" : "sellAmount"] = +(yd.trades[type === "buy" ? "buyAmount" : "sellAmount"] + amount).toFixed(2);
+        md.trades[type]++;
+        if (amount > 0) {
+          const k = type === "buy" ? "buyAmount" : "sellAmount";
+          yd.trades[k] = +(yd.trades[k] + amount).toFixed(2);
+          md.trades[k] = +(md.trades[k] + amount).toFixed(2);
+        }
       }
       if (!t.fundName) fundNames[t.fundCode] = fundNames[t.fundCode] || t.fundCode;
       else fundNames[t.fundCode] = t.fundName;
@@ -152,10 +170,11 @@ exports.main = async (event) => {
       const calibrated = typeof calFee === "number";
       const effFee = calibrated ? calFee : (estFee || 0); // 有效费用：校准值优先，其次估算
       const short = estimated && minDays != null && minDays < 7;
-      if (estimated) yd.computed++; else yd.uncomputed++;
-      if (calibrated) yd.calibratedCount++;
+      if (estimated) { yd.computed++; md.redemption.computed++; } else { yd.uncomputed++; md.redemption.uncomputed++; }
+      if (calibrated) { yd.calibratedCount++; md.redemption.calibratedCount++; }
       yd.feeTotal += effFee;
-      if (short) { yd.shortCount++; yd.shortFee += effFee; }
+      md.redemption.total += effFee;
+      if (short) { yd.shortCount++; yd.shortFee += effFee; md.redemption.shortCount++; md.redemption.shortFee += effFee; }
       yd.rows.push({
         txId: t._id, fundCode: t.fundCode, fundName: fundNames[t.fundCode] || t.fundCode,
         date: t.date, amount: +amount.toFixed(2), holdDays: minDays,
@@ -194,7 +213,34 @@ exports.main = async (event) => {
       .filter((x) => !onlyYear || x.year === onlyYear);
 
     if (onlyYear && years.length === 0) return { code: 404, msg: `${onlyYear} 年无操作记录` };
-    return { code: 0, data: { years } };
+
+    // 按月聚合（月度复盘用）：倒序取最近 24 个月，只出聚合桶不出明细行；指定 year 时按前缀过滤
+    const months = Object.keys(monthsData)
+      .sort((a, b) => b.localeCompare(a))
+      .filter((mk) => !onlyYear || mk.startsWith(String(onlyYear)))
+      .slice(0, 24)
+      .map((mk) => {
+        const md = monthsData[mk];
+        return {
+          month: md.month,
+          trades: {
+            total: md.trades.total, buy: md.trades.buy, sell: md.trades.sell,
+            buyAmount: +md.trades.buyAmount.toFixed(2), sellAmount: +md.trades.sellAmount.toFixed(2),
+          },
+          reasons: Object.entries(md.distMap)
+            .map(([reason, count]) => ({ reason, count }))
+            .sort((a, b) => b.count - a.count),
+          tagged: md.tagged, untagged: md.untagged,
+          redemption: {
+            computed: md.redemption.computed, uncomputed: md.redemption.uncomputed,
+            total: +md.redemption.total.toFixed(2),
+            shortCount: md.redemption.shortCount, shortFee: +md.redemption.shortFee.toFixed(2),
+            calibratedCount: md.redemption.calibratedCount,
+          },
+        };
+      });
+
+    return { code: 0, data: { years, months } };
   } catch (e) {
     console.error("behaviorBill 失败:", e.message);
     return { code: 500, msg: "行为成本账单生成失败" };

@@ -313,7 +313,9 @@ exports.main = async (event) => {
         if (!l._openid || !l.ts) continue;
         if (!lastTs[l._openid] || l.ts > lastTs[l._openid]) lastTs[l._openid] = l.ts;
       }
-      let targets = pool.map((s) => s._openid).filter((id) => {
+      // 同一 openid 可能有多条订阅授权 doc（每次授权一条），不去重会污染分组：
+      // 同人既进 send 又进 control（对照组实际收到推送，对照失真）。发送端 handleRecallPush 另有自己的去重
+      let targets = [...new Set(pool.map((s) => s._openid))].filter((id) => {
         const lt = lastTs[id];
         return !lt || now - lt >= minDays * 86400000;
       });
