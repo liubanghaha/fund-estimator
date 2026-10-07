@@ -3,6 +3,8 @@
   <view class="tab-bar">
     <view class="tab-item {{activeTab === 'recover' ? 'active' : ''}}" data-tab="recover" bind:tap="onTabTap">回本中心</view>
     <view class="tab-item {{activeTab === 'temp' ? 'active' : ''}}" data-tab="temp" bind:tap="onTabTap">温度回测</view>
+    <view class="tab-item {{activeTab === 'insight' ? 'active' : ''}}" data-tab="insight" bind:tap="onTabTap">组合透视</view>
+    <view class="tab-item {{activeTab === 'monthly' ? 'active' : ''}}" data-tab="monthly" bind:tap="onTabTap">月度复盘</view>
   </view>
 
   <!-- ==================== 回本中心 ==================== -->
@@ -27,7 +29,7 @@
     </view>
     <view wx:if="{{!fundList.length && !loading && !fundCode}}" class="empty-box">
       <view class="empty-main">当前没有亏损持仓</view>
-      <view class="empty-sub">回本工具按持仓品种的亏损情况展示；温度回测在右侧 tab。</view>
+      <view class="empty-sub">回本工具按持仓品种的亏损情况展示；温度回测、组合透视在上方 tab。</view>
     </view>
 
     <view wx:if="{{loading && fundCode}}" class="loading-text">加载明细中…</view>
@@ -113,6 +115,132 @@
         <view class="m-line">1. 每天把被跟踪的品种按当时的温度分成三组，统计其后 5/10/20 个交易日的实际涨跌（官方口径，分红除息已调整）。</view>
         <view class="m-line">2. 同一品种的不同日期也各计一条样本；窗口互相重叠，样本间不独立。</view>
         <view class="m-line">3. 这是"温度指标灵不灵"的历史对账，不是任何预测或建议；样本少的分组仅供参考。</view>
+      </view>
+    </block>
+  </view>
+
+  <!-- ==================== 组合透视 ==================== -->
+  <view hidden="{{activeTab !== 'insight'}}">
+    <view class="disclaimer">全部为演算与统计陈述，不构成任何建议。</view>
+
+    <view wx:if="{{iLoading}}" class="loading-text">组合数据计算中…</view>
+
+    <block wx:else>
+      <!-- 真实年化（货币加权 XIRR） -->
+      <view class="card">
+        <view class="card-title">真实年化<text class="card-sub">货币加权 · 考虑每笔投入时点</text></view>
+        <view wx:if="{{xr.mode === 'ok'}}">
+          <view class="xr-main">
+            <text class="xr-num {{xr.cls}}">{{xr.numText}}</text>
+            <text class="xr-unit">/ 年</text>
+          </view>
+          <view wx:if="{{xr.cmpText}}" class="xr-cmp">{{xr.cmpText}}（同一批流水，不折算投入时点）</view>
+          <view wx:if="{{xr.hintText}}" class="xr-facts">{{xr.hintText}}</view>
+          <view class="xr-facts">{{xr.facts}}</view>
+          <view class="ep-note">按每笔买卖流水与最新市值演算；未含分红现金流，实际以交易确认单为准。</view>
+        </view>
+        <view wx:elif="{{xr.mode === 'empty'}}" class="ep-none">暂无买卖流水。添加持仓或加减仓后，这里给出考虑每笔投入时点的真实年化。</view>
+        <view wx:elif="{{xr.mode === 'noflow'}}" class="ep-none">流水还不足以计算年化（需要至少一笔买入和当前市值）。</view>
+        <view wx:elif="{{xr.mode === 'navfailed'}}" class="ep-none">最新净值暂时取不到，下拉刷新重试。</view>
+        <view wx:else class="ep-none">加载失败，<text class="retry-link" bind:tap="onRetryInsight">点此重试</text>。</view>
+      </view>
+
+      <!-- 估算可信度 -->
+      <view class="card">
+        <view class="card-title">估算可信度<text class="card-sub" wx:if="{{tr.mode === 'ok'}}">{{tr.windowText}}</text></view>
+        <view wx:if="{{tr.mode === 'ok'}}">
+          <view class="tr-line">{{tr.headline}}{{tr.dirText ? '，' + tr.dirText : ''}}。</view>
+          <view wx:if="{{tr.worst}}" class="tr-row">
+            <view class="tr-tag">最不准</view>
+            <view class="tr-name">{{tr.worst.name}}</view>
+            <view class="tr-val">{{tr.worst.text}}</view>
+          </view>
+          <view wx:if="{{tr.best}}" class="tr-row">
+            <view class="tr-tag tr-good">最准</view>
+            <view class="tr-name">{{tr.best.name}}</view>
+            <view class="tr-val">{{tr.best.text}}</view>
+          </view>
+          <view class="ep-note">偏差 = 当日收盘估算涨跌 − 官方涨跌，每个交易日收盘后记一笔，样本越多越可信；覆盖 {{tr.coveredText}} 只持仓品种。</view>
+        </view>
+        <view wx:elif="{{tr.mode === 'empty'}}" class="ep-none">样本积累中。每个交易日收盘后自动记录一次估算与官方的偏差，攒够就会在这里给出你持仓的可信度。</view>
+        <view wx:elif="{{tr.mode === 'nofunds'}}" class="ep-none">暂无持仓品种，添加持仓后可看。</view>
+        <view wx:else class="ep-none">加载失败，<text class="retry-link" bind:tap="onRetryInsight">点此重试</text>。</view>
+      </view>
+
+      <!-- 持仓集中度 -->
+      <view class="card">
+        <view class="card-title">持仓集中度<text class="card-sub" wx:if="{{conc.mode === 'ok'}}">{{conc.fundCount}} 只品种 · 前三大合计 {{conc.top3Text}}%</text></view>
+        <view wx:if="{{conc.mode === 'ok'}}">
+          <view class="cc-row" wx:for="{{conc.topFunds}}" wx:key="key">
+            <view class="cc-name">{{item.name}}</view>
+            <view class="cc-bar-wrap"><view class="cc-bar" style="width:{{item.barW}}%"></view></view>
+            <view class="cc-pct">{{item.pct}}%</view>
+          </view>
+          <view wx:if="{{conc.indText}}" class="cc-ind">{{conc.indText}}{{conc.coverageText}}</view>
+          <view wx:if="{{conc.warnText}}" class="cc-warn">{{conc.warnText}}</view>
+          <view class="ep-note">占比按市值计算；行业来自品种前十大重仓股的穿透聚合。</view>
+        </view>
+        <view wx:elif="{{conc.mode === 'none'}}" class="ep-none">暂无持仓数据。</view>
+        <view wx:else class="ep-none">加载失败，<text class="retry-link" bind:tap="onRetryInsight">点此重试</text>。</view>
+      </view>
+    </block>
+  </view>
+
+  <!-- ==================== 月度复盘 ==================== -->
+  <view hidden="{{activeTab !== 'monthly'}}">
+    <view class="disclaimer">历史数据与演算陈述，不构成任何建议。</view>
+
+    <view wx:if="{{mLoading}}" class="loading-text">月报生成中…</view>
+
+    <view wx:elif="{{!m}}" class="empty-box">
+      <view class="empty-main">加载失败</view>
+      <view class="empty-sub">月报展示最近一个完整月的持仓复盘。</view>
+      <view class="retry-btn" bind:tap="onRetryMonthly">再试一次</view>
+    </view>
+
+    <view wx:elif="{{m.empty}}" class="empty-box">
+      <view class="empty-main">{{m.monthText}}暂无可复盘数据</view>
+      <view class="empty-sub">该月没有持仓收益记录；月报展示最近一个完整月。</view>
+    </view>
+
+    <block wx:else>
+      <!-- 收益（纯净值变动口径） -->
+      <view class="card">
+        <view class="card-title">{{m.monthText}}收益<text class="card-sub">{{m.rangeText}}</text></view>
+        <view class="xr-main">
+          <text class="xr-num {{m.cls}}">{{m.profitText}}</text>
+          <text class="xr-unit">元</text>
+        </view>
+        <view class="xr-cmp">收益率 {{m.rateText}}{{m.hsText}}</view>
+        <view wx:if="{{m.ddText}}" class="xr-facts">月内最大回撤 {{m.ddText}}（金额口径）</view>
+        <view class="ep-note">按月内每日净值变动累计，加减仓的资金流不计入收益金额；月初市值取首个数据日前收盘。</view>
+      </view>
+
+      <!-- 操作与归因 -->
+      <view class="card">
+        <view class="card-title">{{m.monthText}}操作</view>
+        <view wx:if="{{m.hasOps}}">
+          <view class="tr-line">{{m.opText}}。</view>
+          <view class="cc-row" wx:for="{{m.reasons}}" wx:key="reason">
+            <view class="cc-name">{{item.reason}}</view>
+            <view class="cc-bar-wrap"><view class="cc-bar" style="width:{{item.barW}}%"></view></view>
+            <view class="cc-pct">{{item.count}} 笔</view>
+          </view>
+          <view wx:if="{{m.untagged}}" class="xr-facts">另有 {{m.untagged}} 笔未记归因</view>
+          <view class="ep-note">归因为下单时的自主记录，仅还原当时的决策场景。</view>
+        </view>
+        <view wx:else class="ep-none">本月没有买卖操作。</view>
+      </view>
+
+      <!-- 费用（赎回费演算） -->
+      <view class="card">
+        <view class="card-title">{{m.monthText}}费用</view>
+        <view wx:if="{{m.hasFee}}">
+          <view class="tr-line">卖出 {{m.feeSellCount}} 笔，赎回费演算合计 <text class="ep-strong">{{m.feeText}}</text>。<text wx:if="{{m.shortText}}">其中 {{m.shortText}}。</text></view>
+          <view wx:if="{{m.uncomputedText}}" class="xr-facts">{{m.uncomputedText}}。</view>
+          <view class="ep-note">按持有天数套费率分档演算，非账单实付，以交易确认单为准。</view>
+        </view>
+        <view wx:else class="ep-none">本月无卖出，无赎回费。</view>
       </view>
     </block>
   </view>

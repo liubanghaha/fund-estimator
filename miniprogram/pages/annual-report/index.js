@@ -14,6 +14,7 @@ Page({
     amountVisible: true,
     year: 2026,
     saved: false,
+    cardH: 1560,
   },
 
   onLoad(options) {
@@ -43,7 +44,8 @@ Page({
       api.transactionList().catch(() => ({ result: { code: 0, data: [] } })),
       api.feeSummary().catch(() => null),
       api.transactionShadow().catch(() => null),
-    ]).then(([pfRes, txRes, feeRes, shadowRes]) => {
+      api.behaviorBill().catch(() => null),
+    ]).then(([pfRes, txRes, feeRes, shadowRes, bbRes]) => {
       try {
         if (!pfRes.result || pfRes.result.code !== 0) throw new Error("load");
         const d = pfRes.result.data;
@@ -101,7 +103,8 @@ Page({
         // 沪深300 同期（年初前最后收盘 → 最新）
         const fetchHs = api.fetchMarketIndexClient("000300", historyDays).catch(() => null);
         return fetchHs.then((idxRes) => {
-          const rows = (idxRes && idxRes.result && idxRes.result.code === 0 && idxRes.result.data) || [];
+          // fetchMarketIndexClient 是客户端直连，回扁平结构 {code, data}（无 .result 包裹）
+          const rows = (idxRes && idxRes.code === 0 && idxRes.data) || [];
           const inYear = rows.filter(r => r.date >= yStr + "-01-01");
           const prev = rows.filter(r => r.date < yStr + "-01-01").pop();
           const base = prev || inYear[0];
@@ -112,9 +115,31 @@ Page({
           const buys = yearTxs.filter(t => t.type === "buy").length;
           const fee = feeRes && feeRes.result && feeRes.result.code === 0 && feeRes.result.data;
           const shadow = shadowRes && shadowRes.result && shadowRes.result.code === 0 && shadowRes.result.data;
+
+          // 费用后收益（hero 模块，产品规划 NEXT）：名义收益 − 当年费用。
+          // 两路费用来源：赎回费演算（behaviorBill 当年桶，含按笔校准）+ 持有费估算（feeSummary 年费）。
+          // 哪路缺/为 0 就不进合计；两路全缺不出这个模块（不虚构费用）
+          const feeParts = [];
+          let feeTotal = 0;
+          const bbYear = ((bbRes && bbRes.result && bbRes.result.code === 0 && bbRes.result.data) || { years: [] })
+            .years.find((y) => String(y.year) === String(year));
+          if (bbYear && bbYear.redemption && bbYear.redemption.total > 0) {
+            feeParts.push("赎回费 " + bbYear.redemption.total.toFixed(2) + " 元");
+            feeTotal += bbYear.redemption.total;
+            if (bbYear.redemption.uncomputed > 0) feeParts.push(bbYear.redemption.uncomputed + " 笔卖出未演算");
+          }
+          const annualFee = fee && fee.hasData && isFinite(parseFloat(fee.annualFee)) ? parseFloat(fee.annualFee) : 0;
+          if (annualFee > 0) {
+            feeParts.push("持有费约 " + annualFee.toFixed(2) + " 元");
+            feeTotal += annualFee;
+          }
+          const afterFee = (feeParts.length && yearProfit != null)
+            ? { value: +(yearProfit - feeTotal).toFixed(2), partsText: "含 " + feeParts.join("，") }
+            : null;
+
           this._report = {
             year, months, curve,
-            yearProfit, yearRate, hsRate,
+            yearProfit, yearRate, hsRate, afterFee,
             maxDD: +maxDD.toFixed(0),
             opText: `全年操作 ${yearTxs.length} 笔（加仓 ${buys} / 减仓 ${yearTxs.length - buys}）`,
             fundCount: hs.length,
@@ -133,13 +158,16 @@ Page({
   },
 
   _render() {
-    const query = wx.createSelectorQuery();
-    query.select("#annualCanvas").fields({ node: true, size: true }).exec((res) => {
-      if (!res || !res[0] || !res[0].node) return;
-      this._canvas = res[0].node;
-      shareCard.drawAnnualCard(res[0].node, { ...this._report, amountVisible: this.data.amountVisible })
-        .then(() => this.setData({ rendering: false }))
-        .catch(() => this.setData({ rendering: false }));
+    // 画布 CSS 高度随「费用后收益」带动态（buffer 在 _init 里等比放大，CSS 不同步会压扁整卡）
+    this.setData({ cardH: this._report.afterFee ? 1675 : 1560 }, () => {
+      const query = wx.createSelectorQuery();
+      query.select("#annualCanvas").fields({ node: true, size: true }).exec((res) => {
+        if (!res || !res[0] || !res[0].node) return;
+        this._canvas = res[0].node;
+        shareCard.drawAnnualCard(res[0].node, { ...this._report, amountVisible: this.data.amountVisible })
+          .then(() => this.setData({ rendering: false }))
+          .catch(() => this.setData({ rendering: false }));
+      });
     });
   },
   onSave() {

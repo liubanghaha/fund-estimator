@@ -9,13 +9,13 @@ const api = {
     "fetchFundEstimate", "fetchFundNAVHistory", "fetchFundOverview",
     "fetchFundProfile", "fetchMarketIndex", "fetchMarketOverview", "fetchMarketSnapshot", "fetchNews",
     "batchFetchEstimate", "computeCorrelation",
-    "dcaBacktest", "getMigrationCode",
+    "dcaBacktest", "getMigrationCode", "estimateTrust",
   ],
   // CRUD 函数中纯读的 action 也去重（list/check/get 类），写 action 不缓存
   READ_ONLY_ACTIONS: {
     manageWatchlist: ["list", "check", "getGroups"],
     manageHolding: ["list", "get", "check", "getGroups"],
-    manageTransaction: ["list"],
+    manageTransaction: ["list", "xirr"],
   },
 
   callFunction(name, data = {}) {
@@ -205,6 +205,14 @@ const api = {
   // 影子账户：卖出记录 × 最新官方净值的"如果没卖"演算（服务端算好逐笔与汇总）
   transactionShadow() {
     return this.callFunction("manageTransaction", { action: "shadow" });
+  },
+  // 真实年化（货币加权 XIRR）：买卖流水为现金流 + 有流水品种最新市值为终值，服务端算好
+  transactionXirr() {
+    return this.callFunction("manageTransaction", { action: "xirr" });
+  },
+  // 估算可信度个人化：持仓品种近 35 天估算 vs 官方的偏差聚合（estimateTrust 云函数）
+  estimateTrust() {
+    return this.callFunction("estimateTrust", {});
   },
   batchFetchEstimate(codes) {
     return this.callFunction("batchFetchEstimate", { codes, src: this._estimateSrc() });

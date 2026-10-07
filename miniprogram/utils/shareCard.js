@@ -480,7 +480,10 @@ function drawWeeklyCard(canvas, opts = {}) {
  * @param {Object} opts - { year, yearProfit, yearRate, hsRate, months:[{label,profit}], maxDD, opText, fundCount, feeText, shadowText, earliest, amountVisible }
  */
 function drawAnnualCard(canvas, opts = {}) {
-  const w = CARD_W, h = 1560;
+  const w = CARD_W;
+  // 费用后收益带（hero 模块）占 128px；无数据时整卡维持原高
+  const bandH = opts.afterFee ? 128 : 0;
+  const h = 1560 + bandH;
   const ctx = _init(canvas, w, h);
   const theme = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'red';
   const amountVisible = opts.amountVisible !== false;
@@ -524,8 +527,31 @@ function drawAnnualCard(canvas, opts = {}) {
     ctx.fillText('沪深300 同期 ' + (opts.hsRate > 0 ? '+' : '') + opts.hsRate + '%' + (diff !== 0 ? ' · ' + (diff >= 0 ? '跑赢 ' : '跑输 ') + Math.abs(diff) + '%' : ' · 持平'), w / 2, 378);
   }
 
+  // 费用后收益带（hero）：名义收益 − 当年费用（赎回费演算含按笔校准 + 持有费估算）。
+  // 纯数据陈述（合规红线 #2/#6：无建议字样）；金额隐藏时大数字与明细同步抹数
+  if (opts.afterFee) {
+    const af = opts.afterFee;
+    const bandTop = 406;
+    ctx.fillStyle = '#F8F8F8';
+    _roundRect(ctx, 40, bandTop, w - 80, 116, 16);
+    ctx.fill();
+    ctx.fillStyle = '#666';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('费用后收益（名义收益 − 费用）', 60, bandTop + 34);
+    ctx.fillStyle = '#999';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(amountVisible ? af.partsText : '含赎回费与持有费（演算口径）', w - 60, bandTop + 34);
+    const afUp = af.value >= 0;
+    ctx.fillStyle = afUp ? '#E4393C' : '#2E8B57';
+    ctx.font = 'bold 44px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText((afUp ? '+' : '') + '¥' + (amountVisible ? af.value : '****'), 60, bandTop + 92);
+  }
+
   // 月度收益柱状图
-  const chartTop = 430, chartH = 380, chartBottom = chartTop + chartH;
+  const chartTop = 430 + bandH, chartH = 380, chartBottom = chartTop + chartH;
   const months = opts.months || [];
   ctx.fillStyle = '#999';
   ctx.font = '16px sans-serif';

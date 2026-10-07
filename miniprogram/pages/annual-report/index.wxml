@@ -9,7 +9,7 @@
   </view>
 
   <block wx:else>
-    <canvas type="2d" id="annualCanvas" class="ar-canvas"></canvas>
+    <canvas type="2d" id="annualCanvas" class="ar-canvas" style="height:{{cardH}}rpx"></canvas>
     <view class="ar-actions">
       <button class="ar-save-btn" bind:tap="onSave">保存到相册</button>
       <button class="ar-share-btn" open-type="share">分享给好友</button>

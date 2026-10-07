@@ -5,6 +5,8 @@
 // 不做任何"建议加仓/减仓"类表述（合规红线 #2），措辞走温度偏低/适中/偏高（红线 #4）。
 const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
+const marketTime = require("../../../../utils/market-time");
+const track = require("../../../../utils/track");
 
 const _pad = (n) => (n < 10 ? "0" + n : "" + n);
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
@@ -34,16 +36,31 @@ Page({
     tNotReady: false,
     tError: "",
     tStats: null,
+    // —— 组合透视（XIRR / 估算可信度 / 集中度） ——
+    iLoading: true,
+    xr: { mode: "loading" },
+    tr: { mode: "loading" },
+    conc: { mode: "loading" },
+    // —— 月度复盘（懒加载：首次切到本 tab 才拉，getPortfolio 序列较重不进预取） ——
+    mLoading: false,
+    m: null,
   },
 
   onLoad(options) {
     options = options || {};
-    const tab = options.tab === "temp" ? "temp" : "recover";
+    const tab = options.tab === "temp" ? "temp"
+      : options.tab === "insight" ? "insight"
+      : options.tab === "monthly" ? "monthly"
+      : "recover";
     this.setData({ theme: wx.getStorageSync("theme") || "blue", activeTab: tab });
     // 亏损持仓列表从首页缓存构建（同步、零网络），两个 tab 都会用到
     this._initRecovery(options, tab !== "recover"); // 非 recover tab 打开时只建列表、明细延后
     // 温度回测预取：与回本中心的加载并行，切 tab 时大概率已就绪
     this.fetchBacktest();
+    // 组合透视预取：三路数据互不依赖，同样并行
+    this.fetchInsight();
+    // 月度复盘较重（getPortfolio 序列），不预取；但深链直开本 tab 时要拉
+    if (tab === "monthly" && !this._monthlyLoaded) this.fetchMonthly();
   },
 
   onShow() {
@@ -59,6 +76,10 @@ Page({
   onPullDownRefresh() {
     if (this.data.activeTab === "recover" && /^\d{6}$/.test(this.data.fundCode)) {
       this.fetchAll().finally(() => wx.stopPullDownRefresh());
+    } else if (this.data.activeTab === "insight") {
+      this.fetchInsight(() => wx.stopPullDownRefresh());
+    } else if (this.data.activeTab === "monthly") {
+      this.fetchMonthly(() => wx.stopPullDownRefresh());
     } else {
       this.fetchBacktest(() => wx.stopPullDownRefresh());
     }
@@ -70,6 +91,10 @@ Page({
     this.setData({ activeTab: tab });
     if (tab === "temp") {
       if (!this._btLoaded) this.fetchBacktest();
+    } else if (tab === "insight") {
+      if (!this._insightLoaded) this.fetchInsight();
+    } else if (tab === "monthly") {
+      if (!this._monthlyLoaded) this.fetchMonthly();
     } else if (!this._recoveryLoaded) {
       this.fetchAll(); // 首次切回回本中心：补拉选中基金的明细
     }
@@ -364,6 +389,263 @@ Page({
         gapTo,
       },
     });
+  },
+
+  // ==================== 组合透视 ====================
+
+  // 三路并行：XIRR（manageTransaction 服务端算）+ 估算可信度（estimateTrust）+ 集中度（缓存直出）。
+  // 单路失败不连坐：各卡片独立降级到 error 态，点文案内"点此重试"或下拉刷新
+  async fetchInsight(done) {
+    this.setData({ iLoading: true });
+    const [xrRes, trRes, conc] = await Promise.all([
+      api.transactionXirr().catch(() => null),
+      api.estimateTrust().catch(() => null),
+      this._concSource().catch(() => null),
+    ]);
+    const ok = (res) => !!(res && res.result && res.result.code === 0);
+    this.setData({
+      iLoading: false,
+      xr: ok(xrRes) ? this._fmtXirr(xrRes.result.data) : { mode: "error" },
+      tr: ok(trRes) ? this._fmtTrust(trRes.result.data) : { mode: "error" },
+      conc: conc ? this._fmtConc(conc.holdings, conc.assetAllocation) : { mode: "error" },
+    });
+    this._insightLoaded = true;
+    if (done) done();
+  },
+
+  onRetryInsight() {
+    this.fetchInsight();
+  },
+
+  // 集中度数据源：首页 portfolio_cache 直出（秒开）；缓存为空再回退 getPortfolio
+  async _concSource() {
+    const pc = wx.getStorageSync("portfolio_cache") || {};
+    if (pc.holdings && pc.holdings.length) {
+      return { holdings: pc.holdings, assetAllocation: pc.assetAllocation || null };
+    }
+    const res = await api.getPortfolio(0);
+    const d = res && res.result && res.result.code === 0 && res.result.data;
+    return d ? { holdings: d.holdings || [], assetAllocation: d.assetAllocation || null } : null;
+  },
+
+  _fmtXirr(d) {
+    if (!d) return { mode: "error" };
+    if (d.navFailed) return { mode: "navfailed" };
+    if (!d.hasData) return { mode: "empty" };
+    if (d.xirr == null && !d.simple) return { mode: "noflow" };
+    const pct = (v) => (v == null || !isFinite(v)) ? "--" : (v > 0 ? "+" : "") + v.toFixed(1) + "%";
+    let facts = `计入 ${d.funds} 只品种 · 买入 ${d.buyCount} 笔 / 卖出 ${d.sellCount} 笔`;
+    if (d.uncovered > 0) facts += ` · ${d.uncovered} 只未记流水未计入`;
+    if (d.excludedCount > 0) facts += ` · ${d.excludedCount} 只净值暂缺未计入`;
+    // 短流水期的年化是天文数字（复利外推），无参考价值：不出年化，只给不折时累计
+    let hintText = "";
+    if (d.xirr == null && d.simple) {
+      hintText = d.periodDays < 90
+        ? `首笔流水 ${d.firstDate}，不足 3 个月；年化随时段拉长才趋稳，暂不展示`
+        : "流水形态特殊，年化暂解不出，先看不折时累计";
+    } else if (d.xirr != null && Math.abs(d.xirr) >= 1000) {
+      hintText = "年化被短期有效持有期复利放大，参考不折时累计更直观";
+    }
+    return {
+      mode: "ok",
+      numText: d.xirr != null && Math.abs(d.xirr) >= 1000 ? (d.xirr > 0 ? ">+999%" : "<-999%") : pct(d.xirr),
+      cls: d.xirr == null ? "" : d.xirr >= 0 ? "up" : "down",
+      cmpText: d.simple ? `同口径不折时累计 ${pct(d.simple.rate)}` : "",
+      hintText,
+      facts,
+    };
+  },
+
+  _fmtTrust(d) {
+    if (!d) return { mode: "error" };
+    if (d.hasFunds === false) return { mode: "nofunds" };
+    if (!d.hasData) return { mode: "empty" };
+    const rowText = (r) => `±${r.meanAbs.toFixed(2)}pp · ${r.n} 个交易日样本`;
+    const o = d.overall;
+    let dirText = "";
+    if (o && Math.abs(o.meanSigned) >= 0.005) {
+      dirText = o.meanSigned > 0
+        ? `整体估算比官方偏高 ${o.meanSigned.toFixed(2)} 个百分点`
+        : `整体估算比官方偏低 ${Math.abs(o.meanSigned).toFixed(2)} 个百分点`;
+    }
+    const best = d.best && (!d.worst || d.best.fundCode !== d.worst.fundCode) ? d.best : null;
+    return {
+      mode: "ok",
+      headline: o ? `你的持仓平均估算偏差 ±${o.meanAbs.toFixed(2)} 个百分点` : "",
+      dirText,
+      best: best ? { name: best.fundName, text: rowText(best) } : null,
+      worst: d.worst ? { name: d.worst.fundName, text: rowText(d.worst) } : null,
+      windowText: `${d.window.sampleDays} 个交易日样本`,
+      coveredText: `${d.sampledFunds}/${d.fundCount}`,
+    };
+  },
+
+  _fmtConc(holdings, assetAllocation) {
+    const num = (v) => parseFloat(v) || 0;
+    const byFund = {};
+    let total = 0;
+    (holdings || []).forEach((h) => {
+      if (!h || !h.fundCode) return;
+      const b = byFund[h.fundCode] || (byFund[h.fundCode] = { name: h.fundName || h.fundCode, mv: 0 });
+      b.mv += num(h.marketValue);
+      total += num(h.marketValue);
+    });
+    if (!(total > 0)) return { mode: "none" };
+    const funds = Object.values(byFund)
+      .map((b) => ({ name: b.name, pct: (b.mv / total) * 100 }))
+      .sort((a, b) => b.pct - a.pct);
+    const maxPct = funds[0].pct || 1;
+    const topFunds = funds.slice(0, 5).map((f, i) => ({
+      key: "f" + i,
+      name: f.name,
+      pct: f.pct.toFixed(1),
+      barW: Math.max(4, Math.round((f.pct / maxPct) * 100)),
+    }));
+    const top3 = funds.slice(0, 3).reduce((s, f) => s + f.pct, 0);
+    const items = ((assetAllocation && assetAllocation.items) || [])
+      .filter((i) => i && i.industry && i.industry !== "其他")
+      .sort((a, b) => b.percent - a.percent);
+    const cov = assetAllocation ? assetAllocation.coverage : null;
+    return {
+      mode: "ok",
+      fundCount: funds.length,
+      top3Text: top3.toFixed(1),
+      topFunds,
+      indText: items.length ? `最重行业「${items[0].industry}」占穿透市值 ${items[0].percent}%` : "",
+      warnText: (assetAllocation && assetAllocation.warning) || "",
+      coverageText: cov != null ? `（穿透覆盖 ${Math.round(cov)}%）` : "",
+    };
+  },
+
+  // ==================== 月度复盘 ====================
+
+  // 报告月 = 最近一个"最后交易日已过"的月份：10/31（周六）看 → 10 月，11/1 看 → 也是 10 月，
+  // 当月最后交易日当天盘中看 → 还是上月（当天数据没走完，不出半截月报）
+  _reportMonth() {
+    const bj = new Date(Date.now() + 8 * 3600000);
+    let y = bj.getUTCFullYear(), m = bj.getUTCMonth() + 1;
+    const lastCal = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    let lastTd = null;
+    for (let d = lastCal; d >= 1 && !lastTd; d--) {
+      const ds = y + "-" + _pad(m) + "-" + _pad(d);
+      if (marketTime.isTradingDay(ds)) lastTd = ds;
+    }
+    if (lastTd && marketTime.bjDateStr() > lastTd) return { y, m };
+    return m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
+  },
+
+  // 三路并行：getPortfolio 序列（月收益/回撤，口径同年度报告页）+ behaviorBill 月桶（操作/归因/赎回费）
+  // + 沪深300 月序列。懒加载不预取（getPortfolio 较重）
+  async fetchMonthly(done) {
+    this.setData({ mLoading: true });
+    const { y, m: mm } = this._reportMonth();
+    const pfx = y + "-" + _pad(mm);
+    const [pfRes, bbRes, idxRes] = await Promise.all([
+      api.getPortfolio(60, { withAnalysis: false }).catch(() => null),
+      api.behaviorBill().catch(() => null),
+      api.fetchMarketIndexClient("000300", 60).catch(() => null),
+    ]);
+    track.track("monthly_review_open", { month: pfx });
+    const pfOk = !!(pfRes && pfRes.result && pfRes.result.code === 0);
+    if (!pfOk) {
+      this.setData({ mLoading: false, m: null });
+      this._monthlyLoaded = true;
+      if (done) done();
+      return;
+    }
+    const hs = pfRes.result.data.holdings || [];
+    const navMap = pfRes.result.data.navHistoryMap || {};
+
+    // 月内每日净值变动 dc 与市值 dm（纯净值变动口径，加减仓资金流不计入收益金额；
+    // 持仓按 createTime 起算，与年度报告页同式）
+    const dc = {}, dm = {};
+    hs.forEach((h) => {
+      let shares = parseFloat(h.shares || h.amount || 0);
+      if (!shares && h.marketValue) {
+        const cn = h.currentNav || h.buyPrice;
+        if (cn > 0) shares = parseFloat(h.marketValue) / cn;
+      }
+      if (!shares) return;
+      const hist = [...(navMap[h.fundCode] || [])].reverse();
+      if (hist.length < 2) return;
+      const sd = h.createTime ? calc.formatDate(h.createTime) : null;
+      for (let i = 1; i < hist.length; i++) {
+        if (sd && hist[i].date < sd) continue;
+        if (!hist[i].date.startsWith(pfx)) continue;
+        const chg = (hist[i].nav - hist[i - 1].nav) * shares;
+        dc[hist[i].date] = +((dc[hist[i].date] || 0) + chg).toFixed(2);
+        dm[hist[i].date] = (dm[hist[i].date] || 0) + hist[i].nav * shares;
+      }
+    });
+    const dates = Object.keys(dm).sort();
+    if (!dates.length) {
+      this.setData({ mLoading: false, m: { empty: true, monthText: mm + " 月" } });
+      this._monthlyLoaded = true;
+      if (done) done();
+      return;
+    }
+
+    let profit = 0;
+    dates.forEach((dt) => { profit += dc[dt] || 0; });
+    profit = +profit.toFixed(2);
+    const startMv = (dm[dates[0]] || 0) - (dc[dates[0]] || 0);
+    const rate = startMv > 0 ? +((profit / startMv) * 100).toFixed(2) : null;
+    let cum = 0, peak = 0, maxDD = 0;
+    dates.forEach((dt) => {
+      cum += dc[dt] || 0;
+      if (cum > peak) peak = cum;
+      const dd = peak - cum;
+      if (dd > maxDD) maxDD = dd;
+    });
+
+    // 沪深300 同期：报告月首个数据日前最后收盘为基准（与年度报告同式）。
+    // 注意 fetchMarketIndexClient 是客户端直连，回扁平结构 {code, data}（无 .result 包裹）
+    const idxRows = (idxRes && idxRes.code === 0 && idxRes.data) || [];
+    const inMonth = idxRows.filter((r) => r.date >= dates[0]);
+    const base = idxRows.filter((r) => r.date < dates[0]).pop() || inMonth[0];
+    const hsRate = (base && inMonth.length && base.close > 0)
+      ? +((inMonth[inMonth.length - 1].close / base.close - 1) * 100).toFixed(2) : null;
+
+    // 操作/归因/赎回费（behaviorBill 按月桶；无流水月份该月桶不存在）
+    const mb = ((bbRes && bbRes.result && bbRes.result.code === 0 && bbRes.result.data && bbRes.result.data.months) || [])
+      .find((x) => x.month === pfx) || null;
+
+    const sign = (v, suf) => (v > 0 ? "+" : "") + v.toFixed(2) + (suf || "");
+    let hsText = "";
+    if (hsRate != null) {
+      hsText = rate != null
+        ? ` · 沪深300 ${sign(hsRate, "%")}（${rate >= hsRate ? "跑赢" : "跑输"} ${Math.abs(rate - hsRate).toFixed(2)}pp）`
+        : ` · 沪深300 同期 ${sign(hsRate, "%")}`;
+    }
+    const reasons = mb ? mb.reasons.slice(0, 5) : [];
+    const maxReason = reasons.length ? reasons[0].count : 1;
+    const m = {
+      monthText: mm + " 月",
+      rangeText: dates[0].slice(5) + " ~ " + dates[dates.length - 1].slice(5) + " 收盘",
+      profitText: sign(profit),
+      cls: profit > 0 ? "up" : profit < 0 ? "down" : "",
+      rateText: rate != null ? sign(rate, "%") : "--",
+      hsText,
+      ddText: maxDD > 0.5 ? maxDD.toFixed(0) + " 元" : "",
+      hasOps: !!(mb && mb.trades.total > 0),
+      opText: mb ? `操作 ${mb.trades.total} 笔（加仓 ${mb.trades.buy} / 减仓 ${mb.trades.sell}）` : "",
+      reasons: reasons.map((r) => ({ reason: r.reason, count: r.count, barW: Math.max(6, Math.round(r.count / maxReason * 100)) })),
+      untagged: mb ? mb.untagged : 0,
+      hasFee: !!(mb && mb.trades.sell > 0),
+      feeSellCount: mb ? mb.trades.sell : 0,
+      feeText: mb ? mb.redemption.total.toFixed(2) + " 元" : "",
+      shortText: mb && mb.redemption.shortCount > 0
+        ? `${mb.redemption.shortCount} 笔持有不足 7 天、费用 ${mb.redemption.shortFee.toFixed(2)} 元` : "",
+      uncomputedText: mb && mb.redemption.uncomputed > 0
+        ? `另有 ${mb.redemption.uncomputed} 笔卖出因买入记录缺失未演算` : "",
+    };
+    this.setData({ mLoading: false, m });
+    this._monthlyLoaded = true;
+    if (done) done();
+  },
+
+  onRetryMonthly() {
+    this.fetchMonthly();
   },
 
   // ==================== 温度回测 ====================

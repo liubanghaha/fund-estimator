@@ -93,3 +93,29 @@
 .g-bar.g-mid{background:#B26A00}
 .g-bar.g-high{background:#E4393C}
 .h-spread{font-size:24rpx;color:#333;background:#FAFAF5;border-radius:10rpx;padding:12rpx 16rpx;margin-top:8rpx}
+
+/* ==================== 组合透视 ==================== */
+/* 真实年化（XIRR）：大数字 + 同口径对照 */
+.xr-main{display:flex;align-items:baseline;margin:8rpx 0 4rpx}
+.xr-num{font-size:64rpx;font-weight:700;color:var(--primary)}
+.xr-num.up{color:var(--up)}
+.xr-num.down{color:var(--down)}
+.xr-unit{font-size:24rpx;color:#999;margin-left:8rpx}
+.xr-cmp{font-size:24rpx;color:#666;margin:8rpx 0;line-height:1.6}
+.xr-facts{font-size:22rpx;color:#999;margin-bottom:8rpx}
+/* 估算可信度：结论行 + 最准/最不准两行 */
+.tr-line{font-size:26rpx;color:#333;line-height:1.7;margin-bottom:14rpx}
+.tr-row{display:flex;align-items:center;padding:12rpx 0;border-top:1rpx solid #F5F5F5}
+.tr-tag{flex-shrink:0;width:96rpx;font-size:20rpx;color:#888;background:#F2F2F2;border-radius:8rpx;padding:6rpx 0;text-align:center;margin-right:16rpx}
+.tr-tag.tr-good{color:var(--primary)}
+.tr-name{flex:1;min-width:0;font-size:24rpx;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-val{flex-shrink:0;font-size:22rpx;color:#666;margin-left:16rpx}
+/* 集中度：品种占比条形 + 行业提示 */
+.cc-row{display:flex;align-items:center;padding:10rpx 0}
+.cc-name{width:230rpx;font-size:24rpx;color:#333;flex-shrink:0;margin-right:16rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-bar-wrap{flex:1;height:14rpx;background:#F5F5F5;border-radius:7rpx;overflow:hidden}
+.cc-bar{height:100%;background:var(--primary);opacity:.65;border-radius:7rpx}
+.cc-pct{width:110rpx;text-align:right;font-size:24rpx;color:#333;flex-shrink:0}
+.cc-ind{font-size:24rpx;color:#666;margin-top:12rpx;line-height:1.6}
+.cc-warn{font-size:24rpx;color:#B26A00;background:#FFF7E8;border-radius:8rpx;padding:12rpx 16rpx;margin-top:12rpx;line-height:1.5}
+.retry-link{color:var(--primary)}
