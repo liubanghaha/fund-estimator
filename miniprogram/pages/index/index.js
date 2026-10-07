@@ -928,6 +928,11 @@ Page({
       const cn = parseFloat(h.currentNav) || 0;
       const hi = h.navHigh != null ? parseFloat(h.navHigh) : 0;
       const crCls = cr > 0 ? 'up' : cr < 0 ? 'down' : '';
+      // 盘后对照（信任线）：净值已出（estimateUpdated=true，涨跌=实际）且台账有当日收盘估算时，
+      // 涨跌主数字后附小字"估Y%"，与实际并排可对账；盘中不附（此时主数字就是估算本身）；
+      // 无台账覆盖（968/债券等）不显示
+      const dayEst = h.estimateUpdated && h.dayEstRate != null ? parseFloat(h.dayEstRate) : null;
+      const estCmp = dayEst == null ? "" : "估" + (dayEst > 0 ? "+" : "") + dayEst.toFixed(2) + "%";
       const tpCls = tp > 0 ? 'up' : tp < 0 ? 'down' : '';
       const trCls = tr > 0 ? 'up' : tr < 0 ? 'down' : '';
       const trrCls = trr > 0 ? 'up' : trr < 0 ? 'down' : '';
@@ -949,6 +954,7 @@ Page({
         navLow: h.navLow != null ? parseFloat(h.navLow).toFixed(2) : null,
         _crCls: crCls, _tpCls: tpCls, _trCls: trCls, _trrCls: trrCls,
         _crText: noEst ? '--' : (cr > 0 ? '+' : '') + cr.toFixed(2) + '%',
+        _estCmp: estCmp,
         _trrText: (trr > 0 ? '+' : '') + trr.toFixed(2) + '%',
         _valCls: valCls, _valText: valText,
         _peSub: pe && pe.signal && pe.signal !== 'nodata' && pe.normPE != null ? pe.normPE : '',

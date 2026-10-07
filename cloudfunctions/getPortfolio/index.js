@@ -271,6 +271,7 @@ exports.main = async (event) => {
         totalReturnRate: totalReturnRate.toFixed(2),
         estimateUpdated,
         actualDate: eastmoney.actualDate || null,  // 最新净值日：客户端按交易日冻结缓存用
+        displayDay,  // 数据所属日（盘中=今天，凌晨/周末=最近交易日）：估算对照按它取台账行
         position,
         navHigh: navHigh != null ? navHigh.toFixed(4) : null,
         navLow: navLow != null ? navLow.toFixed(4) : null,
@@ -616,6 +617,32 @@ exports.main = async (event) => {
         }
       }
     } catch (e) { console.warn("[getPortfolio] 快照兜底失败:", e.message); }
+
+    // 当日估算对照（信任线，2026-10-07）：估算台账（snapshotEstimateDeviation 每交易日收盘落库）
+    // 的 estRate 按各持仓自己的 displayDay 挂到行上。净值公布后客户端显示"实 X% 估 Y%"对照——
+    // 用户反馈原话："晚上8点陆续更新之后就看不到当天估值过的情况，很难比较出估值和实际涨幅差异"。
+    // 台账无对应行（非交易日/968 等无覆盖品种）→ 挂 null，前端不显示
+    try {
+      const estKeys = [...new Set(enriched
+        .filter(h => h.fundCode && h.displayDay)
+        .map(h => `${h.fundCode}|${h.displayDay}`))].slice(0, 100);
+      const estCodes = [...new Set(estKeys.map(k => k.split("|")[0]))];
+      const estDays = [...new Set(estKeys.map(k => k.split("|")[1]))];
+      if (estCodes.length && estDays.length) {
+        const dres = await db.collection("fund_estimate_deviations")
+          .where({ fundCode: _.in(estCodes), date: _.in(estDays) })
+          .field({ fundCode: true, date: true, estRate: true })
+          .get();
+        const dayEstMap = {};
+        (dres.data || []).forEach(d => {
+          if (typeof d.estRate === "number") dayEstMap[`${d.fundCode}|${d.date}`] = d.estRate;
+        });
+        enriched.forEach(h => {
+          h.dayEstRate = dayEstMap[`${h.fundCode}|${h.displayDay}`] != null
+            ? dayEstMap[`${h.fundCode}|${h.displayDay}`] : null;
+        });
+      }
+    } catch (e) { console.warn("[getPortfolio] 当日估算对照读取失败:", e.message); }
 
     return {
       code: 0,

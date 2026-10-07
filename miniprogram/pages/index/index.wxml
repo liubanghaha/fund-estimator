@@ -228,6 +228,7 @@
                 <view wx:for="{{colOrder}}" wx:key="*this" wx:for-item="col" class="t-cell">
                   <block wx:if="{{col === 'todayProfit'}}">
                     <view class="t-val {{item._crCls}}">{{item._crText}}</view>
+                    <view wx:if="{{item._estCmp}}" class="est-cmp">{{item._estCmp}}</view>
                     <view class="t-sub {{amountVisible ? item._tpCls : ''}}">{{amountVisible ? fmt.money(item.todayProfit, true) : '****'}}</view>
                   </block>
                   <block wx:elif="{{col === 'totalReturn'}}">

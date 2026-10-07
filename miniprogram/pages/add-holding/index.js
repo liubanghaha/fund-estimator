@@ -344,7 +344,8 @@ Page({
 
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
-        if (d.added > 0) this._markFirstHolding(); // 激活指标：生涯首次添加持仓（批量导入）
+        const isFirstBatch = d.added > 0 ? this._markFirstHolding() : false; // 激活指标：生涯首次添加持仓（批量导入）
+        const firstFund = (funds || []).find(f => f && f.fundCode);
         // 标记所有未保存为已保存
         for (const f of funds) {
           if (!f._saved && f.fundCode) f._saved = true;
@@ -365,12 +366,13 @@ Page({
             confirmText: "查看持仓",
             success: () => {
               getApp().globalData._ocrFunds = null;
-              wx.switchTab({ url: "/pages/index/index" });
+              if (isFirstBatch) this._goFirstDetail(firstFund);
+              else wx.switchTab({ url: "/pages/index/index" });
             },
           });
         } else if (d.added > 0) {
           wx.showToast({ title: `已添加 ${d.added} 个`, icon: "success" });
-          setTimeout(() => wx.switchTab({ url: "/pages/index/index" }), 800);
+          setTimeout(() => (isFirstBatch ? this._goFirstDetail(firstFund) : wx.switchTab({ url: "/pages/index/index" })), 800);
         } else {
           wx.showToast({ title: "所有持仓已存在", icon: "none" });
         }
@@ -385,7 +387,8 @@ Page({
     }
   },
 
-  // 首日价值时刻（产品规划激活指标）：用户生涯首次添加持仓成功，only-once
+  // 首日价值时刻（产品规划激活指标）：用户生涯首次添加持仓成功，only-once。
+  // 返回 true = 本次是生涯首笔（调用方据此直达详情页做激活引导）
   _markFirstHolding() {
     try {
       if (!wx.getStorageSync("add_first_holding_done")) {
@@ -396,8 +399,22 @@ Page({
         const cached = wx.getStorageSync("portfolio_cache") || {};
         const hadHoldings = Array.isArray(cached.holdings) && cached.holdings.length > 0;
         if (!hadHoldings) wx.setStorageSync("guide_pending_v1", 1); // 首笔持仓后引导首页弹新手导览
+        return true;
       }
     } catch (e) { /* ignore */ }
+    return false;
+  },
+
+  // 首笔直达详情页（激活引导，2026-10-07）：加完立刻看到这只基金的估值/温度/净值走势，
+  // 而不是回列表自己找（9 月激活漏斗 97→48 的引导补刀；假日盘后添加时详情页也有净值可看）。
+  // 新手导览 pending 标记不消费，回到首页照常弹
+  _goFirstDetail(fund) {
+    const code = fund && /^\d{6}$/.test(String(fund.fundCode || "").trim()) ? String(fund.fundCode).trim() : "";
+    if (!code) { wx.switchTab({ url: "/pages/index/index" }); return; }
+    getApp().globalData._ocrFunds = null;
+    wx.redirectTo({
+      url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(fund.fundName || "")}`,
+    });
   },
 
   onOcrCodeInput(e) {
@@ -752,7 +769,9 @@ Page({
       } else {
         const addRes = await api.holdingAdd({ ...data, platform: this._pendingPlatform || "" });
         // 只有真正写入成功才算激活（api 层业务失败不 reject，需显式判 code）
-        if (addRes && addRes.result && addRes.result.code === 0) this._markFirstHolding();
+        const isFirstAdd = addRes && addRes.result && addRes.result.code === 0
+          ? this._markFirstHolding() : false;
+        this._firstAddedFund = isFirstAdd ? { fundCode: data.fundCode, fundName: data.fundName } : null;
       }
       if (!isEdit) {
         api.watchlistAdd(fundCode.trim(), fundName.trim()).catch(() => {});
@@ -774,6 +793,12 @@ Page({
         return;
       }
 
+      if (this._firstAddedFund) {
+        const fund = this._firstAddedFund;
+        this._firstAddedFund = null;
+        setTimeout(() => this._goFirstDetail(fund), 800);
+        return;
+      }
       setTimeout(() => { wx.navigateBack(); }, 800);
     } catch (e) {
       wx.hideLoading();
