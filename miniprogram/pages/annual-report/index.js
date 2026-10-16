@@ -3,7 +3,7 @@ const calc = require("../../utils/calculator");
 const track = require("../../utils/track");
 const shareCard = require("../../utils/shareCard");
 
-// 2026 年度持仓报告（产品规划 P1-4 前置 MVP）：全年收益/月度盈亏/回撤/操作/费用/影子
+// 2026 年度持仓报告（产品规划 P1-4 前置 MVP）：全年收益/月度盈亏/回撤/操作/费用/影子/行为成本
 // 数据全部客户端聚合：getPortfolio(260) 的 navHistoryMap 口径同收益页
 Page({
   data: {
@@ -137,6 +137,30 @@ Page({
             ? { value: +(yearProfit - feeTotal).toFixed(2), partsText: "含 " + feeParts.join("，") }
             : null;
 
+          // 行为成本行（2026-10-16）：上涨日买入/下跌日卖出（behaviorBill 按当日净值涨跌方向归类）
+          // + 短持赎回费。只列有事实的行，不虚构；金额隐藏时 shareCard 用 maskText 抹数
+          const bh = bbYear && bbYear.behavior ? bbYear.behavior : null;
+          const behaviorRows = [];
+          if (bh && bh.classified > 0) {
+            if (bh.chaseBuys > 0) behaviorRows.push({
+              label: "📈 上涨日买入",
+              text: bh.chaseBuys + " 笔 / ¥" + bh.chaseBuyAmount.toFixed(2),
+              maskText: bh.chaseBuys + " 笔 / ¥****",
+            });
+            if (bh.panicSells > 0) behaviorRows.push({
+              label: "📉 下跌日卖出",
+              text: bh.panicSells + " 笔 / ¥" + bh.panicSellAmount.toFixed(2),
+              maskText: bh.panicSells + " 笔 / ¥****",
+            });
+          }
+          if (bbYear && bbYear.redemption && bbYear.redemption.shortFee > 0) {
+            behaviorRows.push({
+              label: "⏱ 短持赎回费",
+              text: "¥" + bbYear.redemption.shortFee.toFixed(2) + "（" + bbYear.redemption.shortCount + " 笔不足 7 天）",
+              maskText: "¥****（" + bbYear.redemption.shortCount + " 笔不足 7 天）",
+            });
+          }
+
           this._report = {
             year, months, curve,
             yearProfit, yearRate, hsRate, afterFee,
@@ -145,6 +169,7 @@ Page({
             fundCount: hs.length,
             feeText: fee && fee.hasData ? `年费约 ${fee.annualFee} 元（综合费率 ${fee.totalRate}%）` : "",
             shadowText: shadow && shadow.hasData && shadow.total != null ? (shadow.total >= 0 ? "+" : "") + shadow.total + " 元" : "",
+            behaviorRows, behaviorH: behaviorRows.length * 36,
             earliest: dates[0].slice(5),
           };
           this.setData({ loading: false }, () => {
@@ -158,8 +183,8 @@ Page({
   },
 
   _render() {
-    // 画布 CSS 高度随「费用后收益」带动态（buffer 在 _init 里等比放大，CSS 不同步会压扁整卡）
-    this.setData({ cardH: this._report.afterFee ? 1675 : 1560 }, () => {
+    // 画布 CSS 高度随「费用后收益」带与「行为成本」行动态（buffer 在 _init 里等比放大，CSS 不同步会压扁整卡）
+    this.setData({ cardH: (this._report.afterFee ? 1675 : 1560) + (this._report.behaviorH || 0) }, () => {
       const query = wx.createSelectorQuery();
       query.select("#annualCanvas").fields({ node: true, size: true }).exec((res) => {
         if (!res || !res[0] || !res[0].node) return;

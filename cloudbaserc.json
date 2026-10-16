@@ -26,12 +26,6 @@
       "handler": "index.main"
     },
     {
-      "name": "estimateTrust",
-      "timeout": 20,
-      "runtime": "Nodejs20.19",
-      "handler": "index.main"
-    },
-    {
       "name": "bindMigrationCode",
       "timeout": 30,
       "runtime": "Nodejs20.19",

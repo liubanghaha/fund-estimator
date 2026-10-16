@@ -481,9 +481,10 @@ function drawWeeklyCard(canvas, opts = {}) {
  */
 function drawAnnualCard(canvas, opts = {}) {
   const w = CARD_W;
-  // 费用后收益带（hero 模块）占 128px；无数据时整卡维持原高
+  // 费用后收益带（hero 模块）占 128px；行为成本行每行 36px；无数据时整卡维持原高
   const bandH = opts.afterFee ? 128 : 0;
-  const h = 1560 + bandH;
+  const behaviorH = (opts.behaviorRows || []).length * 36;
+  const h = 1560 + bandH + behaviorH;
   const ctx = _init(canvas, w, h);
   const theme = (typeof wx !== 'undefined') ? (wx.getStorageSync('theme') || 'red') : 'red';
   const amountVisible = opts.amountVisible !== false;
@@ -610,6 +611,16 @@ function drawAnnualCard(canvas, opts = {}) {
     ctx.fillText(amountVisible ? opts.shadowText : '****', w - 60, gridY);
     gridY += 36;
   }
+
+  // 行为成本行（2026-10-16）：流水 × 交易日净值涨跌方向的归类陈述，纯数据零建议（合规红线 #2）。
+  // 行结构同费用/影子；金额隐藏时右侧同步抹数（maskText 由调用方备好）
+  (opts.behaviorRows || []).forEach((r) => {
+    ctx.fillStyle = '#666'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(r.label, 60, gridY);
+    ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(amountVisible ? r.text : r.maskText, w - 60, gridY);
+    gridY += 36;
+  });
 
   // 二维码区
   const qrY = gridY + 20;

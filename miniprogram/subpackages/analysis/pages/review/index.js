@@ -36,11 +36,6 @@ Page({
     tNotReady: false,
     tError: "",
     tStats: null,
-    // —— 组合透视（XIRR / 估算可信度 / 集中度） ——
-    iLoading: true,
-    xr: { mode: "loading" },
-    tr: { mode: "loading" },
-    conc: { mode: "loading" },
     // —— 月度复盘（懒加载：首次切到本 tab 才拉，getPortfolio 序列较重不进预取） ——
     mLoading: false,
     m: null,
@@ -49,7 +44,6 @@ Page({
   onLoad(options) {
     options = options || {};
     const tab = options.tab === "temp" ? "temp"
-      : options.tab === "insight" ? "insight"
       : options.tab === "monthly" ? "monthly"
       : "recover";
     this.setData({ theme: wx.getStorageSync("theme") || "blue", activeTab: tab });
@@ -57,8 +51,6 @@ Page({
     this._initRecovery(options, tab !== "recover"); // 非 recover tab 打开时只建列表、明细延后
     // 温度回测预取：与回本中心的加载并行，切 tab 时大概率已就绪
     this.fetchBacktest();
-    // 组合透视预取：三路数据互不依赖，同样并行
-    this.fetchInsight();
     // 月度复盘较重（getPortfolio 序列），不预取；但深链直开本 tab 时要拉
     if (tab === "monthly" && !this._monthlyLoaded) this.fetchMonthly();
   },
@@ -76,8 +68,6 @@ Page({
   onPullDownRefresh() {
     if (this.data.activeTab === "recover" && /^\d{6}$/.test(this.data.fundCode)) {
       this.fetchAll().finally(() => wx.stopPullDownRefresh());
-    } else if (this.data.activeTab === "insight") {
-      this.fetchInsight(() => wx.stopPullDownRefresh());
     } else if (this.data.activeTab === "monthly") {
       this.fetchMonthly(() => wx.stopPullDownRefresh());
     } else {
@@ -91,8 +81,6 @@ Page({
     this.setData({ activeTab: tab });
     if (tab === "temp") {
       if (!this._btLoaded) this.fetchBacktest();
-    } else if (tab === "insight") {
-      if (!this._insightLoaded) this.fetchInsight();
     } else if (tab === "monthly") {
       if (!this._monthlyLoaded) this.fetchMonthly();
     } else if (!this._recoveryLoaded) {
@@ -389,132 +377,6 @@ Page({
         gapTo,
       },
     });
-  },
-
-  // ==================== 组合透视 ====================
-
-  // 三路并行：XIRR（manageTransaction 服务端算）+ 估算可信度（estimateTrust）+ 集中度（缓存直出）。
-  // 单路失败不连坐：各卡片独立降级到 error 态，点文案内"点此重试"或下拉刷新
-  async fetchInsight(done) {
-    this.setData({ iLoading: true });
-    const [xrRes, trRes, conc] = await Promise.all([
-      api.transactionXirr().catch(() => null),
-      api.estimateTrust().catch(() => null),
-      this._concSource().catch(() => null),
-    ]);
-    const ok = (res) => !!(res && res.result && res.result.code === 0);
-    this.setData({
-      iLoading: false,
-      xr: ok(xrRes) ? this._fmtXirr(xrRes.result.data) : { mode: "error" },
-      tr: ok(trRes) ? this._fmtTrust(trRes.result.data) : { mode: "error" },
-      conc: conc ? this._fmtConc(conc.holdings, conc.assetAllocation) : { mode: "error" },
-    });
-    this._insightLoaded = true;
-    if (done) done();
-  },
-
-  onRetryInsight() {
-    this.fetchInsight();
-  },
-
-  // 集中度数据源：首页 portfolio_cache 直出（秒开）；缓存为空再回退 getPortfolio
-  async _concSource() {
-    const pc = wx.getStorageSync("portfolio_cache") || {};
-    if (pc.holdings && pc.holdings.length) {
-      return { holdings: pc.holdings, assetAllocation: pc.assetAllocation || null };
-    }
-    const res = await api.getPortfolio(0);
-    const d = res && res.result && res.result.code === 0 && res.result.data;
-    return d ? { holdings: d.holdings || [], assetAllocation: d.assetAllocation || null } : null;
-  },
-
-  _fmtXirr(d) {
-    if (!d) return { mode: "error" };
-    if (d.navFailed) return { mode: "navfailed" };
-    if (!d.hasData) return { mode: "empty" };
-    if (d.xirr == null && !d.simple) return { mode: "noflow" };
-    const pct = (v) => (v == null || !isFinite(v)) ? "--" : (v > 0 ? "+" : "") + v.toFixed(1) + "%";
-    let facts = `计入 ${d.funds} 只品种 · 买入 ${d.buyCount} 笔 / 卖出 ${d.sellCount} 笔`;
-    if (d.uncovered > 0) facts += ` · ${d.uncovered} 只未记流水未计入`;
-    if (d.excludedCount > 0) facts += ` · ${d.excludedCount} 只净值暂缺未计入`;
-    // 短流水期的年化是天文数字（复利外推），无参考价值：不出年化，只给不折时累计
-    let hintText = "";
-    if (d.xirr == null && d.simple) {
-      hintText = d.periodDays < 90
-        ? `首笔流水 ${d.firstDate}，不足 3 个月；年化随时段拉长才趋稳，暂不展示`
-        : "流水形态特殊，年化暂解不出，先看不折时累计";
-    } else if (d.xirr != null && Math.abs(d.xirr) >= 1000) {
-      hintText = "年化被短期有效持有期复利放大，参考不折时累计更直观";
-    }
-    return {
-      mode: "ok",
-      numText: d.xirr != null && Math.abs(d.xirr) >= 1000 ? (d.xirr > 0 ? ">+999%" : "<-999%") : pct(d.xirr),
-      cls: d.xirr == null ? "" : d.xirr >= 0 ? "up" : "down",
-      cmpText: d.simple ? `同口径不折时累计 ${pct(d.simple.rate)}` : "",
-      hintText,
-      facts,
-    };
-  },
-
-  _fmtTrust(d) {
-    if (!d) return { mode: "error" };
-    if (d.hasFunds === false) return { mode: "nofunds" };
-    if (!d.hasData) return { mode: "empty" };
-    const rowText = (r) => `±${r.meanAbs.toFixed(2)}pp · ${r.n} 个交易日样本`;
-    const o = d.overall;
-    let dirText = "";
-    if (o && Math.abs(o.meanSigned) >= 0.005) {
-      dirText = o.meanSigned > 0
-        ? `整体估算比官方偏高 ${o.meanSigned.toFixed(2)} 个百分点`
-        : `整体估算比官方偏低 ${Math.abs(o.meanSigned).toFixed(2)} 个百分点`;
-    }
-    const best = d.best && (!d.worst || d.best.fundCode !== d.worst.fundCode) ? d.best : null;
-    return {
-      mode: "ok",
-      headline: o ? `你的持仓平均估算偏差 ±${o.meanAbs.toFixed(2)} 个百分点` : "",
-      dirText,
-      best: best ? { name: best.fundName, text: rowText(best) } : null,
-      worst: d.worst ? { name: d.worst.fundName, text: rowText(d.worst) } : null,
-      windowText: `${d.window.sampleDays} 个交易日样本`,
-      coveredText: `${d.sampledFunds}/${d.fundCount}`,
-    };
-  },
-
-  _fmtConc(holdings, assetAllocation) {
-    const num = (v) => parseFloat(v) || 0;
-    const byFund = {};
-    let total = 0;
-    (holdings || []).forEach((h) => {
-      if (!h || !h.fundCode) return;
-      const b = byFund[h.fundCode] || (byFund[h.fundCode] = { name: h.fundName || h.fundCode, mv: 0 });
-      b.mv += num(h.marketValue);
-      total += num(h.marketValue);
-    });
-    if (!(total > 0)) return { mode: "none" };
-    const funds = Object.values(byFund)
-      .map((b) => ({ name: b.name, pct: (b.mv / total) * 100 }))
-      .sort((a, b) => b.pct - a.pct);
-    const maxPct = funds[0].pct || 1;
-    const topFunds = funds.slice(0, 5).map((f, i) => ({
-      key: "f" + i,
-      name: f.name,
-      pct: f.pct.toFixed(1),
-      barW: Math.max(4, Math.round((f.pct / maxPct) * 100)),
-    }));
-    const top3 = funds.slice(0, 3).reduce((s, f) => s + f.pct, 0);
-    const items = ((assetAllocation && assetAllocation.items) || [])
-      .filter((i) => i && i.industry && i.industry !== "其他")
-      .sort((a, b) => b.percent - a.percent);
-    const cov = assetAllocation ? assetAllocation.coverage : null;
-    return {
-      mode: "ok",
-      fundCount: funds.length,
-      top3Text: top3.toFixed(1),
-      topFunds,
-      indText: items.length ? `最重行业「${items[0].industry}」占穿透市值 ${items[0].percent}%` : "",
-      warnText: (assetAllocation && assetAllocation.warning) || "",
-      coverageText: cov != null ? `（穿透覆盖 ${Math.round(cov)}%）` : "",
-    };
   },
 
   // ==================== 月度复盘 ====================

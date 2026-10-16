@@ -59,6 +59,8 @@ Page({
       return;
     }
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
+    // 深链只带 fundCode（推送/分享落地页）时用占位，真实名字由 _backfillName 回填
+    this._namePlaceholder = !options.fundName;
     this.setData({ fundCode: options.fundCode, fundName });
     // 持仓态预填（防头部闪跳）：checkHolding 比概览晚到一拍，首帧会先渲染"单位净值"卡、
     // 约一秒后跳成"当日收益"卡。首页的 portfolio_cache 是同步本地存储、逐笔带 getPortfolio
@@ -127,6 +129,15 @@ Page({
     this._pendingAutoRefresh = !this._skipCache && (!cacheFresh || tempStale);
     // 立即加载（缓存秒开 + 过期则拉新），不依赖下拉动画链路，避免页面卡加载
     this.fetchAll();
+  },
+
+  // 深链缺名进入（推送/分享落地页）：接口带回真实基金名后回填头部与导航栏标题。
+  // onLoad 的「基金详情」占位是真值，不摘掉会永远挡住 fundName: this.data.fundName || d.fundName 的回填
+  _backfillName(name) {
+    if (!this._namePlaceholder || !name || name === this.data.fundName) return;
+    this._namePlaceholder = false;
+    this.setData({ fundName: name });
+    wx.setNavigationBarTitle({ title: `${name}(${this.data.fundCode})` });
   },
 
   // 首次渲染完成后自动调起 scroll-view 下拉刷新动画（过早调起 refresher 未挂载，无效）
@@ -250,6 +261,7 @@ Page({
               peTemp: d.peTemp || this.data.peTemp,
               ...this._accuracyFields(d), ...this._rebateField(),
             });
+            this._backfillName(d.fundName);
             if (d.history && d.history.length > 0) {
               this.setData({
                 navHistory: d.history,
@@ -394,6 +406,7 @@ Page({
       // 但"今日"字段（估算/涨跌展示/持仓当日收益）隔日就是上一交易日的值，开盘后不能直出：
       // 置 null 走 "--" 占位，等 fetchEstimate / checkHolding 回来再填（净值与净值日期不受影响）
       const cacheToday = marketTime.cacheIsToday(cached.ts);
+      this._backfillName(cached.fundName);
       this.setData({
         loading: false,
         fundName: this.data.fundName || cached.fundName || "",
@@ -631,6 +644,7 @@ Page({
           peTemp: d.peTemp || this.data.peTemp,
           ...this._accuracyFields(d), ...this._rebateField(),
         });
+        this._backfillName(d.fundName);
       }
     } catch (e) { console.error("获取估值失败:", e); }
   },

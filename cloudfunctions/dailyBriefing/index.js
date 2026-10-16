@@ -296,7 +296,7 @@ async function handleAlertPush({ pushes }) {
     const brief = buildAlertPayload(tmplId, p.fundName, p.text);
     const logId = await createLog(p.openid, today, p.scene || "rate_alert", p.fundCode, p.kind);
     try {
-      const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&src=push&lid=${logId}`, brief, tmplId);
+      const errcode = await sendSubscribe(token, p.openid, `${PAGE_FUND}?fundCode=${p.fundCode || ""}&fundName=${encodeURIComponent(p.fundName || "")}&src=push&lid=${logId}`, brief, tmplId);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await consumeQuota(p.openid, tmplId);
@@ -1015,7 +1015,7 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
     const brief = buildAlertPayload(tmplId, first.fundName, text);
     const logId = await createLog(sub._openid, dataDay, "pe_alert", first.fundCode, first.up ? "up" : "down");
     try {
-      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&src=push&lid=${logId}`, brief, tmplId);
+      const errcode = await sendSubscribe(accessToken, sub._openid, `${PAGE_FUND}?fundCode=${first.fundCode}&fundName=${encodeURIComponent(first.fundName || "")}&src=push&lid=${logId}`, brief, tmplId);
       if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
       await finishLog(logId, "sent", "");
       await consumeQuota(sub._openid, tmplId);

@@ -2,12 +2,14 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
+const fd = require("./_shared/fund-data");
 
 /**
  * 行为成本账单（立场型护城河旗舰，年度报告 hero 同源）
  *
  * 按年分组的操作成本事实——全部历史数据陈述，零建议（合规红线 #2）：
- *   years[]   每年一组（倒序）：操作概览 / 归因分布（未记录单独计数）/ 赎回费演算
+ *   years[]   每年一组（倒序）：操作概览 / 归因分布（未记录单独计数）/ 赎回费演算 /
+ *             行为特征（2026-10-16 新增：上涨日买入/下跌日卖出归类）
  *   months[]  按月聚合（2026-10-07 月度复盘新增，倒序最近 24 个月，只出聚合不出明细行）
  *   赎回费演算：每笔卖出按"先进先出"匹配买入批次 → 持有天数 →
  *             套 fund_redemption_fees 的费率分档 → 演算费用；持有不足首个
@@ -98,6 +100,22 @@ exports.main = async (event) => {
       (cres.data || []).forEach((c) => { if (c.txId && typeof c.actualFee === "number") calMap[c.txId] = c.actualFee; });
     } catch (e) { /* 集合未建（首次使用）时忽略 */ }
 
+    // 1d) 净值涨跌映射（行为特征归类用，2026-10-16）：有流水品种各拉一次历史净值，
+    //     按笔数取最活跃的前 20 只防爆量；拿不到的品种其流水归入 unclassified，不虚构方向
+    const codeCount = {};
+    trades.forEach((t) => { if (t.fundCode) codeCount[t.fundCode] = (codeCount[t.fundCode] || 0) + 1; });
+    const behaviorCodes = Object.keys(codeCount)
+      .sort((a, b) => codeCount[b] - codeCount[a]).slice(0, 20);
+    const changeMap = {}; // code -> { "YYYY-MM-DD": changeRate }
+    await Promise.all(behaviorCodes.map(async (code) => {
+      try {
+        const hist = await fd.fetchNAVHistory(code, 300);
+        const m = {};
+        (hist || []).forEach((r) => { if (r && r.date && r.changeRate != null) m[r.date] = r.changeRate; });
+        if (Object.keys(m).length) changeMap[code] = m;
+      } catch (e) { /* 拉不到 → 该品种全部 unclassified */ }
+    }));
+
     // 2) 一遍时间升序遍历：按年聚合（概览/归因）+ 按月聚合（月度复盘用，只出聚合不出明细行）
     //    + FIFO 配对（赎回费逐段套档）。归因分布只计有标签的——未记录单独计数（untagged），
     //    避免与角注意义重复
@@ -120,6 +138,7 @@ exports.main = async (event) => {
         trades: { total: 0, buy: 0, sell: 0, buyAmount: 0, sellAmount: 0 },
         distMap: {}, tagged: 0, untagged: 0,
         rows: [], computed: 0, uncomputed: 0, feeTotal: 0, shortCount: 0, shortFee: 0, calibratedCount: 0,
+        behavior: { chaseBuys: 0, chaseBuyAmount: 0, panicSells: 0, panicSellAmount: 0, classified: 0, unclassified: 0 },
       });
       const md = monthsData[mKey] || (monthsData[mKey] = {
         month: mKey,
@@ -140,6 +159,17 @@ exports.main = async (event) => {
           const k = type === "buy" ? "buyAmount" : "sellAmount";
           yd.trades[k] = +(yd.trades[k] + amount).toFixed(2);
           md.trades[k] = +(md.trades[k] + amount).toFixed(2);
+        }
+        // 行为特征归类（纯数据陈述）：交易当日净值上涨的买入=上涨日买入、下跌的卖出=下跌日卖出；
+        // 当日无净值（非交易日/历史拉取失败/货基无涨跌）→ unclassified，不虚构方向
+        if (amount > 0) {
+          const chg = changeMap[t.fundCode] ? changeMap[t.fundCode][t.date] : undefined;
+          if (chg == null) { yd.behavior.unclassified++; }
+          else {
+            yd.behavior.classified++;
+            if (type === "buy" && chg > 0) { yd.behavior.chaseBuys++; yd.behavior.chaseBuyAmount += amount; }
+            else if (type === "sell" && chg < 0) { yd.behavior.panicSells++; yd.behavior.panicSellAmount += amount; }
+          }
         }
       }
       if (!t.fundName) fundNames[t.fundCode] = fundNames[t.fundCode] || t.fundCode;
@@ -207,6 +237,14 @@ exports.main = async (event) => {
             shortCount: yd.shortCount, shortFee: +yd.shortFee.toFixed(2),
             calibratedCount: yd.calibratedCount,
             rows: sortedRows, rowTotal: sortedRows.length,
+          },
+          behavior: {
+            chaseBuys: yd.behavior.chaseBuys,
+            chaseBuyAmount: +yd.behavior.chaseBuyAmount.toFixed(2),
+            panicSells: yd.behavior.panicSells,
+            panicSellAmount: +yd.behavior.panicSellAmount.toFixed(2),
+            classified: yd.behavior.classified,
+            unclassified: yd.behavior.unclassified,
           },
         };
       })
