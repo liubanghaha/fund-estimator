@@ -303,3 +303,10 @@
 
 /* 风险数值下方的小字 tip（区间等补充信息，不与大数字抢位） */
 .risk-sub{font-size:20rpx;color:#999;margin-top:4rpx;line-height:1.3;white-space:nowrap}
+
+/* 误差台账展开列表：日期/估算/实际/偏差 四列 */
+.acc-toggle{font-size:20rpx;color:#BBB}
+.acc-log{margin-top:10rpx;padding:12rpx 16rpx;background:#FAFAFA;border-radius:12rpx}
+.acc-log-row{display:flex;justify-content:space-between;font-size:22rpx;color:#666;padding:6rpx 0}
+.acc-log-head{color:#BBB;font-size:20rpx}
+.acc-log-note{font-size:20rpx;color:#BBB;padding-top:8rpx}

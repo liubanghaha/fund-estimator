@@ -81,7 +81,7 @@ exports.main = async (event) => {
       if (missCodes.length > 0) estCacheMap = await fd.readEstimateCache(db, missCodes);
     }
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
-    const needDays = historyDays || (withNav60 === false ? 0 : 60);
+    const needDays = historyDays || (withNav60 === false ? 0 : 250); // 2026-10-18 60→250：距高点改按近一年口径（原 60 交易日窗口会让回撤深的基金"看起来没那么差"，如蓝筹 60日-9% vs 近1年-31%）
     // 分批限并发（8 只/批 + 150ms 间隔），避免瞬时大量外部请求被风控。
     // 按基金代码去重后再拉：同一基金在多个平台各一笔时，净值/历史只请求一次
     const CONCURRENT = 8;
@@ -103,7 +103,7 @@ exports.main = async (event) => {
           }
           return {
             code, eastmoney,
-            nav60: needDays > 0 ? (navHistoryAll || []).slice(0, 60) : [],
+            nav60: needDays > 0 ? (navHistoryAll || []).slice(0, 250) : [], // 字段名沿用 nav60（兼容），实际含近一年
             navHistory: historyDays ? (navHistoryAll || []) : null,
           };
         } catch (e) {

@@ -77,28 +77,35 @@
     </view>
 
     <!-- 估算误差徽章（信任线：自曝误差）：样本由 snapshotEstimateDeviation 每日 15:30 写入台账 -->
-    <view wx:if="{{estimateAccuracyText}}" class="acc-line">{{estimateAccuracyText}}</view>
+    <view wx:if="{{estimateAccuracyText}}" class="acc-line" catch:tap="onToggleAccLog">
+      {{estimateAccuracyText}}<text class="acc-toggle">{{accLogVisible ? ' ⌃' : ' ⌄'}}</text>
+    </view>
+    <view wx:if="{{accLogVisible && accLog.length}}" class="acc-log">
+      <view class="acc-log-row acc-log-head"><text>日期</text><text>估算</text><text>实际</text><text>偏差</text></view>
+      <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
+        <text>{{item.date.slice(5)}}</text>
+        <text class="{{item.estRate >= 0 ? 'up' : 'down'}}">{{item.estRate > 0 ? '+' : ''}}{{item.estRate}}%</text>
+        <text class="{{item.actualRate >= 0 ? 'up' : 'down'}}">{{item.actualRate > 0 ? '+' : ''}}{{item.actualRate}}%</text>
+        <text class="{{item.diff > 0 ? 'down' : item.diff < 0 ? 'up' : ''}}">{{item.diff > 0 ? '+' : ''}}{{item.diff}}pp</text>
+      </view>
+      <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高</view>
+    </view>
 
     <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
       <view class="section-title">风险指标<text class="risk-period-tip">近一年</text></view>
       <view class="risk-grid">
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
-        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view><view class="risk-sub">从最高点最多跌了多少</view></view>
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view><view class="risk-sub">数值越高，波动越剧烈</view></view>
+        <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view><view class="risk-sub">每份波动换来的收益，＞1 较好</view></view>
         <view wx:if="{{underwaterMetrics}}" class="risk-item"><view class="risk-label">水下时间</view><view class="risk-value">{{underwaterMetrics.pct}}%</view><view class="risk-sub">净值低于期间高点的交易日占比</view></view>
         <view wx:if="{{underwaterMetrics && underwaterMetrics.maxStreak}}" class="risk-item"><view class="risk-label">最长被套</view><view class="risk-value">{{underwaterMetrics.maxStreak}} 天</view><view wx:if="{{underwaterMetrics.range}}" class="risk-sub">{{underwaterMetrics.range}}</view></view>
         <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
           <view class="risk-label">温度</view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
+          <view wx:if="{{peTemp.tempPercentile}}" class="risk-sub">近 {{peTemp.tempPercentile.days}} 个交易日数据的 {{peTemp.tempPercentile.pct}}% 分位</view>
         </view>
       </view>
-      <view class="risk-explain">最大回撤：一年内从最高点最多跌了多少</view>
-      <view class="risk-explain">年化波动率：净值波动的剧烈程度，越高越颠簸</view>
-      <view class="risk-explain">夏普比率：每承受一份波动换来的收益，＞1 较好</view>
-      <view class="risk-explain">水下时间：净值低于期间高点的交易日占比，反映持有体验</view>
-      <view class="risk-explain">最长被套：连续低于前高的最长时间</view>
       <!-- 温度分位（信任线）：把"温度 0.82"放回它自己的历史分布里，给数字一个水平感；窗口天数如实显示 -->
-      <view wx:if="{{peTemp && peTemp.tempPercentile}}" class="risk-explain">当前温度处于近 {{peTemp.tempPercentile.days}} 个交易日数据的 {{peTemp.tempPercentile.pct}}% 分位</view>
       <!-- 温度公开回测（信任线）：方法论可对账，聚合统计 -->
       <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="entry-row" bind:tap="onTempBacktest">温度回测 ›</view>
     </view>

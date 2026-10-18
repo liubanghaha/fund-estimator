@@ -41,6 +41,7 @@ Page({
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
     estimateAccuracy: null, estimateAccuracyText: '',
+    accLog: [], accLogVisible: false, // R2 误差行点击展开的 30 天对账明细
     rebate: null,
     turnoverRates: [],
     sameTypeRank: null,
@@ -342,10 +343,10 @@ Page({
   // 样本少也照实显示样本数（藏样本数就成了自欺）；还没有样本（台账刚起步）返回空文案不显示
   _accuracyFields(resp) {
     const acc = resp && resp.estimateAccuracy !== undefined ? resp.estimateAccuracy : this.data.estimateAccuracy;
-    if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "" };
+    if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "", accLog: [] };
     const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
     const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
-    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）` };
+    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog: Array.isArray(acc.log) ? acc.log : [] };
   },
 
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）
@@ -536,6 +537,11 @@ Page({
   // R1 关注 CTA（未持仓用户）：零门槛直接加自选，不弹分组选择（搜索落地的第一动作
   // 不能被表单打断；分组整理留给之后在自选页做）。成功即拉起订阅授权（"存下东西"的
   // 时刻授权意愿最高），拒绝/频控静默。取消关注直连 remove。
+  // 误差行点击开合：展开近 30 天逐日"估算 vs 实际"对账（数据随概览接口一次带回，无额外请求）
+  onToggleAccLog() {
+    this.setData({ accLogVisible: !this.data.accLogVisible });
+  },
+
   async onFollowCta() {
     const { fundCode, fundName, followed } = this.data;
     try {
