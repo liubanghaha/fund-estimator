@@ -85,14 +85,18 @@
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
-        <view wx:if="{{underwaterMetrics}}" class="risk-item"><view class="risk-label">水下时间</view><view class="risk-value">{{underwaterMetrics.pct}}%</view></view>
-        <view wx:if="{{underwaterMetrics && underwaterMetrics.maxStreak}}" class="risk-item"><view class="risk-label">最长被套</view><view class="risk-value">{{underwaterMetrics.maxStreak}} 天{{underwaterMetrics.range ? '（' + underwaterMetrics.range + '）' : ''}}</view></view>
+        <view wx:if="{{underwaterMetrics}}" class="risk-item"><view class="risk-label">水下时间</view><view class="risk-value">{{underwaterMetrics.pct}}%</view><view class="risk-sub">净值低于期间高点的交易日占比</view></view>
+        <view wx:if="{{underwaterMetrics && underwaterMetrics.maxStreak}}" class="risk-item"><view class="risk-label">最长被套</view><view class="risk-value">{{underwaterMetrics.maxStreak}} 天</view><view wx:if="{{underwaterMetrics.range}}" class="risk-sub">{{underwaterMetrics.range}}</view></view>
         <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
           <view class="risk-label">温度</view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
         </view>
       </view>
-      <view class="risk-explain">最大回撤＝一年内从最高点最多跌了多少；夏普比率＝每承受一份波动换来多少收益（＞1 较好）</view>
+      <view class="risk-explain">最大回撤：一年内从最高点最多跌了多少</view>
+      <view class="risk-explain">年化波动率：净值波动的剧烈程度，越高越颠簸</view>
+      <view class="risk-explain">夏普比率：每承受一份波动换来的收益，＞1 较好</view>
+      <view class="risk-explain">水下时间：净值低于期间高点的交易日占比，反映持有体验</view>
+      <view class="risk-explain">最长被套：连续低于前高的最长时间</view>
       <!-- 温度分位（信任线）：把"温度 0.82"放回它自己的历史分布里，给数字一个水平感；窗口天数如实显示 -->
       <view wx:if="{{peTemp && peTemp.tempPercentile}}" class="risk-explain">当前温度处于近 {{peTemp.tempPercentile.days}} 个交易日数据的 {{peTemp.tempPercentile.pct}}% 分位</view>
       <!-- 温度公开回测（信任线）：方法论可对账，聚合统计 -->
