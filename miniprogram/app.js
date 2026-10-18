@@ -10,6 +10,18 @@ const api = require("./utils/api");
 // 排序约定：新的在前（按发布日期倒序）；末尾那条 2026-07-08 的 2.3.0 是「老小程序（迁移前 AppID）」的历史记录，非本小程序版本。
 const CHANGELOG = [
   {
+    version: '2.5.4',
+    date: '2026-10-18',
+    items: [
+      '📊 自选页全新表格视图：添加后、近1周/1月/3月/6月/3年/5年、成立以来收益与估值档位一目了然，点表头即可排序',
+      '📅 月度复盘上线：当月收益、操作与费用一页看全（复盘中心内）',
+      '🌡 估值异动条：自选基金估值档位变化一眼可见，可随时关闭',
+      '📈 走势图支持十字线查看，加减仓买卖点直接标记',
+      '🔍 盘后估算对照：净值公布后，估算与实际涨跌可对账',
+      '🛠 多处优化与修复：自选页与基金档案加载更快，单笔校准即时生效，加减仓确认日自动预判，深链打开显示修复',
+    ]
+  },
+  {
     version: '2.5.0',
     date: '2026-09-27',
     items: [
@@ -177,7 +189,10 @@ App({
           date: mt.bjDateStr(),
           phase: mt.marketPhase(),
           isTradingDay: mt.isTradingDay(mt.bjDateStr()),
-          version: APP_VERSION
+          version: APP_VERSION,
+          // 启动场景值（2026-10-17 补）：渠道归因用。此前 analytics_launches 无 scene，
+          // 渠道分析只能靠 events 事件级 scene 兜底
+          scene: (wx.getLaunchOptionsSync() || {}).scene || 0
         }
       }).catch(() => {});
     } catch (e) { /* 埋点失败不提示 */ }

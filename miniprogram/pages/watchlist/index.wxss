@@ -17,10 +17,10 @@
 /* 分组标签栏 */
 .group-tabs-wrap{padding:16rpx 0 4rpx;background:#FFF}
 .group-tabs{display:flex;white-space:nowrap;padding:0 24rpx}
-.group-tab{display:inline-block;font-size:28rpx;color:#999;padding:14rpx 32rpx;border-radius:24rpx;background:#F5F5F5;margin-right:14rpx;flex-shrink:0;line-height:1.4}
+.group-tab{display:inline-block;font-size:24rpx;color:#999;padding:10rpx 22rpx;border-radius:20rpx;background:#F5F5F5;margin-right:12rpx;flex-shrink:0;line-height:1.4}
 .group-tab.active{color:#FFF;background:var(--primary);font-weight:500}
 .group-tab.dragging{box-shadow:0 4rpx 16rpx rgba(0,0,0,.2);transform:scale(1.08);opacity:.9}
-.group-tab-add{width:64rpx;text-align:center;padding:14rpx 0;color:#CCC;font-size:30rpx;font-weight:300}
+.group-tab-add{width:56rpx;text-align:center;padding:10rpx 0;color:#CCC;font-size:26rpx;font-weight:300}
 .update-time{text-align:right;font-size:20rpx;color:#CCC;padding:4rpx 24rpx 0}
 
 /* 搜索栏 */
@@ -78,3 +78,49 @@
 .pin-mark{font-size:24rpx;margin-right:4rpx}
 
 
+
+/* 温度异动摘要条（只在有档位变化时渲染；边距对齐 summary-bar） */
+.temp-strip{display:flex;align-items:center;flex-wrap:wrap;row-gap:4rpx;margin:0 24rpx 8rpx;padding:12rpx 20rpx;background:#FFF8F0;border-radius:10rpx}
+.ts-label{font-size:24rpx;color:#B26A00;font-weight:600;margin-right:8rpx}
+.ts-sep{font-size:22rpx;color:#CCC}
+.ts-fund{font-size:22rpx;color:#333;max-width:220rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ts-move{font-size:22rpx;color:#999}
+.ts-move.up{color:var(--up)}
+.ts-move.down{color:#2E8B57}
+
+/* 行内温度档位小圆点（名字前 3px 级，不加列；颜色与温度语义一致：绿=低温 黄=适中 红=高温） */
+.temp-dot{display:inline-block;width:12rpx;height:12rpx;border-radius:50%;margin-right:6rpx;vertical-align:middle}
+.temp-dot-low{background:#2E8B57}
+.temp-dot-mid{background:#F2A93B}
+.temp-dot-high{background:#E4393C}
+
+/* ===== 区间收益表（持仓列表同款：名称列 sticky 固定，数据列横向滑动） ===== */
+.table-scroll{width:100%}
+.table-inner{display:inline-block;min-width:100%}
+.t-row{display:flex;align-items:stretch;border-bottom:1rpx solid #EFEFEF;background:#FFF}
+.t-row:last-child{border-bottom:none}
+.t-row.selected{outline:3rpx solid var(--primary);outline-offset:-3rpx}
+.t-cell{padding:20rpx 12rpx;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;flex-shrink:0;background:#FFF}
+.t-head .t-cell{font-size:22rpx;color:#BBB;flex-direction:row;justify-content:flex-end;align-items:center;white-space:nowrap}
+.t-name{width:300rpx;align-items:flex-start;overflow:hidden;position:sticky;left:0;z-index:1}
+.t-head .t-name{justify-content:flex-start}
+.t-cell:not(.t-name){width:170rpx;align-items:flex-end}
+.name-text{font-size:26rpx;font-weight:500;color:#333;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.code-text{font-size:20rpx;color:#999;display:flex;align-items:center;gap:8rpx;margin-top:4rpx}
+.pct{font-size:26rpx;font-weight:600;color:#333}
+.pct.up{color:var(--up)}
+.pct.down{color:#2E8B57}
+.temp-cell{font-size:20rpx}
+.temp-cell-low{color:#2E8B57}
+.temp-cell-mid{color:#F2A93B}
+.temp-cell-high{color:#E4393C}
+.temp-cell-none{color:#CCC}
+.sort-active{color:var(--primary)}
+.sort-arrow{font-size:18rpx;margin-left:2rpx}
+.t-head .t-cell.sort-active{color:var(--primary)}
+.sort-icon{font-size:18rpx;margin-left:2rpx;color:#CCC}
+.sort-arrow{color:var(--primary)}
+
+/* 今日估算列与名称列一同冻结（sticky 连续偏移：名称 300 + 估算 160） */
+.t-cell.t-est{width:160rpx;position:sticky;left:300rpx;z-index:1}
+.ts-close{margin-left:auto;font-size:24rpx;color:#CCC;padding:0 4rpx}

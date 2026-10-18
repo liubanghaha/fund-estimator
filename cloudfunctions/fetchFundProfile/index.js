@@ -1,12 +1,29 @@
 const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+const db = cloud.database();
 const fd = require("./_shared/fund-data");
+
+const DAY = 86400000;
+const PROFILE_CACHE_TTL = 14 * DAY; // 档案季频变化，14 天新鲜度（覆盖季报披露后的陆续更新）
 
 exports.main = async (event) => {
   const { fundCode } = event;
   if (!fundCode) return { code: 400, msg: "请提供基金代码" };
 
   try {
+    // 档案缓存优先（2026-10-18：watchlistPerfWarmup 每日 05:30 把自选池灌进缓存）。
+    // 14 天内的档案直接回，盘中字段（top10 实时股价/同类排名）仍现场刷新——
+    // 6 路重请求变 2 个轻请求，档案 tab 秒开
+    try { await db.createCollection("fund_profile_cache"); } catch (e) { /* 已存在 */ }
+    try {
+      const c = await db.collection("fund_profile_cache").doc(fundCode).get();
+      const doc = c.data;
+      if (doc && doc.fetchedDate && doc.data && Date.now() - Date.parse(doc.fetchedDate + "T00:00:00+08:00") < PROFILE_CACHE_TTL) {
+        const live = await refreshLiveParts(fundCode, doc.data.holdings || []);
+        return { code: 0, data: { ...doc.data, holdings: live.holdings, sameTypeRank: live.sameTypeRank, rankOk: live.rankOk, fromCache: true } };
+      }
+    } catch (e) { /* 无缓存/未建集合 → 走现场拉取 */ }
+
     // 最新已发布季报：1-3月→12月, 4-6月→3月, 7-9月→6月, 10-12月→9月
     const { year: curY, month: curM } = fd.getQuarterParams();
     let prevY = curY, prevM = curM - 3;
@@ -102,7 +119,18 @@ exports.main = async (event) => {
     const quarterLabel = actualYear && actualMonth ? `${actualYear}年Q${Math.ceil(actualMonth / 3)}` : '';
 
 
-    return { code: 0, data: { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, rankOk, prevDataIncomplete, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
+    const dataOut = { profile, manager, holdings: enrichedHoldings, exited: enrichedExited, quarterLabel, turnoverRates, sameTypeRank, rankOk, prevDataIncomplete };
+    // 回写缓存：仅当当期持仓成功拉到（防止东财故障时空数据污染 14 天）；盘中字段不入缓存
+    if (holdingsData.ok !== false && holdings.length > 0) {
+      try {
+        const staticHoldings = enrichedHoldings.map(({ stockChangeRate, ...h }) => h);
+        const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+        await db.collection("fund_profile_cache").doc(fundCode).set({
+          data: { fundCode, fetchedDate: today, data: { ...dataOut, holdings: staticHoldings } },
+        });
+      } catch (e) { /* 缓存写失败不影响返回 */ }
+    }
+    return { code: 0, data: { ...dataOut, _debug: { curM, prevM, prevY, actualMonth, holdingsTop: holdings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })), prevTop: prevHoldings.map(h => ({ code: h.stockCode, n: h.stockName, r: h.navRatio })) } } };
   } catch (e) {
     console.error("获取基金信息失败:", e);
     return { code: 500, msg: "获取基金信息失败" };
@@ -349,4 +377,28 @@ function fetchTurnoverRate(fundCode) {
     req.setTimeout(8000, () => { req.destroy(); resolve([]); });
     req.on("error", () => resolve([]));
   });
+}
+
+// 缓存命中的实时刷新：top10 重仓股实时涨跌（腾讯批量，1 个轻 HTTP）+ 同类排名。
+// 这两项随行情变、不入缓存；档案/持仓/换手率等静态部分走缓存
+async function refreshLiveParts(fundCode, holdings) {
+  let sameTypeRank = null, rankOk = false;
+  try {
+    const r = await fetchSameTypeRank(fundCode);
+    sameTypeRank = r.rank;
+    rankOk = r.ok;
+  } catch (e) { /* ignore */ }
+  let stockQuotes = {};
+  try {
+    stockQuotes = await fd.fetchStockPricesTencent(holdings.map(h => h.stockCode).filter(Boolean));
+  } catch (e) { /* ignore */ }
+  return {
+    holdings: holdings.map(h => ({
+      ...h,
+      stockChangeRate: stockQuotes[h.stockCode] && stockQuotes[h.stockCode].changeRate != null
+        ? stockQuotes[h.stockCode].changeRate : null,
+    })),
+    sameTypeRank,
+    rankOk,
+  };
 }

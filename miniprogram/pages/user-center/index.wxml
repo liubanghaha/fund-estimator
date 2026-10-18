@@ -17,7 +17,7 @@
   <view class="follow-bar" bind:tap="onFollowTap">
     <text class="follow-icon">📢</text>
     <view class="follow-marquee">
-      <text class="follow-text">关注公众号「韭菜养基宝」——版本更新、新功能说明和使用技巧都发在那里 · 点这里扫码关注</text>
+      <text class="follow-text">关注公众号「韭菜估值」——版本更新、新功能说明和使用技巧都发在那里 · 点这里扫码关注</text>
     </view>
     <text class="follow-cta">去关注</text>
   </view>
@@ -118,23 +118,6 @@
       </view>
     </view>
 
-    <view class="menu-item" bind:tap="onMigrate"><text>数据迁移</text><text class="arrow">{{showMigrate ? '∨' : '>'}}</text></view>
-    <!-- 数据迁移（认领旧数据） -->
-    <view wx:if="{{showMigrate}}" class="menu-expand">
-      <view class="fb-section">
-        <view class="fb-label">输入迁移码</view>
-        <input
-          class="fb-textarea migrate-input"
-          value="{{migrateCode}}"
-          placeholder="6 位迁移码，在旧小程序「我的」页查看"
-          maxlength="6"
-          bindinput="onMigrateInput"
-        />
-        <view class="migrate-tip">迁移码在旧版小程序「我的」→「数据迁移」中查看，输入后自动认领你的持仓、自选和交易记录。</view>
-        <button class="migrate-btn" bind:tap="onSubmitMigrate" disabled="{{migrating}}">{{migrating ? '迁移中...' : '开始迁移'}}</button>
-      </view>
-    </view>
-
   </view>
   <view class="menu-group-title">通用</view>
   <view class="menu-list">
@@ -147,7 +130,7 @@
   <!-- 关注公众号二维码：长按图片识别（show-menu-by-longpress） -->
   <view wx:if="{{showFollowQr}}" class="follow-qr-mask" bind:tap="onCloseFollowQr">
     <view class="follow-qr-card" catch:tap="noop">
-      <view class="follow-qr-title">关注公众号「韭菜养基宝」</view>
+      <view class="follow-qr-title">关注公众号「韭菜估值」</view>
       <image
         class="follow-qr-img"
         src="/images/official-account-qr.png"

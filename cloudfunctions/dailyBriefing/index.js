@@ -385,7 +385,17 @@ async function handleRecallPush({ targets, variant }) {
   let sent = 0, failed = 0;
   const useB = variant === "b";
   const tempCache = new Map(); // fundCode → normPE|null：B 文案同基金温度只查一次
+  // 当日查重（与 runBriefing 的 sentSet 同款，2026-10-18 补）：调用方（opsTool）超时重试时
+  // 不再对已发用户双发双扣额度
+  // 按 kind 收紧到召回自己的记录：SCENE 与收盘播报共用，不收紧会把当天已收
+  // 收盘小结的用户误判为"召回已发"而跳过
+  const firedLogs = await readAll("push_logs", { scene: SCENE, date: today, status: "sent" }, ["_openid", "kind"]);
+  const firedSet = new Set(
+    firedLogs.filter(l => String(l.kind || "").startsWith("recall_")).map(l => l._openid)
+  );
+  let firedSkip = 0;
   for (const t of eligible.slice(0, 200)) {
+    if (firedSet.has(t.openid)) { firedSkip++; continue; }
     // B 变体逐人构造个性化 thing3（≤20 字符由构造函数保证）；查不到买入/温度或异常统一回退 A 文案
     const thing3 = (useB && await buildRecallTextB(t.openid, tempCache)) || RECALL_TEXT_A;
     const brief = {
@@ -412,6 +422,7 @@ async function handleRecallPush({ targets, variant }) {
       failed++;
     }
   }
+  if (firedSkip) skipped += firedSkip;
   return { code: 0, sent, failed, skipped };
 }
 
@@ -536,7 +547,14 @@ async function runBriefing(dryRun, force) {
   let accessToken = null;
   if (!dryRun) accessToken = await getAccessToken();
   let sent = 0, failed = 0, skipped = 0;
+  const sendStarted = Date.now();
   for (let i = 0; i < runList.length; i += BATCH_SIZE) {
+    // 发送预算 100s（timeout 120s）：此前无预算，串行发送中途被强杀时已发消息的
+    // finishLog 未落账，下一档 sentSet 查不到 → 同批用户重复推送+重复扣额度
+    if (!dryRun && i > 0 && Date.now() - sendStarted > 100000) {
+      console.log(`[dailyBriefing] 达发送预算 100s，剩余 ${runList.length - i} 人留给下一档`);
+      break;
+    }
     const batch = runList.slice(i, i + BATCH_SIZE);
     for (const sub of batch) {
       if (!dryRun && sentSet.has(sub._openid)) { skipped++; continue; }
@@ -1076,7 +1094,10 @@ async function collectConfirmation(targets, byUser, dataDay) {
   const t1Count = codes.filter(c => String(c).startsWith("968")).length;
   const publishedCount = Object.keys(navInfo).length;
   const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
-  const isLastSlot = bjNow.getUTCHours() === 23 && bjNow.getUTCMinutes() === 0;
+  // 2026-10-18 修复：此前只认 23:00 整点，最后一档超时/失败时 23:20/23:40 直接 return
+  // "等待确认"，当天收盘小结永久丢失。改为 23:00 起恒真（三档兜底语义）。
+  // bjNow 已 +8h，getUTCHours() 即北京小时
+  const isLastSlot = bjNow.getUTCHours() >= 23;
   return {
     navInfo,
     prevNav,

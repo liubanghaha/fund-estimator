@@ -9,9 +9,10 @@ const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
-  const { historyDays, testOpenid, withAnalysis, withNav60, src, debug, withEstimates } = event || {};
+  const { historyDays, withAnalysis, withNav60, src, debug, withEstimates } = event || {};
   const estSrc = src === "self" ? "self" : "sina"; // sina=数据源一（新浪实时估值）优先；self=数据源二（自算）优先
-  const uid = testOpenid || OPENID;
+  // 2026-10-18 安全修复：移除 testOpenid 后门（此前客户端传参即可越权拉取任意用户全量持仓）
+  const uid = OPENID;
   if (!uid) return { code: 400, msg: "无用户标识" };
 
   // 费用账单（收益页"费用后收益"卡）：独立轻 action，不进入主链路的估值聚合

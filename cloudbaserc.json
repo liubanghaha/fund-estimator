@@ -194,7 +194,7 @@
     },
     {
       "name": "opsTool",
-      "timeout": 30,
+      "timeout": 120,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
     },
@@ -297,6 +297,19 @@
       "timeout": 10,
       "runtime": "Nodejs20.19",
       "handler": "index.main"
+    },
+    {
+      "name": "watchlistPerfWarmup",
+      "timeout": 180,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "triggers": [
+        {
+          "name": "perfWarmupTimer",
+          "type": "timer",
+          "config": "0 30 5 * * * *"
+        }
+      ]
     }
   ]
 }

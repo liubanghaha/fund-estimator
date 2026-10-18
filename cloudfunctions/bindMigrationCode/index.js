@@ -9,7 +9,8 @@ const MIGRATE_COLLECTIONS = ["holdings", "watchlist", "transactions"];
 // 用户在新小程序输入迁移码后，把 h5_uid 名下的数据复制到当前 OPENID 名下。
 exports.main = async (event) => {
   const { code } = event;
-  const uid = event.testOpenid || cloud.getWXContext().OPENID;
+  // 2026-10-18 安全修复：移除 testOpenid 后门（防持码者越权写他人账号）
+  const uid = cloud.getWXContext().OPENID;
   if (!uid) return { code: 401, msg: "请先登录" };
   if (!code || !/^[a-z0-9]{6}$/i.test(code)) return { code: 400, msg: "迁移码格式不正确" };
 

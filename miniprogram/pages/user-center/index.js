@@ -26,10 +26,6 @@ Page({
     feedbackSubmitting: false,
     // 实时估值数据源：数据源一=新浪实时估值（默认）| 数据源二=自算估值
     estimateSrcText: "数据源一",
-    // 数据迁移（旧版本用户认领数据）
-    showMigrate: false,
-    migrateCode: "",
-    migrating: false,
     isOpsAdmin: false,
   },
 
@@ -125,7 +121,7 @@ Page({
   // 兜底：识别不出来时复制号名去微信搜一搜（保留整改前的路径）
   onFollowCopyName() {
     wx.setClipboardData({
-      data: "韭菜养基宝",
+      data: "韭菜估值",
       success: () => wx.showToast({ title: "已复制，去微信搜索关注", icon: "none", duration: 2200 }),
     });
     try { require("../../utils/track").track("follow_mp", { src: "copy" }); } catch (e) { /* ignore */ }
@@ -190,44 +186,6 @@ Page({
   onAnnualReport() {
     const year = this.data.annualYear;
     wx.navigateTo({ url: "/pages/annual-report/index?year=" + year });
-  },
-
-  // ========== 数据迁移（输入迁移码认领旧数据） ==========
-
-  onMigrate() {
-    if (this.data.showMigrate) {
-      this.setData({ showMigrate: false, migrateCode: "" });
-    } else {
-      this.setData({ showMigrate: true });
-    }
-  },
-
-  onMigrateInput(e) {
-    this.setData({ migrateCode: e.detail.value });
-  },
-
-  async onSubmitMigrate() {
-    const code = (this.data.migrateCode || "").trim();
-    if (!code) { wx.showToast({ title: "请输入迁移码", icon: "none" }); return; }
-    // 迁移码要落到本人 openid 上，先确保静默登录完成（无授权弹窗）
-    const logged = await getApp().ensureLogin();
-    if (!logged) { wx.showToast({ title: "网络异常，请稍后重试", icon: "none" }); return; }
-    this.setData({ migrating: true });
-    try {
-      const res = await api.bindMigrationCode(code);
-      const r = res.result || {};
-      if (r.code === 0) {
-        wx.showToast({ title: "迁移成功！", icon: "success" });
-        wx.setStorageSync("migrated", true);
-        this.setData({ showMigrate: false, migrateCode: "", migrating: false });
-      } else {
-        wx.showToast({ title: r.msg || "迁移失败", icon: "none" });
-        this.setData({ migrating: false });
-      }
-    } catch (e) {
-      wx.showToast({ title: "网络异常，请重试", icon: "none" });
-      this.setData({ migrating: false });
-    }
   },
 
   // ========== 意见反馈 ==========

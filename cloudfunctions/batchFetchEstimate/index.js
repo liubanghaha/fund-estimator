@@ -128,9 +128,11 @@ exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { code: 401, msg: "未登录" };
 
-  const { codes = [], src } = event;
+  let { codes = [], src } = event;
   const estSrc = src === "self" ? "self" : "sina";
   if (!codes.length) return { code: 400, msg: "缺少基金代码" };
+  // 数量上限：此前无上限，超大入参（客户端 bug/恶意）会打爆上游并必然超时（对照 snapshotProfit 的 200 截断）
+  if (codes.length > 200) codes = codes.slice(0, 200);
 
   try {
     // 数据源一（新浪实时估值）+ 数据源二（自主估算：持仓 × 实时行情加权）+ 东方财富最新净值，并行执行

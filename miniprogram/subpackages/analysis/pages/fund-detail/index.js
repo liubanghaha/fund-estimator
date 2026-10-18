@@ -294,7 +294,8 @@ Page({
       this._saveCache();
       if (this.data.loading) {
         this.setData({ loading: false }, () => this.drawChart());
-      } else {
+      } else if (Date.now() >= (this._animUntil || 0)) {
+        // 动画窗口内不重绘（见 _animUntil）；窗口过后照常静态重绘
         this.drawChart();
       }
     } catch (e) {
@@ -376,7 +377,7 @@ Page({
         return t.toISOString().slice(0, 10);
       })();
       if (newestBefore && newestBefore < marketTime.lastTradingDay(dayBefore)) {
-        this.fetchHistory(300);
+        this.fetchHistory(300, { skipRedraw: true });
       }
     }
   },
@@ -880,6 +881,9 @@ Page({
         animate: !this._chartAnimated, duration: 1200,
         draw: paint,
       });
+      // 进场动画窗口：窗口内到来的重绘请求（缓存秒开后的估值/历史刷新）直接跳过，
+      // 避免"画完再画一次"把 1.2s 进场动画拦腰截断（profit-detail 同款守卫）
+      if (!this._chartAnimated) this._animUntil = Date.now() + 1300;
       this._chartAnimated = true;
       this._baseData = { data, opts, canvas, paint };
     });
@@ -1334,7 +1338,20 @@ Page({
         // 多笔：合计口径随之变化，重新拉明细再算（不能拿单笔数字去改合计对象）
         await this.checkHolding();
         this.enrichHoldingData();
-      } else if (this._rawHolding) {
+      } else {
+        // 单笔：_rawHolding 会被 enrichHoldingData 尾部消费置空（旧写法此分支恒死——
+        // 校准后卡片保持旧值，还把旧值回写缓存）。从唯一持仓行重建原始对象再套用校准值
+        if (!this._rawHolding) {
+          const rec = (this.data.holdingRecords || [])[0];
+          const rShares = Number((rec && rec.shares) || this.data.holdingData.shares) || 0;
+          const rPrice = Number((rec && rec.buyPrice) || this.data.holdingData.buyPrice) || 0;
+          const rMv = Number(this.data.holdingData.marketValue) || 0;
+          this._rawHolding = {
+            shares: rShares, buyPrice: rPrice,
+            buyAmount: +(rShares * rPrice).toFixed(2), marketValue: rMv,
+            holdingReturn: +(rMv - rShares * rPrice).toFixed(2),
+          };
+        }
         Object.assign(this._rawHolding, { shares, buyPrice, buyAmount, marketValue, holdingReturn });
         this.enrichHoldingData();
       }

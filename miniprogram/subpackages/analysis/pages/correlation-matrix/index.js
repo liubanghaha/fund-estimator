@@ -259,7 +259,7 @@ Page({
       // 返回——手机上省一次串行云函数往返（≈0.5-1s）。代码集若与最终持仓不一致，
       // 下方主流程会用正确的 codes 再跑一次（幂等，多的那次只当预热）
       const pcCodes = [...new Set(homeHoldings.map((h) => h.fundCode).filter(Boolean))];
-      if (pcCodes.length >= 2) this._ensureCorrelation(pcCodes, null);
+      if (pcCodes.length >= 2) this._ensureCorrelation(pcCodes, null, false);
 
       const sig = this._sigOf(homeHoldings);
       // 首页缓存新鲜（盘中 5 分钟 / 盘后冻结 / 周末全天）→ 直接用它，零网络
@@ -279,7 +279,7 @@ Page({
         const codes = [...new Set(homeHoldings.map((h) => h.fundCode))];
         const names = homeHoldings.map((h) => h.fundName);
         this.setData({ fundCodes: codes, fundNames: names, loading: false });
-        if (codes.length >= 2) await this._ensureCorrelation(codes, names);
+        if (codes.length >= 2) await this._ensureCorrelation(codes, names, true);
         return;
       }
       if (!d) {
@@ -328,7 +328,7 @@ Page({
       // 2. 持仓重合度分析（持仓季度更新，缓存 30 天；加减仓自动失效）。
       //    预取可能已并行跑过一次：_ensureCorrelation 内部按 codeKey 幂等，命中直接渲染
       if (fundCodes.length >= 2) {
-        await this._ensureCorrelation(fundCodes, fundNames);
+        await this._ensureCorrelation(fundCodes, fundNames, true);
       }
 
       this.setData({ loading: false });
@@ -340,48 +340,61 @@ Page({
 
   // 持仓重合度分析（持仓季度更新，客户端缓存 30 天；加减仓换代码自动失效）。
   // 幂等：同 codeKey 且已有数据 → 直接返回；预取与主流程并发调用安全
-  async _ensureCorrelation(fundCodes, fundNames) {
+  async _ensureCorrelation(fundCodes, fundNames, isMain) {
     const codeKey = [...fundCodes].sort().join(',');
     const cache = wx.getStorageSync('asset_analysis_cache') || {};
     // v4：重合度口径修正为「每基金前十大持仓」（QDII 全量明细截取前十大）+ 剔除打新零星持仓，旧缓存失效
     if (cache.codeKey === codeKey && cache.v === 4 && cache.ts && (Date.now() - cache.ts < 2592000000)) {
       // 缓存命中：直接恢复
-      this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [] });
+      this.setData({ sharedStocks: cache.sharedStocks || [], pairs: cache.pairs || [], loadError: false });
       return;
     }
-    const corrRes = await api.computeCorrelation(fundCodes);
-    if (!corrRes || !corrRes.result || corrRes.result.code !== 0) {
-      // 云函数失败：置错误态给 onRetry 重试，不再静默留空
-      this.setData({ loading: false, loadError: true });
-      return;
+    // 在途去重：onLoad 预取与主流程并发时复用同一请求（重接口：服务端拉全部基金持仓）
+    if (this._corrInflight) return this._corrInflight;
+    this._corrInflight = (async () => {
+      const corrRes = await api.computeCorrelation(fundCodes);
+      if (!corrRes || !corrRes.result || corrRes.result.code !== 0) {
+        // 失败：仅主流程置错误态给 onRetry 重试；预取（onLoad 后台）静默——
+        // 旧写法预取失败也会置 loadError，且成功路径从不清理，一次瞬时失败钉死整页
+        if (isMain) this.setData({ loading: false, loadError: true });
+        return;
+      }
+      const names = fundNames || this.data.fundNames || [];
+      const codes = this.data.fundCodes && this.data.fundCodes.length ? this.data.fundCodes : fundCodes;
+      const { pairs, sharedStocks, truncated } = corrRes.result.data;
+      const enrichStock = (s) => ({
+        ...s,
+        _open: false,
+        funds: (s.funds || []).map(f => ({
+          ...f,
+          fundName: names[codes.indexOf(f.fundCode)] || f.fundCode,
+        })),
+      });
+      const enrichedPairs = (pairs || []).map(p => ({
+        ...p,
+        key: `${p.fundA}_${p.fundB}`,
+        nameA: names[codes.indexOf(p.fundA)],
+        nameB: names[codes.indexOf(p.fundB)],
+      }));
+      const enrichedShared = (sharedStocks || []).map(enrichStock);
+      this.setData({ pairs: enrichedPairs, sharedStocks: enrichedShared, loadError: false });
+      if (truncated && isMain) {
+        wx.showToast({ title: "持仓较多，仅分析前 20 只基金", icon: "none" });
+      }
+      // 写缓存：预取路径（未带基金名）不入 30 天缓存，避免无名数据被长期钉住
+      if (fundNames) {
+        wx.setStorageSync('asset_analysis_cache', {
+          v: 4, codeKey, ts: Date.now(),
+          sharedStocks: enrichedShared,
+          pairs: enrichedPairs,
+        });
+      }
+    })();
+    try {
+      await this._corrInflight;
+    } finally {
+      this._corrInflight = null;
     }
-    const names = fundNames || this.data.fundNames || [];
-    const codes = this.data.fundCodes && this.data.fundCodes.length ? this.data.fundCodes : fundCodes;
-    const { pairs, sharedStocks, truncated } = corrRes.result.data;
-    const enrichStock = (s) => ({
-      ...s,
-      _open: false,
-      funds: (s.funds || []).map(f => ({
-        ...f,
-        fundName: names[codes.indexOf(f.fundCode)] || f.fundCode,
-      })),
-    });
-    const enrichedPairs = (pairs || []).map(p => ({
-      ...p,
-      key: `${p.fundA}_${p.fundB}`,
-      nameA: names[codes.indexOf(p.fundA)],
-      nameB: names[codes.indexOf(p.fundB)],
-    }));
-    this.setData({ pairs: enrichedPairs, sharedStocks: (sharedStocks || []).map(enrichStock) });
-    if (truncated) {
-      wx.showToast({ title: "持仓较多，仅分析前 20 只基金", icon: "none" });
-    }
-    // 写缓存
-    wx.setStorageSync('asset_analysis_cache', {
-      v: 4, codeKey, ts: Date.now(),
-      sharedStocks: (sharedStocks || []).map(enrichStock),
-      pairs: enrichedPairs,
-    });
   },
 
   _drawHealthRing(score, attempt = 0) {

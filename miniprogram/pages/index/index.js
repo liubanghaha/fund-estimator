@@ -85,7 +85,7 @@ Page({
       totalReturn: { label: "累计收益", sortable: true },
       ratio: { label: "占比", sortable: true },
       drawdown: { label: "距高点", sortable: true },
-      valuation: { label: "估算", sortable: false, isValuation: true },
+      valuation: { label: "估值", sortable: false, isValuation: true },
     },
     alertTriggered: [], showAlertEdit: false,
     alertEditFundCode: '', alertEditFundName: '', alertEditUpper: '', alertEditLower: '',
@@ -824,9 +824,21 @@ Page({
         wx.setStorage({ key: CACHE_KEY, data: this._portfolioCache });
         // 首日价值时刻（激活指标）：加持仓后首次在首页看到估值
         try {
-          if (wx.getStorageSync("add_first_holding_done") && !wx.getStorageSync("first_estimate_seen") && holdings.some((h) => h.estimateUpdated)) {
-            track.track("first_estimate_seen");
+          const added = wx.getStorageSync("add_first_holding_done");
+          if (added && !wx.getStorageSync("first_estimate_seen") && holdings.some((h) => h.estimateUpdated)) {
+            track.track("first_estimate_seen", { est: holdings.filter((h) => h.estimateUpdated).length, total: holdings.length });
             wx.setStorageSync("first_estimate_seen", Date.now());
+          }
+          // 断点拆分（2026-10-17）：交易日 9:35 后估值已应出，若全体持仓仍无估值 → 结构性等不到
+          // （债券/968 类无覆盖），与"添加后没回来"区分；每设备每天最多记一条，看连续天数分组
+          const today = marketTime.bjDateStr();
+          const bj = new Date(Date.now() + 8 * 3600000);
+          if (added && !wx.getStorageSync("first_estimate_seen") && holdings.length
+              && holdings.every((h) => h.todayChangeRate == null)
+              && marketTime.isTradingDay(today) && bj.getUTCHours() * 60 + bj.getUTCMinutes() >= 575
+              && wx.getStorageSync("first_estimate_wait_day") !== today) {
+            track.track("first_estimate_wait", { total: holdings.length });
+            wx.setStorageSync("first_estimate_wait_day", today);
           }
         } catch (e) { /* ignore */ }
         return true;

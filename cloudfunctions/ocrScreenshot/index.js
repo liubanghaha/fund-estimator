@@ -801,9 +801,14 @@ const _run = async (event) => {
 };
 
 exports.main = async (event) => {
+  // 2026-10-18 安全修复：加登录校验（此前无鉴权：任意调用消耗付费 OCR 配额、
+  // 且 deleteFile 可删任意已知 fileID 的云存储文件）
+  const { OPENID } = cloud.getWXContext();
+  if (!OPENID) return { code: 401, msg: "请先登录" };
   const result = await _run(event);
-  // 截图含用户完整资产信息：OCR 结束即删（成功失败都删，失败重试由用户重新选图）
-  if (event && event.fileID) {
+  // 截图含用户完整资产信息：OCR 结束即删（成功失败都删，失败重试由用户重新选图）。
+  // 删除仅限截图上传目录，防误删其他路径文件
+  if (event && event.fileID && String(event.fileID).includes("/transactions/")) {
     cloud.deleteFile({ fileList: [event.fileID] }).catch(() => {});
   }
   return result;

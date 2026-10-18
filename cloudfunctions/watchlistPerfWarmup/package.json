@@ -1,0 +1,9 @@
+{
+  "name": "watchlistPerfWarmup",
+  "version": "1.0.0",
+  "description": "自选区间收益预热（每日 05:30 预生成 fund_perf_cache 当日份额）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

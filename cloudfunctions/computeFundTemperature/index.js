@@ -18,7 +18,10 @@ const td = require("./_shared/trading-day");
  *  流程：
  *    1. 获取持仓基金代码（去重）
  *    2. 获取持仓股列表：
- *       - 季报窗口期（1/4/7/10月 15日起）→ 从东方财富拉取最新季报
+ *       - 季报窗口期（1/4/7/10月 15日起）→ 优先读季报快照表 fund_quarterly_holdings
+ *         （snapshotQuarterlyHoldings 每工作日 04:00 捕获新季报），缺失的才从东财拉取。
+ *         2026-10-15 起窗口期全量拉东财耗时 117s 吃光 90s 历史 PE 预算 → normPE 全兜底 1.0、
+ *         档位全"适中"（每个季报季复发），改读快照后预算全留给历史 PE
  *       - 非窗口期 → 从 fund_temperatures 读取缓存，无缓存才拉取
  *    3. 批量查询所有持仓股的 PE+PB+行业（行情接口） + 历史PE区间（估值接口）
  *    4. 每只股票打分 → 基金加权汇总 → 写入 fund_temperatures
@@ -120,12 +123,21 @@ exports.main = async (event) => {
     let etfMap = {};
 
     if (inWindow) {
-      console.log(`[computeFundTemperature] 季报窗口期，从东方财富拉取持仓股`);
-      const result = await fetchHoldingsBatch(fundCodes);
-      fundHoldings = result.holdings;
-      fetchFailCount = result.failCount;
-      etfMap = result.etfMap || {};
-      console.log(`[computeFundTemperature] 拉取结果: 成功 ${Object.keys(fundHoldings).length}, 失败 ${fetchFailCount}`);
+      // 窗口期主源=季报快照表（毫秒级读库），把 90s 预算全留给历史 PE 区间；
+      // 快照缺失的基金（新基金/尚未披露）才回退东财单查
+      console.log(`[computeFundTemperature] 季报窗口期，从 fund_quarterly_holdings 快照读持仓`);
+      fundHoldings = await getSnapshotHoldings(fundCodes);
+      console.log(`[computeFundTemperature] 快照命中: ${Object.keys(fundHoldings).length}/${fundCodes.length}`);
+      const missedCodes = fundCodes.filter(c => !fundHoldings[c]);
+      if (missedCodes.length > 0) {
+        // 回退拉取限预算（40s）：598 只全拉完要 90s+ 会再次挤掉历史 PE——健康基线里历史
+        // 也只覆盖 ~35% 股票，预算公平比全量覆盖重要。超预算的基金本轮跳过（不出当日行）
+        console.log(`[computeFundTemperature] 快照未命中 ${missedCodes.length} 只，从东方财富拉取（预算 40s）`);
+        const result = await fetchHoldingsBatch(missedCodes, { budgetMs: 40000 });
+        Object.assign(fundHoldings, result.holdings);
+        fetchFailCount = result.failCount;
+        Object.assign(etfMap, result.etfMap || {});
+      }
     } else {
       console.log(`[computeFundTemperature] 非窗口期，从 fund_temperatures 读取缓存持仓`);
       fundHoldings = await getCachedHoldings(fundCodes);
@@ -288,13 +300,21 @@ function isInReportWindow() {
 
 /**
  * 批量拉取持仓股（封装并发控制）
+ * opts.budgetMs：整体预算（毫秒）。批间检查，到点停止续批——窗口期快照回退量可能达数百只，
+ * 不设预算会重演"持仓拉取吃光历史 PE 预算"（2026-10-15 事故）。0 = 不限（非窗口期小批量兜底用）
  */
-async function fetchHoldingsBatch(fundCodes) {
+async function fetchHoldingsBatch(fundCodes, opts = {}) {
+  const { budgetMs = 0 } = opts;
+  const started = Date.now();
   const holdings = {};
   const etfMap = {};
   let failCount = 0;
   const CONCURRENT = 10;
   for (let i = 0; i < fundCodes.length; i += CONCURRENT) {
+    if (budgetMs > 0 && i > 0 && Date.now() - started >= budgetMs) {
+      console.log(`[computeFundTemperature] 回退拉取达 ${budgetMs}ms 预算，剩余 ${fundCodes.length - i} 只本轮跳过`);
+      break;
+    }
     const batch = fundCodes.slice(i, i + CONCURRENT);
     const results = await Promise.all(batch.map(async (fundCode) => {
       try {
@@ -312,6 +332,35 @@ async function fetchHoldingsBatch(fundCodes) {
     }
   }
   return { holdings, failCount, etfMap };
+}
+
+/**
+ * 从季报快照表读各基金最新一期持仓（季报窗口期用，2026-10-17 新增）。
+ * snapshotQuarterlyHoldings 每工作日 04:00 维护（_id=fundCode_reportDate 幂等 upsert）；
+ * 温度任务 03:00 先跑，读到的是截至昨日 04:00 的快照——季报持仓一天滞后可接受。
+ * 每 100 个代码分块查、按 reportDate 降序：本地取每基金最新一期；行结构与东财拉取路径
+ * 一致（{ stockCode, stockName, navRatio }），calcSignal 无需改动。
+ */
+async function getSnapshotHoldings(fundCodes) {
+  const out = {};
+  for (let i = 0; i < fundCodes.length; i += 100) {
+    const chunk = fundCodes.slice(i, i + 100);
+    // 行数 = 代码数 × 已积累季报期数；reportDate 降序保证触顶时留下的也是最新期
+    const res = await db.collection("fund_quarterly_holdings")
+      .where({ fundCode: _.in(chunk) })
+      .orderBy("reportDate", "desc")
+      .limit(1000)
+      .get();
+    (res.data || []).forEach(doc => {
+      if (!doc.fundCode || !Array.isArray(doc.holdings) || !doc.holdings.length) return;
+      if (out[doc.fundCode]) return; // 降序遍历，首个即最新一期
+      const rows = doc.holdings
+        .filter(h => h && h.stockCode && h.navRatio != null)
+        .map(h => ({ stockCode: h.stockCode, stockName: h.stockName, navRatio: h.navRatio }));
+      if (rows.length) out[doc.fundCode] = rows;
+    });
+  }
+  return out;
 }
 
 async function getUniqueFundCodes() {

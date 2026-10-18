@@ -16,6 +16,12 @@ Page({
   data: {
     watchlist: [],
     displayList: [],
+    // 温度异动摘要（null=未加载/无异动，条子不渲染）
+    tempMoves: null,
+    tempStripHidden: false,
+    tempSignalMap: {},
+    // 区间收益表（添加后/近1周/近1月/近3月/近6月/近3年/近5年/成立来，服务端算好展示串）
+    perfMap: {},
     loaded: false,
     loadError: false,
     batchMode: false,
@@ -65,6 +71,7 @@ Page({
     }
 
     // 排序
+    const PERF_SORT_KEYS = ["added", "w1", "m1", "m3", "m6", "y3", "y5", "incept"];
     if (sortField === "change") {
       list = [...list].sort((a, b) => {
         const va = a.displayChangeRate != null ? a.displayChangeRate : -999;
@@ -73,6 +80,16 @@ Page({
       });
     } else if (sortField === "name") {
       list = [...list].sort((a, b) => a.fundName.localeCompare(b.fundName, "zh"));
+    } else if (PERF_SORT_KEYS.includes(sortField)) {
+      const pv = (w) => {
+        const s = this.data.perfMap[w.fundCode];
+        const v = s ? s[sortField] : null;
+        return typeof v === "number" && isFinite(v) ? v : -Infinity;
+      };
+      list = [...list].sort((a, b) => {
+        const va = pv(a), vb = pv(b);
+        return sortOrder === "asc" ? va - vb : vb - va; // -Infinity 恒沉底
+      });
     }
 
     // 置顶优先
@@ -89,14 +106,19 @@ Page({
   },
 
   // 仅在数据变更时更新分组数量（不在每次筛选/排序时重算）
-  updateGroupCounts() {
-    const { watchlist, holdingCodes } = this.data;
-    const counts = { all: watchlist.length, holding: 0, ungrouped: 0 };
-    let up = 0, down = 0, sum = 0, valid = 0;
-    for (const w of watchlist) {
+  // 统一统计入口（合并此前 updateGroupCounts 与轮询路径的两份循环）。
+  // counts = tab 角标（全量口径）；summary = 汇总条（跟随可见列表，
+  // total = 可见只数而非有涨跌值的只数，修掉估值缺失时显示"0只自选"的假象）
+  _statsFrom(list, allWatchlist) {
+    const { holdingCodes } = this.data;
+    const counts = { all: allWatchlist.length, holding: 0, ungrouped: 0 };
+    for (const w of allWatchlist) {
       if (holdingCodes.includes(w.fundCode)) counts.holding++;
       if (!w.group && !holdingCodes.includes(w.fundCode)) counts.ungrouped++;
       if (w.group) counts[w.group] = (counts[w.group] || 0) + 1;
+    }
+    let up = 0, down = 0, sum = 0, valid = 0;
+    for (const w of list) {
       if (w.displayChangeRate != null) {
         sum += w.displayChangeRate;
         valid++;
@@ -104,13 +126,22 @@ Page({
         else if (w.displayChangeRate < 0) down++;
       }
     }
-    this.setData({
-      groupCounts: counts,
-      summary: { avg: valid ? +(sum / valid).toFixed(2) : 0, up, down, total: valid },
-    });
+    return {
+      counts,
+      summary: { avg: valid ? +(sum / valid).toFixed(2) : 0, up, down, total: list.length },
+    };
+  },
+
+  // 重算 tab 角标 + 汇总条：先按当前分组/搜索/排序刷新可见列表，再对可见列表统计
+  updateGroupCounts() {
+    this.applyGroupFilter();
+    const { counts, summary } = this._statsFrom(this.data.displayList, this.data.watchlist);
+    this.setData({ groupCounts: counts, summary });
   },
 
   onLoad() {
+    this._loadHoldingCodes(); // 先同步读日缓存，首帧即有"持有"角标（不等网络）
+    this._loadWatchStats();   // 温度/区间收益日缓存就地套用，首帧即有列
     this.applyCache();
     this.setData({ pinnedCodes: this._getPinnedCodes() });
   },
@@ -118,11 +149,6 @@ Page({
   // 首次渲染完成后自动调起下拉刷新动画（onShow 已标记需要刷新时）
   onReady() {
     this._ready = true;
-    if (this._pendingAutoRefresh) {
-      this._pendingAutoRefresh = false;
-      // 静默刷新（与首页标准一致）：缓存已渲染，不拉起下拉动画——盘中 30s 轮询兜实时性
-      setTimeout(() => this.fetchWatchlist(), 500);
-    }
   },
 
   onShow() {
@@ -159,10 +185,14 @@ Page({
 
   onUnload() {
     this._stopPolling();
+    // 搜索防抖/拖拽回弹两个短定时器一并清理（页面卸载后空 setData 的隐患）
+    if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
+    if (this._dragTimer) { clearTimeout(this._dragTimer); this._dragTimer = null; }
   },
 
   onPullDownRefresh() {
     // 保留当前搜索词，仅刷新数据
+    this._loadWatchStats(true);
     this.fetchWatchlist().finally(() => wx.stopPullDownRefresh());
   },
 
@@ -548,13 +578,15 @@ Page({
       if (cached && !marketTime.cacheIsToday(cached.ts)) return;
       if (cached && cached.watchlist && cached.watchlist.length > 0) {
         this._wlCache = cached;
-        this.updateGroupCounts();
+        // 计数放进 setData 回调：读的必须是落地后的 watchlist（旧写法在 setData 前算，
+        // 读到旧数组导致 tab 计数定格全 0）
         this.setData({ watchlist: cached.watchlist, loaded: true }, () => {
-          this.applyGroupFilter();
+          this.updateGroupCounts();
         });
       }
-      // 恢复缓存的分组
-      const cachedGroups = this._getCachedGroups();
+      // 恢复缓存的分组：优先用 watchlist_cache 自带的 groups 快照（fetchWatchlist 写入时
+      // 就在载荷里），旧的独立分组键为空（新设备/清缓存）时 tab 不再丢自定义分组
+      const cachedGroups = (cached.groups && cached.groups.length) ? cached.groups : this._getCachedGroups();
       if (cachedGroups.length && !this.data.groups.length) {
         this.setData({ groups: cachedGroups });
       }
@@ -600,7 +632,7 @@ Page({
       const [listRes, groupsRes] = await Promise.all([
         api.watchlistList(),
         api.watchlistGetGroups().catch(() => ({ result: { code: 0, data: [] } })),
-        this._fetchHoldingCodes().catch(() => {}),
+        this._loadHoldingCodes(),
       ]);
 
       // 处理分组列表（合并服务端 + 本地缓存）
@@ -629,16 +661,19 @@ Page({
             estimateTime: e ? e.estimateTime : null,
           };
         });
-        // 使用估算数据中的实际时间
+        // 使用估算数据中的实际时间。休市/缺 estimateTime 时不兜底当前时间——
+        // 那会把"上一交易日的冻结数据"标成"刚刚更新"（2026-10-19 修复）
         const updateTime = items.reduce((best, w) => {
           const e = estData[w.fundCode];
           return (e && e.estimateTime) || best;
-        }, "") || this._nowStr();
+        }, "");
 
-        this.updateGroupCounts();
+        // 计数依赖 this.data.watchlist，必须在 setData 落地后算（旧写法读到旧数组，
+        // tab 计数会定格全 0）
         this.setData({ watchlist, loaded: true, loadError: false, updateTime, stale: false }, () => {
-          this.applyGroupFilter();
+          this.updateGroupCounts();
         });
+        this._loadWatchStats();
 
         try {
           // ts/actualDate 供交易日时钟判新鲜度（盘后净值发布即冻结、周末免拉）
@@ -657,6 +692,87 @@ Page({
     } catch (e) {
       this.setData({ loaded: true, loadError: !this.data.watchlist.length });
     }
+  },
+
+
+  // 表头列排序：再次点击切换升/降序，切列默认降序（名称列默认升序）
+  onColSortTap(e) {
+    const field = e.currentTarget.dataset.field;
+    if (!field) return;
+    if (this.data.sortField === field) {
+      this.setData({ sortOrder: this.data.sortOrder === "desc" ? "asc" : "desc" }, () => this.applyGroupFilter());
+    } else {
+      this.setData({ sortField: field, sortOrder: field === "name" ? "asc" : "desc" }, () => this.applyGroupFilter());
+    }
+  },
+
+  onTempStripClose() {
+    wx.setStorageSync("watchlist_temp_moves_dismissed", marketTime.bjDateStr());
+    this.setData({ tempStripHidden: true });
+  },
+
+  onTempFundTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name || "")}` });
+  },
+
+  // ========== 温度异动摘要 + 区间收益表（perf 单请求同时供两块） ==========
+
+  // 温度按天变 + 区间收益按天变：日内走本地缓存，下拉刷新强制重拉；当日首开要等
+  // 服务端现场拉全量净值（可能数十秒），超时/失败静默（摘要条不出现、表格列出 --）
+  async _loadWatchStats(force) {
+    if (this._statsLoading && !force) return; // 防重入：并发调用会重复打东财
+    this._statsLoading = true;
+    try {
+      const today = marketTime.bjDateStr();
+      const cached = force ? null : wx.getStorageSync("watchlist_stats_v2");
+      if (cached && cached.date === today && cached.funds) {
+        this._applyWatchStats(cached);
+        return;
+      }
+      const res = await api.watchlistPerf();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.date) return;
+      const payload = { date: d.date, funds: d.funds || {}, moves: d.moves || [], signals: d.signals || {} };
+      wx.setStorageSync("watchlist_stats_v2", payload);
+      this._applyWatchStats(payload);
+    } catch (e) { /* 静默 */ }
+    finally { this._statsLoading = false; }
+  },
+
+  _applyWatchStats(payload) {
+    const SIGNAL_CN = { low: "偏低", mid: "适中", high: "偏高" };
+    const nameBy = {};
+    this.data.watchlist.forEach((w) => { nameBy[w.fundCode] = w.fundName; });
+    // 区间表：未覆盖的基金补 "--" 默认值，WXML 免判空
+    const perfMap = {};
+    Object.entries(payload.funds || {}).forEach(([code, s]) => { perfMap[code] = s; });
+    this.data.watchlist.forEach((w) => {
+      if (!perfMap[w.fundCode]) {
+        perfMap[w.fundCode] = { addedText: "--", w1Text: "--", m1Text: "--", m3Text: "--", m6Text: "--", y3Text: "--", y5Text: "--", inceptText: "--" };
+      }
+    });
+    // 异动摘要：转热（→高温）排前、转冷次之，最多 3 只，其余折成"等N只"
+    const moves = payload.moves || [];
+    const items = moves
+      .slice()
+      .sort((a, b) => (a.cur === "high" ? 0 : 1) - (b.cur === "high" ? 0 : 1))
+      .slice(0, 3)
+      .map((m) => ({
+        fundCode: m.fundCode,
+        name: nameBy[m.fundCode] || m.fundCode,
+        prevText: SIGNAL_CN[m.prev] || m.prev,
+        curText: SIGNAL_CN[m.cur] || m.cur,
+        cur: m.cur,
+      }));
+    // 用户当天点过 ✕ 则不再展示（次日有新异动会重新出现）
+    const dismissed = wx.getStorageSync("watchlist_temp_moves_dismissed") === marketTime.bjDateStr();
+    this.setData({
+      perfMap,
+      tempSignalMap: payload.signals || {},
+      tempStripHidden: dismissed,
+      tempMoves: { count: moves.length, items, more: Math.max(0, moves.length - items.length) },
+    });
   },
 
   onRetry() {
@@ -699,9 +815,11 @@ Page({
 
   async _refreshEstimates() {
     if (this._estFetching) return; // 防重入（手动重试可与在途轮询并发）
-    this._estFetching = true;
     const codes = this.data.watchlist.map(w => w.fundCode);
+    // 空列表先行返回且不置位（旧写法先置位再 return，自选清空场景标志永久不复位，
+    // 轮询与"更新失败"重试全部静默失效）
     if (!codes.length) return;
+    this._estFetching = true;
     const markStale = () => { if (this.data.watchlist.length) this.setData({ stale: true }); };
     try {
       const estRes = await api.batchFetchEstimate(codes);
@@ -728,11 +846,11 @@ Page({
         return !p || p.nav !== w.nav || p.estimatedNav !== w.estimatedNav || p.displayChangeRate !== w.displayChangeRate || p.estimateTime !== w.estimateTime;
       });
       if (!changed && !this.data.stale) return;
-      // 取最新估算时间
+      // 取最新估算时间（休市/缺 estimateTime 时不兜底当前时间，同 fetchWatchlist）
       const updateTime = codes.reduce((best, c) => {
         const e = estData[c];
         return (e && e.estimateTime) || best;
-      }, "") || this._nowStr();
+      }, "");
       // 合并渲染：displayList + counts 一次算好，一次 setData（原 3 次）
       const { activeGroup, holdingCodes, checkedMap, sortField, sortOrder, searchKeyword, pinnedCodes } = this.data;
       let list;
@@ -744,6 +862,7 @@ Page({
       if (kw) {
         list = list.filter(w => w.fundName.toLowerCase().includes(kw) || w.fundCode.includes(kw));
       }
+      const PERF_SORT_KEYS = ["added", "w1", "m1", "m3", "m6", "y3", "y5", "incept"];
       if (sortField === "change") {
         list = [...list].sort((a, b) => {
           const va = a.displayChangeRate != null ? a.displayChangeRate : -999;
@@ -752,6 +871,16 @@ Page({
         });
       } else if (sortField === "name") {
         list = [...list].sort((a, b) => a.fundName.localeCompare(b.fundName, "zh"));
+      } else if (PERF_SORT_KEYS.includes(sortField)) {
+        const pv = (w) => {
+          const s = this.data.perfMap[w.fundCode];
+          const v = s ? s[sortField] : null;
+          return typeof v === "number" && isFinite(v) ? v : -Infinity;
+        };
+        list = [...list].sort((a, b) => {
+          const va = pv(a), vb = pv(b);
+          return sortOrder === "asc" ? va - vb : vb - va;
+        });
       }
       if (pinnedCodes.length) {
         const pinned = list.filter(w => pinnedCodes.includes(w.fundCode));
@@ -759,23 +888,11 @@ Page({
         list = [...pinned, ...rest];
       }
       list = list.map(w => ({ ...w, _checked: !!checkedMap[w.fundCode], _isPinned: pinnedCodes.includes(w.fundCode) }));
-      const counts = { all: watchlist.length, holding: 0, ungrouped: 0 };
-      let up = 0, down = 0, sum = 0, valid = 0;
-      for (const w of watchlist) {
-        if (holdingCodes.includes(w.fundCode)) counts.holding++;
-        if (!w.group && !holdingCodes.includes(w.fundCode)) counts.ungrouped++;
-        if (w.group) counts[w.group] = (counts[w.group] || 0) + 1;
-        if (w.displayChangeRate != null) {
-          sum += w.displayChangeRate;
-          valid++;
-          if (w.displayChangeRate > 0) up++;
-          else if (w.displayChangeRate < 0) down++;
-        }
-      }
+      const { counts, summary } = this._statsFrom(list, watchlist);
       this.setData({
         watchlist, updateTime, displayList: list,
         groupCounts: counts,
-        summary: { avg: valid ? +(sum / valid).toFixed(2) : 0, up, down, total: valid },
+        summary,
         stale: false,
       });
     } catch (e) {
@@ -875,19 +992,6 @@ Page({
     });
   },
 
-  onSortTap() {
-    const { sortField, sortOrder } = this.data;
-    // 循环切换: 默认 → 涨跌↓ → 涨跌↑ → 名称
-    let nextField = "", nextOrder = "";
-    if (!sortField) { nextField = "change"; nextOrder = "desc"; }
-    else if (sortField === "change" && sortOrder === "desc") { nextField = "change"; nextOrder = "asc"; }
-    else if (sortField === "change" && sortOrder === "asc") { nextField = "name"; nextOrder = ""; }
-    this.setData({ sortField: nextField, sortOrder: nextOrder }, () => this.applyGroupFilter());
-    const labels = { "": "排序", "change_desc": "涨跌↓", "change_asc": "涨跌↑", "name": "名称" };
-    const key = nextField ? `${nextField}${nextOrder ? '_' + nextOrder : ''}` : "";
-    wx.showToast({ title: labels[key] || "默认", icon: "none", duration: 1000 });
-  },
-
   onSearchInput(e) {
     clearTimeout(this._searchTimer);
     const val = e.detail.value;
@@ -902,22 +1006,28 @@ Page({
     this.setData({ searchKeyword: "" }, () => this.applyGroupFilter());
   },
 
-  _nowStr() {
-    const d = new Date();
-    return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+  // 持仓代码缓存：storage 日内有效，首帧直接用；超 10 分钟后台静默刷新（stale-while-revalidate）
+  _loadHoldingCodes(force) {
+    const today = marketTime.bjDateStr();
+    const cached = wx.getStorageSync("watchlist_holding_codes");
+    const fresh = cached && cached.date === today && Date.now() - cached.ts < 600000;
+    if (!force && fresh && Array.isArray(cached.codes)) {
+      this.setData({ holdingCodes: cached.codes }, () => this.updateGroupCounts());
+      return;
+    }
+    if (cached && Array.isArray(cached.codes)) {
+      // 有旧值先渲染（角标不至于空等网络），再刷新
+      this.setData({ holdingCodes: cached.codes }, () => this.updateGroupCounts());
+    }
+    this._fetchHoldingCodesRemote(today);
   },
 
-  _holdingCacheTime: 0,
-  async _fetchHoldingCodes() {
-    if (Date.now() - this._holdingCacheTime < 60000) return;
+  async _fetchHoldingCodesRemote(today) {
     try {
       const res = await api.holdingList();
       const codes = ((res.result && res.result.data) || []).map(h => h.fundCode).filter(Boolean);
-      this._holdingCacheTime = Date.now();
-      this.setData({ holdingCodes: codes }, () => {
-        this.updateGroupCounts();
-        if (this.data.activeGroup === "holding") this.applyGroupFilter();
-      });
+      wx.setStorageSync("watchlist_holding_codes", { date: today, ts: Date.now(), codes });
+      this.setData({ holdingCodes: codes }, () => this.updateGroupCounts());
     } catch (e) {
       // 静默失败，不影响主流程
     }

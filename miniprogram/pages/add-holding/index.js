@@ -36,7 +36,7 @@ Page({
     selectedGroup: "",
     adjustAmount: '', adjustAmountAbs: '', adjustSign: 1,
     adjustDate: '', adjustNote: '',
-    adjustLate: false,        // 提交时段：false=15:00 前 / true=15:00 后（提交时按节假日表算确认净值日）
+    adjustLate: false,        // 提交时段：false=15:00 前 / true=15:00 后（onLoad 按当前时间自动预判，用户 chips 可覆盖；提交时按节假日表算确认净值日）
     showAdjustPicker: false,
     // 操作归因（可选单选，默认不选）
     reason: "", reasons: REASONS,
@@ -60,6 +60,12 @@ Page({
   },
 
   onLoad(options) {
+    // 加减仓确认日预判：北京时间 ≥15:00 默认按"15:00 后"提交（顺延到下一净值日），
+    // 用户在 chips 上点选仍可覆盖；提交时再按节假日表精确计算
+    try {
+      const bj = new Date(Date.now() + 8 * 3600000);
+      if (bj.getUTCHours() * 60 + bj.getUTCMinutes() >= 900) this.setData({ adjustLate: true });
+    } catch (e) { /* ignore */ }
     // 从平台 tab 进来时带上平台；没带且用户已有平台 → 保存前问一次（没有平台就不打扰）
     try { if (options && options.platform) this._urlPlatform = decodeURIComponent(options.platform); } catch (e) { /* ignore */ }
     if (options.editScreenshot) {
@@ -501,6 +507,8 @@ Page({
       if (funds[this.data._editIdx]) {
         funds[this.data._editIdx].marketValue = this.data.marketValue;
         funds[this.data._editIdx].holdingReturn = this.data.holdingReturn;
+        // 单笔编辑模式可改买入日期（wxml 无 _editIdx 门控）：一并回写，此前被静默丢弃
+        funds[this.data._editIdx].buyDate = this.data.buyDate;
       }
     }
   },

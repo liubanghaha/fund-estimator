@@ -1,7 +1,9 @@
 {
   "runtime": "Nodejs20.19",
-  "timeout": 30,
+  "timeout": 120,
   "permissions": {
-    "openapi": ["wxacode.getUnlimited"]
+    "openapi": [
+      "wxacode.getUnlimited"
+    ]
   }
 }

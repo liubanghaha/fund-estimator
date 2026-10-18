@@ -13,7 +13,7 @@ const api = {
   ],
   // CRUD 函数中纯读的 action 也去重（list/check/get 类），写 action 不缓存
   READ_ONLY_ACTIONS: {
-    manageWatchlist: ["list", "check", "getGroups"],
+    manageWatchlist: ["list", "check", "getGroups", "tempMoves", "perf"],
     manageHolding: ["list", "get", "check", "getGroups"],
     manageTransaction: ["list"],
   },
@@ -134,6 +134,18 @@ const api = {
   },
   watchlistGetGroups() {
     return this.callFunction("manageWatchlist", { action: "getGroups" });
+  },
+  // 自选温度异动：最近两个交易日档位变化（温度按天变，客户端日内缓存）
+  watchlistTempMoves(fundCodes) {
+    return this.callFunction("manageWatchlist", { action: "tempMoves", fundCodes });
+  },
+  // 自选区间收益（添加后/近1周/近1月/近3年/近5年/成立来）：当日首个客户端要等服务端
+  // 现场拉全量净值（服务端预算 50s），读超时放宽到 60s，不走 callFunction 的 15s 闸
+  watchlistPerf() {
+    return Promise.race([
+      wx.cloud.callFunction({ name: "manageWatchlist", data: { action: "perf" } }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("perf 超时")), 60000)),
+    ]);
   },
   watchlistRenameGroup(group, newGroup) {
     return this.callFunction("manageWatchlist", { action: "renameGroup", group, newGroup });

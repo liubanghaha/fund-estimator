@@ -26,7 +26,6 @@
   <view wx:if="{{loaded && !loadError && watchlist.length > 0}}" class="search-bar">
     <input class="search-input" value="{{searchKeyword}}" placeholder="搜索基金" bind:input="onSearchInput"/>
     <text wx:if="{{searchKeyword}}" class="search-clear" bind:tap="onClearSearch">✕</text>
-    <text class="search-sort-btn" bind:tap="onSortTap">{{sortField === 'change' ? (sortOrder === 'asc' ? '涨跌↑' : '涨跌↓') : sortField === 'name' ? '名称' : '排序'}}</text>
   </view>
 
   <!-- 涨跌汇总条 -->
@@ -35,6 +34,18 @@
     <text class="summary-item summary-avg {{summary.avg > 0 ? 'up' : summary.avg < 0 ? 'down' : ''}}">平均{{summary.avg > 0 ? '+' : ''}}{{summary.avg}}%</text>
     <text class="summary-item summary-up">涨{{summary.up}}</text>
     <text class="summary-item summary-down">跌{{summary.down}}</text>
+  </view>
+
+  <!-- 温度异动摘要：只在有档位变化时出现（档位口径同温度推送），基金名可点进详情 -->
+  <view wx:if="{{loaded && tempMoves && tempMoves.count && !tempStripHidden}}" class="temp-strip">
+    <text class="ts-label">🌡 估值异动 {{tempMoves.count}} 只</text>
+    <block wx:for="{{tempMoves.items}}" wx:key="fundCode">
+      <text wx:if="{{index > 0}}" class="ts-sep"> · </text>
+      <text class="ts-fund" bind:tap="onTempFundTap" data-code="{{item.fundCode}}" data-name="{{item.name}}">{{item.name}}</text>
+      <text class="ts-move {{item.cur === 'high' ? 'up' : item.cur === 'low' ? 'down' : ''}}">{{item.prevText}}→{{item.curText}}</text>
+    </block>
+    <text wx:if="{{tempMoves.more}}" class="ts-sep"> 等{{tempMoves.count}}只</text>
+    <text class="ts-close" catch:tap="onTempStripClose">✕</text>
   </view>
 
   <view wx:if="{{!loaded}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
@@ -68,38 +79,47 @@
   </view>
 
   <view wx:else class="list">
-    <view wx:for="{{displayList}}" wx:key="fundCode" class="item-wrap">
-      <!-- 左滑露出的删除按钮 -->
-      <view class="swipe-del-btn" bind:tap="onSwipeDelete" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">删除</view>
-      <!-- 主体 -->
-      <view
-        class="item {{batchMode ? 'batch-item' : ''}}"
-        style="{{_swipeIdx === index ? 'transform:translateX(' + _swipeX + 'px)' : ''}}"
-        bind:tap="onTapItem"
-        bind:longpress="onLongPressItem"
-        bind:touchstart="onItemTouchStart"
-        bind:touchmove="onItemTouchMove"
-        bind:touchend="onItemTouchEnd"
-        data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-index="{{index}}">
-        <view wx:if="{{batchMode}}" class="item-check {{item._checked ? 'checked' : ''}}">
-          {{item._checked ? '✓' : ''}}
+    <!-- 持仓列表同款表格：名称列 sticky 固定，数据列横向滑动 -->
+    <scroll-view class="table-scroll" scroll-x show-scrollbar="{{false}}" enable-flex>
+      <view class="table-inner">
+        <view class="t-row t-head">
+          <view class="t-cell t-name"><text>名称 / 估值</text></view>
+          <view class="t-cell t-est {{sortField === 'change' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="change"><text>今日估算</text><text class="sort-icon {{sortField === 'change' ? 'sort-arrow' : ''}}">{{sortField === 'change' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'added' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="added"><text>添加后</text><text class="sort-icon {{sortField === 'added' ? 'sort-arrow' : ''}}">{{sortField === 'added' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'w1' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="w1"><text>近1周</text><text class="sort-icon {{sortField === 'w1' ? 'sort-arrow' : ''}}">{{sortField === 'w1' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'm1' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="m1"><text>近1月</text><text class="sort-icon {{sortField === 'm1' ? 'sort-arrow' : ''}}">{{sortField === 'm1' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'm3' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="m3"><text>近3月</text><text class="sort-icon {{sortField === 'm3' ? 'sort-arrow' : ''}}">{{sortField === 'm3' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'm6' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="m6"><text>近6月</text><text class="sort-icon {{sortField === 'm6' ? 'sort-arrow' : ''}}">{{sortField === 'm6' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'y3' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="y3"><text>近3年</text><text class="sort-icon {{sortField === 'y3' ? 'sort-arrow' : ''}}">{{sortField === 'y3' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'y5' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="y5"><text>近5年</text><text class="sort-icon {{sortField === 'y5' ? 'sort-arrow' : ''}}">{{sortField === 'y5' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
+          <view class="t-cell {{sortField === 'incept' ? 'sort-active' : ''}}" bind:tap="onColSortTap" data-field="incept"><text>成立来</text><text class="sort-icon {{sortField === 'incept' ? 'sort-arrow' : ''}}">{{sortField === 'incept' ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text></view>
         </view>
-        <view class="item-left">
-          <view class="item-name">
-            <text wx:if="{{item._isPinned}}" class="pin-mark">📌</text>
-            {{item.fundName}}
-            <text wx:if="{{(activeGroup === 'all' || activeGroup === 'holding') && item.group}}" class="group-tag">{{item.group}}</text>
+        <view wx:for="{{displayList}}" wx:key="fundCode" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"
+          bind:tap="onTapItem" bind:longpress="onLongPressItem"
+          data-code="{{item.fundCode}}" data-name="{{item.fundName}}" data-index="{{index}}">
+          <view class="t-cell t-name">
+            <view wx:if="{{batchMode}}" class="item-check {{item._checked ? 'checked' : ''}}" catch:tap="onToggleBatchSelect" data-index="{{index}}">{{item._checked ? '✓' : ''}}</view>
+            <view class="name-text">
+              <text wx:if="{{item._isPinned}}" class="pin-mark">📌</text>{{item.fundName}}
+            </view>
+            <view class="code-text">
+              <text wx:if="{{tempSignalMap[item.fundCode]}}" class="temp-cell temp-cell-{{tempSignalMap[item.fundCode]}}">{{tempSignalMap[item.fundCode] === 'low' ? '偏低' : tempSignalMap[item.fundCode] === 'mid' ? '适中' : '偏高'}}</text>
+              <text>{{item.fundCode}}</text>
+              <text wx:if="{{(activeGroup === 'all' || activeGroup === 'holding') && item.group}}" class="group-tag">{{item.group}}</text>
+            </view>
           </view>
-          <view class="item-code">{{item.fundCode}}</view>
-        </view>
-        <view class="item-right">
-          <view class="item-rate {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">
-            {{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}
-          </view>
-          <view class="item-nav">{{item.estimatedNav || item.nav || '--'}}<text wx:if="{{item.estimatedNav}}" class="est-mark">估</text></view>
+          <view class="t-cell t-est"><text class="pct {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].addedCls}}">{{perfMap[item.fundCode].addedText || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].w1Cls}}">{{perfMap[item.fundCode].w1Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].m1Cls}}">{{perfMap[item.fundCode].m1Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].m3Cls}}">{{perfMap[item.fundCode].m3Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].m6Cls}}">{{perfMap[item.fundCode].m6Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].y3Cls}}">{{perfMap[item.fundCode].y3Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].y5Cls}}">{{perfMap[item.fundCode].y5Text || '--'}}</text></view>
+          <view class="t-cell"><text class="pct {{perfMap[item.fundCode].inceptCls}}">{{perfMap[item.fundCode].inceptText || '--'}}</text></view>
         </view>
       </view>
-    </view>
+    </scroll-view>
   </view>
 
   <!-- 批量操作栏 -->

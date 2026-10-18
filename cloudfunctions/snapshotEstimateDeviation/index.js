@@ -24,7 +24,7 @@ const _ = db.command;
 const COLL = "fund_estimate_deviations";
 const PAGE = 1000;
 const CONCURRENCY = 20;
-const FILL_BUDGET_MS = 75000; // 补写拉净值预算（120s 超时留收尾；没补完的次日重试）
+const FILL_BUDGET_MS = 55000; // 补写拉净值预算。2026-10-18 修复：此前 45s（新浪估算）+75s（补写）=120s 恰好吃满 timeout，收尾写库被强杀 → 当日台账缺口永久；压缩到 45+55=100s 留 20s 写库收尾
 
 // 上一交易日：服务端 trading-day 只导出 lastTradingDay（只有客户端的 market-time 有 prevTradingDay），
 // 按服务端既有写法取"严格早于该日"的最近交易日

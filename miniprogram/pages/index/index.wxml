@@ -340,7 +340,7 @@
         <view class="temp-tooltip-item">📊 穿透前十大重仓股，基于每只个股历年 PE 历史区间计算当前分位，按持仓占比加权汇总</view>
         <view class="temp-tooltip-item">⚖️ 金融股 PE+PB 双评 · 周期股低位警示 · 亏损股及超高 PE 约束</view>
       </view>
-      <view class="temp-tooltip-rule">{{lt}} 0.75 温度偏低 · 0.75～1.25 温度适中 · {{gt}} 1.25 温度偏高</view>
+      <view class="temp-tooltip-rule">{{lt}} 0.75 估值偏低 · 0.75～1.25 估值适中 · {{gt}} 1.25 估值偏高</view>
       <view class="temp-tooltip-backtest" catch:tap="onTempBacktest">📈 查看温度历史回测 ›</view>
       <view class="temp-tooltip-disclaimer">估算数据仅供参考，不构成投资建议</view>
       <view class="temp-tooltip-update">⏱ 每日凌晨更新</view>
