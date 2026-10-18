@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 const https = require("https");
+const fd = require("./_shared/fund-data");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
@@ -90,6 +91,43 @@ exports.main = async () => {
       }));
       if (i + CONCURRENT < missing.length) await new Promise(r => setTimeout(r, 100));
     }
+    // 详情页净值历史预热（2026-10-18 新增，详情页首开最贵的一段）：260 行日频净值
+    // 写 fund_nav_cache（按 _id=fundCode 日更覆盖），fetchFundOverview 命中当日缓存
+    // 时 13 次东财分页请求变 0 次。预算 120s：池 825 只约需 130s，当日缺口次日递补。
+    let nok = 0, nskip = 0, nfail = 0, nbudget = 0;
+    try {
+      try { await db.createCollection("fund_nav_cache"); } catch (e) { /* 已存在 */ }
+      const navPending = [];
+      for (let i = 0; i < pool.length; i += 100) {
+        const res = await db.collection("fund_nav_cache")
+          .where({ fundCode: _.in(pool.slice(i, i + 100)), date: today })
+          .field({ fundCode: true })
+          .get();
+        const have = new Set((res.data || []).map(c => c.fundCode));
+        pool.slice(i, i + 100).forEach(c => { if (!have.has(c)) navPending.push(c); });
+      }
+      console.log(`[watchlistPerfWarmup] nav 待预热 ${navPending.length} 只`);
+      const N_CONCURRENT = 10, N_BUDGET = 120000, nStarted = Date.now();
+      for (let i = 0; i < navPending.length; i += N_CONCURRENT) {
+        if (i > 0 && Date.now() - nStarted >= N_BUDGET) {
+          console.log(`[watchlistPerfWarmup] nav 达预算，剩余 ${navPending.length - i} 只未预热（次日递补）`);
+          nbudget = navPending.length - i;
+          break;
+        }
+        const batch = navPending.slice(i, i + N_CONCURRENT);
+        const results = await Promise.all(batch.map(code =>
+          fd.fetchNAVHistory(code, 260).then(rows => {
+            if (!rows || rows.length < 50) return "skip";
+            const compact = rows.map(r => [r.date, +r.nav.toFixed(4), r.changeRate == null ? null : +r.changeRate.toFixed(2)]);
+            return db.collection("fund_nav_cache").doc(code).set({ data: { fundCode: code, date: today, rows: compact } }).then(() => "ok");
+          }).catch(() => "fail")
+        ));
+        nok += results.filter(x => x === "ok").length;
+        nskip += results.filter(x => x === "skip").length;
+        nfail += results.filter(x => x === "fail").length;
+      }
+    } catch (e) { console.error("[watchlistPerfWarmup] nav 预热异常:", e.message); }
+
     // 详情页档案预热（2026-10-18 扩展）：调 fetchFundProfile 触发其自带拉取+14 天缓存回写。
     // 复用零拷贝——不复制任何算法；稳态每天仅约 1/14 池到期需要拉
     let pok = 0, pskip = 0, pfail = 0;

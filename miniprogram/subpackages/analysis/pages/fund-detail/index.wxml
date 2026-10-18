@@ -81,12 +81,12 @@
       {{estimateAccuracyText}}<text class="acc-toggle">{{accLogVisible ? ' ⌃' : ' ⌄'}}</text>
     </view>
     <view wx:if="{{accLogVisible && accLog.length}}" class="acc-log">
-      <view class="acc-log-row acc-log-head"><text>日期</text><text>估算</text><text>实际</text><text>偏差</text></view>
+      <view class="acc-log-row acc-log-head"><text class="c-date">日期</text><text class="c-num">估算</text><text class="c-num">实际</text><text class="c-num">偏差</text></view>
       <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
-        <text>{{item.date.slice(5)}}</text>
-        <text class="{{item.estRate >= 0 ? 'up' : 'down'}}">{{item.estRate > 0 ? '+' : ''}}{{item.estRate}}%</text>
-        <text class="{{item.actualRate >= 0 ? 'up' : 'down'}}">{{item.actualRate > 0 ? '+' : ''}}{{item.actualRate}}%</text>
-        <text class="{{item.diff > 0 ? 'down' : item.diff < 0 ? 'up' : ''}}">{{item.diff > 0 ? '+' : ''}}{{item.diff}}pp</text>
+        <text class="c-date">{{item.date}}</text>
+        <text class="c-num">{{item.estText}}</text>
+        <text class="c-num">{{item.actText}}</text>
+        <text class="c-num {{item.diffCls}}">{{item.diffText}}</text>
       </view>
       <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高</view>
     </view>

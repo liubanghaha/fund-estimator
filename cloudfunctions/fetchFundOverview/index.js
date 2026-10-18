@@ -13,9 +13,28 @@ exports.main = async (event) => {
 
   try {
     const todayStr = fd.formatBJDate();
+    // 净值历史缓存优先（2026-10-18：watchlistPerfWarmup 每日 05:30 预热 fund_nav_cache）。
+    // 命中当日缓存 → 260 行历史 0 次东财请求；未命中 → 全量拉取并写缓存（当日首个用户付费）
+    let cachedNav = null;
+    try {
+      try { await db.createCollection("fund_nav_cache"); } catch (e) { /* 已存在 */ }
+      const c = await db.collection("fund_nav_cache").doc(fundCode).get();
+      const doc = c.data;
+      if (doc && doc.date === todayStr && Array.isArray(doc.rows) && doc.rows.length > 50) {
+        cachedNav = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
+      }
+    } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }
+
     const [estimate, history, profileData, peTemp, estimateAccuracy] = await Promise.all([
       fetchEstimate(fundCode, estSrc),
-      fd.fetchNAVHistory(fundCode, 260),
+      cachedNav ? Promise.resolve(cachedNav) : fd.fetchNAVHistory(fundCode, 260).then((rows) => {
+        // 回写当日缓存（260 行压缩为 [date, nav, changeRate] 三元组），次日所有用户命中
+        if (rows && rows.length > 50) {
+          const compact = rows.map(r => [r.date, +r.nav.toFixed(4), r.changeRate == null ? null : +r.changeRate.toFixed(2)]);
+          db.collection("fund_nav_cache").doc(fundCode).set({ data: { fundCode, date: todayStr, rows: compact } }).catch(() => {});
+        }
+        return rows;
+      }),
       fetchProfileData(fundCode),
       fetchPeTemp(fundCode),
       fetchEstimateAccuracy(fundCode, todayStr),
@@ -241,7 +260,7 @@ async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
       .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
       .field({ date: true, estRate: true, actualRate: true, diff: true })
       .limit(60).get();
-    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number");
+    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number" && typeof r.estRate === "number");
     if (rows.length === 0) return null;
     const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
     // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入

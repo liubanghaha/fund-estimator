@@ -1,6 +1,6 @@
 {
   "runtime": "Nodejs20.19",
-  "timeout": 180,
+  "timeout": 300,
   "triggers": [
     {
       "name": "perfWarmupTimer",

@@ -346,7 +346,15 @@ Page({
     if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "", accLog: [] };
     const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
     const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
-    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog: Array.isArray(acc.log) ? acc.log : [] };
+    const fmt = (v) => (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+    const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => ({
+      date: (r.date || "").slice(5),
+      estText: fmt(r.estRate),
+      actText: fmt(r.actualRate),
+      diffText: fmt(r.diff).replace("%", "pp"),
+      diffCls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
+    }));
+    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog };
   },
 
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）

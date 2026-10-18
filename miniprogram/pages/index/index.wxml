@@ -243,7 +243,7 @@
                   class="t-cell {{colDefs[col].sortable && sortField === col ? 'active' : ''}} {{colDefs[col].isValuation ? 't-temp-header' : ''}}"
                   bind:tap="{{colDefs[col].sortable ? 'onSortTap' : 'onTempInfoTap'}}"
                   data-field="{{colDefs[col].sortable ? col : ''}}">
-                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable && sortField === col}}" style="font-size:18rpx">{{sortOrder === 'desc' ? '↓' : '↑'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
+                  <text style="flex:1;text-align:right">{{colDefs[col].label}}</text><text wx:if="{{colDefs[col].sortable}}" class="t-sort {{sortField === col ? 'sort-on' : ''}}">{{sortField === col ? (sortOrder === 'desc' ? '↓' : '↑') : '⇅'}}</text><text wx:if="{{colDefs[col].isValuation}}" class="t-temp-icon"> ⓘ</text>
                 </view>
               </view>
               <view wx:for="{{displayHoldings}}" wx:key="_id" class="t-row {{batchMode && item._checked ? 'selected' : ''}}"

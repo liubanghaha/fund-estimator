@@ -305,7 +305,7 @@
     },
     {
       "name": "watchlistPerfWarmup",
-      "timeout": 180,
+      "timeout": 300,
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "triggers": [

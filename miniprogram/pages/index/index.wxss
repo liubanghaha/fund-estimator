@@ -438,5 +438,5 @@
 .attr-v{color:#333;text-align:right}
 .attr-note{font-size:20rpx;color:#BBB;padding-top:8rpx}
 
-.t-sort{font-size:18rpx;color:#CCC}
+.t-sort{font-size:20rpx;color:#999}
 .t-sort.sort-on{color:var(--primary);font-weight:600}
