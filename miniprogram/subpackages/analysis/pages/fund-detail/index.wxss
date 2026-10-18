@@ -295,3 +295,8 @@
 .mr-profit.down{color:#2E8B57}
 .mr-arrow{color:#CCC;font-size:28rpx;flex-shrink:0}
 .btn-followed{opacity:.75}
+
+/* R2 估值兜底行：定格说明（左） + 净值更新提醒（右），卡片级整行 */
+.nav-frozen-row{display:flex;align-items:center;justify-content:space-between;margin-top:16rpx;padding-top:16rpx;border-top:1rpx solid #F0F0F0}
+.nav-frozen-text{font-size:22rpx;color:#999;line-height:1.5}
+.nav-remind-btn{flex-shrink:0;margin-left:16rpx;font-size:22rpx;color:var(--primary);border:1rpx solid var(--primary);border-radius:24rpx;padding:8rpx 20rpx}

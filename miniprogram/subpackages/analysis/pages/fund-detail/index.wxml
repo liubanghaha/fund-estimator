@@ -60,11 +60,6 @@
           <view wx:if="{{showEstimate}}" class="nav-ref">估算净值 {{estimatedNav}}{{estimateTime ? ' · 估值 ' + estimateTime : ''}}</view>
           <view wx:elif="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
-        <!-- R2 估值兜底：盘后/休市不空白——定格说明 + 净值更新提醒 -->
-        <view wx:if="{{!showEstimate && !(hasHolding && holdingData)}}" class="nav-frozen-row">
-          <text class="nav-frozen-text">{{estFrozenText}}</text>
-          <text class="nav-remind-btn" catch:tap="onRemindNav">净值更新后提醒我</text>
-        </view>
         <view class="nav-change-col">
           <view class="nav-change-label">{{showEstimate ? '涨幅估算' : (noTodayEst ? '今日涨跌' : '当日涨幅')}}</view>
           <view class="nav-change {{noTodayEst ? '' : (displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : '')}}">
@@ -73,6 +68,11 @@
           <view wx:if="{{showEstimate}}" class="nav-badge">盘中估算</view>
           <view wx:elif="{{noTodayEst}}" class="nav-badge">未出估值</view>
         </view>
+      </view>
+      <!-- R2 估值兜底：盘后/休市不空白——定格说明 + 净值更新提醒（卡片级整行，不挤压净值） -->
+      <view wx:if="{{!showEstimate && !(hasHolding && holdingData)}}" class="nav-frozen-row">
+        <text class="nav-frozen-text">{{estFrozenText}}</text>
+        <text class="nav-remind-btn" catch:tap="onRemindNav">提醒我</text>
       </view>
     </view>
 

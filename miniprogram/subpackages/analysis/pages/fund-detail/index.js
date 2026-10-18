@@ -667,9 +667,9 @@ Page({
     let estFrozenText = "";
     if (!showEstimate && !(this.data.hasHolding && this.data.holdingData)) {
       if (isNavUpdated) estFrozenText = "今日净值已更新";
-      else if (marketTime.marketPhase() === "afterClose") estFrozenText = "今日估值已收盘定格 · 今晚 21:30 左右更新净值";
+      else if (marketTime.marketPhase() === "afterClose") estFrozenText = "今日估值已收盘定格 · 今晚更新净值";
       else if (marketTime.isTradingDay(marketTime.bjDateStr())) estFrozenText = "今日估值 9:25 后更新";
-      else estFrozenText = "休市中 · 估值已定格，下个交易日 9:25 更新";
+      else estFrozenText = "休市中 · 估值已定格";
     }
     this.setData({
       isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
