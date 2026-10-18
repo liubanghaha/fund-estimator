@@ -26,7 +26,7 @@
         <text class="item-code">{{item.fundCode}}</text>
       </view>
       <button wx:if="{{fromAdd}}" class="item-add-btn" catch:tap="onAddHolding" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">添加持仓</button>
-      <view wx:else class="item-arrow">></view>
+      <view wx:else class="item-follow {{followMap[item.fundCode] ? 'followed' : ''}}" catch:tap="onFollowTap" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">{{followMap[item.fundCode] ? '✓ 已关注' : '⭐ 关注'}}</view>
     </view>
   </view>
   <view wx:elif="{{!isLoading && !errorMsg && fundList.length === 0 && hasSearched}}" class="empty">未找到相关基金，试试直接输入 6 位基金代码</view>

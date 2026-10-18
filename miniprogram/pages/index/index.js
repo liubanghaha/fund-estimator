@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
+const recent = require("../../utils/recent");
 const subscribe = require("../../utils/subscribe");
 const track = require("../../utils/track");
 const device = require("../../utils/device");
@@ -40,6 +41,11 @@ Page({
     isLoggedIn: false,
     dataReady: false,
     holdings: [],
+    // R3 空态两态分支：完全空白 → 市场+最近查看；有自选 → 自选列表
+    emptyWlLoading: false, emptyWlLoaded: false, emptyWlCount: 0, emptyWlItems: [],
+    emptyMarket: null, emptyRecent: [], followMapRecent: {},
+    // R7 今日归因卡（null=未加载/不展示时段）
+    attrCard: null, attrExpanded: false,
     displayHoldings: [],
     amountVisible: true,
     // 资产卡标签随相位：closed（节假日/周末/交易日 9:25 前）展示的是最近交易日数据，
@@ -321,6 +327,8 @@ Page({
     const amountVisible = wx.getStorageSync("amountVisible");
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     this.maybeShowGuide(); // 新手导览（首笔持仓后一次性）
+    // R3：空仓时保证空态数据就位（storage 日缓存秒出；网络刷新由 fetchPortfolio 空仓分支触发）
+    if (this.data.holdings.length === 0) this._loadEmptyState();
 
     // 恢复缓存的分组列表
     const cachedGroups = this._getCachedGroups();
@@ -764,6 +772,8 @@ Page({
         }
         holdings = this.formatHoldings(holdings, d.totalAmount);
         holdings = this.sortHoldings(holdings);
+        if (holdings.length === 0) this._loadEmptyState(); // R3：空仓 → 拉空态数据（自选两态/市场/最近查看）
+        else this._loadAttribution(); // R7：有持仓且盘中/盘后 → 今日归因
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
         // 与主数据合并成一次 setData，避免多次渲染（原 3-4 次 setData）
@@ -1198,6 +1208,74 @@ Page({
   noop() {},
 
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
+  onGoMarket() { wx.switchTab({ url: "/pages/market/index" }); },
+  onEmptyWlTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    recent.addFund(code, name);
+    wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}` });
+  },
+  async onFollowRecent(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (this.data.followMapRecent[code]) return;
+    try {
+      const res = await api.watchlistAdd(code, name);
+      if (res.result && res.result.code === 0) {
+        recent.addFund(code, name);
+        this.setData({ [`followMapRecent.${code}`]: true });
+        wx.showToast({ title: "已加自选", icon: "success" });
+      }
+    } catch (err) { /* ignore */ }
+  },
+  // R7 今日归因：基金涨跌 × 仓位权重（只讲已发生的事实；非交易日/盘前不展示）
+  async _loadAttribution(force) {
+    if (!force && this._attrLoaded) return;
+    const phase = marketTime.marketPhase();
+    if (!marketTime.isTradingDay(marketTime.bjDateStr()) || phase === "closed") return; // 非交易日/盘前无当日涨跌
+    this._attrLoaded = true;
+    try {
+      const res = await api.portfolioAttribution();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.ok) return;
+      const f = (s) => s ? `${s.fundName} ${s.changeRate > 0 ? "+" : ""}${s.changeRate}%（占仓位 ${s.weight}%，贡献 ${s.contribution > 0 ? "+" : ""}${s.contribution}%）` : "";
+      this.setData({ attrCard: {
+        totalText: (d.total > 0 ? "+" : "") + d.total + "%",
+        totalCls: d.total > 0 ? "up" : d.total < 0 ? "down" : "",
+        dragText: d.drag ? f(d.drag) : "",
+        pullText: d.pull ? f(d.pull) : "",
+      } });
+    } catch (e) { /* 静默：卡片不出现 */ }
+  },
+  onToggleAttr() { this.setData({ attrExpanded: !this.data.attrExpanded }); },
+
+  // R3 空态数据：自选两态判定 + 今日市场（纯统计，失败整块隐藏）+ 最近查看（本地）
+  async _loadEmptyState() {
+    if (this.data.holdings.length > 0) return;
+    this.setData({ emptyWlLoading: true });
+    try {
+      const res = await api.watchlistList();
+      const items = (res.result && res.result.code === 0 && res.result.data) || [];
+      this.setData({ emptyWlLoaded: true, emptyWlCount: items.length });
+      if (items.length > 0) {
+        const codes = items.map(w => w.fundCode);
+        const estRes = await api.batchFetchEstimate(codes).catch(() => null);
+        const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
+        this.setData({ emptyWlItems: items.map((w) => {
+          const e = estData[w.fundCode];
+          return { fundCode: w.fundCode, fundName: w.fundName, estimatedNav: e ? e.estimatedNav : null, displayChangeRate: e ? e.displayChangeRate : null };
+        }) });
+      }
+    } catch (e) { this.setData({ emptyWlLoaded: true, emptyWlCount: 0 }); }
+    try {
+      const res = await api.fetchMarketOverview();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      const ov = d && d.overview;
+      if (ov && (ov.shAmount != null || ov.szAmount != null)) {
+        const total = ((ov.shAmount || 0) + (ov.szAmount || 0)) / 1e12;
+        this.setData({ emptyMarket: { amountText: total.toFixed(2) + " 万亿", up: Math.round(ov.up || 0), down: Math.round(ov.down || 0) } });
+      }
+    } catch (e) { /* 静默隐藏 */ }
+    this.setData({ emptyRecent: recent.getRecentFunds(3) });
+  },
   onScreenshotAdd() {
     wx.chooseMedia({
       count: 1, mediaType: ["image"],

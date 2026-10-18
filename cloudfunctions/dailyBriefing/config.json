@@ -2,7 +2,9 @@
   "runtime": "Nodejs20.19",
   "timeout": 120,
   "permissions": {
-    "openapi": ["subscribeMessage.send"]
+    "openapi": [
+      "subscribeMessage.send"
+    ]
   },
   "triggers": [
     {
@@ -19,6 +21,11 @@
       "name": "weeklyBriefTimer",
       "type": "timer",
       "config": "0 0 10 * * 6 *"
+    },
+    {
+      "name": "monthlyCheckupTimer",
+      "type": "timer",
+      "config": "0 0 9 1 * * *"
     }
   ]
 }

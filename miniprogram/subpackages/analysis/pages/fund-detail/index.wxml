@@ -24,7 +24,9 @@
     </view>
 
     <view wx:if="{{loadError}}" class="error-wrap">
-      <view class="error-text">链接无效，请返回重进</view>
+      <view class="error-text">{{errorMsg || '链接无效，请返回重进'}}</view>
+      <view class="error-text">净值获取失败时稍后会自动恢复</view>
+      <button class="login-btn" bind:tap="onRetryDetail">重新加载</button>
     </view>
 
     <block wx:if="{{!loading && !loadError}}">
@@ -58,6 +60,11 @@
           <view wx:if="{{showEstimate}}" class="nav-ref">估算净值 {{estimatedNav}}{{estimateTime ? ' · 估值 ' + estimateTime : ''}}</view>
           <view wx:elif="{{actualDate && !(hasHolding && holdingData)}}" class="nav-date">净值日期：{{actualDate}}</view>
         </view>
+        <!-- R2 估值兜底：盘后/休市不空白——定格说明 + 净值更新提醒 -->
+        <view wx:if="{{!showEstimate && !(hasHolding && holdingData)}}" class="nav-frozen-row">
+          <text class="nav-frozen-text">{{estFrozenText}}</text>
+          <text class="nav-remind-btn" catch:tap="onRemindNav">净值更新后提醒我</text>
+        </view>
         <view class="nav-change-col">
           <view class="nav-change-label">{{showEstimate ? '涨幅估算' : (noTodayEst ? '今日涨跌' : '当日涨幅')}}</view>
           <view class="nav-change {{noTodayEst ? '' : (displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : '')}}">
@@ -78,6 +85,8 @@
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">最大回撤</view><view class="risk-value down">{{riskMetrics.maxDrawdown}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">年化波动率</view><view class="risk-value">{{riskMetrics.volatility}}%</view></view>
         <view wx:if="{{riskMetrics}}" class="risk-item"><view class="risk-label">夏普比率</view><view class="risk-value {{riskMetrics.sharpe > 1 ? 'up' : ''}}">{{riskMetrics.sharpe}}</view></view>
+        <view wx:if="{{underwaterMetrics}}" class="risk-item"><view class="risk-label">水下时间</view><view class="risk-value">{{underwaterMetrics.pct}}%</view></view>
+        <view wx:if="{{underwaterMetrics && underwaterMetrics.maxStreak}}" class="risk-item"><view class="risk-label">最长被套</view><view class="risk-value">{{underwaterMetrics.maxStreak}} 天{{underwaterMetrics.range ? '（' + underwaterMetrics.range + '）' : ''}}</view></view>
         <view wx:if="{{peTemp && peTemp.signal !== 'nodata'}}" class="risk-item">
           <view class="risk-label">温度</view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
@@ -430,9 +439,18 @@
     </view>
 
     <view class="bottom-bar">
-      <button class="btn-add" bind:tap="onAddHolding">
-        <text class="btn-icon">{{hasHolding ? '✏️' : '➕'}}</text>
-        <text>{{hasHolding ? '修改持仓' : '添加持仓'}}</text>
+      <!-- R1：未持仓用户主 CTA = 关注（零门槛加自选）；已持仓保持修改持仓 -->
+      <button wx:if="{{!hasHolding}}" class="btn-add {{followed ? 'btn-followed' : ''}}" bind:tap="onFollowCta">
+        <text class="btn-icon">{{followed ? '✓' : '⭐'}}</text>
+        <text>{{followed ? '已关注' : '关注这只基'}}</text>
+      </button>
+      <button wx:else class="btn-add" bind:tap="onAddHolding">
+        <text class="btn-icon">✏️</text>
+        <text>修改持仓</text>
+      </button>
+      <button wx:if="{{!hasHolding}}" class="btn-compare" bind:tap="onAddHolding">
+        <text class="btn-icon">➕</text>
+        <text>添加持仓</text>
       </button>
       <button class="btn-compare" bind:tap="onCompare">
         <text class="btn-icon">📊</text>

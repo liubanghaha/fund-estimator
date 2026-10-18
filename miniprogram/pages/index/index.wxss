@@ -400,3 +400,40 @@
 
 /* 盘后估算对照（信任线）：实际涨跌下方的小字"估Y%"，上下对齐可对账 */
 .est-cmp{font-size:18rpx;color:#999;line-height:1.3;margin-top:2rpx}
+
+/* ===== R3 空态两态：搜索优先 + 今日市场（纯统计）+ 最近查看（用户自己的行为） ===== */
+.es-search-big{display:flex;align-items:center;justify-content:center;margin:16rpx 32rpx;padding:28rpx 24rpx;background:#FFF;border-radius:44rpx;font-size:28rpx;color:#999;box-shadow:0 2rpx 12rpx rgba(0,0,0,.05)}
+.es-section-title{font-size:24rpx;color:#999;margin:24rpx 32rpx 12rpx}
+.es-market{margin:0 32rpx;background:#FFF;border-radius:16rpx;padding:20rpx 24rpx}
+.es-market-line{font-size:26rpx;color:#333}
+.es-market-link{display:inline-block;margin-top:10rpx;font-size:24rpx;color:var(--primary)}
+.es-recent{margin:20rpx 32rpx 0;background:#FFF;border-radius:16rpx;padding:12rpx 24rpx}
+.es-recent-row{display:flex;align-items:center;justify-content:space-between;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
+.es-recent-row:last-child{border-bottom:none}
+.es-recent-name{font-size:26rpx;color:#333}
+.es-recent-code{font-size:22rpx;color:#999;margin-left:10rpx}
+.es-recent-follow{flex-shrink:0;font-size:24rpx;color:var(--primary);border:1rpx solid var(--primary);border-radius:24rpx;padding:6rpx 20rpx}
+.es-recent-follow.followed{color:#999;border-color:#DDD}
+.es-wl-list{margin:0 32rpx;background:#FFF;border-radius:16rpx;padding:4rpx 24rpx}
+.es-wl-row{display:flex;align-items:center;justify-content:space-between;padding:20rpx 0;border-bottom:1rpx solid #F5F5F5}
+.es-wl-row:last-child{border-bottom:none}
+.es-wl-name{font-size:28rpx;color:#333;font-weight:500}
+.es-wl-code{font-size:22rpx;color:#999;margin-top:4rpx}
+.es-wl-right{text-align:right}
+.es-wl-nav{font-size:24rpx;color:#666}
+.es-wl-chg{font-size:28rpx;font-weight:600;margin-top:4rpx}
+.es-wl-chg.up{color:var(--up)}
+.es-wl-chg.down{color:var(--down)}
+
+/* ===== R7 今日归因卡（可折叠） ===== */
+.attr-card{margin:12rpx 32rpx;background:#FFF;border-radius:16rpx;padding:16rpx 24rpx}
+.attr-head{display:flex;align-items:center;gap:12rpx}
+.attr-title{font-size:26rpx;font-weight:600;color:#333}
+.attr-total{font-size:28rpx;font-weight:700}
+.attr-total.up{color:var(--up)}
+.attr-total.down{color:var(--down)}
+.attr-arrow{margin-left:auto;font-size:22rpx;color:#999}
+.attr-row{display:flex;align-items:center;justify-content:space-between;padding:10rpx 0 0;font-size:24rpx}
+.attr-k{color:#999;flex-shrink:0;margin-right:16rpx}
+.attr-v{color:#333;text-align:right}
+.attr-note{font-size:20rpx;color:#BBB;padding-top:8rpx}

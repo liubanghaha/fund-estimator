@@ -2,6 +2,8 @@ const api = require("../../../../utils/api");
 const calc = require("../../../../utils/calculator");
 const chart = require("../../../../utils/chart");
 const marketTime = require("../../../../utils/market-time");
+const subscribe = require("../../../../utils/subscribe");
+const recent = require("../../../../utils/recent");
 
 const CACHE_PREFIX = "fund_detail_cache_";
 // 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
@@ -106,7 +108,17 @@ Page({
       }
     } catch (e) { /* ignore */ }
     // 导航栏标题用"基金名(代码)"：微信搜一搜按页面标题收录，基金名+代码是搜索主词
-    wx.setNavigationBarTitle({ title: `${fundName}(${options.fundCode})` });
+    // R5 来源归因：页面级 scene（搜一搜来的用户在详情页做了什么）
+    try {
+      track.track("page_enter", {
+        page: "fund_detail",
+        scene: (options && options.scene) || (wx.getLaunchOptionsSync() || {}).scene || 0,
+        fundCode: options.fundCode,
+      });
+    } catch (e) { /* ignore */ }
+    // R6 最近查看：进详情即记入（首页空态「最近查看」的数据源）
+    recent.addFund(options.fundCode, fundName);
+    wx.setNavigationBarTitle({ title: `${fundName}(${options.fundCode}) 估值` });
     this._firstLoad = true;
     const { windowWidth } = wx.getWindowInfo();
     const canvasW = windowWidth - 24;
@@ -137,7 +149,7 @@ Page({
     if (!this._namePlaceholder || !name || name === this.data.fundName) return;
     this._namePlaceholder = false;
     this.setData({ fundName: name });
-    wx.setNavigationBarTitle({ title: `${name}(${this.data.fundCode})` });
+    wx.setNavigationBarTitle({ title: `${name}(${this.data.fundCode}) 估值` });
   },
 
   // 首次渲染完成后自动调起 scroll-view 下拉刷新动画（过早调起 refresher 未挂载，无效）
@@ -521,6 +533,47 @@ Page({
       }
     } catch (e) { console.error("检查自选失败:", e); }
   },
+  // R1 关注 CTA（未持仓用户）：零门槛直接加自选，不弹分组选择（搜索落地的第一动作
+  // 不能被表单打断；分组整理留给之后在自选页做）。成功即拉起订阅授权（"存下东西"的
+  // 时刻授权意愿最高），拒绝/频控静默。取消关注直连 remove。
+  async onFollowCta() {
+    const { fundCode, fundName, followed } = this.data;
+    try {
+      if (followed) {
+        const res = await api.watchlistRemove(fundCode);
+        if (res.result && res.result.code === 0) {
+          this.setData({ followed: false });
+          wx.showToast({ title: "已取消关注", icon: "none" });
+        } else {
+          wx.showToast({ title: "操作失败", icon: "none" });
+        }
+        return;
+      }
+      const res = await api.watchlistAdd(fundCode, fundName);
+      if (res.result && res.result.code === 0) {
+        this.setData({ followed: true });
+        recent.addFund(fundCode, fundName);
+        wx.showToast({ title: "已关注", icon: "success" });
+        subscribe.requestAuth("fund_detail_follow");
+      } else {
+        wx.showToast({ title: (res.result && res.result.msg) || "操作失败", icon: "none" });
+      }
+    } catch (e) {
+      wx.showToast({ title: "网络错误，请重试", icon: "none" });
+    }
+  },
+
+  // R2 净值更新提醒（"存下东西"后的回访钩子；拒绝/频控由 subscribe 内部静默处理）
+  onRemindNav() {
+    subscribe.requestAuth("fund_detail_nav");
+  },
+
+  // 估值/数据加载失败重试：清错误态重走 fetchAll
+  onRetryDetail() {
+    this.setData({ loading: true, loadError: false, errorMsg: "" });
+    this.fetchAll();
+  },
+
   async onToggleFollow() {
     const { fundCode, fundName, followed } = this.data;
     try {
@@ -610,8 +663,16 @@ Page({
     // 只看 estSource 的话那段时间会算回上一交易日涨幅，"--" 只活一帧
     const noTodayEst = marketTime.marketPhase() !== "closed" && !isNavUpdated &&
       (this.data.estSource === "nav" || this.data.estimatedChangeRate == null);
+    // R2 估值兜底文案：盘后/休市/未持仓时给出定格说明（估值卡不空白、不误标"今日"）
+    let estFrozenText = "";
+    if (!showEstimate && !(this.data.hasHolding && this.data.holdingData)) {
+      if (isNavUpdated) estFrozenText = "今日净值已更新";
+      else if (marketTime.marketPhase() === "afterClose") estFrozenText = "今日估值已收盘定格 · 今晚 21:30 左右更新净值";
+      else if (marketTime.isTradingDay(marketTime.bjDateStr())) estFrozenText = "今日估值 9:25 后更新";
+      else estFrozenText = "休市中 · 估值已定格，下个交易日 9:25 更新";
+    }
     this.setData({
-      isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst,
+      isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
       estimatedChangeRateText: noTodayEst ? "--" : rateText(this.data.estimatedChangeRate),
       displayChangeRateText: noTodayEst ? "--" : rateText(displayChangeRate),
     });
@@ -782,11 +843,48 @@ Page({
       volatility: vol != null ? vol : '--',
       sharpe: sharpe != null ? sharpe : '--',
     } : null;
+    // R8 水下时间/最长被套：官方日增长率逐日复利重构净值（消除分红除息假回撤，同 review 页
+    // 口径），时间升序后扫描"低于运行峰值"的天数占比与最长连续段。窗口与风险指标一致（近一年）
+    const underwaterMetrics = (() => {
+      const chrono = [];
+      let prevAdj = null;
+      riskWindow.slice().reverse().forEach((d) => {
+        let adj = d.nav;
+        if (prevAdj != null) {
+          if (typeof d.changeRate === "number") adj = prevAdj * (1 + d.changeRate / 100);
+          else if (prevAdj > 0) adj = prevAdj * (d.nav / prevAdj);
+          else adj = prevAdj;
+        }
+        if (!(adj > 0)) return;
+        chrono.push({ date: d.date, adj });
+        prevAdj = adj;
+      });
+      if (chrono.length < 60) return null; // 数据不足（新基金）整块不渲染
+      let peak = 0, underDays = 0, maxStreak = 0, streak = 0, curStart = "", bestStart = "", bestEnd = "";
+      chrono.forEach((p) => {
+        if (p.adj > peak) peak = p.adj;
+        if (p.adj < peak) {
+          underDays++;
+          streak++;
+          if (!curStart) curStart = p.date;
+          if (streak > maxStreak) { maxStreak = streak; bestStart = curStart; bestEnd = p.date; }
+        } else { streak = 0; curStart = ""; }
+      });
+      const last = chrono[chrono.length - 1];
+      const underwaterNow = last.adj < peak;
+      return {
+        pct: Math.round((underDays / chrono.length) * 100),
+        maxStreak,
+        range: bestStart ? `${bestStart.slice(5)} → ${bestEnd.slice(5)}` : "",
+        underwaterNow,
+        recoverPct: underwaterNow ? +(((peak / last.adj) - 1) * 100).toFixed(2) : null,
+      };
+    })();
     this.setData({
       todayReturn: displayChangeRate != null ? displayChangeRate : (r.day || 0),
       weekReturn: r.week, monthReturn: r.month, threeMonthReturn: r.threeMonth,
       sixMonthReturn: r.sixMonth, yearReturn: r.year, threeYearReturn: r.threeYear,
-      riskMetrics,
+      riskMetrics, underwaterMetrics,
     });
   },
 

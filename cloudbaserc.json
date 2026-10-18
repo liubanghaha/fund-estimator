@@ -76,6 +76,11 @@
           "name": "weeklyBriefTimer",
           "type": "timer",
           "config": "0 0 10 * * 6 *"
+        },
+        {
+          "name": "monthlyCheckupTimer",
+          "type": "timer",
+          "config": "0 0 9 1 * * *"
         }
       ],
       "permissions": {
@@ -310,6 +315,12 @@
           "config": "0 30 5 * * * *"
         }
       ]
+    },
+    {
+      "name": "portfolioAttribution",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main"
     }
   ]
 }

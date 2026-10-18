@@ -31,6 +31,7 @@ const TEMPLATE_ID_FUND = "A7Zd_LbOzmJA5je39KfBpqHMUH-QB6Wn156Fo51KS7Q";
 const SCENE = "closing_brief";          // 场景标识：收盘小结（subscriptions 按多场景设计，后续净值播报/定投提醒共用本集合）
 const PAGE_PORTFOLIO = "subpackages/analysis/pages/profit-detail/index"; // 收益类推送落地：收益走势页
 const PAGE_FUND = "subpackages/analysis/pages/fund-detail/index";        // 单基金提醒落地：基金详情页
+const PAGE_ANALYSIS = "subpackages/analysis/pages/correlation-matrix/index"; // 持仓体检月报落地：资产分析页
 const MINI_STATE = "formal";            // formal | trial | developer，开发验证期改 trial
 const BATCH_SIZE = 50;                  // 分批发送，规避 subscribeMessage 接口频控
 const DRY_RUN_LIMIT = 5;                // dryRun 只跑前 5 人，够验证文案即可
@@ -51,6 +52,7 @@ exports.main = async (event = {}) => {
       if (event.TriggerName === "navBriefTimer") return await runNavBrief(false, false);
       if (event.TriggerName === "peAlertTimer") return await runPeAlerts(false, false);
       if (event.TriggerName === "weeklyBriefTimer") return await runWeeklyBrief(false);
+      if (event.TriggerName === "monthlyCheckupTimer") return await runMonthlyCheckup(false);
       return await runBriefing(false, false);
     }
     if (event.action === "auth") return await handleAuth(event);
@@ -66,6 +68,7 @@ exports.main = async (event = {}) => {
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
     if (event.action === "peAlerts") return await runPeAlerts(!!event.force, !!event.dryRun);
     if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);
+    if (event.action === "monthlyCheckup") return await runMonthlyCheckup(!!event.dryRun);
     return await runBriefing(!!event.dryRun, !!event.force);
   } catch (e) {
     console.error("[dailyBriefing] 失败:", e.message);
@@ -492,6 +495,80 @@ async function handleLogInfo(logId) {
 }
 
 // ---- 定时主流程：收盘小结 ----
+// 持仓体检月报（R9，每月 1 号 09:00 monthlyCheckupTimer）：把资产分析里的"体检"数据
+// （集中度/持仓只数/本月操作）主动送一次，让 2% 的主动触达变成月度仪式。
+// 共用 BRIEF 额度池与记账/查重逻辑（不新增推送条数纪律）；无持仓不推送；
+// 额度不足走 dry_run 记账不报错；文案纯数据陈述（合规红线 #2/#4/#5）。
+async function runMonthlyCheckup(dryRun) {
+  const today = td.bjDateStr();
+  if (!TEMPLATE_ID_BRIEF) return { code: -1, msg: "TEMPLATE_ID_BRIEF 未配置" };
+  // 当日查重：cron 重火/手动重试不双发
+  const firedLogs = await readAll("push_logs", { scene: SCENE, date: today, status: "sent", kind: "monthly_checkup" }, ["_openid"]);
+  const firedSet = new Set(firedLogs.map(l => l._openid));
+
+  const buckets = await loadQuotaBuckets(dryRun);
+  const subs = briefRecipients(buckets, dryRun);
+  const holdings = await readAll("holdings", {}, ["_openid", "fundCode", "fundName", "marketValue"]);
+  const byUser = {};
+  holdings.forEach(h => {
+    if (!h._openid || !h.fundCode) return;
+    (byUser[h._openid] = byUser[h._openid] || []).push(h);
+  });
+  const targets = subs.filter(s => (byUser[s._openid] || []).length > 0 && !firedSet.has(s._openid));
+  if (targets.length === 0) return { code: 0, msg: "无可推送用户" };
+
+  const token = await getAccessToken();
+  const monthStart = today.slice(0, 8) + "01";
+  let sent = 0, failed = 0, skipped = 0, dry = 0;
+  const started = Date.now();
+  for (const sub of targets) {
+    // 发送预算 100s：超预算转 dry_run 记账（不丢账、不报错），次日不再重发（按月一次性）
+    if (!dryRun && Date.now() - started > 100000) { dry++; continue; }
+    const list = (byUser[sub._openid] || []).map(h => ({ ...h, mv: h.marketValue || 0 })).filter(h => h.mv > 0).sort((a, b) => b.mv - a.mv);
+    const totalMv = list.reduce((s2, h) => s2 + h.mv, 0);
+    if (!(totalMv > 0)) { skipped++; continue; }
+    const quota = ((buckets[sub._openid] || {}).brief) || 0;
+    const isDry = dryRun || quota < 1; // 额度不足降级 dry_run 记账（需求硬约束 3）
+    // 集中度：前三大持仓占比（档位标签为分档陈述：≥60 偏高 / 40-60 无标 / <40 分散）
+    const top3 = list.slice(0, 3).reduce((s2, h) => s2 + h.mv, 0) / totalMv * 100;
+    const band = top3 >= 60 ? "(偏高)" : top3 >= 40 ? "" : "(分散)";
+    let ops = 0;
+    try {
+      const r = await db.collection("transactions").where({ _openid: sub._openid, date: _.gte(monthStart) }).count();
+      ops = r.total || 0;
+    } catch (e) { /* ignore */ }
+    const thing3 = `集中度${top3.toFixed(0)}%${band}·操作${ops}笔`.slice(0, 20);
+    const brief = {
+      thing1: { value: "韭菜估值宝" },
+      thing2: { value: "你的持仓体检报告" },
+      thing3: { value: thing3 },
+      time4: { value: _bjTimeStr() },
+    };
+    const kind = "monthly_checkup";
+    const logId = await createLog(sub._openid, today, SCENE, "", kind);
+    if (isDry) {
+      await db.collection("push_logs").add({ data: { _openid: sub._openid, scene: SCENE, date: today, status: "dry_run", kind, content: brief, tmplId: TEMPLATE_ID_BRIEF, sentAt: Date.now(), openedAt: null } });
+      dry++;
+      continue;
+    }
+    try {
+      const payload = buildBriefPayload(TEMPLATE_ID_BRIEF, brief);
+      const errcode = await sendSubscribe(token, sub._openid, `${PAGE_ANALYSIS}?src=push&lid=${logId}`, payload, TEMPLATE_ID_BRIEF);
+      if (errcode !== 0) throw Object.assign(new Error("subscribe/send errcode=" + errcode), { errCode: errcode });
+      await finishLog(logId, "sent", "");
+      await consumeQuota(sub._openid, TEMPLATE_ID_BRIEF);
+      sent++;
+    } catch (e) {
+      const errCode = e.errCode || (String(e.message).match(/43101/) ? 43101 : null);
+      if (errCode === 43101) await zeroQuota(sub._openid, TEMPLATE_ID_BRIEF);
+      await finishLog(logId, "failed", `${e.errCode || "ERR"} ${e.errMsg || e.message}`);
+      failed++;
+    }
+  }
+  console.log(`[monthlyCheckup] targets=${targets.length} sent=${sent} failed=${failed} skipped=${skipped} dry=${dry}`);
+  return { code: 0, sent, failed, skipped, dry };
+}
+
 async function runBriefing(dryRun, force) {
   const today = td.bjDateStr();
   if (!dryRun && !force && !td.isTradingDay(today)) {

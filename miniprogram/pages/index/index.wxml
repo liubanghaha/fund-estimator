@@ -65,12 +65,42 @@
       </view>
 
       <view wx:elif="{{holdings.length === 0}}" class="empty-state">
-        <view class="empty-desc">添加你的第一笔持仓，开始追踪收益</view>
-        <view class="empty-hint">支持APP持仓截图导入或手动搜索添加</view>
-        <text class="empty-demo-sub-tip">识别结果可能有偏差，请核对后保存</text>
+        <!-- R3 空态两态：完全空白 → 搜索+市场+最近查看；有自选 → 自选列表直出。两态都保留截图导入 -->
+        <view class="es-search-big" bind:tap="onSearch">🔍 输入基金代码或名称</view>
+
+        <view wx:if="{{emptyWlLoading}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+        <block wx:elif="{{emptyWlCount > 0}}">
+          <view class="es-section-title">我的自选</view>
+          <view class="es-wl-list">
+            <view class="es-wl-row" wx:for="{{emptyWlItems}}" wx:key="fundCode" bind:tap="onEmptyWlTap" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
+              <view class="es-wl-left">
+                <view class="es-wl-name">{{item.fundName}}</view>
+                <view class="es-wl-code">{{item.fundCode}}</view>
+              </view>
+              <view class="es-wl-right">
+                <view class="es-wl-nav">{{item.estimatedNav || '--'}}</view>
+                <view class="es-wl-chg {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}</view>
+              </view>
+            </view>
+          </view>
+        </block>
+        <block wx:else>
+          <view wx:if="{{emptyMarket}}" class="es-market">
+            <view class="es-section-title">今日市场</view>
+            <view class="es-market-line">沪深成交 {{emptyMarket.amountText}} · 上涨 {{emptyMarket.up}} / 下跌 {{emptyMarket.down}}</view>
+            <text class="es-market-link" bind:tap="onGoMarket">看板块 ›</text>
+          </view>
+          <view wx:if="{{emptyRecent.length}}" class="es-recent">
+            <view class="es-section-title">最近查看</view>
+            <view class="es-recent-row" wx:for="{{emptyRecent}}" wx:key="code">
+              <view class="es-recent-name" bind:tap="onEmptyWlTap" data-code="{{item.code}}" data-name="{{item.name}}">{{item.name}}<text class="es-recent-code">{{item.code}}</text></view>
+              <text class="es-recent-follow {{followMapRecent[item.code] ? 'followed' : ''}}" catch:tap="onFollowRecent" data-code="{{item.code}}" data-name="{{item.name}}">{{followMapRecent[item.code] ? '✓ 已关注' : '⭐ 关注'}}</text>
+            </view>
+          </view>
+        </block>
+
         <view class="empty-btns">
-          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图添加</button>
-          <button class="login-btn secondary" bind:tap="onSearch">🔍 搜索添加</button>
+          <button class="login-btn" bind:tap="onScreenshotAdd">📷 截图导入持仓</button>
         </view>
       </view>
 
@@ -195,6 +225,19 @@
           <view wx:if="{{platformRows.length && platformRows[platformRows.length-1].unassigned}}" class="ps-tip">「未分配」的持仓可以长按列表行 →「设置账户」归入某个账户</view>
         </view>
 
+        <!-- R7 今日归因：基金涨跌 × 仓位权重，纯数据陈述；非交易日/盘前不出现 -->
+        <view wx:if="{{attrCard}}" class="attr-card">
+          <view class="attr-head" bind:tap="onToggleAttr">
+            <text class="attr-title">🧭 今日归因</text>
+            <text class="attr-total {{attrCard.totalCls}}">{{attrCard.totalText}}</text>
+            <text class="attr-arrow">{{attrExpanded ? '⌃' : '⌄'}}</text>
+          </view>
+          <block wx:if="{{attrExpanded}}">
+            <view wx:if="{{attrCard.dragText}}" class="attr-row"><text class="attr-k">拖累最多</text><text class="attr-v">{{attrCard.dragText}}</text></view>
+            <view wx:if="{{attrCard.pullText}}" class="attr-row"><text class="attr-k">拉动最多</text><text class="attr-v">{{attrCard.pullText}}</text></view>
+            <view class="attr-note">按持仓占比归因，只统计当日已发生的涨跌</view>
+          </block>
+        </view>
         <view wx:if="{{displayHoldings.length > 0 && activePlatform !== 'summary'}}" class="holdings-section">
           <scroll-view class="table-scroll" scroll-x show-scrollbar="{{false}}" enable-flex>
             <view class="table-inner">

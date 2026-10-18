@@ -21,3 +21,5 @@
 .item-name{font-size:30rpx;color:#333}
 .item-code{font-size:24rpx;color:#999;display:block;margin-top:8rpx}
 .item-arrow{font-size:28rpx;color:#CCC}
+.item-follow{flex-shrink:0;font-size:24rpx;color:var(--primary);border:1rpx solid var(--primary);border-radius:24rpx;padding:6rpx 20rpx}
+.item-follow.followed{color:#999;border-color:#DDD}

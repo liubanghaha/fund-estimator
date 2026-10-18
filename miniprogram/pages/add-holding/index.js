@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const track = require("../../utils/track");
+const subscribe = require("../../utils/subscribe");
 const marketTime = require("../../utils/market-time");
 
 // 操作归因枚举（可选单选，纯记录无建议，默认不选）：与云函数 manageTransaction 白名单保持一致
@@ -362,6 +363,9 @@ Page({
       wx.removeStorageSync("fee_cache_v1"); // 持仓变化→费用账单（市值口径）需重算
         wx.setStorageSync("portfolio_force_refresh", true);
 
+        // R4：存下持仓的成功时刻 = 订阅授权意愿最高（在用户点击回调链内同步调用，
+        // 不能进 setTimeout；拒绝/频控由 subscribe 内部处理，静默）
+        if (d.added > 0) { try { subscribe.requestAuth("add_holding"); } catch (e) { /* ignore */ } }
         const totalSkipped = (d.skippedList || []).length || d.skipped || 0;
         if (d.added > 0 && totalSkipped > 0) {
           const codeList = (d.skippedList || []).map(s => `${s.name || s.code} 已存在`).join("\n");

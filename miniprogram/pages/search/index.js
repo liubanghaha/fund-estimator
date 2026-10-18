@@ -1,8 +1,9 @@
 const api = require("../../utils/api");
 const track = require("../../utils/track");
+const recent = require("../../utils/recent");
 const HISTORY_KEY = "search_history"; // 搜索历史（最多 10 条，去重、新在前）
 Page({
-  data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false, history: [], historyVisible: false, fromAdd: false },
+  data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false, history: [], historyVisible: false, fromAdd: false, followMap: {} },
   onLoad(options) {
     // 仅带 source=add（如添加持仓流程选基金）时结果项显示「添加持仓」按钮，正常入口行为不变
     if (options.source === "add") this.setData({ fromAdd: true });
@@ -11,7 +12,16 @@ Page({
       wx.nextTick(() => this.onSearch());
     }
   },
-  onShow() { this.setData({ theme: wx.getStorageSync("theme") || "red", ready: true }); },
+  onShow() {
+    this.setData({ theme: wx.getStorageSync("theme") || "red", ready: true });
+    // R3-b：初始化结果行的关注态（一次拉自选列表建 map，避免逐个 watchlistCheck）
+    api.watchlistList().then((res) => {
+      if (!res.result || res.result.code !== 0) return;
+      const followMap = {};
+      (res.result.data || []).forEach(w => { if (w.fundCode) followMap[w.fundCode] = true; });
+      this.setData({ followMap });
+    }).catch(() => {});
+  },
   onInput(e) { this.setData({ keyword: e.detail.value }); },
   onInputFocus() {
     // 聚焦且输入为空时展示搜索历史
@@ -69,7 +79,26 @@ Page({
   },
   onTapFund(e) {
     const { code, name } = e.currentTarget.dataset;
+    recent.addFund(code, name); // R6：点进详情即记入「最近查看」
     wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}` });
+  },
+
+  // R3-b：结果行直接关注（catch 阻止冒泡，不跳详情）；成功后写入最近查看并更新按钮态
+  async onFollowTap(e) {
+    const { code, name } = e.currentTarget.dataset;
+    if (this.data.followMap[code]) return;
+    try {
+      const res = await api.watchlistAdd(code, name);
+      if (res.result && res.result.code === 0) {
+        recent.addFund(code, name);
+        this.setData({ [`followMap.${code}`]: true });
+        wx.showToast({ title: "已加自选", icon: "success" });
+      } else {
+        wx.showToast({ title: (res.result && res.result.msg) || "操作失败", icon: "none" });
+      }
+    } catch (err) {
+      wx.showToast({ title: "网络错误，请重试", icon: "none" });
+    }
   },
   // 结果项「添加持仓」：跳添加持仓页并预填基金（add-holding onLoad 支持 fundCode/fundName 参数）
   onAddHolding(e) {

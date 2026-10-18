@@ -294,3 +294,4 @@
 .mr-profit.up{color:var(--up)}
 .mr-profit.down{color:#2E8B57}
 .mr-arrow{color:#CCC;font-size:28rpx;flex-shrink:0}
+.btn-followed{opacity:.75}

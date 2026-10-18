@@ -1,0 +1,9 @@
+{
+  "name": "portfolioAttribution",
+  "version": "1.0.0",
+  "description": "今日归因：持仓基金涨跌按仓位权重归因",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}
