@@ -1260,6 +1260,10 @@ Page({
       const items = (res.result && res.result.code === 0 && res.result.data) || [];
       this.setData({ emptyWlLoaded: true, emptyWlCount: items.length });
       if (items.length > 0) {
+        // 先用自选本身的数据占位渲染（估值列先 "--"），避免"我的自选"标题出来但列表空白等估值
+        this.setData({ emptyWlItems: items.map((w) => ({
+          fundCode: w.fundCode, fundName: w.fundName, estimatedNav: null, displayChangeRate: null, displayChangeRateText: "--",
+        })) });
         const codes = items.map(w => w.fundCode);
         const estRes = await api.batchFetchEstimate(codes).catch(() => null);
         const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
