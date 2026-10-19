@@ -79,6 +79,12 @@ Page({
   },
   onTapFund(e) {
     const { code, name } = e.currentTarget.dataset;
+    // 东财搜索混入美股/ETF（代码非 6 位数字，如 TSLA/CRSH）：本产品只做基金，
+    // 这类结果不进详情页（详情页数据源均为基金接口，进入只会报错）
+    if (!/^\d{6}$/.test(String(code || ""))) {
+      wx.showToast({ title: "仅支持公募基金", icon: "none" });
+      return;
+    }
     recent.addFund(code, name); // R6：点进详情即记入「最近查看」
     wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}` });
   },
@@ -86,6 +92,7 @@ Page({
   // R3-b：结果行直接关注（catch 阻止冒泡，不跳详情）；成功后写入最近查看并更新按钮态
   async onFollowTap(e) {
     const { code, name } = e.currentTarget.dataset;
+    if (!/^\d{6}$/.test(String(code || ""))) return; // 非基金代码（美股/ETF）不提供关注
     if (this.data.followMap[code]) return;
     try {
       const res = await api.watchlistAdd(code, name);

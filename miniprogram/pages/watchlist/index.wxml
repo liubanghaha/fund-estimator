@@ -108,7 +108,7 @@
               <text wx:if="{{(activeGroup === 'all' || activeGroup === 'holding') && item.group}}" class="group-tag">{{item.group}}</text>
             </view>
           </view>
-          <view class="t-cell t-est"><text class="pct {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}</text></view>
+          <view class="t-cell t-est"><text class="pct {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRateText}}</text></view>
           <view class="t-cell"><text class="pct {{perfMap[item.fundCode].addedCls}}">{{perfMap[item.fundCode].addedText || '--'}}</text></view>
           <view class="t-cell"><text class="pct {{perfMap[item.fundCode].w1Cls}}">{{perfMap[item.fundCode].w1Text || '--'}}</text></view>
           <view class="t-cell"><text class="pct {{perfMap[item.fundCode].m1Cls}}">{{perfMap[item.fundCode].m1Text || '--'}}</text></view>

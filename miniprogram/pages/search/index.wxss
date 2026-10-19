@@ -23,3 +23,5 @@
 .item-arrow{font-size:28rpx;color:#CCC}
 .item-follow{flex-shrink:0;font-size:24rpx;color:var(--primary);border:1rpx solid var(--primary);border-radius:24rpx;padding:6rpx 20rpx}
 .item-follow.followed{color:#999;border-color:#DDD}
+.item-nonfund{flex-shrink:0;font-size:22rpx;color:#CCC;border:1rpx solid #EEE;border-radius:20rpx;padding:4rpx 14rpx}
+.item-nonfund{flex-shrink:0;font-size:22rpx;color:#CCC;border:1rpx solid #EEE;border-radius:20rpx;padding:4rpx 14rpx}

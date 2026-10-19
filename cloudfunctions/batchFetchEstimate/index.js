@@ -191,17 +191,20 @@ exports.main = async (event) => {
         : ((estimatedChangeRate != null && nav != null)
           ? +(nav * (1 + estimatedChangeRate / 100)).toFixed(4)
           : null);
+      // 涨跌幅输出统一两位小数：新浪原始值是 4 位（如 -1.0561），自算/净值路径是 2 位，
+      // 直接拼到列表会同一列混着 2/4 位（与 getPortfolio.todayChangeRate 同口径）
+      const rate2 = (v) => (v == null || !isFinite(+v) ? null : +(+v).toFixed(2));
       data[code] = {
         fundCode: code,
         fundName: "",
         nav,
         estimatedNav,
-        estimatedChangeRate,
+        estimatedChangeRate: rate2(estimatedChangeRate),
         // 今日未出估值（estimatedChangeRate 为 null）→ displayChangeRate 也留 null，
         // 列表显示 --；否则 selectChangeRate 会回退成上一交易日涨幅（假"今日"）
         displayChangeRate: estimatedChangeRate == null
           ? null
-          : selectChangeRate(nav, em.actualNav, estimatedChangeRate, em.actualChangeRate),
+          : rate2(selectChangeRate(nav, em.actualNav, estimatedChangeRate, em.actualChangeRate)),
         estimateTime,
         source,
       };

@@ -12,6 +12,16 @@ function isTradingTime() {
   return marketTime.marketPhase() === "trading" && !marketTime.isLunchBreak();
 }
 
+// 涨跌幅展示串：固定两位小数（0.8 → +0.80%），服务端已归一到两位数值，
+// 但 Number 会丢掉末尾 0，所以显示文本必须在 JS 里算好（WXML 不能调方法）
+function rateText(v) {
+  if (v == null || v === "") return "--";
+  const n = parseFloat(v);
+  if (!isFinite(n)) return "--";
+  if (Math.abs(n) < 0.005) return "0.00%";
+  return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
+}
+
 Page({
   data: {
     watchlist: [],
@@ -578,9 +588,13 @@ Page({
       if (cached && !marketTime.cacheIsToday(cached.ts)) return;
       if (cached && cached.watchlist && cached.watchlist.length > 0) {
         this._wlCache = cached;
+        // 旧版本缓存没有 displayChangeRateText（两位数展示串）：读缓存时补齐，避免开页空白
+        const cachedList = cached.watchlist.map((w) => (
+          w.displayChangeRateText !== undefined ? w : { ...w, displayChangeRateText: rateText(w.displayChangeRate) }
+        ));
         // 计数放进 setData 回调：读的必须是落地后的 watchlist（旧写法在 setData 前算，
         // 读到旧数组导致 tab 计数定格全 0）
-        this.setData({ watchlist: cached.watchlist, loaded: true }, () => {
+        this.setData({ watchlist: cachedList, loaded: true }, () => {
           this.updateGroupCounts();
         });
       }
@@ -658,6 +672,7 @@ Page({
             nav: e ? e.nav : null,
             estimatedNav: e ? e.estimatedNav : null,
             displayChangeRate: e ? e.displayChangeRate : null,
+            displayChangeRateText: rateText(e ? e.displayChangeRate : null),
             estimateTime: e ? e.estimateTime : null,
           };
         });
@@ -835,6 +850,7 @@ Page({
           // 涨幅显示 -- 、"估"标与旧值一起清掉，不能被上一轮的值兜住
           estimatedNav: e.estimatedNav !== undefined ? e.estimatedNav : w.estimatedNav,
           displayChangeRate: e.displayChangeRate !== undefined ? e.displayChangeRate : w.displayChangeRate,
+          displayChangeRateText: e.displayChangeRate !== undefined ? rateText(e.displayChangeRate) : w.displayChangeRateText,
           estimateTime: e.estimateTime !== undefined ? e.estimateTime : w.estimateTime,
         };
       });

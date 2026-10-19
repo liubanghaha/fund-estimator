@@ -37,7 +37,7 @@ async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
       .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
       .field({ date: true, estRate: true, actualRate: true, diff: true })
       .limit(60).get();
-    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number");
+    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number" && typeof r.estRate === "number");
     if (rows.length === 0) return null;
     const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
     // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
@@ -45,7 +45,12 @@ async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
     const hitRate = dirRows.length >= 5
       ? Math.round((dirRows.filter((r) => (r.estRate >= 0) === (r.actualRate >= 0)).length / dirRows.length) * 100)
       : null;
-    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate };
+    // 明细随聚合一并返回：详情页误差行点击展开 30 天对账，轮询走本接口（fetchFundOverview 同款），
+    // 不带 log 时页面每次刷新都会把已展开的明细清空
+    const log = rows
+      .map((r) => ({ date: r.date, estRate: r.estRate, actualRate: r.actualRate, diff: +r.diff.toFixed(2) }))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate, log };
   } catch (e) {
     console.warn("[fetchFundEstimate] 误差台账读取失败:", e.message);
     return null;

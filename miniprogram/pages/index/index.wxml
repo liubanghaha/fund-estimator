@@ -79,7 +79,7 @@
               </view>
               <view class="es-wl-right">
                 <view class="es-wl-nav">{{item.estimatedNav || '--'}}</view>
-                <view class="es-wl-chg {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRate != null ? (item.displayChangeRate > 0 ? '+' : '') + item.displayChangeRate + '%' : '--'}}</view>
+                <view class="es-wl-chg {{item.displayChangeRate > 0 ? 'up' : item.displayChangeRate < 0 ? 'down' : ''}}">{{item.displayChangeRateText}}</view>
               </view>
             </view>
           </view>

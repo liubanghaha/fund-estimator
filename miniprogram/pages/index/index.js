@@ -1247,7 +1247,11 @@ Page({
   // R3 空态数据：自选两态判定 + 今日市场（纯统计，失败整块隐藏）+ 最近查看（本地）
   async _loadEmptyState() {
     if (this.data.holdings.length > 0) return;
+    if (this._emptyLoading) return; // 防重入（onShow 与 fetchPortfolio 可能同时触发）
+    this._emptyLoading = true;
     this.setData({ emptyWlLoading: true });
+    // 市场概览与自选检查并行：概览最慢（2-5s），不能让它拖延"加载中"关闭
+    const marketPromise = api.fetchMarketOverview().catch(() => null);
     try {
       const res = await api.watchlistList();
       const items = (res.result && res.result.code === 0 && res.result.data) || [];
@@ -1258,20 +1262,28 @@ Page({
         const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
         this.setData({ emptyWlItems: items.map((w) => {
           const e = estData[w.fundCode];
-          return { fundCode: w.fundCode, fundName: w.fundName, estimatedNav: e ? e.estimatedNav : null, displayChangeRate: e ? e.displayChangeRate : null };
+          const rate = e && e.displayChangeRate != null ? parseFloat(e.displayChangeRate) : NaN;
+          return {
+            fundCode: w.fundCode, fundName: w.fundName,
+            estimatedNav: e ? e.estimatedNav : null,
+            displayChangeRate: e ? e.displayChangeRate : null,
+            // 固定两位小数展示（0.8 → +0.80%）：WXML 不能调方法，这里算好文本
+            displayChangeRateText: isFinite(rate) ? (rate > 0 ? "+" : "") + rate.toFixed(2) + "%" : "--",
+          };
         }) });
       }
     } catch (e) { this.setData({ emptyWlLoaded: true, emptyWlCount: 0 }); }
-    try {
-      const res = await api.fetchMarketOverview();
-      const d = res && res.result && res.result.code === 0 && res.result.data;
-      const ov = d && d.overview;
-      if (ov && (ov.shAmount != null || ov.szAmount != null)) {
-        const total = ((ov.shAmount || 0) + (ov.szAmount || 0)) / 1e12;
-        this.setData({ emptyMarket: { amountText: total.toFixed(2) + " 万亿", up: Math.round(ov.up || 0), down: Math.round(ov.down || 0) } });
-      }
-    } catch (e) { /* 静默隐藏 */ }
-    this.setData({ emptyRecent: recent.getRecentFunds(3) });
+    // 自选态确定即刻关 loading + 出最近查看（此前要等市场概览返回，首屏"加载中"挂数秒）
+    this.setData({ emptyWlLoading: false, emptyRecent: recent.getRecentFunds(3) });
+    this._emptyLoading = false;
+    if (this.data.emptyWlCount > 0) return; // 有自选：不展示市场块
+    const res = await marketPromise;
+    const d = res && res.result && res.result.code === 0 && res.result.data;
+    const ov = d && d.overview;
+    if (ov && (ov.shAmount != null || ov.szAmount != null)) {
+      const total = ((ov.shAmount || 0) + (ov.szAmount || 0)) / 1e12;
+      this.setData({ emptyMarket: { amountText: total.toFixed(2) + " 万亿", up: Math.round(ov.up || 0), down: Math.round(ov.down || 0) } });
+    }
   },
   onScreenshotAdd() {
     wx.chooseMedia({

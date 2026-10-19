@@ -346,7 +346,11 @@ Page({
     if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "", accLog: [] };
     const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
     const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
-    const fmt = (v) => (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+    const fmt = (v) => {
+      const n = +v;
+      if (!isFinite(n)) return "--";
+      return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
+    };
     const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => ({
       date: (r.date || "").slice(5),
       estText: fmt(r.estRate),
