@@ -559,7 +559,10 @@ Page({
     try {
       const cur = getApp().getVersion();
       const seen = wx.getStorageSync("update_seen_version");
-      const isReturning = !!wx.getStorageSync(CACHE_KEY); // 有持仓缓存 = 老用户
+      // 老用户判定必须有"持仓缓存带数据"：只看 CACHE_KEY 存在不够——新用户/清缓存的用户
+      // 首次请求成功后也会写缓存（holdings 为空），下一次进页面就弹更新日志，明显不对
+      const cached = wx.getStorageSync(CACHE_KEY) || {};
+      const isReturning = !!(cached.holdings && cached.holdings.length > 0);
       if ((isReturning || seen) && seen !== cur) {
         const log = (getApp().getChangelog() || []).find(c => c.version === cur) || (getApp().getChangelog() || [])[0];
         if (log) this.setData({ showUpdateLog: true, updateVersion: log.version, updateItems: log.items });

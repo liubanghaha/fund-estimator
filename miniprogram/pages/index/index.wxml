@@ -54,7 +54,26 @@
         <text class="alert-text" wx:else>{{alertTriggered[0].fundName}} {{alertTriggered[0].type === 'up' ? '涨超' : '跌超'}}提醒<text wx:if="{{alertTriggered.length > 1}}"> 等{{alertTriggered.length}}项</text></text>
         <text class="alert-close" bind:tap="onDismissAlert">✕</text>
       </view>
-      <view wx:if="{{!dataReady && !loadError}}" class="loading-inline"><text class="loading-text">加载中...</text></view>
+      <!-- 首屏骨架：无本地缓存（新用户/清缓存）时先给页面结构，避免整屏"加载中"空白 -->
+      <view wx:if="{{!dataReady && !loadError}}" class="skeleton">
+        <view class="sk-card">
+          <view class="sk-line sk-w40"></view>
+          <view class="sk-line sk-big"></view>
+          <view class="sk-line sk-w70"></view>
+        </view>
+        <view class="sk-rows">
+          <view class="sk-row" wx:for="{{[1,2,3,4,5,6]}}" wx:key="*this">
+            <view class="sk-col">
+              <view class="sk-line sk-name"></view>
+              <view class="sk-line sk-sub"></view>
+            </view>
+            <view class="sk-col sk-right">
+              <view class="sk-line sk-val"></view>
+              <view class="sk-line sk-sub"></view>
+            </view>
+          </view>
+        </view>
+      </view>
 
       <view wx:elif="{{loadError}}" class="empty-state">
         <view class="empty-icon">🔌</view>

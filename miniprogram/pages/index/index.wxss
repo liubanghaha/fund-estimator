@@ -440,3 +440,20 @@
 
 .t-sort{font-size:20rpx;color:#999}
 .t-sort.sort-on{color:var(--primary);font-weight:600}
+
+/* ===== 首屏骨架屏（新用户/清缓存首开，替代整屏"加载中"） ===== */
+.skeleton{padding:0 24rpx}
+.sk-card{background:#FFF;border-radius:16rpx;padding:40rpx 32rpx;margin-bottom:20rpx}
+.sk-line{height:24rpx;border-radius:8rpx;background:#F0F0F0;margin-bottom:16rpx;animation:sk-pulse 1.4s ease-in-out infinite}
+.sk-big{height:64rpx;width:52%;margin:20rpx auto}
+.sk-w40{width:40%;margin-left:auto;margin-right:auto;height:20rpx}
+.sk-w70{width:70%;margin-left:auto;margin-right:auto;height:20rpx}
+.sk-rows{background:#FFF;border-radius:16rpx}
+.sk-row{display:flex;align-items:center;justify-content:space-between;padding:26rpx 28rpx;border-bottom:1rpx solid #F5F5F5}
+.sk-row:last-child{border-bottom:none}
+.sk-col{flex:1}
+.sk-right{display:flex;flex-direction:column;align-items:flex-end}
+.sk-name{width:56%;margin-bottom:12rpx}
+.sk-sub{width:32%;height:18rpx;margin-bottom:0}
+.sk-val{width:40%;margin-bottom:12rpx}
+@keyframes sk-pulse{0%,100%{opacity:1}50%{opacity:.45}}
