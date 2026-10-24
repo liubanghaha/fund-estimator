@@ -411,14 +411,15 @@ Page({
       }
     };
     renderGrouped();
-    INDICES.forEach((idx, i) => {
+    // 每只只请求一次：到数即增量重渲当前 tab，全部完成后统一返回供缓存写入
+    const promises = INDICES.map((idx, i) =>
       this._fetchIndexKline(idx.code, 2).catch(() => []).then((data) => {
         cards[i] = buildCard(idx, data);
-        renderGrouped(); // 每只到数即按分组重渲当前 tab
-      });
-    });
-    return Promise.all(INDICES.map((idx, i) => this._fetchIndexKline(idx.code, 2).catch(() => []))).then((datas) =>
-      datas.map((data, i) => buildCard(INDICES[i], data)));
+        renderGrouped();
+        return data;
+      })
+    );
+    return Promise.all(promises).then(() => cards);
   },
 
   onShareAppMessage() {

@@ -534,11 +534,13 @@ exports.main = async (event) => {
             db.collection("fund_temperatures").where({ date: day, signal: "high" }).count(),
           ]);
           const total = (lowRes.total || 0) + (midRes.total || 0) + (highRes.total || 0);
-          _tempDistCache = total > 0
-            ? { day, dist: { low: lowRes.total || 0, mid: midRes.total || 0, high: highRes.total || 0, total } }
-            : { day, dist: null };
+          // 只缓存非空分布：dist=null（当日温度还没产出，如凌晨 0-3 点）不写缓存——
+          // 否则 3:00 任务写出数据后，实例缓存仍服务 null 一整天
+          if (total > 0) {
+            _tempDistCache = { day, dist: { low: lowRes.total || 0, mid: midRes.total || 0, high: highRes.total || 0, total } };
+          }
         }
-        tempDistribution = _tempDistCache.dist;
+        tempDistribution = (_tempDistCache && _tempDistCache.day === day) ? _tempDistCache.dist : null;
       } catch (e) { console.warn("[getPortfolio] 温度分布计算失败:", e.message); }
     }
 
