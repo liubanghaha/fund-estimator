@@ -642,6 +642,14 @@ Page({
 
   async fetchWatchlist() {
     try {
+      // 估算预取（2026-10-24 优化）：此前 batchFetchEstimate 串行等 list 返回后再发，
+      // 首开多等一整段 RTT（实测冷启动 6s / 热 1.1s）。估算是按 codes 查的，而缓存里就有
+      // 上次的 codes——进函数立刻并行发起；list 回来后 codes 一致直接复用，不一致重发。
+      const cachedCodes = (this._wlCache && this._wlCache.watchlist || [])
+        .map(w => w.fundCode).filter(Boolean);
+      const estPromise = cachedCodes.length
+        ? api.batchFetchEstimate(cachedCodes).catch(() => null)
+        : null;
       // holdingList 与 list/groups 无依赖，三路并行（原串行多一轮 RTT）
       const [listRes, groupsRes] = await Promise.all([
         api.watchlistList(),
@@ -660,7 +668,14 @@ Page({
       if (listRes.result && listRes.result.code === 0 && ((listRes.result.data || []).length > 0)) {
         const items = listRes.result.data;
         const codes = items.map((w) => w.fundCode);
-        const estRes = await api.batchFetchEstimate(codes).catch(() => null);
+        let estRes = null;
+        if (estPromise) {
+          estRes = await estPromise;
+          const preCodes = cachedCodes.slice().sort().join(',');
+          const curCodes = codes.slice().sort().join(',');
+          if (preCodes !== curCodes) estRes = null; // 自选有增删：预取作废重发
+        }
+        if (!estRes) estRes = await api.batchFetchEstimate(codes).catch(() => null);
         const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
 
         const watchlist = items.map((w) => {
