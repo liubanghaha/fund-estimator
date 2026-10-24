@@ -271,6 +271,22 @@ exports.main = async (event) => {
     await db.collection("app_config").doc("temp_task_status").set({
       data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat }
     }).catch(() => {});
+
+    // 回测缓存自愈（2026-10-24 补，10-21~24 回测页空窗 4 天的教训）：温度产出正常后，
+    // 检查温度回测缓存是否已 >20h（=定时重算线过期，正常应每晚 20:30 重算一次）。
+    // 过期说明当晚 20:30 的重算失败/没跑——此刻温度数据刚刷新完毕正是重算的最佳时机，
+    // 顺手补一次（异步不阻塞本函数返回；失败仅记日志，等明晚 20:30 再试）
+    try {
+      const btCache = await db.collection("temp_backtest_cache").doc("temp_backtest_cache").get();
+      const btAge = Date.now() - ((btCache.data && btCache.data.computedAt) || 0);
+      if (btAge > 20 * 3600 * 1000) {
+        console.log(`[computeFundTemperature] 回测缓存已 ${Math.round(btAge / 3600000)}h 未更新，触发补算`);
+        cloud.callFunction({ name: "temperatureBacktest", data: { force: true } })
+          .then(() => console.log("[computeFundTemperature] 回测补算完成"))
+          .catch(e => console.error("[computeFundTemperature] 回测补算失败:", e.message));
+      }
+    } catch (e) { /* 缓存集合不存在等：交给 20:30 定时任务 */ }
+
     return { code: 0, data: { count: results.length, date: today, signalDist: dist } };
   } catch (e) {
     console.error("[computeFundTemperature] 异常:", e);
