@@ -124,8 +124,50 @@ async function handleAlertGet() {
   }, 0);
   const quotaNew = quotaOf(true);
   const quota = quotaNew + quotaOf(false);
+  // 名称补全：早期规则只存了 fundCode，客户端没缓存时只能显示裸代码（2026-10-22 反馈）。
+  // 在服务端按代码批量取名字并回写 alert_settings，客户端拿到就是带 name 的完整规则。
+  let settings = (doc && doc.settings) || {};
+  const missing = Object.keys(settings).filter((c) => /^\d{6}$/.test(c) && !(settings[c] && settings[c].name));
+  if (missing.length) {
+    const names = await fetchFundNames(missing);
+    const hits = Object.keys(names);
+    if (hits.length) {
+      const merged = {};
+      Object.keys(settings).forEach((c) => {
+        merged[c] = names[c] ? Object.assign({}, settings[c] || {}, { name: names[c] }) : settings[c];
+      });
+      settings = merged;
+      if (doc && doc._id) {
+        await db.collection("alert_settings").doc(doc._id).update({ data: { settings: merged, updatedAt: Date.now() } }).catch(() => {});
+      }
+    }
+  }
   // data=settings 保持向后兼容，globalOn 顶层返回（全局涨跌提醒开关）
-  return { code: 0, data: (doc && doc.settings) || {}, globalOn: !!(doc && doc.globalOn), quota, quotaNew, peCache: (doc && doc.peCache) || {} };
+  return { code: 0, data: settings, globalOn: !!(doc && doc.globalOn), quota, quotaNew, peCache: (doc && doc.peCache) || {} };
+}
+
+// 按基金代码批量取名称（东财 FundMNFInfo 支持一次传多只）。失败返回空对象，调用方按"没查到"处理
+function fetchFundNames(codes) {
+  return new Promise((resolve) => {
+    if (!codes || !codes.length) return resolve({});
+    const list = codes.slice(0, 50).join(",");
+    const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=50&plat=Iphone&appType=ttjj&product=EFund&Version=1&deviceid=1&Fcodes=${list}`;
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let buf = "";
+      res.on("data", (c) => { buf += c; });
+      res.on("end", () => {
+        try {
+          const out = {};
+          (JSON.parse(buf).Datas || []).forEach((d) => {
+            if (d && d.FCODE && d.SHORTNAME) out[d.FCODE] = d.SHORTNAME;
+          });
+          resolve(out);
+        } catch (e) { resolve({}); }
+      });
+    });
+    req.on("error", () => resolve({}));
+    req.setTimeout(8000, () => { req.destroy(); resolve({}); });
+  });
 }
 
 async function handleAlertSet({ settings, globalOn }) {

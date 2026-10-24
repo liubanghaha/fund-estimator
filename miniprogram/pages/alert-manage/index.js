@@ -36,30 +36,115 @@ Page({
     // 推送额度（提醒只消耗 FUND 池，必须看 quotaNew——合计值含播报额度，
     // 只授权过播报的用户会看到"有额度"实际提醒全跳过，2026-10-06 审查）
     wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
-      .then((r) => this.setData({ quota: ((r && r.result) || {}).quotaNew || 0, quotaLoaded: true }))
+      .then((r) => {
+        const res = (r && r.result) || {};
+        this.setData({ quota: res.quotaNew || 0, quotaLoaded: true });
+        // 云端回来的 settings 已带 name（服务端按代码补过）→ 覆盖本地并刷新列表，
+        // 之前这里只取了额度，返回的名字被丢掉了
+        const cloud = res.data || {};
+        const settings0 = wx.getStorageSync("alertSettings") || {};
+        let changed = false;
+        Object.keys(cloud).forEach((code) => {
+          const nm = cloud[code] && cloud[code].name;
+          if (!nm) return;
+          const cur = settings0[code] || {};
+          if (cur.name !== nm) {
+            settings0[code] = Object.assign({}, cur, { name: nm });
+            changed = true;
+          }
+        });
+        if (changed) {
+          wx.setStorageSync("alertSettings", settings0);
+          const nameOf = (code) => (settings0[code] && settings0[code].name) || "";
+          const rules = this.data.rules
+            .map((r) => (nameOf(r.fundCode) ? Object.assign({}, r, { fundName: nameOf(r.fundCode) }) : r))
+            .sort((a, b) => (a.fundName > b.fundName ? 1 : -1));
+          this.setData({ rules });
+        }
+      })
       .catch(() => this.setData({ quotaLoaded: true }));
     const globalOn = wx.getStorageSync("alertGlobalOn");
-    // 基金名优先取首页持仓缓存（alertSettings 里只有 fundCode）
-    const pc = wx.getStorageSync("portfolio_cache") || {};
+    // 基金名兜底顺序：规则里自带的名字（新规则会写）→ 首页持仓缓存 → 自选缓存 → 代码。
+    // 早先只查持仓缓存，卖出/仅自选的基金会退化成裸代码（2026-10-22 反馈：规则里有些是代码有些是名称）
     const nameMap = {};
-    (pc.holdings || []).forEach((h) => { nameMap[h.fundCode] = h.fundName; });
+    const wlCache = wx.getStorageSync("watchlist_cache") || {};
+    (wlCache.list || wlCache.watchlist || []).forEach((w) => {
+      if (w && w.fundCode && w.fundName) nameMap[w.fundCode] = w.fundName;
+    });
+    const pc = wx.getStorageSync("portfolio_cache") || {};
+    (pc.holdings || []).forEach((h) => { if (h && h.fundCode) nameMap[h.fundCode] = h.fundName; });
+    let needBackfill = false;
     const rules = Object.keys(settings).map((code) => {
       const s = settings[code] || {};
+      const name = s.name || nameMap[code] || "";
+      if (!s.name && name) needBackfill = true; // 老规则补名，下次同步回云端
       return {
         fundCode: code,
-        fundName: nameMap[code] || code,
+        fundName: name || code,
         upperText: s.upper > 0 ? "+" + s.upper + "%" : "不限",
         lowerText: s.lower < 0 ? s.lower + "%" : "不限",
         peAlert: !!s.peAlert,
         enabled: s.enabled !== false, // 向后兼容：旧规则缺 enabled 视为启用
       };
     }).sort((a, b) => (a.fundName > b.fundName ? 1 : -1));
+    if (needBackfill) {
+      const healed = {};
+      Object.keys(settings).forEach((code) => {
+        const s = settings[code] || {};
+        healed[code] = s.name ? s : { ...s, name: nameMap[code] || "" };
+      });
+      wx.setStorageSync("alertSettings", healed);
+      this._syncCloud(healed);
+    }
     this.setData({
       rules,
       // 初值与首页 data / 云端默认一致（false）；"" 表示从未设置过
       globalOn: globalOn !== "" && globalOn !== undefined ? !!globalOn : false,
       loading: false,
     });
+    // 本地两处缓存都没有名字的（已卖出、仅自选过、历史测试规则）→ 去服务端按代码查一次
+    // 查不到的（如 TEST01 这类测试规则）记一笔，避免每次进页面重复请求
+    const tried = wx.getStorageSync("alert_name_tried") || {};
+    const unknown = rules
+      .filter(r => (!r.fundName || r.fundName === r.fundCode) && !tried[r.fundCode])
+      .map(r => r.fundCode);
+    if (unknown.length) this._resolveNames(unknown);
+  },
+
+  // 按基金代码补名字：searchFund 支持 6 位代码查询，命中后回写本地 + 云端，
+  // 下次打开就是名字（2026-10-22 反馈：提醒规则里代码和名称混着显示）
+  async _resolveNames(codes) {
+    if (this._nameResolving) return;
+    this._nameResolving = true;
+    try {
+      const found = {};
+      await Promise.all((codes || []).filter(c => /^\d{6}$/.test(c)).map(async (code) => {
+        try {
+          const res = await api.searchFund(code);
+          const list = (res && res.result && res.result.data) || [];
+          const hit = list.find((x) => (x.fundCode || x.code) === code);
+          if (hit && hit.fundName) found[code] = hit.fundName;
+        } catch (e) { /* 单只失败不影响其它 */ }
+      }));
+      const keys = Object.keys(found);
+      // 没查到的记入 tried，下次不再请求
+      const tried = wx.getStorageSync("alert_name_tried") || {};
+      (codes || []).forEach(c => { if (!found[c]) tried[c] = 1; });
+      wx.setStorageSync("alert_name_tried", tried);
+      if (!keys.length) return;
+      const settings = wx.getStorageSync("alertSettings") || {};
+      keys.forEach((code) => {
+        settings[code] = Object.assign({}, settings[code] || {}, { name: found[code] });
+      });
+      wx.setStorageSync("alertSettings", settings);
+      this._syncCloud(settings);
+      const rules = this.data.rules
+        .map((r) => (found[r.fundCode] ? Object.assign({}, r, { fundName: found[r.fundCode] }) : r))
+        .sort((a, b) => (a.fundName > b.fundName ? 1 : -1));
+      this.setData({ rules });
+    } finally {
+      this._nameResolving = false;
+    }
   },
 
   _syncCloud(settings, globalOn) {

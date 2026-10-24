@@ -4,6 +4,7 @@ const chart = require("../../../../utils/chart");
 const marketTime = require("../../../../utils/market-time");
 const subscribe = require("../../../../utils/subscribe");
 const recent = require("../../../../utils/recent");
+const track = require("../../../../utils/track");
 
 const CACHE_PREFIX = "fund_detail_cache_";
 // 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
@@ -27,6 +28,9 @@ Page({
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
     isTrading: false,
+    bjToday: "",       // 北京时间今天（YYYY-MM-DD），用于判断个股行情是不是今日
+    priceLoading: false, // 首开时净值/估值还没到：显示"加载中…"而不是"-- + 未出估值"
+    holdStaleCount: 0, // 非今日行情的持仓数（>0 时表格顶部给提示）
     showEstimate: false, // 盘中且今日净值未公布：头部走估算口径（由 updateDisplay 计算）
     chartPeriod: '1M',
     chartTxMap: {},
@@ -121,6 +125,7 @@ Page({
     recent.addFund(options.fundCode, fundName);
     wx.setNavigationBarTitle({ title: `${fundName}(${options.fundCode}) 估值` });
     this._firstLoad = true;
+    this._t0 = Date.now(); // 详情页首开耗时埋点起点（perf_detail）
     const { windowWidth } = wx.getWindowInfo();
     const canvasW = windowWidth - 24;
     const canvasH = Math.round(canvasW * 0.53);
@@ -235,6 +240,8 @@ Page({
     try {
       // 缓存优先：命中即先渲染；缓存新鲜则跳过重请求，仅做轻量校验
       const cached = this._readCache();
+      const firstOpen = !(cached && cached.history && cached.history.length);
+      if (firstOpen) this.setData({ priceLoading: true });
       const fresh = this._skipCache ? false : this._restoreCache();
       this._skipCache = false;
       if (!fresh) {
@@ -252,13 +259,36 @@ Page({
           }
         } else {
           // 首次无缓存历史 → 全量概览（一次拿 260 天历史 + 估值 + 温度；档案/持仓由切 Tab 懒加载）
+          // 概览很重（260 天历史），先并行打一发轻量估值：头部卡的净值/涨跌/温度先出数，
+          // 历史与图表随后到（2026-10-22 反馈：第一次打开详情页慢，且期间显示"--/未出估值"）
+          api.fetchFundEstimate(this.data.fundCode).then((r) => {
+            // 传 { history: [] } 而不是 {}：_applyEstimate 里会读 cached.history[0] 判缓存断档
+            if (r && r.result && r.result.code === 0) {
+              this._applyEstimate(r.result.data, cached || { history: [] });
+              // 头部卡出数耗时（首开全量路径）：判断"慢"到底慢在估值还是历史
+              track.track("perf_detail", { stage: "est", ms: Date.now() - this._t0, firstOpen: 1 });
+            } else {
+              track.track("perf_detail", { stage: "est_fail", ms: Date.now() - this._t0, firstOpen: 1 });
+            }
+          }).catch(() => { track.track("perf_detail", { stage: "est_err", ms: Date.now() - this._t0, firstOpen: 1 }); });
           const [overviewRes] = await Promise.all([
-            api.fetchFundOverview(this.data.fundCode),
+            // 概览失败只丢"历史+图表"，不影响已经拿到的估值/风险指标；不让它把整页打成错误态
+            api.fetchFundOverview(this.data.fundCode).catch((e) => {
+              track.track("perf_detail", { stage: "overview_err", ms: Date.now() - this._t0, msg: String((e && e.message) || e).slice(0, 80) });
+              return null;
+            }),
             this.checkFollow().catch(() => {}),
             this.checkHolding().catch(() => {}),
             this.fetchTransactions().catch(() => {}),
           ]);
-          if (overviewRes.result && overviewRes.result.code === 0) {
+          const overviewOk = !!(overviewRes && overviewRes.result && overviewRes.result.code === 0);
+          track.track("perf_detail", {
+            stage: "overview", ms: Date.now() - this._t0,
+            ok: overviewOk ? 1 : 0,
+          });
+          // 失败只标记状态，由 WXML 决定形态：有数据→轻提示；没数据→整页错误+重试
+          if (!overviewOk) this.setData({ errorMsg: "刷新失败" });
+          if (overviewRes && overviewRes.result && overviewRes.result.code === 0) {
             const d = overviewRes.result.data;
             const actualCR = d.actualChangeRate != null ? d.actualChangeRate : this.data.actualChangeRate;
             const yesterdayNav = d.nav != null ? d.nav : this.data.nav;
@@ -305,14 +335,25 @@ Page({
       this.updateDisplay();
       this.enrichHoldingData();
       this._saveCache();
+      // 首屏数据全部就绪的总耗时：按 首开/有缓存 分开统计，线上取分位数看真实分布
+      track.track("perf_detail", {
+        stage: "total",
+        ms: Date.now() - this._t0,
+        firstOpen: firstOpen ? 1 : 0,
+        hasCache: cached && cached.history && cached.history.length ? 1 : 0,
+      });
       if (this.data.loading) {
-        this.setData({ loading: false }, () => this.drawChart());
+        this.setData({ loading: false, priceLoading: false }, () => this.drawChart());
       } else if (Date.now() >= (this._animUntil || 0)) {
         // 动画窗口内不重绘（见 _animUntil）；窗口过后照常静态重绘
         this.drawChart();
       }
     } catch (e) {
-      this.setData({ loading: false, errorMsg: "加载失败" });
+      console.error("[fund-detail] fetchAll 失败:", e);
+      try {
+        track.track("perf_detail", { stage: "fail", ms: Date.now() - this._t0, msg: String((e && e.message) || e).slice(0, 80) });
+      } catch (te) { /* 埋点自身异常不能拖垮错误兜底 */ }
+      this.setData({ loading: false, priceLoading: false, errorMsg: "刷新失败" });
     }
     this._fetchingAll = false;
   },
@@ -358,12 +399,19 @@ Page({
       diffText: fmt(r.diff).replace("%", "pp"),
       diffCls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
     }));
-    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog };
+    // 超过 9 行（约 405rpx）就固定高度改为内部滚动：30 天明细直接铺满正文会把
+    // 下面的风险指标/定投整块顶走，用户要划很久才能回去（2026-10-22）
+    const accLogStyle = accLog.length > 9 ? "height:405rpx" : "";
+    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog, accLogStyle, accLogCapped: accLog.length > 9 };
   },
 
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）
   _applyEstimate(e, cached) {
     const actualCR = e.actualChangeRate != null ? e.actualChangeRate : this.data.actualChangeRate;
+    // 净值与净值日期必须成对更新：只拿到 actualNav 而没拿到 actualDate 时若各自兜底，
+    // 会出现「净值是今天的、日期停在昨天」的混合态，进而让当日涨幅判成无数据、显示 "--"
+    // （2026-10-21 用户反馈：收盘后净值已更新，详情页当日涨幅仍是 --）
+    const hasNavPair = !!(e.actualDate && e.actualNav);
     this.setData({
       nav: e.nav != null ? e.nav : this.data.nav,
       // !== undefined 而非 != null：服务端明确回 null（今日无估值，如 source=nav 的债券/968）
@@ -372,13 +420,14 @@ Page({
       estimatedChangeRate: e.estimatedChangeRate !== undefined ? e.estimatedChangeRate : this.data.estimatedChangeRate,
       estSource: e.source || this.data.estSource,
       estimateTime: e.estimateTime !== undefined ? e.estimateTime : this.data.estimateTime,
-      actualNav: e.actualNav ? e.actualNav.toFixed(4) : this.data.actualNav,
+      actualNav: hasNavPair ? e.actualNav.toFixed(4) : this.data.actualNav,
       actualChangeRate: actualCR,
       displayChangeRate: calc.selectChangeRate(
         e.nav != null ? e.nav : this.data.nav,
         e.actualNav != null ? e.actualNav : parseFloat(this.data.actualNav),
         e.estimatedChangeRate, actualCR),
-      actualDate: e.actualDate || this.data.actualDate,
+      actualDate: hasNavPair ? e.actualDate : this.data.actualDate,
+      priceLoading: false,
       peTemp: e.peTemp || this.data.peTemp,
       ...this._accuracyFields(e), ...this._rebateField(),
     });
@@ -449,6 +498,7 @@ Page({
         holdingData: cacheToday ? (cached.holdingData || null) : null,
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
         holdings: cached.holdings || [], exited: cached.exited || [],
+        holdStaleCount: this._countStale(cached.holdings || []),
         quarterLabel: cached.quarterLabel || '', prevDataIncomplete: !!cached.prevDataIncomplete,
         turnoverRates: cached.turnoverRates || [],
         // 旧版代码曾把档案接口超时的 profile:null 洗成空对象 {} 写入缓存；fundSizeText 只在
@@ -477,12 +527,16 @@ Page({
           if (stockCodes.length) {
             this._fetchStockQuotes(stockCodes).then(quotes => {
               if (!Object.keys(quotes).length) return;
-              const updated = cached.holdings.map(h => ({
-                ...h,
-                stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
-                isHK: h.stockCode && h.stockCode.length === 5,
-              }));
-              this.setData({ holdings: updated });
+              const updated = cached.holdings.map(h => {
+                const q = quotes[h.stockCode];
+                return {
+                  ...h,
+                  stockChangeRate: q && q.rate != null ? q.rate : h.stockChangeRate,
+                  stockDate: (q && q.date) || h.stockDate || null,
+                  isHK: h.stockCode && h.stockCode.length === 5,
+                };
+              });
+              this.setData({ holdings: updated, holdStaleCount: this._countStale(updated) });
             }).catch(() => {});
           }
         }
@@ -657,6 +711,7 @@ Page({
     // isTrading 用 marketPhase（节假日表 + 9:25 边界，与全站口径一致）：
     // 旧写法"周几 && 9:00–15:30"用设备时间、不查节假日——工作日休市会把估算框照常显示出来
     const isTrading = marketTime.marketPhase() === "trading";
+    const bjToday = marketTime.bjDateStr();
     const displayChangeRate = calc.selectChangeRate(
       this.data.nav, this.data.actualNav,
       this.data.estimatedChangeRate, this.data.actualChangeRate,
@@ -690,7 +745,7 @@ Page({
       else estFrozenText = "休市中 · 估值已定格";
     }
     this.setData({
-      isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
+      isTrading, bjToday, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
       estimatedChangeRateText: noTodayEst ? "--" : rateText(this.data.estimatedChangeRate),
       displayChangeRateText: noTodayEst ? "--" : rateText(displayChangeRate),
     });
@@ -785,7 +840,7 @@ Page({
           // 旧版云函数没有该字段：拿不到排名时一律按"未确认"处理，下次切档案 tab 自然重试
           const rank = res.result.data.sameTypeRank || null;
           const rankFetched = rank != null || res.result.data.rankOk === true;
-          const patch = { manager: res.result.data.manager, holdings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
+          const patch = { manager: res.result.data.manager, holdings, holdStaleCount: this._countStale(holdings), exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
           if (p) patch.profile = p;
           this.setData(patch);
           if (!rankFetched) this._profileStale = true; // 排名这次没拿到：本次会话再切档案 tab 还能重试
@@ -797,12 +852,16 @@ Page({
           if (missingQuotes.length > 0) {
             this._fetchStockQuotes(missingQuotes).then(quotes => {
               if (!Object.keys(quotes).length) return;
-              const updated = holdings.map(h => ({
-                ...h,
-                stockChangeRate: quotes[h.stockCode] != null ? quotes[h.stockCode] : h.stockChangeRate,
-                isHK: h.stockCode && h.stockCode.length === 5,
-              }));
-              this.setData({ holdings: updated });
+              const updated = holdings.map(h => {
+                const q = quotes[h.stockCode];
+                return {
+                  ...h,
+                  stockChangeRate: q && q.rate != null ? q.rate : h.stockChangeRate,
+                  stockDate: (q && q.date) || h.stockDate || null,
+                  isHK: h.stockCode && h.stockCode.length === 5,
+                };
+              });
+              this.setData({ holdings: updated, holdStaleCount: this._countStale(updated) });
               this._saveCache(); // 行情补拉后更新缓存，下次秒出的就是带实时涨跌的版本
             });
           }
@@ -814,6 +873,13 @@ Page({
   },
 
   // 兜底：客户端拉取股票行情（当云函数未返回时）
+  // 统计"行情不是今天"的持仓条数：休市/停牌/开盘前腾讯与东财给的都是上一交易日收盘价，
+  // 直接标成"今日涨跌"会和基金估值对不上（2026-10-21 用户反馈：持仓股全绿、估值却是负的）
+  _countStale(list) {
+    const today = this.data.bjToday || marketTime.bjDateStr();
+    return (list || []).filter(h => h.stockDate && h.stockDate !== today).length;
+  },
+
   _fetchStockQuotes(holdings) {
     const map = {};
     const tasks = [];
@@ -830,12 +896,18 @@ Page({
       }
       tasks.push(new Promise((resolve) => {
         wx.request({
-          url: `https://push2his.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f170`,
+          // f170=涨跌幅(万分位) f86=行情时间戳(秒)：带出日期才能在渲染时区分"今日"与"上一交易日"
+          url: `https://push2his.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f170,f86`,
           header: { Referer: "https://quote.eastmoney.com/" },
           success(res) {
             try {
               const d = (res.data && res.data.data) || {};
-              map[code] = d.f170 != null ? +(d.f170 / 100).toFixed(2) : null;
+              let qd = null;
+              if (d.f86) {
+                const t = new Date(d.f86 * 1000 + 8 * 3600000);
+                qd = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+              }
+              map[code] = d.f170 != null ? { rate: +(d.f170 / 100).toFixed(2), date: qd } : null;
             } catch (e) { /* ignore */ }
             resolve();
           },

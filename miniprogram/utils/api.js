@@ -141,13 +141,6 @@ const api = {
   },
   // 自选区间收益（添加后/近1周/近1月/近3年/近5年/成立来）：当日首个客户端要等服务端
   // 现场拉全量净值（服务端预算 50s），读超时放宽到 60s，不走 callFunction 的 15s 闸
-  // R7 今日归因：基金涨跌 × 仓位权重（服务端预算 40s，读超时放宽）
-  portfolioAttribution() {
-    return Promise.race([
-      wx.cloud.callFunction({ name: "portfolioAttribution", data: {} }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("归因超时")), 45000)),
-    ]);
-  },
   watchlistPerf() {
     return Promise.race([
       wx.cloud.callFunction({ name: "manageWatchlist", data: { action: "perf" } }),

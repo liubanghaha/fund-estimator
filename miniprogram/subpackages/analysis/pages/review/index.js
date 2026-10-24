@@ -21,14 +21,12 @@ Page({
     fundName: "",
     fundList: [],         // 全部亏损持仓（首页缓存直出：进度/缺口预计算，秒出）
     holding: null,        // { shares, cost } 选中基金的多笔加权合并；null = 未持有
-    progress: null,
     gapText: "--",
     ep: EP_EMPTY,
     epLoading: false,     // 修复分布的长序列还在拉（进度卡已出的两阶段状态）
     diluteAmount: "",
     dilute: null,
     currentNav: 0,
-    estimateTime: "",
     loading: true,        // 选中基金明细的阶段一（估值+持仓）
     loadError: "",
     // —— 温度回测 ——
@@ -57,7 +55,7 @@ Page({
 
   onShow() {
     // 跨天/加减仓后列表会陈旧：重建（纯同步零网络），当前选中保持（不在新列表则维持深链选中）
-    if (this._recoveryInited) this.setData({ fundList: this._buildFundList() });
+    if (this._recoveryInited) this.setData({ fundList: this._buildFundList(), multiClassHint: this._multiClassHint });
     // 选中基金的估算现值会过期：回前台超 60s 静默重拉明细
     if (this.data.activeTab === "recover" && this._loadedAt
         && Date.now() - this._loadedAt > 60000 && /^\d{6}$/.test(this.data.fundCode)) {
@@ -128,9 +126,31 @@ Page({
         rate: +rate.toFixed(1),
         pct: Math.max(0, Math.min(100, Math.round((mvNow / cost) * 100))),
         gap: Math.max(0, (cost / mvNow - 1) * 100).toFixed(1),
+        // 每份成本/现值：列表每行都展示，不再只给选中行（2026-10-21 用户反馈：
+        // "为什么有些基金有这个有些没有"——成本在缓存里本来就有，不需要额外请求）
+        costPerShare: (cost / b.shares).toFixed(4),
+        nowPerShare: b.currentNav.toFixed(4),
       });
     });
+    this._multiClassHint = this._hasSameFundMultiClass(byFund, fundList);
     return fundList.sort((a, b) => a.rate - b.rate);
+  },
+
+  // 同名多份额提示：同一只基金的 A/C 等份额类别，成本与净值各自独立，但本页只列亏损的那一类。
+  // 用户会误以为"这只基金明明盈利，为什么进了回本中心"（2026-10-21 用户反馈：东方红新动力 A 盈利、C 亏损）。
+  // 触发条件收窄：同名分组里至少有一类落在当前亏损列表中才提示，避免对只买一类的用户产生噪音。
+  _hasSameFundMultiClass(byFund, fundList) {
+    const losing = new Set(fundList.map((f) => f.fundCode));
+    const groups = {};
+    Object.values(byFund).forEach((b) => {
+      // 去掉结尾的份额字母（A/C/E/I/D…）作为同名判定键
+      const base = String(b.fundName || "").replace(/[A-Za-z]$/, "").trim();
+      if (!base) return;
+      (groups[base] || (groups[base] = new Set())).add(b.fundCode);
+    });
+    return Object.keys(groups).some(
+      (k) => groups[k].size > 1 && Array.from(groups[k]).some((c) => losing.has(c))
+    );
   },
 
   _initRecovery(options, deferFetch) {
@@ -146,7 +166,7 @@ Page({
     }
     const hit = fundList.find((f) => f.fundCode === fundCode);
     const gapText = hit ? hit.gap : "--";
-    this.setData({ fundCode, fundName, fundList, gapText });
+    this.setData({ fundCode, fundName, fundList, gapText, multiClassHint: this._multiClassHint });
     if (/^\d{6}$/.test(fundCode) && !deferFetch) {
       this.fetchAll();
     } else {
@@ -154,18 +174,28 @@ Page({
     }
   },
 
+  // 列表内"详情"入口：直接进基金详情页核对这只基金的独立数据（估值/净值/份额类别）。
+  // 用户曾把同只基金的 A/C 两个份额误当成一笔（2026-10-21 反馈），给一条能自己核对的路。
+  onGoDetail(e) {
+    const code = (e.currentTarget.dataset.code || "").trim();
+    const name = e.currentTarget.dataset.name || "";
+    if (!/^\d{6}$/.test(code)) return;
+    wx.navigateTo({
+      url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}`,
+    });
+  },
+
   onSwitchFund(e) {
     const code = e.currentTarget.dataset.code;
     const name = e.currentTarget.dataset.name || "";
-    if (!code || code === this.data.fundCode) return;
-    const hit = this.data.fundList.find((f) => f.fundCode === code);
+    if (!code || code === this.data.fundCode) return;    const hit = this.data.fundList.find((f) => f.fundCode === code);
     this._recoveryLoaded = false;
     this.setData({
       fundCode: code, fundName: name || (hit && hit.fundName) || "",
       loading: true, loadError: "",
-      holding: null, progress: null, dilute: null, diluteAmount: "",
+      holding: null, dilute: null, diluteAmount: "",
       gapText: hit ? hit.gap : "--",
-      ep: EP_EMPTY, epError: false, epLoading: true, estimateTime: "",
+      ep: EP_EMPTY, epError: false, epLoading: true,
     });
     this.fetchAll();
   },
@@ -192,19 +222,12 @@ Page({
       const d = estRes.result.data;
       const currentNav = d ? calc.selectNav(d.nav, d.actualNav, d.estimatedNav) : 0;
       const holding = this._aggregateHolding(holdingRes && holdingRes.result, currentNav);
-      let progress = null, gapText = this.data.gapText;
+      let gapText = this.data.gapText;
       if (holding && currentNav > 0) {
         const cost = holding.cost;
-        const gap = cost > currentNav ? ((cost / currentNav - 1) * 100).toFixed(1) : "0";
-        gapText = gap;
-        progress = {
-          pct: Math.max(0, Math.min(100, Math.round((currentNav / cost) * 100))),
-          gap,
-          cost: cost.toFixed(4),
-          now: currentNav.toFixed(4),
-        };
+        gapText = cost > currentNav ? ((cost / currentNav - 1) * 100).toFixed(1) : "0";
       }
-      this.setData({ currentNav, holding, progress, gapText, estimateTime: (d && d.estimateTime) || "", loading: false });
+      this.setData({ currentNav, holding, gapText, loading: false });
       this._recoveryLoaded = true;
       this._loadedAt = Date.now();
     } catch (e) {

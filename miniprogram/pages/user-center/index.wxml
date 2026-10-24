@@ -116,6 +116,11 @@
           disabled="{{feedbackSubmitting}}"
         >提交反馈</button>
       </view>
+
+      <!-- 反馈的兜底通道：需要对话/发图时走微信客服会话（open-type=contact） -->
+      <view class="fb-service-wrap">
+        <button class="fb-service" open-type="contact">问题没解决？联系客服 ›</button>
+      </view>
     </view>
 
   </view>

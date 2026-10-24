@@ -16,15 +16,20 @@
       <view class="fl-row {{fundCode === item.fundCode ? 'fl-active' : ''}}" wx:for="{{fundList}}" wx:key="fundCode"
         bind:tap="onSwitchFund" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">
         <view class="fl-info">
-          <view class="fl-name">{{item.fundName}}</view>
+          <view class="fl-name">{{item.fundName}}<text class="fl-code">{{item.fundCode}}</text></view>
           <view class="fl-bar"><view class="fl-fill" style="width:{{item.pct}}%"></view></view>
-          <view wx:if="{{fundCode === item.fundCode && progress}}" class="fl-detail">成本 {{progress.cost}} → 现值 {{progress.now}}<text wx:if="{{estimateTime}}"> · 估算 {{estimateTime}}</text></view>
+          <view class="fl-detail">
+            <text class="fl-cost">成本 {{item.costPerShare}} → 现值 {{item.nowPerShare}}</text>
+            <!-- 详情入口：catch 阻止冒泡，避免同时触发整行的"选中" -->
+            <text class="fl-more" catch:tap="onGoDetail" data-code="{{item.fundCode}}" data-name="{{item.fundName}}">详情 ›</text>
+          </view>
         </view>
         <view class="fl-right">
           <view class="fl-pct">{{item.pct}}%</view>
           <view class="fl-gap">涨{{item.gap}}% 回本</view>
         </view>
       </view>
+      <view wx:if="{{multiClassHint}}" class="fl-note">同一只基金的 A/C 等不同份额，成本与净值各自独立计算，收益分开显示。本列表只列出其中亏损的份额。</view>
     </view>
     <view wx:if="{{!fundList.length && !loading && !fundCode}}" class="empty-box">
       <view class="empty-main">当前没有亏损持仓</view>

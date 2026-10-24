@@ -106,6 +106,9 @@ exports.main = async (event) => {
       ...h,
       stockChangeRate: stockQuotes[h.stockCode] && stockQuotes[h.stockCode].changeRate != null
         ? stockQuotes[h.stockCode].changeRate : null,
+      // 行情所属日期：前端据此判断涨跌是不是"今天的"。腾讯在休市/停牌/开盘前给的是
+      // 上一交易日收盘价，不校验就会被当成今日涨跌（2026-10-21 用户反馈：持仓股全绿、基金估值却是负的）
+      stockDate: (stockQuotes[h.stockCode] && stockQuotes[h.stockCode].date) || null,
       isHK: h.stockCode && h.stockCode.length === 5,
     }));
 
@@ -397,6 +400,7 @@ async function refreshLiveParts(fundCode, holdings) {
       ...h,
       stockChangeRate: stockQuotes[h.stockCode] && stockQuotes[h.stockCode].changeRate != null
         ? stockQuotes[h.stockCode].changeRate : null,
+      stockDate: (stockQuotes[h.stockCode] && stockQuotes[h.stockCode].date) || null,
     })),
     sameTypeRank,
     rankOk,

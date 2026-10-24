@@ -44,8 +44,6 @@ Page({
     // R3 空态两态分支：完全空白 → 市场+最近查看；有自选 → 自选列表
     emptyWlLoading: false, emptyWlLoaded: false, emptyWlCount: 0, emptyWlItems: [],
     emptyMarket: null, emptyRecent: [], followMapRecent: {},
-    // R7 今日归因卡（null=未加载/不展示时段）
-    attrCard: null, attrExpanded: false,
     displayHoldings: [],
     amountVisible: true,
     // 资产卡标签随相位：closed（节假日/周末/交易日 9:25 前）展示的是最近交易日数据，
@@ -565,7 +563,8 @@ Page({
       const isReturning = !!(cached.holdings && cached.holdings.length > 0);
       if ((isReturning || seen) && seen !== cur) {
         const log = (getApp().getChangelog() || []).find(c => c.version === cur) || (getApp().getChangelog() || [])[0];
-        if (log) this.setData({ showUpdateLog: true, updateVersion: log.version, updateItems: log.items });
+        // silent 版本（纯优化/修复，无新增功能）不弹窗：不打断用户，只写进关于页的版本日志
+        if (log && !log.silent) this.setData({ showUpdateLog: true, updateVersion: log.version, updateItems: log.items });
       }
     } catch (e) { /* ignore */ }
   },
@@ -648,7 +647,11 @@ Page({
       return;
     }
     const settings = wx.getStorageSync('alertSettings') || {};
-    settings[alertEditFundCode] = { upper: upper || 0, lower: lower || 0, peAlert: !!alertEditPeAlert, enabled: true };
+    const _editH = this.data.holdings.find(h => h.fundCode === alertEditFundCode);
+    settings[alertEditFundCode] = {
+      name: (_editH && _editH.fundName) || (settings[alertEditFundCode] || {}).name || "",
+      upper: upper || 0, lower: lower || 0, peAlert: !!alertEditPeAlert, enabled: true,
+    };
     wx.setStorageSync('alertSettings', settings);
     // 开启PE提醒时记录当前signal作为基线
     if (alertEditPeAlert) {
@@ -744,8 +747,14 @@ Page({
     this._lastFetch = Date.now();
     subscribe.silentDailyAuth("index_pull"); // 用户手势时机：已授权用户每天静默补一次推送额度
     this.setData({ refresherTriggered: true });
-    Promise.all([this.fetchPortfolio(), this.fetchIndices()]).finally(() => {
+    // 当天已经全量加载过 → 下拉走轻量模式（跳过每只基金 3 页 60 日净值历史，上游请求约省 3/4），
+    // 估算/温度/费率都在轻量结果里；跨日必须全量，否则"60 日位置/距一年高点"会停在昨天
+    const light = this._fullLoaded === true && this._fullLoadedDate === marketTime.bjDateStr();
+    const t0 = Date.now();
+    Promise.all([this.fetchPortfolio(light ? { withNav60: false } : {}), this.fetchIndices()]).finally(() => {
       this.setData({ refresherTriggered: false });
+      // 下拉刷新真实等待时长：light=1 是当天的后续下拉（跳过 60 日历史），便于对比优化前后
+      track.track("perf_refresh", { ms: Date.now() - t0, light: light ? 1 : 0, n: (this.data.holdings || []).length });
     });
   },
 
@@ -759,7 +768,10 @@ Page({
         // 成功即更新 _lastFetch：盘后补刷的 30 分钟节流和 onShow 的 30 秒去重都吃这个时间戳
         //（此前只有下拉刷新/失败清零会写，导致盘后补刷实际每 30 秒一次——二轮审查 P1）
         this._lastFetch = Date.now();
-        if (!(opts && opts.withNav60 === false)) this._fullLoaded = true;
+        if (!(opts && opts.withNav60 === false)) {
+          this._fullLoaded = true;
+          this._fullLoadedDate = marketTime.bjDateStr(); // 供下拉刷新判断能否走轻量
+        }
         let holdings = (d.holdings || []);
         if (opts && opts.withNav60 === false) {
           // 轻量轮询不回传 60 日位置信号：从上一轮完整数据带回（估标识/温度/费率档不受影响）
@@ -776,7 +788,6 @@ Page({
         holdings = this.formatHoldings(holdings, d.totalAmount);
         holdings = this.sortHoldings(holdings);
         if (holdings.length === 0) this._loadEmptyState(); // R3：空仓 → 拉空态数据（自选两态/市场/最近查看）
-        else this._loadAttribution(); // R7：有持仓且盘中/盘后 → 今日归因
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
         // 与主数据合并成一次 setData，避免多次渲染（原 3-4 次 setData）
@@ -1226,27 +1237,6 @@ Page({
       }
     } catch (err) { /* ignore */ }
   },
-  // R7 今日归因：基金涨跌 × 仓位权重（只讲已发生的事实；非交易日/盘前不展示）
-  async _loadAttribution(force) {
-    if (!force && this._attrLoaded) return;
-    const phase = marketTime.marketPhase();
-    if (!marketTime.isTradingDay(marketTime.bjDateStr()) || phase === "closed") return; // 非交易日/盘前无当日涨跌
-    this._attrLoaded = true;
-    try {
-      const res = await api.portfolioAttribution();
-      const d = res && res.result && res.result.code === 0 && res.result.data;
-      if (!d || !d.ok) return;
-      const f = (s) => s ? `${s.fundName} ${s.changeRate > 0 ? "+" : ""}${s.changeRate}%（占仓位 ${s.weight}%，贡献 ${s.contribution > 0 ? "+" : ""}${s.contribution}%）` : "";
-      this.setData({ attrCard: {
-        totalText: (d.total > 0 ? "+" : "") + d.total + "%",
-        totalCls: d.total > 0 ? "up" : d.total < 0 ? "down" : "",
-        dragText: d.drag ? f(d.drag) : "",
-        pullText: d.pull ? f(d.pull) : "",
-      } });
-    } catch (e) { /* 静默：卡片不出现 */ }
-  },
-  onToggleAttr() { this.setData({ attrExpanded: !this.data.attrExpanded }); },
-
   // R3 空态数据：自选两态判定 + 今日市场（纯统计，失败整块隐藏）+ 最近查看（本地）
   async _loadEmptyState() {
     if (this.data.holdings.length > 0) return;
@@ -1376,6 +1366,8 @@ Page({
       const prev = settings[h.fundCode] || {};
       const prevLower = parseFloat(prev.lower);
       settings[h.fundCode] = {
+        // 存一份基金名：提醒管理页在持仓缓存缺失时（已卖出/仅自选）靠它显示名称而不是裸代码
+        name: h.fundName || prev.name || "",
         upper: prev.upper != null && prev.upper !== "" ? prev.upper : 3,
         // 跌阈值必须为负：历史脏数据（+3）顺手纠正
         lower: isFinite(prevLower) && prevLower !== 0 ? (prevLower > 0 ? -prevLower : prevLower) : -3,

@@ -18,10 +18,14 @@
 .fl-row.fl-active{background:#FAF7F2;margin:0 -12rpx;padding:18rpx 12rpx;border-radius:12rpx}
 .fl-info{flex:1;min-width:0;margin-right:16rpx}
 .fl-name{font-size:26rpx;color:#333;margin-bottom:8rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl-code{font-size:20rpx;color:#BBB;margin-left:10rpx;font-weight:400}
+.fl-note{font-size:20rpx;color:#999;line-height:1.6;margin-top:16rpx;padding-top:16rpx;border-top:1rpx solid #F5F5F5}
 .fl-bar{height:10rpx;background:#F0F0F0;border-radius:5rpx;overflow:hidden}
 .fl-fill{height:100%;background:linear-gradient(90deg,#FFB74D,#FA8C16);border-radius:5rpx}
 .fl-right{flex-shrink:0;text-align:right}
-.fl-detail{font-size:20rpx;color:#999;margin-top:8rpx}
+.fl-detail{display:flex;justify-content:space-between;align-items:center;margin-top:8rpx}
+.fl-cost{font-size:20rpx;color:#999}
+.fl-more{font-size:20rpx;color:var(--primary);flex-shrink:0;margin-left:16rpx}
 .fl-pct{font-size:30rpx;font-weight:700;color:var(--primary)}
 .fl-gap{font-size:20rpx;color:#999;margin-top:2rpx}
 

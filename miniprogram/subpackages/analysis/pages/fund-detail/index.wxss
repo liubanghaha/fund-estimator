@@ -119,6 +119,10 @@
 .hold-name{font-size:28rpx;color:#333;margin-left:16rpx;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hk-tag{display:inline-block;font-size:18rpx;color:var(--primary);background:var(--primary-bg);border:1rpx solid var(--primary);border-radius:4rpx;padding:0 6rpx;margin-left:8rpx;vertical-align:middle;font-weight:600;line-height:1.4}
 .hold-code{font-size:22rpx;color:#999}
+.refresh-fail-tip{margin:12rpx 0;padding:12rpx 16rpx;background:#FDF8EC;color:#B08A3E;font-size:22rpx;border-radius:8rpx;text-align:center}
+.hold-stale-tip{font-size:20rpx;color:#B08A3E;background:#FDF8EC;border-radius:8rpx;padding:10rpx 14rpx;margin:0 0 10rpx;line-height:1.5}
+.hold-change.stale{color:#BBB}
+.stale-tag{font-size:18rpx;color:#BBB;margin-left:6rpx}
 .hold-change{font-size:24rpx;font-weight:500;width:120rpx;text-align:right;flex-shrink:0}
 .hold-change.up{color:var(--up)}
 .hold-change.down{color:#2E8B57}
@@ -308,6 +312,8 @@
 .acc-toggle{font-size:20rpx;color:#BBB}
 .acc-log{margin-top:10rpx;padding:12rpx 16rpx;background:#FAFAFA;border-radius:12rpx}
 .acc-log-row{display:flex;align-items:center;font-size:22rpx;color:#666;padding:6rpx 0}
+.acc-log-body{overscroll-behavior:contain}
+.acc-log-body.capped{border-bottom:1rpx solid #F0F0F0}
 .c-date{width:110rpx;flex-shrink:0}
 .c-num{flex:1;text-align:right}
 .acc-log-head{color:#BBB;font-size:20rpx}

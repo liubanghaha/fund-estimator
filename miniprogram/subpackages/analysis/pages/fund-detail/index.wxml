@@ -14,10 +14,12 @@
     </view>
 
     <scroll-view scroll-y class="detail-scroll" scroll-into-view="{{scrollToTx}}" scroll-with-animation refresher-enabled="{{true}}" refresher-triggered="{{scrollRefreshing}}" bindrefresherrefresh="onScrollRefresh">
-    <view wx:if="{{errorMsg}}" class="error-wrap">
+    <!-- 失败分两种形态：没有历史数据 → 整页错误+重试；已有数据 → 只一条轻提示，内容照常显示 -->
+    <view wx:if="{{errorMsg && !navHistory.length}}" class="error-wrap">
       <view class="error-text">{{errorMsg}}</view>
       <button class="retry-btn" bind:tap="fetchAll">重试</button>
     </view>
+    <view wx:elif="{{errorMsg}}" class="refresh-fail-tip">{{errorMsg}}，当前显示的是上次的数据</view>
 
     <view wx:if="{{loading}}" class="loading-inline">
       <text class="loading-text">加载中...</text>
@@ -62,11 +64,11 @@
         </view>
         <view class="nav-change-col">
           <view class="nav-change-label">{{showEstimate ? '涨幅估算' : (noTodayEst ? '今日涨跌' : '当日涨幅')}}</view>
-          <view class="nav-change {{noTodayEst ? '' : (displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : '')}}">
-            {{showEstimate ? estimatedChangeRateText : displayChangeRateText}}
+          <view class="nav-change {{noTodayEst || priceLoading ? '' : (displayChangeRate > 0 ? 'up' : displayChangeRate < 0 ? 'down' : '')}}">
+            {{priceLoading ? '加载中…' : (showEstimate ? estimatedChangeRateText : displayChangeRateText)}}
           </view>
           <view wx:if="{{showEstimate}}" class="nav-badge">盘中估算</view>
-          <view wx:elif="{{noTodayEst}}" class="nav-badge">未出估值</view>
+          <view wx:elif="{{noTodayEst && !priceLoading}}" class="nav-badge">未出估值</view>
         </view>
       </view>
       <!-- R2 估值兜底：盘后/休市不空白——定格说明 + 净值更新提醒（卡片级整行，不挤压净值） -->
@@ -82,13 +84,15 @@
     </view>
     <view wx:if="{{accLogVisible && accLog.length}}" class="acc-log">
       <view class="acc-log-row acc-log-head"><text class="c-date">日期</text><text class="c-num">估算</text><text class="c-num">实际</text><text class="c-num">偏差</text></view>
-      <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
-        <text class="c-date">{{item.date}}</text>
-        <text class="c-num">{{item.estText}}</text>
-        <text class="c-num">{{item.actText}}</text>
-        <text class="c-num {{item.diffCls}}">{{item.diffText}}</text>
-      </view>
-      <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高</view>
+      <scroll-view class="acc-log-body {{accLogCapped ? 'capped' : ''}}" scroll-y style="{{accLogStyle}}">
+        <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
+          <text class="c-date">{{item.date}}</text>
+          <text class="c-num">{{item.estText}}</text>
+          <text class="c-num">{{item.actText}}</text>
+          <text class="c-num {{item.diffCls}}">{{item.diffText}}</text>
+        </view>
+      </scroll-view>
+      <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高<text wx:if="{{accLogCapped}}"> · 共 {{accLog.length}} 条，上下滑动查看</text></view>
     </view>
 
     <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
@@ -218,6 +222,7 @@
       <view wx:if="{{profileLoading && !holdings.length}}" class="info-card"><view class="empty-text">加载中...</view></view>
       <view wx:elif="{{holdings.length > 0}}" class="info-card">
         <view class="section-title">前十大持仓<text wx:if="{{quarterLabel}}" class="quarter-label" style="float:right;font-size:22rpx;color:#BBB;font-weight:400">{{quarterLabel}}</text></view>
+        <view wx:if="{{holdStaleCount > 0}}" class="hold-stale-tip">部分股票显示的是上一交易日收盘涨跌（今日行情尚未更新），已标灰</view>
         <view class="hold-header">
           <text class="hold-h-name">名称</text>
           <text class="hold-h-change">今日涨跌</text>
@@ -227,8 +232,8 @@
         <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
           <view class="hold-rank">{{item.rank}}</view>
           <view class="hold-name">{{item.stockName}}<text wx:if="{{item.isHK}}" class="hk-tag">H</text></view>
-          <view class="hold-change {{item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : ''}}">
-            {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}
+          <view class="hold-change {{item.stockDate && item.stockDate !== bjToday ? 'stale' : (item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : '')}}">
+            {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}<text wx:if="{{item.stockDate && item.stockDate !== bjToday}}" class="stale-tag">昨收</text>
           </view>
           <view class="hold-ratio-change">
             <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>
