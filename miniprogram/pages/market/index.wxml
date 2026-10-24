@@ -14,7 +14,7 @@
     <view class="mk-card">
       <view class="mk-sec-title-row">
         <view class="mk-sec-title">核心指数</view>
-        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}} · 欧洲{{euStatus}} · 亚太{{apStatus}}</text>
+        <text class="mk-sec-note">港股{{hkStatus}} · 美股{{usStatus}}</text>
       </view>
       <view class="idx-tabs">
         <view class="idx-tab {{idxTab === item.key ? 'active' : ''}}" wx:for="{{idxTabs}}" wx:key="key" data-key="{{item.key}}" bind:tap="onIdxTab">{{item.label}}</view>
@@ -28,31 +28,6 @@
         </view>
       </scroll-view>
       <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
-    </view>
-
-    <!-- 海外市场速览：指数期货/商品/汇率（夜盘与盘前时段最有参考；均为海外标的，合规口径） -->
-    <view wx:if="{{snap}}" class="mk-card">
-      <view class="mk-sec-title-row">
-        <view class="mk-sec-title">海外市场速览</view>
-        <text class="mk-sec-note">期货近 24 小时交易，是盘前先导</text>
-      </view>
-      <view class="snap-sub">指数期货</view>
-      <view class="snap-row" wx:for="{{snap.futures}}" wx:key="key">
-        <text class="snap-name">{{item.name}}</text>
-        <text class="snap-price {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.priceText}}</text>
-        <text class="snap-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.rateText}}</text>
-      </view>
-      <view class="snap-sub">商品 · 汇率</view>
-      <view class="snap-grid">
-        <view class="snap-tile" wx:for="{{snap.others}}" wx:key="key">
-          <view class="snap-tile-name">{{item.name}}</view>
-          <view class="snap-tile-line">
-            <text class="snap-tile-price">{{item.priceText}}</text>
-            <text class="snap-tile-rate {{item.changeRate > 0 ? 'up' : item.changeRate < 0 ? 'down' : ''}}">{{item.rateText}}</text>
-          </view>
-        </view>
-      </view>
-      <view class="mk-updated">数据更新于 {{snap.updatedAt}} · 公开市场数据，可能有延迟</view>
     </view>
 
     <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述）+ 重仓股实时行情 -->

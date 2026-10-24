@@ -9,26 +9,19 @@ const chart = require("../../utils/chart");
 // 用 60s TTL + 全局空窗跳过（北京时间 6:00~7:59：美股收盘后、日经 8:00 开盘前，数据不会变）。
 
 const CACHE_KEY = "market_center_cache";
-const CACHE_VERSION = 4; // v4：加欧洲指数 + 海外市场速览（期货/商品/汇率）+ 美股盘前盘后
+const CACHE_VERSION = 5; // v5：类目合规收敛——移除亚太/欧洲指数与海外速览（期货/商品/汇率），旧缓存作废防混入
+// 2026-10-24 类目合规收敛：行情页只保留港股/美股（服务类目「股票信息服务平台（港股/美股）」
+// 覆盖范围）；亚太/欧洲指数与期货/商品/汇率超出类目授权，三拒后移除
 const INDICES = [
   { code: "HSTECH", name: "恒生科技", group: "hk" },
   { code: "HSI", name: "恒生指数", group: "hk" },
   { code: "SPX", name: "标普500", group: "us" },
   { code: "IXIC", name: "纳斯达克", group: "us" },
   { code: "DJIA", name: "道琼斯", group: "us" },
-  { code: "N225", name: "日经225", group: "ap" },
-  { code: "KS11", name: "韩国KOSPI", group: "ap" },
-  { code: "SENSEX", name: "印度SENSEX", group: "ap" },
-  { code: "TWII", name: "台湾加权", group: "ap" },
-  { code: "DAX", name: "德国DAX30", group: "eu" },
-  { code: "FTSE", name: "英国富时100", group: "eu" },
-  { code: "CAC", name: "法国CAC40", group: "eu" },
 ];
 const IDX_TABS = [
   { key: "hk", label: "港股" },
   { key: "us", label: "美股" },
-  { key: "ap", label: "亚太" },
-  { key: "eu", label: "欧洲" },
 ];
 const FETCH_TIMEOUT = 3000;
 const CLOUD_FETCH_TIMEOUT = 12000; // 云函数多源竞速兜底的客户端等待上限（美股/亚太依赖此路径）
@@ -48,7 +41,6 @@ Page({
     // 个股弹层
     showStockModal: false, stockModal: null, stockKlineLoading: false, stockKlineOk: false,
     // 海外市场速览（指数期货/商品/汇率，云函数 fetchMarketSnapshot）
-    snapshot: null,
     // 各市场开闭市状态（本地推算）
     hkStatus: "", usStatus: "", apStatus: "", euStatus: "", usSessionState: "",
     // 核心指数（港/美/亚太 三类切换）
@@ -127,12 +119,11 @@ Page({
     this.setData({ loading: !cached, emptyData: false, loadError: false });
     // 指数是本页最慢的一路（多源竞速），先发出去，别串在敞口后面等
     const indicesP = this._fetchIndices();
-    // 敞口先到（快照需要知道持仓里有哪些美股代码）
+    // 2026-10-24 类目合规收敛：海外速览（期货/商品/汇率）移除，敞口与快照合并链路简化
     return this._fetchExposure().then((exposure0) => {
-      const usCodes = ((exposure0 && exposure0.usStocks) || []).map((x) => x.code).filter(Boolean);
-      return Promise.all([Promise.resolve(exposure0), indicesP, this._fetchSnapshot(usCodes)]);
-    }).then(([exposure0, indexCards, snapshot]) => {
-      const exposure = this._mergeUsSession(exposure0, snapshot);
+      return Promise.all([Promise.resolve(exposure0), indicesP]);
+    }).then(([exposure0, indexCards]) => {
+      const exposure = exposure0;
       const now = Date.now();
       // 部分失败兜底：指数卡全"--"或敞口为空时保留上次好缓存（外源限流是分钟级的，恢复后自然更新）
       // 兜底回退必须校验缓存版本：用户残留的 v1/v2 缓存含 A 股指数卡，混入会破坏合规整改口径
@@ -143,7 +134,6 @@ Page({
         v: CACHE_VERSION,
         indexCards: effIndexCards,
         exposure: effExposure,
-        snapshot: snapshot || (cacheUpToDate && cached && cached.snapshot) || null,
         empty: !indexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
@@ -169,8 +159,6 @@ Page({
       loadError: false,
       emptyData: !!cache.empty,
       exposure: cache.exposure || null,
-      snapshot: cache.snapshot || null,
-      snap: this._buildSnap(cache.snapshot),
       indexCards: [],
       indexLoading: false,
       ...this._marketStatus(),
@@ -315,20 +303,6 @@ Page({
     this.setData({ idxTab: key, indexCards: this.data.indexCardsGrouped[key] || [] });
   },
 
-  // 速览卡展示用：期货/商品 2 位小数、汇率 4 位；商品与汇率并成小格
-  _buildSnap(snapshot) {
-    if (!snapshot) return null;
-    const fmt = (list, digits) => (list || []).filter((x) => x && x.price != null).map((x) => Object.assign({}, x, {
-      priceText: (+x.price).toFixed(digits),
-      rateText: x.changeRate == null ? "--" : (x.changeRate > 0 ? "+" : "") + x.changeRate + "%",
-    }));
-    return {
-      futures: fmt(snapshot.futures, 2),
-      others: fmt(snapshot.commodities, 2).concat(fmt(snapshot.fx, 4)),
-      updatedAt: snapshot.updatedAt || "",
-    };
-  },
-
   // 点敞口格子 → 跳到对应重仓股列表；该类没有数据时说明原因
   // （原来两个格子没绑任何事件，点了没反应像坏了；--% 其实是"基金披露的重仓股里没有这一侧"）
   onExposureTap(e) {
@@ -356,28 +330,6 @@ Page({
     }).catch(() => null);
   },
 
-  // 重仓美股：盘前/盘后时段用新浪的实时价（含盘前盘后成交），并标出时段
-  // 腾讯的报价在盘前盘后不更新，所以这两个时段以新浪为准；盘中/收盘仍用腾讯（与原口径一致）
-  _mergeUsSession(exposure, snapshot) {
-    if (!exposure || !snapshot || !snapshot.us || !snapshot.us.length) return exposure;
-    const byCode = {};
-    snapshot.us.forEach((q) => { byCode[q.code] = q; });
-    const list = (exposure.usStocks || []).map((s) => {
-      const q = byCode[s.code];
-      if (!q || !q.session || !q.session.fresh) return s;
-      const st = q.session.state;
-      if (st !== "pre" && st !== "post") return s;
-      return Object.assign({}, s, {
-        price: q.price,
-        changeRate: q.changeRate,
-        sessionText: st === "pre" ? "盘前" : "盘后",
-        sessionTime: q.tickTime || "",
-      });
-    });
-    return Object.assign({}, exposure, { usStocks: list });
-  },
-
-  // 持仓港美股敞口（单云调用，数据陈述）；失败返回 null 由缓存兜底
   _fetchExposure() {
     return api.fetchMarketOverview({ action: "exposure" }).then((res) => {
       if (res && res.result && res.result.code === 0 && res.result.data) return res.result.data;
