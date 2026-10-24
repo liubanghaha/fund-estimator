@@ -69,7 +69,9 @@ exports.main = async (event) => {
     if (!skipEst) {
       estimatesPromise = Promise.all([
         computeSelfEstimates(codes, _startTime),
-        fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
+        // 新浪预算 6s（原 15s：休市/接口异常时会把整个首页拖到 5-15s，周六实测多轮 5.6s+；
+        // 盘中正常往返 <1s 不受影响，超时走 estCache 同源最近值兜底——口径不变）
+        fd.fetchSinaEstimates(codes, { budgetMs: 6000 }),
       ]);
     }
     // 数据源一：本轮缺值的基金取"同源最近值"（缺值不换源，口径见 fd.pickEstimate/注释）。
