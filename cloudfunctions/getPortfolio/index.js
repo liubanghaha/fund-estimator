@@ -94,10 +94,33 @@ exports.main = async (event) => {
           // 净值与历史净值并行拉取（needDays=0 时只取净值，避免串行翻倍耗时）
           let eastmoney, navHistoryAll = [];
           if (needDays > 0) {
-            [eastmoney, navHistoryAll] = await Promise.all([
-              fd.fetchLatestNavEastMoney(code),
-              fd.fetchNAVHistory(code, needDays),
-            ]);
+            // 05:30 预热的 fund_nav_cache 优先（2026-10-24）：命中当日缓存时
+            // 250 行历史 0 次 lsjz 请求（此前每只 13 次分页，是首页 2.3s avg 的大头）。
+            // 命中时历史与"最新净值"可一并从缓存尾部取——盘后缓存即当日最新
+            let cachedRows = null;
+            try {
+              const c = await db.collection("fund_nav_cache").doc(code).get();
+              const doc = c.data;
+              if (doc && doc.date === fd.formatBJDate() && Array.isArray(doc.rows) && doc.rows.length > 50) {
+                cachedRows = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
+              }
+            } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }
+            if (cachedRows) {
+              const last = cachedRows[0];
+              const prev = cachedRows[1]; // 前一交易日净值（盘中收益的差值基准）
+              eastmoney = {
+                actualNav: last.nav, actualDate: last.date,
+                actualChangeRate: last.changeRate,
+                yesterdayNav: prev ? prev.nav : null,
+                nav: null,
+              };
+              navHistoryAll = cachedRows;
+            } else {
+              [eastmoney, navHistoryAll] = await Promise.all([
+                fd.fetchLatestNavEastMoney(code),
+                fd.fetchNAVHistory(code, needDays),
+              ]);
+            }
           } else {
             eastmoney = await fd.fetchLatestNavEastMoney(code);
           }

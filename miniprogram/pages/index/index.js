@@ -788,6 +788,7 @@ Page({
         holdings = this.formatHoldings(holdings, d.totalAmount);
         holdings = this.sortHoldings(holdings);
         if (holdings.length === 0) this._loadEmptyState(); // R3：空仓 → 拉空态数据（自选两态/市场/最近查看）
+        else this._prefetchWatchlist(); // 预取自选列表+估算：用户点自选 tab 时数据已在路上
         const allUpdated = holdings.length > 0 && holdings.every(h => h.estimateUpdated);
         // 合并计算：displayHoldings / groupCounts / groupSummary 一次算好，
         // 与主数据合并成一次 setData，避免多次渲染（原 3-4 次 setData）
@@ -1219,6 +1220,40 @@ Page({
   noop() {},
 
   onSearch() { wx.navigateTo({ url: "/pages/search/index" }); },
+
+  // 预取自选（2026-10-24）：首页主数据落地后静默发起自选列表+估算，按自选页的缓存
+  // 格式写 storage——用户切到自选 tab 时 applyCache 直接秒开，后台刷新补实时。
+  // 失败静默（预取是锦上添花，不能影响首页）；归因卡走独立的 _loadAttribution
+  async _prefetchWatchlist() {
+    if (this._wlPrefetched) return;
+    this._wlPrefetched = true;
+    try {
+      const listRes = await api.watchlistList().catch(() => null);
+      if (!listRes || !listRes.result || listRes.result.code !== 0) return;
+      const items = listRes.result.data || [];
+      if (!items.length) return;
+      const codes = items.map(w => w.fundCode);
+      const estRes = await api.batchFetchEstimate(codes).catch(() => null);
+      const estData = (estRes && estRes.result && estRes.result.code === 0 && estRes.result.data) || {};
+      const rateText = (v) => {
+        const num = parseFloat(v);
+        return isFinite(num) ? (num > 0 ? "+" : "") + num.toFixed(2) + "%" : "--";
+      };
+      const watchlist = items.map(w => {
+        const e = estData[w.fundCode];
+        return { fundCode: w.fundCode, fundName: w.fundName, group: w.group || "",
+          nav: e ? e.nav : null, estimatedNav: e ? e.estimatedNav : null,
+          displayChangeRate: e ? e.displayChangeRate : null,
+          estimateTime: e ? e.estimateTime : null,
+          displayChangeRateText: e && e.displayChangeRate != null ? rateText(e.displayChangeRate) : "--" };
+      });
+      // groups 不写空数组：自选页恢复分组优先读载荷 groups，空数组会盖掉旧缓存的组名
+      const prev = wx.getStorageSync("watchlist_cache") || {};
+      wx.setStorageSync("watchlist_cache", {
+        watchlist, groups: prev.groups || [], time: Date.now(), ts: Date.now(),
+      });
+    } catch (e) { /* 静默 */ }
+  },
   onGoMarket() { wx.switchTab({ url: "/pages/market/index" }); },
   onEmptyWlTap(e) {
     const { code, name } = e.currentTarget.dataset;
@@ -1287,6 +1322,7 @@ Page({
       count: 1, mediaType: ["image"],
       sourceType: ["album", "camera"], sizeType: ["compressed"],
       success: (mediaRes) => {
+        if (!mediaRes.tempFiles || !mediaRes.tempFiles[0]) return; // iOS 取消/异常时 tempFiles 可能为空
         const tempPath = mediaRes.tempFiles[0].tempFilePath;
         // 二次压缩，确保不超过 1MB（OCR 服务限制）
         wx.compressImage({

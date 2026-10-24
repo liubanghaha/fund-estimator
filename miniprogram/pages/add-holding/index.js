@@ -128,6 +128,7 @@ Page({
       count: 1, mediaType: ["image"],
       sourceType: ["album", "camera"], sizeType: ["compressed"],
       success: (mr) => {
+        if (!mr.tempFiles || !mr.tempFiles[0]) return; // iOS 取消/异常守卫
         const tempPath = mr.tempFiles[0].tempFilePath;
         // 与加减仓页对齐：先压缩再上传（大截图直传慢且易 OCR 超时）
         wx.compressImage({

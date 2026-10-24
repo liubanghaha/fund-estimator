@@ -206,6 +206,7 @@ Page({
 	      sourceType: ["album", "camera"],
 	      sizeType: ["compressed"],
 	      success: (mr) => {
+	        if (!mr.tempFiles || !mr.tempFiles[0]) return; // iOS 取消/异常守卫
 	        const tempPath = mr.tempFiles[0].tempFilePath;
 	        wx.compressImage({
 	          src: tempPath,

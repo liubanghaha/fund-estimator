@@ -313,6 +313,11 @@
           "name": "perfWarmupTimer",
           "type": "timer",
           "config": "0 30 5 * * * *"
+        },
+        {
+          "name": "keepAliveTimer",
+          "type": "timer",
+          "config": "0 0 * * * * *"
         }
       ]
     },

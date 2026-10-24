@@ -222,6 +222,7 @@ Page({
       sourceType: ["album", "camera"],
       sizeType: ["compressed"],
       success: (res) => {
+        if (!res.tempFiles || !res.tempFiles.length) return; // iOS 取消/异常守卫
         const paths = res.tempFiles.map(f => f.tempFilePath);
         this.setData({
           feedbackImages: [...this.data.feedbackImages, ...paths],

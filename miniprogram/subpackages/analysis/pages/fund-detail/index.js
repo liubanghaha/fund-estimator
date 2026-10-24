@@ -1560,7 +1560,10 @@ Page({
       success: () => {
         wx.chooseMedia({
           count: 1, mediaType: ["image"], sourceType: ["album"], sizeType: ["compressed"],
-          success: (mediaRes) => { this.doOCR(mediaRes.tempFiles[0].tempFilePath); },
+          success: (mediaRes) => {
+            if (!mediaRes.tempFiles || !mediaRes.tempFiles[0]) return; // iOS 取消/异常守卫
+            this.doOCR(mediaRes.tempFiles[0].tempFilePath);
+          },
         });
       },
     });

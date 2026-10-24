@@ -19,7 +19,24 @@ const _ = db.command;
  */
 const DAY = 86400000;
 
-exports.main = async () => {
+exports.main = async (event = {}) => {
+  // 保活 ping（每小时 keepAliveTimer 触发）：轻量调 3 个关键函数各一发，重置云函数
+  // 实例的闲置回收计时——免费替代"最小实例数"（35 元/月/函数）。只用盘中时段保活
+  // （9-16 点），夜间/周末让实例自然回收（那些时段没人用，冷启动无所谓）
+  if (event.Type === "Timer" && event.TriggerName === "keepAliveTimer") {
+    const hour = new Date(Date.now() + 8 * 3600000).getUTCHours();
+    const weekday = new Date(Date.now() + 8 * 3600000).getUTCDay();
+    if (weekday >= 1 && weekday <= 5 && hour >= 9 && hour <= 16) {
+      const targets = ["getPortfolio", "batchFetchEstimate", "manageWatchlist"];
+      await Promise.all(targets.map(name =>
+        cloud.callFunction({ name, data: { action: "list", _keepAlive: 1 } })
+          .then(() => console.log(`[keepAlive] ${name} ok`))
+          .catch(e => console.log(`[keepAlive] ${name} fail: ${e.message}`))
+      ));
+    }
+    return { code: 0, msg: "keepalive done" };
+  }
+
   const started = Date.now();
   const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
   try {
@@ -91,20 +108,36 @@ exports.main = async () => {
       }));
       if (i + CONCURRENT < missing.length) await new Promise(r => setTimeout(r, 100));
     }
-    // 详情页净值历史预热（2026-10-18 新增，详情页首开最贵的一段）：260 行日频净值
-    // 写 fund_nav_cache（按 _id=fundCode 日更覆盖），fetchFundOverview 命中当日缓存
-    // 时 13 次东财分页请求变 0 次。预算 120s：池 825 只约需 130s，当日缺口次日递补。
+    // 详情页/首页净值历史预热（2026-10-18 新增，10-24 扩池）：260 行日频净值
+    // 写 fund_nav_cache（按 _id=fundCode 日更覆盖），fetchFundOverview 与 getPortfolio
+    // 命中当日缓存时 13 次东财分页请求变 0 次。池 = 自选 ∪ 持仓（getPortfolio 首页
+    // 也读此缓存，只预热自选时持仓池仅 48% 覆盖）。预算 120s，当日缺口次日递补。
     let nok = 0, nskip = 0, nfail = 0, nbudget = 0;
     try {
       try { await db.createCollection("fund_nav_cache"); } catch (e) { /* 已存在 */ }
+      // 并入持仓池（排除 h5_ 老账号）
+      const navPool = new Set(pool);
+      let lastHid = "";
+      for (;;) {
+        const q2 = db.collection("holdings").field({ _openid: true, fundCode: true }).limit(1000);
+        const res2 = lastHid ? await q2.where({ _id: _.gt(lastHid) }).get() : await q2.get();
+        if (!res2.data || res2.data.length === 0) break;
+        res2.data.forEach(r => {
+          if (String(r._openid || "").startsWith("h5_")) return;
+          if (r.fundCode && /^\d{6}$/.test(r.fundCode)) navPool.add(r.fundCode);
+        });
+        if (res2.data.length < 1000) break;
+        lastHid = res2.data[res2.data.length - 1]._id;
+      }
+      const navPoolArr = [...navPool];
       const navPending = [];
-      for (let i = 0; i < pool.length; i += 100) {
+      for (let i = 0; i < navPoolArr.length; i += 100) {
         const res = await db.collection("fund_nav_cache")
-          .where({ fundCode: _.in(pool.slice(i, i + 100)), date: today })
+          .where({ fundCode: _.in(navPoolArr.slice(i, i + 100)), date: today })
           .field({ fundCode: true })
           .get();
         const have = new Set((res.data || []).map(c => c.fundCode));
-        pool.slice(i, i + 100).forEach(c => { if (!have.has(c)) navPending.push(c); });
+        navPoolArr.slice(i, i + 100).forEach(c => { if (!have.has(c)) navPending.push(c); });
       }
       console.log(`[watchlistPerfWarmup] nav 待预热 ${navPending.length} 只`);
       const N_CONCURRENT = 10, N_BUDGET = 120000, nStarted = Date.now();
