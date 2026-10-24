@@ -807,7 +807,9 @@ Page({
         // 用户就知道不用再刷了。数据来自每只持仓的 actualDate（服务端已回传，不需要新接口）
         const bjToday = marketTime.bjDateStr();
         const pubCount = holdings.filter((h) => h.actualDate === bjToday).length;
-        const navProgressText = (holdings.length > 0 && marketTime.marketPhase() === "afterClose")
+        // 双保险：相位是盘后 且 今天真是交易日（周末/节假日 phase 理论上恒为 closed，
+        // 但提示若在休市日出现会误导"收益还会更新"——加交易日显式闸）
+        const navProgressText = (holdings.length > 0 && marketTime.marketPhase() === "afterClose" && marketTime.isTradingDay(bjToday))
           ? (pubCount >= holdings.length
               ? `净值已全部公布（${holdings.length} 只）· 今日收益已确定`
               : `净值已公布 ${pubCount}/${holdings.length} 只 · 收益还会更新`)
