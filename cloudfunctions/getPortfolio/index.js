@@ -7,6 +7,8 @@ const fd = require("./_shared/fund-data");
 const ft = require("./_shared/fund-temperature");
 const td = require("./_shared/trading-day");
 
+let _tempDistCache = null; // 全市场温度分布的当日缓存（3 次 count 只在实例首个请求跑）
+
 exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   const { historyDays, withAnalysis, withNav60, src, debug, withEstimates } = event || {};
@@ -61,10 +63,11 @@ exports.main = async (event) => {
     // 跳过后市值回落到 DB 存储值（快照任务每日更新），当日收益/涨跌字段置空
     const skipEst = withEstimates === false;
     let tiantianMap = {}, sinaMap = {};
+    // 估值 promise 先发不等待（2026-10-24：此前 await 等新浪往返 389ms 后才开始读 NAV 缓存，
+    // 现在两者并行——NAV 批量读 + 新浪/自算估值同时跑，最后统一 await）
+    let estimatesPromise = null;
     if (!skipEst) {
-      // 自算与数据源一互不依赖 → 并行，避免串行叠加延迟（新浪多批时会明显拖慢首页）；
-      // 新浪给 15s 总预算：到点用已拿到的部分，宁缺不拖垮函数（getPortfolio 超时 60s）
-      [tiantianMap, sinaMap] = await Promise.all([
+      estimatesPromise = Promise.all([
         computeSelfEstimates(codes, _startTime),
         fd.fetchSinaEstimates(codes, { budgetMs: 15000 }),
       ]);
@@ -87,6 +90,18 @@ exports.main = async (event) => {
     const CONCURRENT = 8;
     const uniqueCodes = [...new Set(holdings.map((h) => h.fundCode))];
     const navByCode = {};
+    // NAV 缓存一次批量读（2026-10-24：此前循环内逐只 doc.get，12 只=12 次 DB 往返 ~430ms；
+    // where in 一次拿全池，循环内查内存 map）。失败静默走原路径
+    let navCacheMap = null;
+    try {
+      const todayKey = fd.formatBJDate();
+      const cc = await db.collection("fund_nav_cache")
+        .where({ fundCode: _.in(uniqueCodes), date: todayKey })
+        .field({ fundCode: true, rows: true })
+        .limit(1000).get();
+      navCacheMap = {};
+      (cc.data || []).forEach(doc => { navCacheMap[doc.fundCode] = doc; });
+    } catch (e) { navCacheMap = null; }
     for (let i = 0; !skipEst && i < uniqueCodes.length; i += CONCURRENT) {
       const batch = uniqueCodes.slice(i, i + CONCURRENT);
       const batchResults = await Promise.all(batch.map(async (code) => {
@@ -98,13 +113,18 @@ exports.main = async (event) => {
             // 250 行历史 0 次 lsjz 请求（此前每只 13 次分页，是首页 2.3s avg 的大头）。
             // 命中时历史与"最新净值"可一并从缓存尾部取——盘后缓存即当日最新
             let cachedRows = null;
-            try {
-              const c = await db.collection("fund_nav_cache").doc(code).get();
-              const doc = c.data;
-              if (doc && doc.date === fd.formatBJDate() && Array.isArray(doc.rows) && doc.rows.length > 50) {
-                cachedRows = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
-              }
-            } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }
+            const doc = navCacheMap ? navCacheMap[code] : null;
+            if (doc && Array.isArray(doc.rows) && doc.rows.length > 50) {
+              cachedRows = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
+            } else {
+              try {
+                const c = await db.collection("fund_nav_cache").doc(code).get();
+                const d2 = c.data;
+                if (d2 && d2.date === fd.formatBJDate() && Array.isArray(d2.rows) && d2.rows.length > 50) {
+                  cachedRows = d2.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
+                }
+              } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }
+            }
             if (cachedRows) {
               const last = cachedRows[0];
               const prev = cachedRows[1]; // 前一交易日净值（盘中收益的差值基准）
@@ -138,6 +158,9 @@ exports.main = async (event) => {
       if (i + CONCURRENT < uniqueCodes.length) {
         await new Promise(r => setTimeout(r, 150));
       }
+    }
+    if (estimatesPromise) {
+      [tiantianMap, sinaMap] = await estimatesPromise;
     }
     const resultsList = holdings.map((h) => {
       const n = navByCode[h.fundCode] || { eastmoney: {}, nav60: [], navHistory: [] };
@@ -345,6 +368,22 @@ exports.main = async (event) => {
           tempRows.push(...(res.data || []));
         }
         tempRows.forEach(t => { if (t && !tempMap[t.fundCode]) tempMap[t.fundCode] = t; });
+        // 当日批量查空（周末/节假日/凌晨任务未跑到）→ 回退最近交易日批量再查一轮：
+        // 直接逐只 orderBy 会 12 次 DB 往返 ~1s（周六实测 analysis 段的元凶）
+        let missAfterBatch = tempCodes.filter(c => !tempMap[c]);
+        if (missAfterBatch.length > 0) {
+          const td = require("./_shared/trading-day");
+          const prevDay = td.lastTradingDay(today);
+          if (prevDay && prevDay !== today) {
+            for (let i = 0; i < missAfterBatch.length; i += BATCH) {
+              const res = await db.collection("fund_temperatures")
+                .where({ fundCode: _.in(missAfterBatch.slice(i, i + BATCH)), date: prevDay })
+                .field(TEMP_FIELDS)
+                .get();
+              (res.data || []).forEach(t => { if (!tempMap[t.fundCode]) tempMap[t.fundCode] = t; });
+            }
+          }
+        }
         for (const c of tempCodes) { if (!tempMap[c]) missingTemps.push(c); }
         // 缺失的逐只补最新一条（凌晨任务偶发失败/未跑到该基金），单只失败不拖垮整体
         for (const c of missingTemps) {
@@ -475,13 +514,19 @@ exports.main = async (event) => {
     if (withAnalysis !== false) {
       try {
         const day = fd.formatBJDate();
-        const [lowRes, midRes, highRes] = await Promise.all([
-          db.collection("fund_temperatures").where({ date: day, signal: "low" }).count(),
-          db.collection("fund_temperatures").where({ date: day, signal: "mid" }).count(),
-          db.collection("fund_temperatures").where({ date: day, signal: "high" }).count(),
-        ]);
-        const total = (lowRes.total || 0) + (midRes.total || 0) + (highRes.total || 0);
-        if (total > 0) tempDistribution = { low: lowRes.total || 0, mid: midRes.total || 0, high: highRes.total || 0, total };
+        // 模块级缓存：同实例当日只算一次（盘中 30s 轮询 × N 用户原本反复 3 次 count）
+        if (!_tempDistCache || _tempDistCache.day !== day) {
+          const [lowRes, midRes, highRes] = await Promise.all([
+            db.collection("fund_temperatures").where({ date: day, signal: "low" }).count(),
+            db.collection("fund_temperatures").where({ date: day, signal: "mid" }).count(),
+            db.collection("fund_temperatures").where({ date: day, signal: "high" }).count(),
+          ]);
+          const total = (lowRes.total || 0) + (midRes.total || 0) + (highRes.total || 0);
+          _tempDistCache = total > 0
+            ? { day, dist: { low: lowRes.total || 0, mid: midRes.total || 0, high: highRes.total || 0, total } }
+            : { day, dist: null };
+        }
+        tempDistribution = _tempDistCache.dist;
       } catch (e) { console.warn("[getPortfolio] 温度分布计算失败:", e.message); }
     }
 
