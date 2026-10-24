@@ -49,7 +49,7 @@ Page({
     indexCards: [],
     indexCardsGrouped: {},
     indexLoading: true,
-    updatedAt: "",
+    updatedText: "",
   },
 
   onLoad() {
@@ -163,8 +163,19 @@ Page({
       indexLoading: false,
       ...this._marketStatus(),
       // 秒开（旧缓存）时显示缓存保存时刻，标注诚实；拉新成功后显示当前时刻
-      updatedAt: new Date((fromCache ? (cache.ts || 0) : Date.now()) + 8 * 3600000)
-        .toISOString().slice(11, 16),
+      // 更新时间诚实化：数据自身的行情日期=今天 → 显示拉取时刻；
+      // 否则（周末/节假日/盘前）显示"数据为 X 收盘"，不用当前时间冒充数据时点
+      updatedText: (() => {
+        // 用最旧的行情日期（保守口径）：不同市场数据时点不一（美股 bar 休市日会带请求日戳），
+        // "截至最旧"是唯一不会误导的单一时间戳
+        const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+        const asOfs = (cache.indexCards || []).map(c => c.asOf).filter(Boolean).sort();
+        const oldestAsOf = asOfs[0] || "";
+        const fetchTime = new Date((fromCache ? (cache.ts || 0) : Date.now()) + 8 * 3600000)
+          .toISOString().slice(11, 16);
+        return oldestAsOf === today ? "数据更新于 " + fetchTime
+          : (oldestAsOf ? "数据截至 " + oldestAsOf : "");
+      })(),
     };
     // 指数按 港/美/亚太 分组，展示当前选中组
     const grouped = { hk: [], us: [], ap: [], eu: [] };
@@ -377,6 +388,7 @@ Page({
           price: latest.close.toFixed(2),
           rateText: (changeRate > 0 ? "+" : "") + changeRate + "%",
           isUp: change >= 0,
+          asOf: latest.date, // 行情自身所属日期（休市日拉到的仍是上一交易日数据）
         };
       }
       return { name: idx.name, code: idx.code, price: "--", rateText: "--", isUp: true };

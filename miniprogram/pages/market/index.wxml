@@ -27,7 +27,7 @@
           <view class="idx-more">近5日走势 ›</view>
         </view>
       </scroll-view>
-      <view class="mk-updated" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+      <view class="mk-updated" wx:if="{{updatedText}}">{{updatedText}}</view>
     </view>
 
     <!-- 持仓港美股敞口（登录且有持仓时展示，纯数据陈述）+ 重仓股实时行情 -->
