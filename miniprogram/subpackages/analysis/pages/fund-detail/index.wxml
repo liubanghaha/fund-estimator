@@ -232,8 +232,9 @@
         <view wx:for="{{holdings}}" wx:key="rank" class="hold-row">
           <view class="hold-rank">{{item.rank}}</view>
           <view class="hold-name">{{item.stockName}}<text wx:if="{{item.isHK}}" class="hk-tag">H</text></view>
-          <view class="hold-change {{item.stockDate && item.stockDate !== bjToday ? 'stale' : (item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : '')}}">
-            {{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}<text wx:if="{{item.stockDate && item.stockDate !== bjToday}}" class="stale-tag">昨收</text>
+          <view class="hold-change-wrap">
+            <view class="hold-change {{item.stockDate && item.stockDate !== bjToday ? 'stale' : (item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : '')}}">{{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}</view>
+            <view wx:if="{{item.stockDate && item.stockDate !== bjToday}}" class="stale-tag">昨收</view>
           </view>
           <view class="hold-ratio-change">
             <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>
@@ -241,7 +242,7 @@
             <text wx:elif="{{item.changeType === 'down' && item.ratioChange != null}}" class="change-tag down">📉{{item.ratioChange}}%</text>
             <text wx:else>--</text>
           </view>
-          <view class="hold-ratio">{{item.navRatio || '--'}}</view>
+          <view class="hold-ratio">{{item.navRatio ? item.navRatio + '%' : '--'}}</view>
         </view>
         <!-- 上期数据缺失提示（拉取失败时避免误报全部新增/退出） -->
         <view wx:if="{{prevDataIncomplete}}" class="hold-row" style="opacity:.6;font-size:20rpx;color:#999">
