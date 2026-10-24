@@ -20,7 +20,13 @@ exports.main = async (event) => {
       try { await db.createCollection("fund_nav_cache"); } catch (e) { /* 已存在 */ }
       const c = await db.collection("fund_nav_cache").doc(fundCode).get();
       const doc = c.data;
-      if (doc && doc.date === todayStr && Array.isArray(doc.rows) && doc.rows.length > 50) {
+      // 盘后缓存闸（同 getPortfolio）：交易日 15:00 后当日新净值陆续公布，只认
+      // "缓存首行已是今天"的缓存；旧缓存 actualDate 停在昨天会误判净值公布状态
+      const bjMin = new Date(Date.now() + 8 * 3600000);
+      const afterClose = require("./_shared/trading-day").isTradingDay(todayStr)
+        && bjMin.getUTCHours() * 60 + bjMin.getUTCMinutes() >= 900;
+      const firstIsToday = Array.isArray(doc && doc.rows) && doc.rows[0] && doc.rows[0][0] === todayStr;
+      if (doc && doc.date === todayStr && (!afterClose || firstIsToday) && Array.isArray(doc.rows) && doc.rows.length > 50) {
         cachedNav = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
       }
     } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }

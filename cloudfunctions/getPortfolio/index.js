@@ -97,12 +97,22 @@ exports.main = async (event) => {
     let navCacheMap = null;
     try {
       const todayKey = fd.formatBJDate();
+      // 盘后（≥15:00 交易日）当日新净值陆续公布，但缓存的还是 05:30 预热的旧净值
+      // （actualDate 停在昨天）——用缓存会把"净值已公布 N/12"误判成 0、影响 ✓ 标记与
+      // 收益口径切换。盘后只认"缓存首行已是今天净值"的基金（零星已刷新的），其余现场拉。
+      const bjMin = new Date(Date.now() + 8 * 3600000);
+      const afterClose = td.isTradingDay(todayKey) && bjMin.getUTCHours() * 60 + bjMin.getUTCMinutes() >= 900;
       const cc = await db.collection("fund_nav_cache")
         .where({ fundCode: _.in(uniqueCodes), date: todayKey })
         .field({ fundCode: true, rows: true })
         .limit(1000).get();
       navCacheMap = {};
-      (cc.data || []).forEach(doc => { navCacheMap[doc.fundCode] = doc; });
+      (cc.data || []).forEach(doc => {
+        const firstRow = Array.isArray(doc.rows) ? doc.rows[0] : null;
+        const fresh = firstRow && firstRow[0] === todayKey;
+        if (afterClose && !fresh) return; // 盘后旧缓存不用
+        navCacheMap[doc.fundCode] = doc;
+      });
     } catch (e) { navCacheMap = null; }
     for (let i = 0; !skipEst && i < uniqueCodes.length; i += CONCURRENT) {
       const batch = uniqueCodes.slice(i, i + CONCURRENT);
