@@ -433,15 +433,24 @@ Page({
     // 亚太组无腾讯映射走云函数兜底（最长 12s），一只慢指数拖住整页"加载中"。
     // 现在每只拿到即增量更新该卡；all 完成后整卡集合照常返回供缓存写入
     const cards = INDICES.map((idx) => ({ name: idx.name, code: idx.code, price: "--", rateText: "--", isUp: true }));
-    // 占位卡先上（整排 "--"），每只到数即原位刷新
-    this.setData({ indexCards: cards.slice(), loading: false });
+    // 占位卡先上：按分组视图渲染当前 tab 的占位（"--"），每只到数即重算分组增量刷新。
+    // ⚠️ 不能用全局索引 indexCards[i] 直写——渲染层是分组后的子数组（hk 只含 2 项），
+    // 全局索引会越界错位（SPX 被 append 进港股组，10-24 真机实锤）
+    const renderGrouped = () => {
+      const grouped = { hk: [], us: [], ap: [], eu: [] };
+      cards.forEach((c) => {
+        const def = INDICES.find((i) => i.code === c.code);
+        (grouped[def ? def.group : "hk"] || grouped.hk).push(c);
+      });
+      if (this.data.loading || this._refreshing) {
+        this.setData({ indexCards: grouped[this.data.idxTab] || [], loading: false });
+      }
+    };
+    renderGrouped();
     INDICES.forEach((idx, i) => {
       this._fetchIndexKline(idx.code, 2).catch(() => []).then((data) => {
         cards[i] = buildCard(idx, data);
-        // 增量渲染：把这张卡刷进当前视图（loading 期间也能逐卡出现）
-        if (this.data.loading || this._refreshing) {
-          this.setData({ [`indexCards[${i}]`]: cards[i] });
-        }
+        renderGrouped(); // 每只到数即按分组重渲当前 tab
       });
     });
     return Promise.all(INDICES.map((idx, i) => this._fetchIndexKline(idx.code, 2).catch(() => []))).then((datas) =>
