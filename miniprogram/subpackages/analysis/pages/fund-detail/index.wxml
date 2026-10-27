@@ -222,7 +222,6 @@
       <view wx:if="{{profileLoading && !holdings.length}}" class="info-card"><view class="empty-text">加载中...</view></view>
       <view wx:elif="{{holdings.length > 0}}" class="info-card">
         <view class="section-title">前十大持仓<text wx:if="{{quarterLabel}}" class="quarter-label" style="float:right;font-size:22rpx;color:#BBB;font-weight:400">{{quarterLabel}}</text></view>
-        <view wx:if="{{holdStaleCount > 0}}" class="hold-stale-tip">部分股票显示的是上一交易日收盘涨跌（今日行情尚未更新），已标灰</view>
         <view class="hold-header">
           <text class="hold-h-name">名称</text>
           <text class="hold-h-change">今日涨跌</text>
@@ -233,8 +232,7 @@
           <view class="hold-rank">{{item.rank}}</view>
           <view class="hold-name">{{item.stockName}}<text wx:if="{{item.isHK}}" class="hk-tag">H</text></view>
           <view class="hold-change-wrap">
-            <view class="hold-change {{item.stockDate && item.stockDate !== bjToday ? 'stale' : (item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : '')}}">{{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}</view>
-            <view wx:if="{{item.stockDate && item.stockDate !== bjToday}}" class="stale-tag">昨收</view>
+            <view class="hold-change {{item.stockChangeRate > 0 ? 'up' : item.stockChangeRate < 0 ? 'down' : ''}}">{{item.stockChangeRate != null ? (item.stockChangeRate > 0 ? '+' : '') + item.stockChangeRate + '%' : '--'}}</view>
           </view>
           <view class="hold-ratio-change">
             <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>

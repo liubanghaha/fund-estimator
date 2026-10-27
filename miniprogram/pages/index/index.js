@@ -1225,7 +1225,7 @@ Page({
 
   // 预取自选（2026-10-24）：首页主数据落地后静默发起自选列表+估算，按自选页的缓存
   // 格式写 storage——用户切到自选 tab 时 applyCache 直接秒开，后台刷新补实时。
-  // 失败静默（预取是锦上添花，不能影响首页）；归因卡走独立的 _loadAttribution
+  // 失败静默（预取是锦上添花，不能影响首页）
   async _prefetchWatchlist() {
     if (this._wlPrefetched) return;
     this._wlPrefetched = true;

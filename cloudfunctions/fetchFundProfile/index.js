@@ -14,18 +14,27 @@ exports.main = async (event) => {
     // 档案缓存优先（2026-10-18：watchlistPerfWarmup 每日 05:30 把自选池灌进缓存）。
     // 14 天内的档案直接回，盘中字段（top10 实时股价/同类排名）仍现场刷新——
     // 6 路重请求变 2 个轻请求，档案 tab 秒开
+    // 最新已发布季报：1-3月→12月, 4-6月→3月, 7-9月→6月, 10-12月→9月
+    const { year: curY, month: curM } = fd.getQuarterParams();
+    // 按当前日期"应该有"的季度标签，用于判断缓存里的季报是不是落后了
+    const expectQuarterLabel = `${curY}年Q${Math.ceil(curM / 3)}`;
+
     try { await db.createCollection("fund_profile_cache"); } catch (e) { /* 已存在 */ }
     try {
       const c = await db.collection("fund_profile_cache").doc(fundCode).get();
       const doc = c.data;
-      if (doc && doc.fetchedDate && doc.data && Date.now() - Date.parse(doc.fetchedDate + "T00:00:00+08:00") < PROFILE_CACHE_TTL) {
+      // 季度落后的缓存只给 1 天短 TTL：季报是陆续披露的，若在披露前写进缓存（那时只能拿到上一季），
+      // 14 天的长 TTL 会把旧季报钉住两周（2026-10-27 用户反馈：10 月下旬仍显示 2026年Q2，
+      // 而东财早已披露 Q3）。落后期间每天重试，拿到新季报后自然恢复 14 天缓存。
+      const quarterBehind = !!(doc && doc.data && doc.data.quarterLabel &&
+        doc.data.quarterLabel !== expectQuarterLabel);
+      const ttl = quarterBehind ? DAY : PROFILE_CACHE_TTL;
+      if (doc && doc.fetchedDate && doc.data && Date.now() - Date.parse(doc.fetchedDate + "T00:00:00+08:00") < ttl) {
         const live = await refreshLiveParts(fundCode, doc.data.holdings || []);
         return { code: 0, data: { ...doc.data, holdings: live.holdings, sameTypeRank: live.sameTypeRank, rankOk: live.rankOk, fromCache: true } };
       }
     } catch (e) { /* 无缓存/未建集合 → 走现场拉取 */ }
 
-    // 最新已发布季报：1-3月→12月, 4-6月→3月, 7-9月→6月, 10-12月→9月
-    const { year: curY, month: curM } = fd.getQuarterParams();
     let prevY = curY, prevM = curM - 3;
     if (prevM <= 0) { prevY = curY - 1; prevM = 12; }
 

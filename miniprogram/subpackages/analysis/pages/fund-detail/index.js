@@ -28,9 +28,7 @@ Page({
     // 数据校准（修正份额/成本记录误差，无交易语义）
     showCalibrate: false, calShares: "", calPrice: "", calSaving: false,
     isTrading: false,
-    bjToday: "",       // 北京时间今天（YYYY-MM-DD），用于判断个股行情是不是今日
     priceLoading: false, // 首开时净值/估值还没到：显示"加载中…"而不是"-- + 未出估值"
-    holdStaleCount: 0, // 非今日行情的持仓数（>0 时表格顶部给提示）
     showEstimate: false, // 盘中且今日净值未公布：头部走估算口径（由 updateDisplay 计算）
     chartPeriod: '1M',
     chartTxMap: {},
@@ -335,6 +333,10 @@ Page({
       this.updateDisplay();
       this.enrichHoldingData();
       this._saveCache();
+      // 后台预取档案/持仓：原本是"用户点持仓 tab 才发请求"（懒加载），
+      // 第一次切过去必然干等一个云函数往返（冷启动时 0.4~1.5s）。
+      // 这里在首屏数据就绪后静默拉一次，用户点开时数据已在内存里 → 秒开。
+      if (!this.data.profile) this.fetchProfile().catch(() => {});
       // 首屏数据全部就绪的总耗时：按 首开/有缓存 分开统计，线上取分位数看真实分布
       track.track("perf_detail", {
         stage: "total",
@@ -482,6 +484,10 @@ Page({
       // 置 null 走 "--" 占位，等 fetchEstimate / checkHolding 回来再填（净值与净值日期不受影响）
       const cacheToday = marketTime.cacheIsToday(cached.ts);
       this._backfillName(cached.fundName);
+      // 缓存里的个股涨跌可能是任意一天的（2026-10-26 用户反馈：持仓页显示了一周前的行情，
+      // 10 只重仓股涨幅全红、实际当天多数在跌）。缓存没有可信日期就不当"今日"用：
+      // 只有明确标记为今天的行情才保留，其余置 null 显示 "--"，等实时补拉回来再填
+      const cachedHoldings = this._sanitizeQuotes(cached.holdings || []);
       this.setData({
         loading: false,
         fundName: this.data.fundName || cached.fundName || "",
@@ -497,8 +503,7 @@ Page({
         // 持仓区数据一并秒开（checkHolding 网络请求返回后会自动覆盖更新）
         holdingData: cacheToday ? (cached.holdingData || null) : null,
         // 前十大持仓/档案季频静态数据一并秒开（原先不入缓存，每次切 tab 都要懒加载打网络）
-        holdings: cached.holdings || [], exited: cached.exited || [],
-        holdStaleCount: this._countStale(cached.holdings || []),
+        holdings: cachedHoldings, exited: cached.exited || [],
         quarterLabel: cached.quarterLabel || '', prevDataIncomplete: !!cached.prevDataIncomplete,
         turnoverRates: cached.turnoverRates || [],
         // 旧版代码曾把档案接口超时的 profile:null 洗成空对象 {} 写入缓存；fundSizeText 只在
@@ -522,22 +527,23 @@ Page({
           this.enrichHoldingData();
         }
         // 重仓股实时涨跌静默补拉（缓存里的行情是上次保存时刻的旧值，盘中在变）
-        if (cached.holdings && cached.holdings.length) {
-          const stockCodes = cached.holdings.map(h => h.stockCode).filter(Boolean);
-          if (stockCodes.length) {
-            this._fetchStockQuotes(stockCodes).then(quotes => {
-              if (!Object.keys(quotes).length) return;
-              const updated = cached.holdings.map(h => {
-                const q = quotes[h.stockCode];
-                return {
-                  ...h,
-                  stockChangeRate: q && q.rate != null ? q.rate : h.stockChangeRate,
-                  stockDate: (q && q.date) || h.stockDate || null,
-                  isHK: h.stockCode && h.stockCode.length === 5,
-                };
-              });
-              this.setData({ holdings: updated, holdStaleCount: this._countStale(updated) });
-            }).catch(() => {});
+        // 只在"盘中"或"确实缺当日行情"时才打这 10 个请求：收盘后个股涨跌已定格，
+        // 缓存里就是当日最终值，没必要每次进页面重拉一遍
+        // 只要不是"休市/盘前"就刷新：收盘后（afterClose）缓存里可能存的是当天盘中某一刻的涨跌，
+        // 只有收盘终值才是对的，不能因为"日期是今天"就跳过
+        const needQuoteRefresh = marketTime.marketPhase() !== "closed" ||
+          cachedHoldings.some(h => h.stockChangeRate == null);
+        if (needQuoteRefresh) {
+          // 注意传的是持仓对象数组：_fetchStockQuotes 内部读 h.stockCode，
+          // 此前这里传的是股票代码字符串数组 → 全是 undefined → 静默空转（从 2026-08-30 缓存改造起就坏了）
+          this._fetchStockQuotes(cachedHoldings).then(quotes => {
+            if (!Object.keys(quotes).length) return;
+            this.setData({ holdings: this._applyQuotes(cachedHoldings, quotes) });
+          }).catch(() => {});
+          // 客户端行情源（push2*.eastmoney.com）会被限流、偶发整体不可用，此时上面那次补拉会拿空。
+          // 缓存的行情又已按"只认当日"清空了 —— 直接让云端补一次（云函数走腾讯行情，稳定）
+          if (cachedHoldings.some(h => h.stockChangeRate == null)) {
+            this.fetchProfile().catch(() => {});
           }
         }
         this.drawChart();
@@ -545,8 +551,14 @@ Page({
       // 持仓/档案缓存超过 7 天，或缓存数据版本落后（后端修正调仓动向等计算）→ 视为陈旧：
       // 切 tab 时后台静默刷新 fetchProfile（旧值先显不转圈）。版本旧时主动重拉，立即用新值覆盖。
       const cacheVersionOk = cached.dataVersion === HOLDINGS_CACHE_VERSION;
-      this._profileStale = !cacheVersionOk || !cached.ts || (Date.now() - cached.ts > 7 * 86400000);
-      if (!cacheVersionOk) {
+      // 季报落后：本地缓存里还是上一季（如 10 月下旬仍存 2026年Q2）→ 与"版本旧"同等对待，立刻重拉。
+      // 2026-10-27 用户反馈：季报早披露了，持仓页还停在上一个季度
+      // 加 1 天节流：季报是陆续披露的，披露窗口内（如 10-01~10-25）每次进页面都判"落后"会反复请求，
+      // 同一天只重拉一次就够
+      const quarterBehindCache = !!(cached.quarterLabel && cached.quarterLabel !== this._expectedQuarterLabel() &&
+        (Date.now() - (cached.ts || 0) > 86400000));
+      this._profileStale = !cacheVersionOk || quarterBehindCache || !cached.ts || (Date.now() - cached.ts > 7 * 86400000);
+      if (!cacheVersionOk || quarterBehindCache) {
         // 旧版本缓存（如含修复前错误调仓动向）：渲染旧值后立即重拉档案/持仓，覆盖为最新
         this.fetchProfile().catch(() => {});
       }
@@ -711,7 +723,6 @@ Page({
     // isTrading 用 marketPhase（节假日表 + 9:25 边界，与全站口径一致）：
     // 旧写法"周几 && 9:00–15:30"用设备时间、不查节假日——工作日休市会把估算框照常显示出来
     const isTrading = marketTime.marketPhase() === "trading";
-    const bjToday = marketTime.bjDateStr();
     const displayChangeRate = calc.selectChangeRate(
       this.data.nav, this.data.actualNav,
       this.data.estimatedChangeRate, this.data.actualChangeRate,
@@ -745,7 +756,7 @@ Page({
       else estFrozenText = "休市中 · 估值已定格";
     }
     this.setData({
-      isTrading, bjToday, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
+      isTrading, displayChangeRate, isNavUpdated, showEstimate, noTodayEst, estFrozenText,
       estimatedChangeRateText: noTodayEst ? "--" : rateText(this.data.estimatedChangeRate),
       displayChangeRateText: noTodayEst ? "--" : rateText(displayChangeRate),
     });
@@ -840,28 +851,24 @@ Page({
           // 旧版云函数没有该字段：拿不到排名时一律按"未确认"处理，下次切档案 tab 自然重试
           const rank = res.result.data.sameTypeRank || null;
           const rankFetched = rank != null || res.result.data.rankOk === true;
-          const patch = { manager: res.result.data.manager, holdings, holdStaleCount: this._countStale(holdings), exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
+          // 清洗后的列表就是真正要展示的：没有"今天"日期的行情会被清成 null
+          const sanitizedHoldings = this._sanitizeQuotes(holdings);
+          const patch = { manager: res.result.data.manager, holdings: sanitizedHoldings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
           if (p) patch.profile = p;
           this.setData(patch);
           if (!rankFetched) this._profileStale = true; // 排名这次没拿到：本次会话再切档案 tab 还能重试
           // 懒加载路径此前从不写缓存，导致持仓/档案每次切 tab 都要重新打网络（季频静态数据）
           if (p) this._saveCache();
 
-          // 后台拉取股票行情（仅补云函数未返回的），不阻塞渲染
-          const missingQuotes = holdings.filter(h => h.stockChangeRate == null);
+          // 后台拉取股票行情（仅补清洗后仍为空的），不阻塞渲染。
+          // 必须按清洗后的数组判断：老配置里 stockChangeRate 有值但没有 stockDate，
+          // 用原数组判断会认为"不缺行情"从而永远不补拉，界面就定格在全 "--"
+          // （2026-10-27 用户反馈：某只基金持仓今日涨跌全部显示 --）
+          const missingQuotes = sanitizedHoldings.filter(h => h.stockChangeRate == null);
           if (missingQuotes.length > 0) {
             this._fetchStockQuotes(missingQuotes).then(quotes => {
               if (!Object.keys(quotes).length) return;
-              const updated = holdings.map(h => {
-                const q = quotes[h.stockCode];
-                return {
-                  ...h,
-                  stockChangeRate: q && q.rate != null ? q.rate : h.stockChangeRate,
-                  stockDate: (q && q.date) || h.stockDate || null,
-                  isHK: h.stockCode && h.stockCode.length === 5,
-                };
-              });
-              this.setData({ holdings: updated, holdStaleCount: this._countStale(updated) });
+              this.setData({ holdings: this._applyQuotes(sanitizedHoldings, quotes) });
               this._saveCache(); // 行情补拉后更新缓存，下次秒出的就是带实时涨跌的版本
             });
           }
@@ -872,12 +879,43 @@ Page({
     return this._profilePromise;
   },
 
-  // 兜底：客户端拉取股票行情（当云函数未返回时）
-  // 统计"行情不是今天"的持仓条数：休市/停牌/开盘前腾讯与东财给的都是上一交易日收盘价，
-  // 直接标成"今日涨跌"会和基金估值对不上（2026-10-21 用户反馈：持仓股全绿、估值却是负的）
-  _countStale(list) {
-    const today = this.data.bjToday || marketTime.bjDateStr();
-    return (list || []).filter(h => h.stockDate && h.stockDate !== today).length;
+  // 把行情结果合并进持仓列表：只接受"今天"的行情。
+  // 集合竞价（9:25-9:30）/停牌/收盘后，行情源返回的仍是上一交易日收盘价，
+  // 直接写进列表就又变成"旧数据当今日"（2026-10-26 用户反馈的同一类问题）
+  _applyQuotes(list, quotes) {
+    const today = marketTime.bjDateStr();
+    return (list || []).map((h) => {
+      const q = quotes && quotes[h.stockCode];
+      const fresh = q && q.date === today && q.rate != null;
+      return {
+        ...h,
+        stockChangeRate: fresh ? q.rate : (h.stockDate === today ? h.stockChangeRate : null),
+        stockDate: fresh ? today : (h.stockDate === today ? h.stockDate : null),
+        isHK: h.stockCode && h.stockCode.length === 5,
+      };
+    });
+  },
+
+  // 按当前日期"应该有"的季报标签（与云函数 getQuarterParams 同口径）：
+  // 1-3月→上年Q4, 4-6月→本年Q1, 7-9月→Q2, 10-12月→Q3
+  _expectedQuarterLabel() {
+    const d = new Date(Date.now() + 8 * 3600000);
+    const m = d.getUTCMonth() + 1;
+    let y = d.getUTCFullYear(), mon;
+    if (m >= 10) mon = 9;
+    else if (m >= 7) mon = 6;
+    else if (m >= 4) mon = 3;
+    else { y -= 1; mon = 12; }
+    return `${y}年Q${Math.ceil(mon / 3)}`;
+  },
+
+  _sanitizeQuotes(list) {
+    const today = marketTime.bjDateStr();
+    return (list || []).map((h) => {
+      if (!h) return h;
+      const fresh = h.stockDate === today;
+      return fresh ? h : Object.assign({}, h, { stockChangeRate: null });
+    });
   },
 
   _fetchStockQuotes(holdings) {
