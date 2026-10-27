@@ -651,7 +651,8 @@ async function runBriefing(dryRun, force) {
   });
 
   // 4.5 确认门：不固定发送时刻——官方净值（actualDate=当日）全部公布后本档即发；
-  // 968 互认基金 T+1 公布不参与确认；23:00 最后一档兜底（已发布按实际、未发布按估算混合，文案标"估"）
+  // 968 互认基金（T+1）与 QDII（净值 22:00 后才公布）不参与确认，23:00 最后一档兜底
+  // （已发布按实际、未发布按估算混合，文案标"估"）
   const confirmation = await collectConfirmation(targets, byUser, dataDay);
   if (!dryRun && !force && !confirmation.allConfirmed && !confirmation.isLastSlot) {
     return { code: 0, msg: `等待净值确认 ${confirmation.publishedCount}/${confirmation.totalCount}` };
@@ -1187,7 +1188,12 @@ async function checkPeAlerts(targets, byUser, todaySigs, dataDay, accessToken, d
 // 968 互认基金 T+1 公布，不参与当日确认；isLastSlot=23:00 最后检查档（兜底发送）
 async function collectConfirmation(targets, byUser, dataDay) {
   const codeSet = new Set();
-  targets.forEach(t => (byUser[t._openid] || []).forEach(h => { if (h.fundCode) codeSet.add(h.fundCode); }));
+  const nameMap = {};
+  targets.forEach(t => (byUser[t._openid] || []).forEach(h => {
+    if (!h.fundCode) return;
+    codeSet.add(h.fundCode);
+    if (h.fundName) nameMap[h.fundCode] = h.fundName;
+  }));
   const codes = [...codeSet];
   const navInfo = {};
   const prevNav = {};
@@ -1210,7 +1216,17 @@ async function collectConfirmation(targets, byUser, dataDay) {
   const prevRows = await readAll("fund_navs", { date: dataDay }, ["fundCode", "yesterdayNav"]);
   prevRows.forEach(r => { if (r.yesterdayNav > 0) prevNav[r.fundCode] = r.yesterdayNav; });
 
-  const t1Count = codes.filter(c => String(c).startsWith("968")).length;
+  // 不参与确认门的两类：
+  // - 968 互认基金：T+1 公布
+  // - QDII：官方净值普遍 22:00~24:00 才公布（反映美股当日收盘，清算慢），等待它们会把
+  //   全体订阅用户的收盘小结拖到 23:00 兜底档（2026-10-23 起连续数日 23:00 才收到，根因
+  //   是某订阅用户 10-24/10-27 新增 30+ 只纳指/全球 QDII）。剔除后已发布的照用实际值、
+  //   未发布的走组合估算兜底（resolveRate 混合口径，文案自动标"估"）。
+  //   名称标记宁宽勿漏：A 股基金 ~20:00 就公布，误放不影响时效；漏放才会拖门。
+  const QDII_RE = /QDII|纳斯达克|纳指|标普|道琼斯|全球|海外|美国|美元|日经|日本|新兴市场|亚洲|韩|金砖|原油|石油|移动互联/;
+  const excludedCount = codes.filter(c =>
+    String(c).startsWith("968") || QDII_RE.test(nameMap[c] || "")
+  ).length;
   const publishedCount = Object.keys(navInfo).length;
   const bjNow = new Date(Date.now() + 8 * 3600 * 1000);
   // 2026-10-18 修复：此前只认 23:00 整点，最后一档超时/失败时 23:20/23:40 直接 return
@@ -1222,7 +1238,7 @@ async function collectConfirmation(targets, byUser, dataDay) {
     prevNav,
     publishedCount,
     totalCount: codes.length,
-    allConfirmed: codes.length > 0 && publishedCount + t1Count >= codes.length,
+    allConfirmed: codes.length > 0 && publishedCount + excludedCount >= codes.length,
     isLastSlot,
   };
 }

@@ -244,7 +244,8 @@ async function readAllHoldings() {
   const all = [];
   let lastId = "";
   while (true) {
-    const q = db.collection("holdings").field(FIELD).limit(MAX_LIMIT);
+    // 游标分页显式按 _id 定序：不依赖底层未承诺的默认返回序（乱序会导致 lastId 不前进→死循环/漏读）
+    const q = db.collection("holdings").field(FIELD).limit(MAX_LIMIT).orderBy("_id", "asc");
     const res = lastId ? await q.where({ _id: _.gt(lastId) }).get() : await q.get();
     all.push(...(res.data || []));
     if (!res.data || res.data.length < MAX_LIMIT) break;

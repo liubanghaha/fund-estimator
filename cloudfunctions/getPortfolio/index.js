@@ -95,13 +95,14 @@ exports.main = async (event) => {
     // NAV 缓存一次批量读（2026-10-24：此前循环内逐只 doc.get，12 只=12 次 DB 往返 ~430ms；
     // where in 一次拿全池，循环内查内存 map）。失败静默走原路径
     let navCacheMap = null;
+    let afterClose = false;
     try {
       const todayKey = fd.formatBJDate();
       // 盘后（≥15:00 交易日）当日新净值陆续公布，但缓存的还是 05:30 预热的旧净值
       // （actualDate 停在昨天）——用缓存会把"净值已公布 N/12"误判成 0、影响 ✓ 标记与
       // 收益口径切换。盘后只认"缓存首行已是今天净值"的基金（零星已刷新的），其余现场拉。
       const bjMin = new Date(Date.now() + 8 * 3600000);
-      const afterClose = td.isTradingDay(todayKey) && bjMin.getUTCHours() * 60 + bjMin.getUTCMinutes() >= 900;
+      afterClose = td.isTradingDay(todayKey) && bjMin.getUTCHours() * 60 + bjMin.getUTCMinutes() >= 900;
       const cc = await db.collection("fund_nav_cache")
         .where({ fundCode: _.in(uniqueCodes), date: todayKey })
         .field({ fundCode: true, rows: true })
@@ -128,11 +129,16 @@ exports.main = async (event) => {
             const doc = navCacheMap ? navCacheMap[code] : null;
             if (doc && Array.isArray(doc.rows) && doc.rows.length > 50) {
               cachedRows = doc.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
-            } else {
+            } else if (navCacheMap === null) {
+              // 批量读失败才逐只兜底。批量读成功时走到这里的 doc 只有两种：
+              // 盘后旧缓存（首行非今日，被闸滤掉——兜底再读同一条还会绕过盘后闸，c8299a1
+              // 修的症状会复发）或 date 非今日的文档（兜底的 date 校验同样拒收）——都无意义
               try {
                 const c = await db.collection("fund_nav_cache").doc(code).get();
                 const d2 = c.data;
-                if (d2 && d2.date === fd.formatBJDate() && Array.isArray(d2.rows) && d2.rows.length > 50) {
+                const firstRow = d2 && Array.isArray(d2.rows) ? d2.rows[0] : null;
+                const fresh = firstRow && firstRow[0] === fd.formatBJDate();
+                if (d2 && d2.date === fd.formatBJDate() && (!afterClose || fresh) && Array.isArray(d2.rows) && d2.rows.length > 50) {
                   cachedRows = d2.rows.map(r => ({ date: r[0], nav: r[1], changeRate: r[2] }));
                 }
               } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }

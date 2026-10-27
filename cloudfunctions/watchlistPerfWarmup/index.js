@@ -46,7 +46,7 @@ exports.main = async (event = {}) => {
     const codes = new Set();
     let lastId = "";
     for (;;) {
-      const q = db.collection("watchlist").field({ _openid: true, fundCode: true }).limit(1000);
+      const q = db.collection("watchlist").field({ _openid: true, fundCode: true }).limit(1000).orderBy("_id", "asc");
       const res = lastId ? await q.where({ _id: _.gt(lastId) }).get() : await q.get();
       if (!res.data || res.data.length === 0) break;
       res.data.forEach(r => {
@@ -119,7 +119,7 @@ exports.main = async (event = {}) => {
       const navPool = new Set(pool);
       let lastHid = "";
       for (;;) {
-        const q2 = db.collection("holdings").field({ _openid: true, fundCode: true }).limit(1000);
+        const q2 = db.collection("holdings").field({ _openid: true, fundCode: true }).limit(1000).orderBy("_id", "asc");
         const res2 = lastHid ? await q2.where({ _id: _.gt(lastHid) }).get() : await q2.get();
         if (!res2.data || res2.data.length === 0) break;
         res2.data.forEach(r => {

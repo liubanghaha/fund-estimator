@@ -601,7 +601,7 @@ function drawAnnualCard(canvas, opts = {}) {
     ctx.fillText('💸 持有费用', 60, gridY);
     ctx.fillStyle = '#1A1A1A'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'right';
     // 金额隐藏时只留费率、抹去金额（feeText 形如"年费约 X 元（综合费率 Y%）"）
-    ctx.fillText(amountVisible ? opts.feeText : opts.feeText.replace(/约 [\d,]+ 元/, '约 **** 元'), w - 60, gridY);
+    ctx.fillText(amountVisible ? opts.feeText : opts.feeText.replace(/约 [\d,.]+ 元/, '约 **** 元'), w - 60, gridY);
     gridY += 36;
   }
   if (opts.shadowText) {

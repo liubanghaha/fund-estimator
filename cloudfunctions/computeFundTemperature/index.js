@@ -182,16 +182,18 @@ exports.main = async (event) => {
     console.log(`[computeFundTemperature] 持仓股去重数: ${codes.length}`);
 
     if (codes.length > 0) {
-      const liveData = await ft.fetchStockLiveBatch(codes);
-      let histData = {};
-      // 90s 总预算内才拉历史 PE 区间（120s 超时留 30s 给写库），超预算用实时 PE 兜底
-      if (Date.now() - _startTime < 90000) {
-        // 剩余预算传入批间循环：到点停止续批，已拉到的照常返回（缺历史的走实时 PE 兜底），
-        // 避免预算只在启动前检查一次、启动后冲破 120s 被强杀
-        histData = await ft.fetchStockHistBatch(codes, { budgetMs: 90000 - (Date.now() - _startTime) });
-      } else {
-        console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
-      }
+      // live 与 hist 并行（无数据依赖）。曾改串行：live 全额挤占 90s 预算 → hist 剩余预算
+      // 不足被截断 → 大量股票 peHistory 缺失 → 温度整体退化为"恒定适中"且照常写库。
+      // 并行时墙钟 ≈ max(live, hist) ≤ 90s，仍给写库留 30s；hist 保留批间预算闸（到点停止
+      // 续批，缺历史的走实时 PE 兜底），不会启动后冲破 120s 被强杀
+      const histBudget = 90000 - (Date.now() - _startTime);
+      const [liveData, histData] = await Promise.all([
+        ft.fetchStockLiveBatch(codes),
+        histBudget > 10000
+          ? ft.fetchStockHistBatch(codes, { budgetMs: histBudget })
+          : Promise.resolve({}),
+      ]);
+      if (histBudget <= 10000) console.log(`[computeFundTemperature] 已超 90s 预算，跳过历史 PE 区间`);
       // 行业快照回填：当日主源缺失（降级到腾讯源）时用最近一次已知行业补上，
       // 保证行业穿透的粒度稳定（不因行情源波动在"半导体/科技/其他"之间跳）
       const snap = await readIndustrySnapshot(codes);
@@ -384,7 +386,7 @@ async function getUniqueFundCodes() {
   const all = [];
   let lastId = "";
   while (true) {
-    const q = db.collection("holdings").field({ fundCode: true }).limit(MAX_LIMIT);
+    const q = db.collection("holdings").field({ fundCode: true }).limit(MAX_LIMIT).orderBy("_id", "asc");
     // _id 游标分页（skip 深分页会随数据量增长而变慢）
     const res = lastId ? await q.where({ _id: _.gt(lastId) }).get() : await q.get();
     if (!res.data || res.data.length === 0) break;

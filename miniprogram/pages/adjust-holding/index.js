@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const calc = require("../../utils/calculator");
+const marketTime = require("../../utils/market-time");
 const track = require("../../utils/track");
 
 // 操作归因枚举（可选单选，纯记录无建议，默认不选）：与云函数 manageTransaction 白名单保持一致
@@ -664,13 +665,28 @@ Page({
       if (!oldP && oldS > 0) oldP = liveNav - (hr / oldS);
       if (!oldP || oldP <= 0) oldP = liveNav;
     }
-    const now = new Date();
-    const today = calc.formatDate(now);
+    // 卖出份额不能超过当前持仓：OCR 识别金额偏大（或已清仓后补截图）时会把负份额写进库
+    //（holding-check 现有规则检不出"负份额+负市值"组合，必须在这里拦）
+    if (type === "sell" && s > oldS) {
+      throw new Error(`卖出份额 ${s} 超出当前持仓 ${parseFloat(oldS.toFixed(2))}`);
+    }
+
+    // 交易日期 = 净值确认日，与 add-holding onSubmit 同口径：默认按北京时间当天，
+    // 非交易日或 15 点后提交顺延到下一交易日（原实现用设备本地时区且不顺延——周末/盘后
+    // 确认的加减仓会记在非交易日，确认净值日、年度报告月度桶、赎回费持有天数全部错位）
+    let tradeDate = item.date;
+    if (!tradeDate) {
+      const applyDay = marketTime.bjDateStr();
+      const afterClose = marketTime.bjMinutes() >= 900;
+      tradeDate = marketTime.isTradingDay(applyDay) && !afterClose
+        ? applyDay
+        : marketTime.nextTradingDay(applyDay);
+    }
 
     await api.transactionAdd({
       fundCode: h.fundCode, fundName: h.fundName,
       type, shares: s, price, amount,
-      date: item.date || today,
+      date: tradeDate,
       reason: reason || "",
     });
     track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode, reason: reason || "" });

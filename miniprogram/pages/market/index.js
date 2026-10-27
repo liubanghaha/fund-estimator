@@ -59,8 +59,7 @@ Page({
   onShow() {
     const theme = wx.getStorageSync("theme") || "red";
     if (theme !== this.data.theme) this.setData({ theme });
-    // 盘中自动刷新：30s 轮询。活跃判定=北京时间 9:00~次日 5:59 且今天或上一自然日为交易日
-    // （覆盖：A/港/亚白天盘、美股晚间盘、美股凌晨收盘前的周六凌晨尾巴）
+    // 盘中自动刷新：30s 轮询，门控见 _pollActive（港美周内规律，不依赖 A 股节假日表）
     this._startPoll();
   },
   onHide() {
@@ -71,10 +70,16 @@ Page({
   },
   _pollActive() {
     const d = new Date(Date.now() + 8 * 3600000);
+    const day = d.getUTCDay(); // 0=周日
     const hour = d.getUTCHours();
     if (hour >= 6 && hour < 8) return false; // 全球闭市空窗（日经/KOSPI 北京时间 8:00 开盘）
-    const today = marketTime.bjDateStr();
-    return marketTime.isTradingDay(today) || (hour < 6 && marketTime.isTradingDay(marketTime.lastTradingDay(today)));
+    // 页面已收敛为港股/美股，不能用 A 股节假日表做门控——A 股休市的节假日当晚美股照常开盘
+    // （节假日 21:30-24:00 轮询会全部空转，美股报价冻结）。按港美周内规律判：
+    // 周六凌晨=美股周五盘尾（冬令时至 5:00）；周日全天休市；周一凌晨=美股周日休市
+    if (day === 0) return false;
+    if (day === 6) return hour < 6;
+    if (day === 1) return hour >= 8;
+    return true; // 周二~周五：除 6-8 点空窗外全程轮询（覆盖美股 21:30-次日 5:00 与港亚白天盘）
   },
   _startPoll() {
     this._stopPoll();
@@ -127,23 +132,27 @@ Page({
       const now = Date.now();
       // 部分失败兜底：指数卡全"--"或敞口为空时保留上次好缓存（外源限流是分钟级的，恢复后自然更新）
       // 兜底回退必须校验缓存版本：用户残留的 v1/v2 缓存含 A 股指数卡，混入会破坏合规整改口径
-      const effIndexCards = indexCards.some((c) => c.price !== "--") ? indexCards : ((cacheUpToDate && cached && cached.indexCards) || indexCards);
+      const allFailed = !indexCards.some((c) => c.price !== "--");
+      const effIndexCards = allFailed ? ((cacheUpToDate && cached && cached.indexCards) || indexCards) : indexCards;
       const effExposure = exposure || (cacheUpToDate && cached && cached.exposure) || null;
+      // 回退旧缓存时 ts 一并沿用旧值：否则"数据更新于"会拿刚写的 now 冒充数据时点（诚实化漏洞）
+      const usedStale = allFailed && !!(cacheUpToDate && cached);
       const cache = {
-        ts: now,
+        ts: usedStale ? (cached.ts || now) : now,
         v: CACHE_VERSION,
         indexCards: effIndexCards,
         exposure: effExposure,
-        empty: !indexCards.some((c) => c.price !== "--"),
+        empty: !effIndexCards.some((c) => c.price !== "--"),
       };
       try { wx.setStorageSync(CACHE_KEY, cache); } catch (e) { /* ignore */ }
       // 指数卡整体回退旧缓存时按 fromCache 渲染：updatedAt 沿用缓存时间，不谎称"刚刚更新"
-      const usedStale = !indexCards.some((c) => c.price !== "--") && !!(cacheUpToDate && cached);
       this._render(cache, usedStale);
       this._refreshing = false;
     }).catch(() => {
       this._refreshing = false;
-      if (cached) { this._render(cached, true); return; }
+      // 兜底渲染必须校验缓存版本：v1~v4 残留缓存含 A 股指数卡，弱网下整包渲染是审核可见的
+      // A 股内容回显（合规红线）；未知版本宁可显示加载失败让用户重试
+      if (cached && cacheUpToDate) { this._render(cached, true); return; }
       this.setData({ loading: false, loadError: true });
     });
   },
@@ -177,11 +186,13 @@ Page({
           : (oldestAsOf ? "数据截至 " + oldestAsOf : "");
       })(),
     };
-    // 指数按 港/美/亚太 分组，展示当前选中组
+    // 指数按 港/美/亚太 分组，展示当前选中组。
+    // INDICES 里找不到的代码直接丢弃（双保险）：残留旧版缓存混入 A 股代码时不能落进任何组展示
     const grouped = { hk: [], us: [], ap: [], eu: [] };
     (cache.indexCards || []).forEach((c) => {
       const def = INDICES.find((i) => i.code === c.code);
-      (grouped[def ? def.group : "hk"] || grouped.hk).push(c);
+      if (!def) return;
+      (grouped[def.group] || grouped.hk).push(c);
     });
     data.indexCardsGrouped = grouped;
     data.indexCards = grouped[this.data.idxTab] || [];
@@ -199,12 +210,21 @@ Page({
     const apOpen = !weekend && min >= 480 && min < 840;
     // 欧洲（夏令时 15:00-23:30、冬令时 16:00-次日 0:30，按宽口径 15:00-23:30）
     const euOpen = !weekend && min >= 900 && min < 1410;
-    // 美股分时段（北京）：盘前 16:00-21:30、盘中 21:30-04:00、盘后 04:00-08:00
+    // 美股分时段（北京，宽口径）：盘前 16:00-21:30、盘中 21:30-次日 4:00（冬令 5:00）、盘后 4:00-8:00。
+    // 周末不能一刀切：周六凌晨=美股周五盘尾（冬令时到 5:00）；周一凌晨=美股周日休市（原实现
+    // 周六显示"已收盘"、周一凌晨显示"交易中"，每周约 9 小时状态相反）
     let usState = "closed";
-    if (!weekend) {
+    if (day === 6) {
+      if (min < 240) usState = "regular";
+      else if (min < 480) usState = "post";
+    } else if (day === 1) {
       if (min >= 960 && min < 1290) usState = "pre";
+      else if (min >= 1290) usState = "regular";
+      // 其余（凌晨到 16:00 前）= 美股周日休市 + 盘前未开始
+    } else if (day >= 2 && day <= 5) {
+      if (min >= 240 && min < 480) usState = "post";
+      else if (min >= 960 && min < 1290) usState = "pre";
       else if (min >= 1290 || min < 240) usState = "regular";
-      else if (min >= 240 && min < 480) usState = "post";
     }
     const st = (open) => (open ? "交易中" : "已收盘");
     return {
@@ -378,14 +398,15 @@ Page({
 
   _fetchIndices() {
     const buildCard = (idx, data) => {
-      if (data && data.length >= 1) {
+      // close<=0 视为坏数据（源畸形行会产出 "0.00 / -100%" 卡并写进缓存），回落占位卡
+      if (data && data.length >= 1 && Number(data[data.length - 1].close) > 0) {
         const latest = data[data.length - 1];
         const prev = data.length >= 2 ? data[data.length - 2] : latest;
-        const change = +(latest.close - prev.close).toFixed(2);
+        const change = +(Number(latest.close) - Number(prev.close)).toFixed(2);
         const changeRate = prev.close && prev.close !== 0 ? +((change / prev.close) * 100).toFixed(2) : 0;
         return {
           name: idx.name, code: idx.code,
-          price: latest.close.toFixed(2),
+          price: Number(latest.close).toFixed(2),
           rateText: (changeRate > 0 ? "+" : "") + changeRate + "%",
           isUp: change >= 0,
           asOf: latest.date, // 行情自身所属日期（休市日拉到的仍是上一交易日数据）
