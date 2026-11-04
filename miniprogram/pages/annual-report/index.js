@@ -23,6 +23,10 @@ Page({
     const bjYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear();
     const year = parseInt(options && options.year, 10) || (bjYear - 1);
     this.setData({ theme: wx.getStorageSync("theme") || "red", year });
+    // 金额口径与首页「隐藏」开关同源（storage key amountVisible）：年报分享卡最常被外传，
+    // 漏读开关会明文泄漏持有费/收益；未设置过默认显示（与首页 data 默认 true 一致）
+    const avStored = wx.getStorageSync("amountVisible");
+    this.setData({ amountVisible: avStored === "" ? true : !!avStored });
     track.track("annual_report_open", { year });
     this._load(year);
   },
@@ -100,16 +104,9 @@ Page({
         // 不可用"期末市值/年初市值"——年内加减仓的资金流会把市值增长率推得与收益金额严重背离
         const yearRate = startMv > 0 ? +((yearProfit / startMv) * 100).toFixed(2) : null;
 
-        // 沪深300 同期（年初前最后收盘 → 最新）
-        const fetchHs = api.fetchMarketIndexClient("000300", historyDays).catch(() => null);
-        return fetchHs.then((idxRes) => {
-          // fetchMarketIndexClient 是客户端直连，回扁平结构 {code, data}（无 .result 包裹）
-          const rows = (idxRes && idxRes.code === 0 && idxRes.data) || [];
-          const inYear = rows.filter(r => r.date >= yStr + "-01-01");
-          const prev = rows.filter(r => r.date < yStr + "-01-01").pop();
-          const base = prev || inYear[0];
-          const hsRate = (base && inYear.length && base.close > 0)
-            ? +((inYear[inYear.length - 1].close / base.close - 1) * 100).toFixed(2) : null;
+        // 沪深300 同期对比已移除（类目合规：申报类目为「股票信息服务平台(港股/美股)」，
+        // A 股指数涨跌不再取数/展示/画进分享图——2026-11-05 审查 P1-3）
+        return Promise.resolve().then(() => {
           const txs = (txRes.result && txRes.result.code === 0 && txRes.result.data) || [];
           const yearTxs = txs.filter(t => t.date && t.date.startsWith(yStr));
           const buys = yearTxs.filter(t => t.type === "buy").length;
@@ -163,7 +160,7 @@ Page({
 
           this._report = {
             year, months, curve,
-            yearProfit, yearRate, hsRate, afterFee,
+            yearProfit, yearRate, afterFee,
             maxDD: +maxDD.toFixed(0),
             opText: `全年操作 ${yearTxs.length} 笔（加仓 ${buys} / 减仓 ${yearTxs.length - buys}）`,
             fundCount: hs.length,

@@ -199,7 +199,7 @@
     <view wx:if="{{calendarView === 'year'}}" class="calendar-card">
       <view class="year-list">
         <view wx:for="{{yearData}}" wx:key="date" class="year-row {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
-          <view class="year-label">{{item.date.slice(0, 4)}}年</view>
+          <view class="year-label">{{item.yearText}}</view>
           <view class="year-profit {{item.profit > 0 ? 'up' : item.profit < 0 ? 'down' : ''}}">
             {{profitMode === 'rate' ? (item.rate > 0 ? '+' : '') + item.rate + '%' : (item.profit > 0 ? '+' : '') + item.profit}}
           </view>

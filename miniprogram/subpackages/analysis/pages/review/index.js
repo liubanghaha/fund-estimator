@@ -425,10 +425,10 @@ Page({
     this.setData({ mLoading: true });
     const { y, m: mm } = this._reportMonth();
     const pfx = y + "-" + _pad(mm);
-    const [pfRes, bbRes, idxRes] = await Promise.all([
+    // 沪深300 同期对比已移除（类目合规，2026-11-05 审查 P1-3）
+    const [pfRes, bbRes] = await Promise.all([
       api.getPortfolio(60, { withAnalysis: false }).catch(() => null),
       api.behaviorBill().catch(() => null),
-      api.fetchMarketIndexClient("000300", 60).catch(() => null),
     ]);
     track.track("monthly_review_open", { month: pfx });
     const pfOk = !!(pfRes && pfRes.result && pfRes.result.code === 0);
@@ -483,25 +483,12 @@ Page({
       if (dd > maxDD) maxDD = dd;
     });
 
-    // 沪深300 同期：报告月首个数据日前最后收盘为基准（与年度报告同式）。
-    // 注意 fetchMarketIndexClient 是客户端直连，回扁平结构 {code, data}（无 .result 包裹）
-    const idxRows = (idxRes && idxRes.code === 0 && idxRes.data) || [];
-    const inMonth = idxRows.filter((r) => r.date >= dates[0]);
-    const base = idxRows.filter((r) => r.date < dates[0]).pop() || inMonth[0];
-    const hsRate = (base && inMonth.length && base.close > 0)
-      ? +((inMonth[inMonth.length - 1].close / base.close - 1) * 100).toFixed(2) : null;
-
     // 操作/归因/赎回费（behaviorBill 按月桶；无流水月份该月桶不存在）
     const mb = ((bbRes && bbRes.result && bbRes.result.code === 0 && bbRes.result.data && bbRes.result.data.months) || [])
       .find((x) => x.month === pfx) || null;
 
     const sign = (v, suf) => (v > 0 ? "+" : "") + v.toFixed(2) + (suf || "");
-    let hsText = "";
-    if (hsRate != null) {
-      hsText = rate != null
-        ? ` · 沪深300 ${sign(hsRate, "%")}（${rate >= hsRate ? "跑赢" : "跑输"} ${Math.abs(rate - hsRate).toFixed(2)}pp）`
-        : ` · 沪深300 同期 ${sign(hsRate, "%")}`;
-    }
+    let hsText = ""; // 沪深300 对比已移除（类目合规）；保留空串占位，下游拼接无需改
     const reasons = mb ? mb.reasons.slice(0, 5) : [];
     const maxReason = reasons.length ? reasons[0].count : 1;
     const m = {

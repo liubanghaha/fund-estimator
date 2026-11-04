@@ -9,8 +9,10 @@
     </view>
 
     <view class="news-list">
-      <view wx:if="{{item.showDay}}" class="news-day">{{item.dayLabel}}</view>
-      <view class="news-item" wx:for="{{displayItems}}" wx:key="id">
+      <!-- 日期分组标签必须在 wx:for 内部才能拿到 item（原写在外面 item 未定义恒不渲染） -->
+      <block wx:for="{{displayItems}}" wx:key="id">
+        <view wx:if="{{item.showDay}}" class="news-day">{{item.dayLabel}}</view>
+        <view class="news-item">
         <view class="news-left">
           <view class="news-time">{{item.timeShort}}</view>
           <view wx:if="{{item.long}}" class="news-toggle {{item._open ? 'open' : ''}}" data-index="{{index}}" bind:tap="onToggleText">▾</view>
@@ -25,7 +27,8 @@
             <text class="news-cat">{{item.categoryText}}</text>
           </view>
         </view>
-      </view>
+        </view>
+      </block>
       <view wx:if="{{loadingMore}}" class="news-tip">加载中...</view>
       <view wx:if="{{!loading && !loadError && displayItems.length === 0}}" class="news-tip">当前筛选条件下暂无快讯</view>
       <view wx:if="{{hasMore && displayItems.length}}" class="news-tip news-more-btn" bind:tap="loadMore">加载更多</view>

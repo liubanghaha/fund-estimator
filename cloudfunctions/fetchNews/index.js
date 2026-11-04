@@ -19,6 +19,15 @@ function isPolitics(text) {
   return KW_POLITICS.some((k) => t.includes(k));
 }
 
+// A 股专属词过滤（类目合规：申报类目为「股票信息服务平台(港股/美股)」，A 股快讯不下发。
+// 刻意不含 港股/美股/纳指/道指/标普 等词——那些是类目允许范围）
+const KW_ASHARE = ["A股", "沪指", "上证指数", "深证成指", "创业板", "北交所", "科创板", "北向资金", "涨停", "跌停", "两市", "沪深", "三胎概念", "券商板块"];
+
+function isAShare(text) {
+  const t = String(text || "");
+  return KW_ASHARE.some((k) => t.includes(k));
+}
+
 function stripHtml(text) {
   return String(text || "").replace(/<[^>]+>/g, "").trim();
 }
@@ -111,8 +120,9 @@ exports.main = async (event = {}) => {
       fetchEMFlash(sortEnd),
       sortEnd ? Promise.resolve([]) : fetchJin10(), // 翻页只走东财游标；金十仅首页补强
     ]);
-    // 双源全挂（出口被限流等）：返回 last-good 实例缓存并标 stale，客户端提示为缓存数据
-    if (em.items.length === 0 && jin10.length === 0 && _memCache.data) {
+    // 双源全挂（出口被限流等）：返回 last-good 实例缓存并标 stale，客户端提示为缓存数据。
+    // 仅限首页请求——带 sortEnd 的翻页回旧首页缓存会让客户端重复拼接同一批（loadMore 死循环）
+    if (!sortEnd && em.items.length === 0 && jin10.length === 0 && _memCache.data) {
       return { code: 0, data: Object.assign({ stale: true }, _memCache.data) };
     }
 
@@ -121,6 +131,7 @@ exports.main = async (event = {}) => {
     const flash = [];
     [...em.items, ...jin10]
       .filter((it) => !isPolitics((it.title || "") + " " + (it.content || "")))
+      .filter((it) => !isAShare((it.title || "") + " " + (it.content || "")))
       .sort((a, b) => (a.time < b.time ? 1 : -1))
       .forEach((it) => {
         const key = String(it.content || "").replace(/\s+/g, "").slice(0, 18);

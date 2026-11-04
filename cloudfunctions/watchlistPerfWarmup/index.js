@@ -176,9 +176,12 @@ exports.main = async (event = {}) => {
         pool.slice(i, i + 100).forEach(c => { if (!fresh.has(c)) pending.push(c); });
       }
       console.log(`[watchlistPerfWarmup] profile 待预热 ${pending.length} 只`);
-      const P_CONCURRENT = 5, P_BUDGET = 40000, pStarted = Date.now();
+      const P_CONCURRENT = 5;
+      // 预算按全局起点核算：perf(100s)+nav(120s) 两段已用掉大头，profile 段内自起算
+      // 40s 会三段叠加逼近/顶穿 300s 超时（2026-11-05 审查 P2-3）。265s = 300s − 35s 收尾余量
+      const P_WALL = 265000;
       for (let i = 0; i < pending.length; i += P_CONCURRENT) {
-        if (i > 0 && Date.now() - pStarted >= P_BUDGET) {
+        if (i > 0 && Date.now() - started >= P_WALL) {
           console.log(`[watchlistPerfWarmup] profile 达预算，剩余 ${pending.length - i} 只未预热（次日继续）`);
           break;
         }

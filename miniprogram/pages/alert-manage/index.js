@@ -45,6 +45,9 @@ Page({
         const settings0 = wx.getStorageSync("alertSettings") || {};
         let changed = false;
         Object.keys(cloud).forEach((code) => {
+          // 本地已不存在的规则（在途回包期间被用户删除）不再补名——否则"只有 name 无阈值"
+          // 的残骸会被 _load 当规则展示，下次 _syncCloud 又同步回云端，删除等于白删
+          if (!settings0[code]) return;
           const nm = cloud[code] && cloud[code].name;
           if (!nm) return;
           const cur = settings0[code] || {};

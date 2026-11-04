@@ -453,6 +453,9 @@ exports.main = async (event) => {
 
     // ===== 温度简报 =====
     if (action === "briefing") {
+      // 与本函数其余动作同门槛：briefing 要扫 holdings+watchlist+温度表约万行，
+      // 无门禁时任意登录用户可循环调用做成本攻击（2026-11-05 审查 P1-4）
+      if (!(await isAdmin(OPENID))) return { code: 403, msg: "无权限" };
       await ensureCollection("fund_temperatures");
       const today = bjDate();
       let date = today;

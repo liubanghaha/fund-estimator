@@ -713,6 +713,16 @@ Page({
     if (!updateRes.result || updateRes.result.code !== 0) {
       throw new Error("持仓更新失败");
     }
+    // 批量确认链路：把本笔结果回写内存底表——同基金多笔时下一笔的超卖校验/份额计算
+    // 都基于累计后的值（此前不回写：sell→sell 第二笔用旧基线拦不住负份额，最后一笔按
+    // 陈旧基线覆盖写，买50+卖50 会落库 50）；单笔路径 onConfirmItem 成功后有 loadHoldings() 刷新
+    const row = this.data.holdings[item._idx];
+    if (row) {
+      row.shares = parseFloat(ns.toFixed(4));
+      row.buyPrice = parseFloat(np.toFixed(4));
+      row.marketValue = String(newMarketValue);
+      row.holdingReturn = +(newMarketValue - row.shares * row.buyPrice).toFixed(2);
+    }
   },
 
   // TODO: 微信审核金融功能，手动加减仓暂时注释，后续实现

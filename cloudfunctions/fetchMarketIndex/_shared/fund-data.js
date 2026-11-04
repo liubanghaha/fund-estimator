@@ -160,6 +160,17 @@ function isValidHoldings(list) {
 function fetchTempHoldings(fundCode, opts = {}) {
   const { topline = 100, timeoutMs = 8000 } = opts;
   const { year, month } = getQuarterParams();
+  return _fetchHoldingsOnce(fundCode, topline, timeoutMs, year, month, false).then((rows) => {
+    // 4 月空窗兜底：Q1 法定披露截止 ~4/22，4/1–各基金实际披露日之间请求 (year,3)
+    // 当年一张表都没有 → 解析为空，回退上年 Q4 再拉一次（7/10 月无此问题：年内已有上季表）
+    if ((!rows || rows.length === 0) && month === 3) {
+      return _fetchHoldingsOnce(fundCode, topline, timeoutMs, year - 1, 12, false);
+    }
+    return rows;
+  });
+}
+
+function _fetchHoldingsOnce(fundCode, topline, timeoutMs, year, month, withMeta) {
   return new Promise((resolve) => {
     const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=${topline}&year=${year}&month=${month}&rt=${Math.random()}`;
     const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
@@ -167,14 +178,14 @@ function fetchTempHoldings(fundCode, opts = {}) {
       res.on("data", (c) => { body += c; });
       res.on("end", () => {
         try {
-          resolve(_parseHoldingsHtml(body, false));
+          resolve(_parseHoldingsHtml(body, withMeta));
         } catch (e) {
-          resolve([]);
+          resolve(withMeta ? { holdings: [], fundName: "" } : []);
         }
       });
     });
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(withMeta ? { holdings: [], fundName: "" } : []); });
+    req.on("error", () => resolve(withMeta ? { holdings: [], fundName: "" } : []));
   });
 }
 
@@ -184,21 +195,12 @@ function fetchTempHoldings(fundCode, opts = {}) {
 function fetchTempHoldingsWithMeta(fundCode, opts = {}) {
   const { topline = 20, timeoutMs = 8000 } = opts;
   const { year, month } = getQuarterParams();
-  return new Promise((resolve) => {
-    const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&topline=${topline}&year=${year}&month=${month}&rt=${Math.random()}`;
-    const req = https.get(url, { headers: { Referer: "https://fundf10.eastmoney.com/" } }, (res) => { res.setEncoding("utf8");
-      let body = "";
-      res.on("data", (c) => { body += c; });
-      res.on("end", () => {
-        try {
-          resolve(_parseHoldingsHtml(body, true));
-        } catch (e) {
-          resolve({ holdings: [], fundName: "" });
-        }
-      });
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({ holdings: [], fundName: "" }); });
-    req.on("error", () => resolve({ holdings: [], fundName: "" }));
+  return _fetchHoldingsOnce(fundCode, topline, timeoutMs, year, month, true).then((meta) => {
+    // 4 月空窗兜底，同 fetchTempHoldings
+    if (meta && (!meta.holdings || meta.holdings.length === 0) && month === 3) {
+      return _fetchHoldingsOnce(fundCode, topline, timeoutMs, year - 1, 12, true);
+    }
+    return meta;
   });
 }
 
@@ -313,7 +315,9 @@ function fetchLatestNavEastMoney(fundCode, opts = {}) {
           resolve({
             actualNav: parseFloat(today.DWJZ) || null,
             actualDate: today.FSRQ || "",
-            actualChangeRate: parseFloat(today.JZZZL) || null,
+            // 涨跌恰为 0.00% 是有效值（指数/货基常见），不能被 || null 吞成"未公布"
+            //（此前与 fetchNAVHistory 的空串区分口径不一致，下游会静默退到估算口径）
+            actualChangeRate: (today.JZZZL === "" || today.JZZZL == null) ? null : (parseFloat(today.JZZZL) || 0),
             yesterdayNav: parseFloat(yesterday.DWJZ) || null,
           });
         } catch (e) {
