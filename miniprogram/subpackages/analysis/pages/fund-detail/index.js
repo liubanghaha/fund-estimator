@@ -166,6 +166,9 @@ Page({
   },
 
   onShow() {
+    // perf 计时补偿：把 onHide→onShow 的后台时长从 _t0 里剔除。此前 6% 的 perf_detail
+    // 样本被切后台/锁屏污染（最慢 73 分钟），分布全是噪声
+    if (this._t0 && this._hiddenAt) { this._t0 += Date.now() - this._hiddenAt; this._hiddenAt = 0; }
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
@@ -195,7 +198,11 @@ Page({
     this.refreshData();
   },
 
-  onHide() { this._stopTradingTimer(); },
+  onHide() {
+    this._stopTradingTimer();
+    // perf 计时：切后台起点（后台时长不计入首开耗时，见 onShow 补偿）
+    if (this._t0) this._hiddenAt = Date.now();
+  },
 
   onUnload() { this._stopTradingTimer(); },
 
@@ -265,6 +272,9 @@ Page({
               this._applyEstimate(r.result.data, cached || { history: [] });
               // 头部卡出数耗时（首开全量路径）：判断"慢"到底慢在估值还是历史
               track.track("perf_detail", { stage: "est", ms: Date.now() - this._t0, firstOpen: 1 });
+              // 估值已到就先撤整页遮罩：overview 均值 4.9s 才回，原实现 loading 压到 fetchAll
+              // 末尾才释放，先出的头部数据被"加载中"挡住（首开感知 3.2s → 1.7s 量级）
+              this.setData({ loading: false });
             } else {
               track.track("perf_detail", { stage: "est_fail", ms: Date.now() - this._t0, firstOpen: 1 });
             }

@@ -742,7 +742,16 @@ async function runTextFallback(fileID) {
   for (const r of results) {
     if (r.t && r.t.length > 10) { text = r.t; method = r.m; break; }
   }
-  if (!text) return { code: 500, msg: "OCR识别失败", reason: failReason(debug), debug };
+  if (!text) {
+    // 全源失败健康落库：线上查 app_config doc "ocr_health" 即可监控识别链路整体不可用
+    //（此前只有 console.error，额度耗尽这类问题要翻日志才发现）
+    try {
+      await db.collection("app_config").doc("ocr_health").set({
+        data: { lastAllFailTs: Date.now(), lastAllFailDate: new Date().toISOString().slice(0, 10), reason: failReason(debug) },
+      });
+    } catch (e) { /* ignore */ }
+    return { code: 500, msg: "OCR识别失败", reason: failReason(debug), debug };
+  }
   console.log("[ocrScreenshot] fallback raw text (" + text.length + " chars):", text.slice(0, 300));
   const holdings = parseText(text);
   await enrichCodes(holdings);

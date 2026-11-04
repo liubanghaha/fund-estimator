@@ -61,6 +61,8 @@ Page({
   },
 
   onLoad(options) {
+    // 漏斗埋点：添加持仓页进入（搜索→详情→添加→保存 全链路的第三环）
+    try { track.track("page_enter", { page: "add_holding" }); } catch (e) { /* ignore */ }
     // 加减仓确认日预判：北京时间 ≥15:00 默认按"15:00 后"提交（顺延到下一净值日），
     // 用户在 chips 上点选仍可覆盖；提交时再按节假日表精确计算
     try {
@@ -352,6 +354,8 @@ Page({
 
       if (res.result && res.result.code === 0) {
         const d = res.result.data;
+        // 漏斗埋点：保存结果（此前只有生涯首笔 add_first_holding，成功/失败与条数是盲区）
+        try { track.track("holding_save", { ok: 1, n: d.added || 0, skipped: (d.skippedList || []).length || d.skipped || 0 }); } catch (e) { /* ignore */ }
         const isFirstBatch = d.added > 0 ? this._markFirstHolding() : false; // 激活指标：生涯首次添加持仓（批量导入）
         const firstFund = (funds || []).find(f => f && f.fundCode);
         // 标记所有未保存为已保存
@@ -388,11 +392,13 @@ Page({
           wx.showToast({ title: "所有持仓已存在", icon: "none" });
         }
       } else {
+        try { track.track("holding_save", { ok: 0, reason: "api" }); } catch (e) { /* ignore */ }
         wx.showToast({ title: (res.result && res.result.msg) || "保存失败", icon: "none" });
       }
     } catch (e) {
       wx.hideLoading();
       this.setData({ saving: false });
+      try { track.track("holding_save", { ok: 0, reason: "network" }); } catch (e2) { /* ignore */ }
       console.error("批量保存失败:", e);
       wx.showToast({ title: "网络错误，请重试", icon: "none" });
     }

@@ -1,5 +1,6 @@
 const api = require("../../utils/api");
 const marketTime = require("../../utils/market-time");
+const track = require("../../utils/track");
 
 const CACHE_KEY = "watchlist_cache";
 const GROUPS_CACHE_KEY = "watchlist_groups_cache";
@@ -150,6 +151,7 @@ Page({
   },
 
   onLoad() {
+    try { track.track("page_enter", { page: "watchlist" }); } catch (e) { /* ignore */ }
     this._loadHoldingCodes(); // 先同步读日缓存，首帧即有"持有"角标（不等网络）
     this._loadWatchStats();   // 温度/区间收益日缓存就地套用，首帧即有列
     this.applyCache();

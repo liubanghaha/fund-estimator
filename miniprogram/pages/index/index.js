@@ -179,6 +179,8 @@ Page({
   },
 
   onLoad(options) {
+    // 漏斗埋点：首页进入（各页 page_enter 对齐 fund_detail 口径，算「进详情率」分母）
+    try { track.track("page_enter", { page: "index" }); } catch (e) { /* ignore */ }
     // 列清洗与迁移：过滤 colDefs 已不存在的残留 key（防表头渲染 undefined），新列追加到尾部
     try {
       const saved = wx.getStorageSync("colOrder");

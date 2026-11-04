@@ -5,6 +5,8 @@ const HISTORY_KEY = "search_history"; // 搜索历史（最多 10 条，去重�
 Page({
   data: { ready: false, keyword: "", fundList: [], isLoading: false, errorMsg: "", hasSearched: false, history: [], historyVisible: false, fromAdd: false, followMap: {} },
   onLoad(options) {
+    // 漏斗埋点：搜索页进入（与 search_fund/search_result_tap 串成 搜索→详情 链路）
+    try { track.track("page_enter", { page: "search" }); } catch (e) { /* ignore */ }
     // 仅带 source=add（如添加持仓流程选基金）时结果项显示「添加持仓」按钮，正常入口行为不变
     if (options.source === "add") this.setData({ fromAdd: true });
     if (options.keyword) {
@@ -86,6 +88,8 @@ Page({
       return;
     }
     recent.addFund(code, name); // R6：点进详情即记入「最近查看」
+    // 漏斗埋点：搜索结果→详情（此前只有 search_fund 发起，结果点击率是盲区）
+    try { track.track("search_result_tap", { fundCode: code, kw: String(this.data.keyword || "").slice(0, 20) }); } catch (e) { /* ignore */ }
     wx.navigateTo({ url: `/subpackages/analysis/pages/fund-detail/index?fundCode=${code}&fundName=${encodeURIComponent(name)}` });
   },
 
