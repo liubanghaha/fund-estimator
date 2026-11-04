@@ -651,7 +651,7 @@ Page({
     const price = parseFloat(item.price) || liveNav || 0;
     if (amount <= 0 || price <= 0) throw new Error("金额或净值无效");
     const shares = (amount / price).toFixed(2);
-    const s = parseFloat(shares);
+    let s = parseFloat(shares); // let：清仓容差收敛时会改写（见下方超卖校验）
     const type = item.type || "buy";
     // 优先用底表实时份额/成本（连续确认多笔时 OCR 时刻的快照已过期）
     let oldS = parseFloat(h.shares || h.amount) || parseFloat(item.currentShares) || 0;
@@ -666,9 +666,12 @@ Page({
       if (!oldP || oldP <= 0) oldP = liveNav;
     }
     // 卖出份额不能超过当前持仓：OCR 识别金额偏大（或已清仓后补截图）时会把负份额写进库
-    //（holding-check 现有规则检不出"负份额+负市值"组合，必须在这里拦）
+    //（holding-check 现有规则检不出"负份额+负市值"组合，必须在这里拦）。
+    // 0.01 容差：库内份额存 4 位小数（如 99.9996），OCR 按 2 位算出 100.00 的合法清仓
+    // 会被误判超出——容差内按清仓处理（s 收敛到 oldS），超出容差才是真异常
     if (type === "sell" && s > oldS) {
-      throw new Error(`卖出份额 ${s} 超出当前持仓 ${parseFloat(oldS.toFixed(2))}`);
+      if (s - oldS <= 0.01) { s = oldS; }
+      else { throw new Error(`卖出份额 ${s} 超出当前持仓 ${parseFloat(oldS.toFixed(2))}`); }
     }
 
     // 交易日期 = 净值确认日，与 add-holding onSubmit 同口径：默认按北京时间当天，

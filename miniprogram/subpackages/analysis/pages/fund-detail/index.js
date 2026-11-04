@@ -275,6 +275,9 @@ Page({
               // 估值已到就先撤整页遮罩：overview 均值 4.9s 才回，原实现 loading 压到 fetchAll
               // 末尾才释放，先出的头部数据被"加载中"挡住（首开感知 3.2s → 1.7s 量级）
               this.setData({ loading: false });
+              // 撤遮罩同时刷新涨跌文案（WXML 绑定的是 estimatedChangeRateText 等派生字段，
+              // _applyEstimate 只写了数值——不补这一步头部涨跌会停 "--" 到 overview 回来）
+              this.updateDisplay();
             } else {
               track.track("perf_detail", { stage: "est_fail", ms: Date.now() - this._t0, firstOpen: 1 });
             }
