@@ -744,6 +744,9 @@ exports.main = async (event) => {
         todayProfit: totalTodayProfit.toFixed(2),
         todayProfitRate: todayProfitRate.toFixed(2),
         totalReturn: totalReturn.toFixed(2),
+        // 总成本口径 = 市值 − 累计收益（与 totalReturnRate 分母、客户端 _sumHoldings、收盘播报同源）。
+        // 组合回本卡消费；勿改用 ΣbuyPrice×shares 直加，否则与收益卡对不上
+        totalCost: totalCost.toFixed(2),
         totalReturnRate: totalReturnRate.toFixed(2),
         updateTime,
         navHistoryMap: historyDays ? navHistoryMap : undefined,

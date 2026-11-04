@@ -15,6 +15,7 @@ Page({
     fundNames: [],
     pairs: [],
     sharedStocks: [],
+    breakeven: null, // 组合回本进度（fetchAll payload 计算生成）
     loading: true,
     loadError: false,
     showAllIndustries: false,
@@ -30,6 +31,9 @@ Page({
     // 每次显示同步主题色（返回/切换时立即生效）
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
+    // 金额口径与首页「隐藏」开关同源（storage key amountVisible）：费用账单/回本卡都带金额
+    const avStored = wx.getStorageSync("amountVisible");
+    this.setData({ amountVisible: avStored === "" ? true : !!avStored });
   },
 
   onLoad() {
@@ -241,6 +245,27 @@ Page({
   },
   // 渲染分析结果（健康分/穿透/温度位置）：缓存路径与网络路径共用，
   // 顺带处理健康分圆环绘制与"无分析内容时默认落账单 tab"
+  // 组合回本进度（陪伴线，2026-11 竞品调研增补）：口径与首页收益卡/回本中心/收盘播报同源——
+  // 成本 = 市值 − 累计收益（勿改用 ΣbuyPrice×shares 直加，否则与收益卡对不上）。
+  // 盈利态（≥100%）显示"已超过本金"；无持仓/成本非正不出卡
+  _breakeven(d) {
+    const num = (v) => parseFloat(v) || 0;
+    const mv = num(d && d.totalAmount);
+    const ret = num(d && d.totalReturn);
+    const cost = num(d && d.totalCost) || (mv - ret);
+    if (mv <= 0 || cost <= 0) return null;
+    const pct = Math.round((mv / cost) * 1000) / 10;
+    return {
+      pct,
+      fillW: Math.min(100, pct),
+      state: pct >= 100 ? "surplus" : "deficit",
+      needRise: pct < 100 ? Math.round((cost / mv - 1) * 1000) / 10 : null,
+      surplusPct: pct >= 100 ? Math.round((pct - 100) * 10) / 10 : null,
+      costText: cost.toFixed(2),
+      mvText: mv.toFixed(2),
+    };
+  },
+
   _applyPayload(p) {
     this.setData({ loading: false, ...p }, () => {
       if (p.healthScore) this._drawHealthRing(p.healthScore.score);
@@ -315,6 +340,7 @@ Page({
         concentrationTip: concTip,
         tempStatMine: tempStat.mine,
         tempStatMarket: tempStat.market,
+        breakeven: this._breakeven(d),
       };
       this._applyPayload(payload);
       // 写本页缓存（下次进入先秒出；持仓签名变化即失效）

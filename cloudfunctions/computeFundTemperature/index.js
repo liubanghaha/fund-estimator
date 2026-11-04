@@ -5,6 +5,7 @@ const _ = db.command;
 const fd = require("./_shared/fund-data");
 const ft = require("./_shared/fund-temperature");
 const td = require("./_shared/trading-day");
+const https = require("https");
 
 /**
  * 定时任务：每日凌晨 3:00 计算所有持仓基金的估值温度
@@ -65,6 +66,64 @@ async function upsertIndustrySnapshot(list) {
 }
 
 let industrySnapStat = null; // 本轮行业快照命中/新学计数（写入状态文档供观测）
+
+// ---- 市场级指标（债市温度 / 股债性价比，2026-11-05 竞品调研增补）----
+// 随每日温度任务一起算，写入 app_config/temp_task_status.marketIndicator，供详情页温度卡消费。
+// 数据源（云函数无域名限制）：新浪国债日行情 CN10YT（近 3 年序列算分位）+ 蛋卷估值中心（沪深300 PE）。
+// 任一源失败只缺对应字段，不阻塞温度主流程；债市温度口径 = 10Y 收益率历史分位映射
+// 温度三档（收益率历史低位 = 债价高位 = 偏高），纯数据陈述、无引导性措辞。
+function _httpsGetJson(url, referer) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: Object.assign({ "User-Agent": "Mozilla/5.0" }, referer ? { Referer: referer } : {}),
+      timeout: 8000,
+    }, (res) => {
+      let buf = "";
+      res.on("data", (c) => { buf += c; });
+      res.on("end", () => {
+        try { resolve(JSON.parse(buf)); } catch (e) { reject(new Error("JSON 解析失败")); }
+      });
+    });
+    req.on("timeout", () => { req.destroy(); reject(new Error("超时")); });
+    req.on("error", reject);
+  });
+}
+async function calcMarketIndicators() {
+  const out = {};
+  // 1) 10Y 国债收益率：新浪日行情（2022-12 起有数据），近 3 年窗口算分位
+  try {
+    const d = await _httpsGetJson("https://bond.finance.sina.com.cn/hq/gb/daily?symbol=CN10YT", "https://finance.sina.com.cn/");
+    const rows = (d && d.result && d.result.data) || [];
+    const closes = rows.map((r) => parseFloat(r.c)).filter((v) => isFinite(v) && v > 0);
+    if (closes.length >= 250) {
+      const last = closes[closes.length - 1];
+      const win = closes.slice(-750);
+      const below = win.filter((v) => v <= last).length;
+      const pct = Math.round((below / win.length) * 100);
+      out.bondYield = +last.toFixed(3);
+      out.yieldPct = pct;
+      out.bondTemp = pct <= 33 ? "偏高" : pct >= 67 ? "偏低" : "适中"; // 收益率低位=债价高位
+      out.yieldDays = win.length;
+      out.yieldDate = (rows[rows.length - 1] && rows[rows.length - 1].d) || "";
+    }
+  } catch (e) { console.warn("[computeFundTemperature] CN10YT 读取失败:", e.message); }
+  // 2) 沪深300 PE + 股债性价比（风险溢价）：蛋卷估值中心（每市收盘后更新）
+  try {
+    const d = await _httpsGetJson("https://danjuanfunds.com/djapi/index_eva/dj");
+    const items = (d && d.data && d.data.items) || [];
+    const csi = items.find((x) => /000300/.test(x.index_code || ""));
+    if (csi && csi.pe > 0) {
+      out.csi300PE = +csi.pe.toFixed(2);
+      if (out.bondYield != null) {
+        // 股债性价比 = 沪深300 盈利收益率(1/PE,%) − 10Y 国债收益率(%)，纯数值陈述
+        out.riskPremium = +(100 / csi.pe - out.bondYield).toFixed(2);
+      }
+    }
+  } catch (e) { console.warn("[computeFundTemperature] 蛋卷估值读取失败:", e.message); }
+  if (out.bondYield == null && out.csi300PE == null) return null;
+  out.updatedAt = Date.now();
+  return out;
+}
 
 exports.main = async (event) => {
   // 一次性运维动作：从历史温度表灌行业种子（回填快照、加速收敛）
@@ -270,8 +329,10 @@ exports.main = async (event) => {
     const dist = { low: 0, mid: 0, high: 0, nodata: 0 };
     results.forEach(r => { dist[r.signal] = (dist[r.signal] || 0) + 1; });
     console.log(`[computeFundTemperature] 完成 ${results.length} 只 (低估:${dist.low} 正常:${dist.mid} 高估:${dist.high} 无数据:${dist.nodata})`);
+    // 市场级指标（债市温度/股债性价比）随任务一起产出；失败只缺字段，不影响温度
+    const marketIndicator = await calcMarketIndicators().catch(() => null);
     await db.collection("app_config").doc("temp_task_status").set({
-      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat }
+      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat, marketIndicator }
     }).catch(() => {});
 
     // 回测缓存自愈（2026-10-24 补，10-21~24 回测页空窗 4 天的教训）：温度产出正常后，

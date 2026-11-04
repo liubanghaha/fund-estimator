@@ -318,3 +318,8 @@
 
 /* 涨跌列容器 */
 .hold-change-wrap{width:130rpx;text-align:right;flex-shrink:0}
+
+/* 风格漂移卡（信任线，2026-11 调研增补）：纯数据陈述 */
+.drift-line{font-size:24rpx;color:#555;line-height:1.7;margin-top:8rpx}
+.drift-manager{color:#999}
+.drift-note{font-size:20rpx;color:#BBB;margin-top:10rpx}

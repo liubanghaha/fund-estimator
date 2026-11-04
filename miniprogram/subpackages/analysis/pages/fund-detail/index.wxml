@@ -108,6 +108,18 @@
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
           <view wx:if="{{peTemp.tempPercentile}}" class="risk-sub">近 {{peTemp.tempPercentile.days}} 个交易日数据的 {{peTemp.tempPercentile.pct}}% 分位</view>
         </view>
+        <!-- 债券/货币基金无个股估值口径（温度恒为 --），展示债市整体热度：10Y 国债收益率历史分位映射温度三档 -->
+        <view wx:if="{{isBondFund && marketInd && marketInd.bondYield != null}}" class="risk-item">
+          <view class="risk-label">债市温度</view>
+          <view class="risk-value temp-val {{marketInd.bondTemp === '偏高' ? 'temp-high' : marketInd.bondTemp === '偏低' ? 'temp-low' : 'temp-mid'}}">{{marketInd.bondTemp}}</view>
+          <view class="risk-sub">10Y 国债收益率 {{marketInd.bondYield}}%，近 {{marketInd.yieldDays}} 个交易日的 {{marketInd.yieldPct}}% 分位</view>
+        </view>
+        <!-- 股债性价比（纯数据陈述）：沪深300 盈利收益率(1/PE) 与 10Y 国债收益率的差，衡量股相对债的吸引力 -->
+        <view wx:if="{{marketInd && marketInd.riskPremium != null}}" class="risk-item">
+          <view class="risk-label">股债性价比</view>
+          <view class="risk-value">{{marketInd.riskPremium}}%</view>
+          <view class="risk-sub">沪深300盈利收益率 {{marketInd.earningsYield != null ? marketInd.earningsYield : '--'}}% − 10Y国债 {{marketInd.bondYield}}%</view>
+        </view>
       </view>
       <!-- 温度分位（信任线）：把"温度 0.82"放回它自己的历史分布里，给数字一个水平感；窗口天数如实显示 -->
       <!-- 温度公开回测（信任线）：方法论可对账，聚合统计 -->
@@ -294,6 +306,15 @@
             <view wx:if="{{manager.tenureReturn}}" class="manager-return {{manager.tenureReturn > 0 ? 'up' : manager.tenureReturn < 0 ? 'down' : ''}}">任职回报 {{manager.tenureReturn > 0 ? '+' : ''}}{{manager.tenureReturn}}%</view>
           </view>
         </view>
+      </view>
+      <!-- 风格漂移卡（信任线）：两期季报重仓股变动陈述，纯数据无引导；上期数据不完整时不显示 -->
+      <view wx:if="{{drift}}" class="info-card">
+        <view class="section-title">本季调仓<text class="risk-period-tip">{{drift.quarterLabel}}</text></view>
+        <view wx:if="{{drift.stable}}" class="drift-line">本季前十大重仓股与上季度一致</view>
+        <view wx:if="{{drift.newsCount}}" class="drift-line">🆕 新进 {{drift.newsCount}} 只：{{drift.newsText}}</view>
+        <view wx:if="{{drift.exitCount}}" class="drift-line">📤 退出 {{drift.exitCount}} 只：{{drift.exitText}}</view>
+        <view wx:if="{{drift.managerText}}" class="drift-line drift-manager">{{drift.managerText}}</view>
+        <view class="drift-note">数据来自最近两期季报前十大持仓对比，仅供参考</view>
       </view>
       <view wx:if="{{profile}}" class="info-card">
         <view class="section-title">基金档案</view>

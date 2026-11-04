@@ -42,6 +42,8 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
+    marketInd: null, // 市场级指标（债市温度/股债性价比），云函数随估值透传
+    isBondFund: false, // 债券/货币基金：无个股估值口径，温度卡展示债市温度
     estimateAccuracy: null, estimateAccuracyText: '',
     accLog: [], accLogVisible: false, // R2 误差行点击展开的 30 天对账明细
     rebate: null,
@@ -66,7 +68,7 @@ Page({
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     // 深链只带 fundCode（推送/分享落地页）时用占位，真实名字由 _backfillName 回填
     this._namePlaceholder = !options.fundName;
-    this.setData({ fundCode: options.fundCode, fundName });
+    this.setData({ fundCode: options.fundCode, fundName, isBondFund: this._bondFlag(fundName) });
     // 持仓态预填（防头部闪跳）：checkHolding 比概览晚到一拍，首帧会先渲染"单位净值"卡、
     // 约一秒后跳成"当日收益"卡。首页的 portfolio_cache 是同步本地存储、逐笔带 getPortfolio
     // 预计算字段——命中即按它预置持仓态（合计口径：金额逐笔相加、成本=市值−累计收益），
@@ -152,8 +154,20 @@ Page({
   _backfillName(name) {
     if (!this._namePlaceholder || !name || name === this.data.fundName) return;
     this._namePlaceholder = false;
-    this.setData({ fundName: name });
+    this.setData({ fundName: name, isBondFund: this._bondFlag(name) });
     wx.setNavigationBarTitle({ title: `${name}(${this.data.fundCode}) 估值` });
+  },
+
+  // 债券/货币基金判断：与 getPortfolio 温度列同一名称正则（两处必须同式，口径才不打架）
+  _bondFlag(name) {
+    return /债|债券|纯债|转债|货币|货基/.test(name || "");
+  },
+
+  // marketInd 派生字段：盈利收益率 = 100/PE（WXML 不支持方法调用，js 预格式化）
+  _miDecorate(mi) {
+    if (!mi) return null;
+    if (mi.earningsYield == null && mi.csi300PE) mi.earningsYield = +(100 / mi.csi300PE).toFixed(2);
+    return mi;
   },
 
   // 首次渲染完成后自动调起 scroll-view 下拉刷新动画（过早调起 refresher 未挂载，无效）
@@ -218,9 +232,11 @@ Page({
 
   // 分享
   onShareAppMessage() {
+    // path 带 fundName：落地页首帧直接渲染标题（原来只带 fundCode，要等 _backfillName 二次回填）
     return {
       title: (this.data.fundName || "基金") + "的估值与温度",
-      path: "/subpackages/analysis/pages/fund-detail/index?fundCode=" + this.data.fundCode,
+      path: "/subpackages/analysis/pages/fund-detail/index?fundCode=" + this.data.fundCode +
+        (this.data.fundName ? "&fundName=" + encodeURIComponent(this.data.fundName) : ""),
     };
   },
 
@@ -313,6 +329,8 @@ Page({
               actualChangeRate: actualCR,
               displayChangeRate: displayCR,
               peTemp: d.peTemp || this.data.peTemp,
+          marketInd: this._miDecorate(d.marketInd) || this.data.marketInd,
+          isBondFund: this._bondFlag(this.data.fundName || d.fundName),
               ...this._accuracyFields(d), ...this._rebateField(),
             });
             this._backfillName(d.fundName);
@@ -444,6 +462,7 @@ Page({
       actualDate: hasNavPair ? e.actualDate : this.data.actualDate,
       priceLoading: false,
       peTemp: e.peTemp || this.data.peTemp,
+      marketInd: this._miDecorate(e.marketInd) || this.data.marketInd,
       ...this._accuracyFields(e), ...this._rebateField(),
     });
     // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
@@ -510,6 +529,7 @@ Page({
         actualNav: cached.actualNav, actualChangeRate: cached.actualChangeRate,
         actualDate: cached.actualDate, displayChangeRate: cacheToday ? cached.displayChangeRate : null,
         peTemp: cached.peTemp || null,
+        marketInd: cached.marketInd || null,
         navHistory: cached.history,
         displayHistory: (cached.history || []).slice(0, 5),
         displayCount: 5,
@@ -588,6 +608,7 @@ Page({
         actualNav: this.data.actualNav, actualChangeRate: this.data.actualChangeRate,
         actualDate: this.data.actualDate, displayChangeRate: this.data.displayChangeRate,
         peTemp: this.data.peTemp,
+        marketInd: this.data.marketInd,
         tempDate: marketTime.bjDateStr(),
         history: this.data.navHistory,
         holdingData: this.data.holdingData,
@@ -801,6 +822,8 @@ Page({
           actualChangeRate: actualCR,
           displayChangeRate: displayCR,
           peTemp: d.peTemp || this.data.peTemp,
+          marketInd: this._miDecorate(d.marketInd) || this.data.marketInd,
+          isBondFund: this._bondFlag(this.data.fundName || d.fundName),
           ...this._accuracyFields(d), ...this._rebateField(),
         });
         this._backfillName(d.fundName);
@@ -838,6 +861,25 @@ Page({
     } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
+  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/退出名单（各截断 3 个）+ 经理任职事实
+  _driftCard(holdings, exited, manager, quarterLabel, prevIncomplete) {
+    if (!holdings || holdings.length === 0 || prevIncomplete) return null;
+    const clip = (arr) => arr.slice(0, 3).join("、") + (arr.length > 3 ? " 等" : "");
+    const news = holdings.filter(h => h.changeType === 'new').map(h => h.stockName).filter(Boolean);
+    const exitNames = (exited || []).map(h => h.stockName).filter(Boolean);
+    const managerText = manager && manager.name
+      ? `基金经理 ${manager.name}（任职 ${manager.tenureDays != null ? manager.tenureDays : '--'} 天）`
+      : "";
+    if (news.length === 0 && exitNames.length === 0 && !managerText) return null;
+    return {
+      quarterLabel,
+      stable: news.length === 0 && exitNames.length === 0,
+      newsCount: news.length, newsText: news.length ? clip(news) : "",
+      exitCount: exitNames.length, exitText: exitNames.length ? clip(exitNames) : "",
+      managerText,
+    };
+  },
+
   fetchProfile() {
     // 防重入：版本旧触发(加载时) 与 切 tab 可能并发；在途时复用同一请求，
     // 避免切 tab 空转一次（转圈一闪而过、数据要等在途请求结束才出现）
@@ -867,6 +909,11 @@ Page({
           // 清洗后的列表就是真正要展示的：没有"今天"日期的行情会被清成 null
           const sanitizedHoldings = this._sanitizeQuotes(holdings);
           const patch = { manager: res.result.data.manager, holdings: sanitizedHoldings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
+          // 风格漂移卡（信任线，2026-11 调研增补）：纯客户端聚合两期季报重仓股变动
+          // （changeType 由 fetchFundProfile 当期 vs 上期 jjcc 对比产出）。上期数据不完整时
+          // 退出数不可信 → 整卡不显示（宁缺毋错）
+          const drift = this._driftCard(sanitizedHoldings, exited, res.result.data.manager, res.result.data.quarterLabel || '', !!res.result.data.prevDataIncomplete);
+          if (drift) patch.drift = drift;
           if (p) patch.profile = p;
           this.setData(patch);
           if (!rankFetched) this._profileStale = true; // 排名这次没拿到：本次会话再切档案 tab 还能重试

@@ -107,3 +107,6 @@
 .addg-step-t{flex:1;font-size:27rpx;color:#444;line-height:1.5}
 .addg-tip{font-size:23rpx;color:#999;margin:8rpx 40rpx 28rpx;line-height:1.6}
 .addg-close{margin:0 32rpx 28rpx;text-align:center;background:var(--primary-gradient);color:#FFF;border-radius:44rpx;padding:18rpx 0;font-size:30rpx}
+
+/* 年度报告预告（12 月窗口）：弱化展示，1/1 起由正式入口行接管 */
+.annual-preview{opacity:.6}

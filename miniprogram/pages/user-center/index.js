@@ -12,6 +12,12 @@ Page({
       return bj.getUTCFullYear() - 1;
     })(),
     showAnnualEntry: new Date(Date.now() + 8 * 3600000).getUTCFullYear() >= 2027,
+    // 年度报告预告（传播线，2026-12 窗口）：12 月整月显示"数据整理中"预告行，
+    // 1/1 起 showAnnualEntry 接管（预告行隐藏、正式入口出现）
+    showAnnualPreview: (() => {
+      const bj = new Date(Date.now() + 8 * 3600000);
+      return bj.getUTCMonth() === 11 && bj.getUTCFullYear() < 2027;
+    })(),
     avatarUrl: "", nickName: "",
     synced: false,   // 账号同步状态：openid 静默获取，正常情况打开即已同步
     showFollowQr: false, // 关注公众号二维码弹层

@@ -31,7 +31,7 @@ exports.main = async (event) => {
       }
     } catch (e) { /* 无缓存/未建集合 → 现场拉取 */ }
 
-    const [estimate, history, profileData, peTemp, estimateAccuracy] = await Promise.all([
+    const [estimate, history, profileData, peTemp, estimateAccuracy, marketInd] = await Promise.all([
       fetchEstimate(fundCode, estSrc),
       cachedNav ? Promise.resolve(cachedNav) : fd.fetchNAVHistory(fundCode, 260).then((rows) => {
         // 回写当日缓存（260 行压缩为 [date, nav, changeRate] 三元组），次日所有用户命中
@@ -44,6 +44,7 @@ exports.main = async (event) => {
       fetchProfileData(fundCode),
       fetchPeTemp(fundCode),
       fetchEstimateAccuracy(fundCode, todayStr),
+      getMarketInd(),
     ]);
     return {
       code: 0, msg: "success",
@@ -54,6 +55,7 @@ exports.main = async (event) => {
         manager: profileData.manager,
         peTemp,
         estimateAccuracy,
+        marketInd,
       },
     };
   } catch (e) {
@@ -61,6 +63,21 @@ exports.main = async (event) => {
     return { code: 500, msg: "获取基金概览失败" };
   }
 };
+
+// 市场级指标（债市温度/股债性价比）：computeFundTemperature 每日 03:00 随温度任务写入
+// app_config/temp_task_status.marketIndicator，这里读出透传给详情页温度卡。
+// 实例级 1h 缓存；fetchFundEstimate 的 getMarketInd 同款（本页首访主链路）
+let _marketIndCache = null; // { ts, mi }
+async function getMarketInd() {
+  try {
+    if (_marketIndCache && Date.now() - _marketIndCache.ts < 3600000) return _marketIndCache.mi;
+    const res = await db.collection("app_config").doc("temp_task_status")
+      .field({ marketIndicator: true }).get();
+    const mi = res.data && res.data.marketIndicator;
+    if (mi && mi.updatedAt) _marketIndCache = { ts: Date.now(), mi };
+    return mi || null;
+  } catch (e) { return null; }
+}
 
 async function fetchEstimate(fundCode, estSrc) {
   // 1. 获取东方财富最新净值（用于兜底和昨收基准）

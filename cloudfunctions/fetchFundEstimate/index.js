@@ -12,20 +12,36 @@ exports.main = async (event) => {
 
   try {
     const todayStr = td.bjDateStr();
-    const [estimate, peTemp, estimateAccuracy] = await Promise.all([
+    const [estimate, peTemp, estimateAccuracy, marketInd] = await Promise.all([
       fetchSelfEstimate(fundCode, src),
       fetchTemperature(fundCode),
       fetchEstimateAccuracy(fundCode, todayStr),
+      getMarketInd(),
     ]);
     return {
       code: 0, msg: "success",
-      data: { ...estimate, peTemp, estimateAccuracy },
+      data: { ...estimate, peTemp, estimateAccuracy, marketInd },
     };
   } catch (e) {
     console.error("获取估值失败:", e.message);
     return { code: 500, msg: "获取估值失败" };
   }
 };
+
+// 市场级指标（债市温度/股债性价比）：computeFundTemperature 每日 03:00 随温度任务写入
+// app_config/temp_task_status.marketIndicator，这里读出透传给详情页温度卡。
+// 实例级 1h 缓存（与首页 temp_dist_cache 同频），任务凌晨更新后旧实例最多滞后 1h
+let _marketIndCache = null; // { ts, mi }
+async function getMarketInd() {
+  try {
+    if (_marketIndCache && Date.now() - _marketIndCache.ts < 3600000) return _marketIndCache.mi;
+    const res = await db.collection("app_config").doc("temp_task_status")
+      .field({ marketIndicator: true }).get();
+    const mi = res.data && res.data.marketIndicator;
+    if (mi && mi.updatedAt) _marketIndCache = { ts: Date.now(), mi };
+    return mi || null;
+  } catch (e) { return null; }
+}
 
 // 近 30 天估算误差（信任线：自曝误差，数据由 snapshotEstimateDeviation 每日 15:30 写入台账）
 // 无样本返回 null（客户端不显示徽章），样本少也照实显示样本数——藏样本数就成了自欺

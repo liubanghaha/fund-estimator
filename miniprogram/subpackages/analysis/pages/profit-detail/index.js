@@ -38,6 +38,7 @@ Page({
     asOfTime: "",
     amountVisible: true, // 金额不做隐藏（隐藏开关只管首页持仓列表，2026-09-26 用户拍板）
     reviewCard: null, // 当前 tab 的周期复盘（组合 vs 沪深300/强弱/操作）
+    reviewTempMoves: "", // 盘后复盘温度变化行（今日 tab 显示，当日缓存）
     signVisible: false, showSignModal: false, signRendering: false, signPeriod: "week", signTitle: "周签",
     signTabLabel: { today: "今日", week: "本周", month: "本月", year: "本年" },
     signDays: { today: 3, week: 7, month: 25, year: 260 },
@@ -241,6 +242,7 @@ Page({
       // 已渲染的正确值（_totalMarket 保持未定义 → 轮询被守卫挡住，冻结期本就不该变数）
       this._quickFirstPaint();
       this._ensureReview(this.data.activeTab); // 周期复盘（冻结期用首页缓存兜底数据链）
+      this._loadTempMoves(); // 盘后复盘温度变化行（当日缓存一次）
       return;
     }
     this._fetch();
@@ -409,6 +411,38 @@ Page({
       const rated = toRated(pc && pc.holdings);
       finish(tab === "today" ? (rated[0] || null) : null, tab === "today" && rated.length > 1 ? rated[rated.length - 1] : null);
     } catch (e) { /* 复盘数据异常不影响主页面 */ }
+  },
+  // 盘后复盘的温度变化行（2026-11 调研增补）：今日 vs 上一交易日温度档位变化，
+  // 口径与自选摘要条 tempMoves / 温度推送一致（low/mid/high 档变=异动）。
+  // 温度按天变 → 当日缓存一次；无变化也如实显示"无变化"
+  async _loadTempMoves() {
+    try {
+      const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+      const cached = wx.getStorageSync("pd_temp_moves");
+      if (cached && cached.date === today && cached.text) {
+        if (this.data.reviewTempMoves !== cached.text) this.setData({ reviewTempMoves: cached.text });
+        return;
+      }
+      const pc = wx.getStorageSync("portfolio_cache");
+      const codes = [...new Set(((pc && pc.holdings) || []).map(h => h.fundCode).filter(Boolean))];
+      if (codes.length === 0) return;
+      const res = await api.watchlistTempMoves(codes);
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d) return;
+      const moves = d.moves || [];
+      const SIG = { high: "偏高", mid: "适中", low: "偏低" };
+      let text;
+      if (moves.length === 0) {
+        text = "温度档位较上一交易日无变化";
+      } else {
+        const counts = {};
+        moves.forEach(m => { const t = SIG[m.cur]; if (t) counts[t] = (counts[t] || 0) + 1; });
+        const parts = ["偏高", "偏低", "适中"].filter(t => counts[t]).map(t => `${counts[t]} 只转${t}`);
+        text = `温度变化：${parts.join("、")}`;
+      }
+      this.setData({ reviewTempMoves: text });
+      try { wx.setStorageSync("pd_temp_moves", { date: today, text }); } catch (e) { /* ignore */ }
+    } catch (e) { /* 温度变化行失败不影响主页面 */ }
   },
   _periodStart(tab) {
     if (tab === "today") return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);

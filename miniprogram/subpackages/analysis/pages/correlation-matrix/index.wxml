@@ -89,6 +89,19 @@
       <!-- 基金对重合（空状态占位，已移除功能） -->
     </view>
 
+    <!-- 3.5 组合回本进度（陪伴线，2026-11 调研增补）：成本口径与首页收益卡同源（市值−累计收益） -->
+    <view wx:if="{{breakeven}}" class="card">
+      <view class="card-title">💰 回本进度<text class="card-desc">（全组合）</text></view>
+      <view class="bk-main">
+        <text class="bk-pct {{breakeven.state === 'surplus' ? 'up' : ''}}">{{breakeven.pct}}%</text>
+        <text class="bk-label">{{breakeven.state === 'surplus' ? '当前市值 / 投入本金，已回本' : '当前市值 / 投入本金'}}</text>
+      </view>
+      <view class="bk-track"><view class="bk-fill {{breakeven.state === 'surplus' ? 'surplus' : ''}}" style="width:{{breakeven.fillW}}%"></view></view>
+      <view class="bk-sub" wx:if="{{breakeven.state === 'deficit'}}">距回本还需上涨 {{breakeven.needRise}}%</view>
+      <view class="bk-sub" wx:else>已超过本金 {{breakeven.surplusPct}}%</view>
+      <view class="bk-sub" wx:if="{{amountVisible}}">本金 ¥{{breakeven.costText}} · 现值 ¥{{breakeven.mvText}}</view>
+    </view>
+
     <view wx:if="{{!healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">
       <view>暂无持仓分析数据</view>
       <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>
