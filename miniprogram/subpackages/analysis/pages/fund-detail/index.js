@@ -863,10 +863,10 @@ Page({
     } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
-  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/跌出名单（各截断 3 个）+ 经理任职事实。
+  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/跌出名单（各截断 3 个）。
   // 港股加 (H) 标注：同一家公司可 A+H 双重上市（如中际旭创 300308.SZ / 03308.HK），
-  // 不标注会出现"中际旭创 新进 + 中际旭创 跌出"的同名两行，看着像 bug
-  _driftCard(holdings, exited, manager, quarterLabel, prevIncomplete) {
+  // 不标注会出现"中际旭创 新进 + 中际旭创 跌出"的两行，看着像 bug
+  _driftCard(holdings, exited, quarterLabel, prevIncomplete) {
     if (!holdings || holdings.length === 0 || prevIncomplete) return null;
     const clip = (arr) => arr.slice(0, 3).join("、") + (arr.length > 3 ? " 等" : "");
     // 同名 A+H 同时出现时（如中际旭创：Q3 新进 H 股、Q2 前十的 A 股跌出），
@@ -886,16 +886,11 @@ Page({
     };
     const news = newRows.map(label).filter(Boolean);
     const exitNames = exitRows.map(label).filter(Boolean);
-    const managerText = manager && manager.name
-      ? `基金经理 ${manager.name}（任职 ${manager.tenureDays != null ? manager.tenureDays : '--'} 天）`
-      : "";
-    if (news.length === 0 && exitNames.length === 0 && !managerText) return null;
     return {
       quarterLabel,
       stable: news.length === 0 && exitNames.length === 0,
       newsCount: news.length, newsText: news.length ? clip(news) : "",
       exitCount: exitNames.length, exitText: exitNames.length ? clip(exitNames) : "",
-      managerText,
     };
   },
 
@@ -931,7 +926,7 @@ Page({
           // 风格漂移卡（信任线，2026-11 调研增补）：纯客户端聚合两期季报重仓股变动
           // （changeType 由 fetchFundProfile 当期 vs 上期 jjcc 对比产出）。上期数据不完整时
           // 退出数不可信 → 整卡不显示（宁缺毋错）
-          const drift = this._driftCard(sanitizedHoldings, exited, res.result.data.manager, res.result.data.quarterLabel || '', !!res.result.data.prevDataIncomplete);
+          const drift = this._driftCard(sanitizedHoldings, exited, res.result.data.quarterLabel || '', !!res.result.data.prevDataIncomplete);
           if (drift) patch.drift = drift;
           if (p) patch.profile = p;
           this.setData(patch);

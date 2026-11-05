@@ -282,8 +282,6 @@
         <view wx:if="{{drift.stable}}" class="drift-line">本季前十大重仓股与上季度一致</view>
         <view wx:if="{{drift.newsCount}}" class="drift-line">🆕 新进前十大 {{drift.newsCount}} 只：{{drift.newsText}}</view>
         <view wx:if="{{drift.exitCount}}" class="drift-line">📤 跌出前十大 {{drift.exitCount}} 只：{{drift.exitText}}</view>
-        <view wx:if="{{drift.managerText}}" class="drift-line drift-manager">{{drift.managerText}}</view>
-        <view class="drift-note">数据来自最近两期季报前十大持仓对比，仅供参考</view>
       </view>
     </view>
 
