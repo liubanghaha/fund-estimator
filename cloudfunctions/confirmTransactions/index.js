@@ -75,6 +75,12 @@ exports.main = async (event) => {
     const stat = { total: txs.length, calibrated: 0, skippedNoNav: 0, skippedMulti: 0, noHolding: 0, tinyDelta: 0, dryRun };
     const notes = [];
     for (const tx of txs) {
+      // 竞态守卫：扫描列表与逐笔处理之间，另一实例（手动 invoke 撞定时）可能已完成同笔校准——
+      // 差额基于各自读时快照，重放会双倍应用。逐笔 re-check confirmed，已确认的跳过
+      try {
+        const fresh = await db.collection("transactions").doc(tx._id).get();
+        if (!fresh.data || fresh.data.confirmed !== false) { stat.total--; continue; }
+      } catch (e) { /* 交易被删等：按原记录继续，markConfirmed 会失败但不致错账 */ }
       const navInfo = navMap[tx.fundCode];
       const navD = navInfo && navInfo.byDate[tx.date];
       if (!navD) { stat.skippedNoNav++; continue; }

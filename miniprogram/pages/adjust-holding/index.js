@@ -482,8 +482,7 @@ Page({
       const oldS = parseFloat(h._currentShares) || 0;
       const oldP = parseFloat(h._currentBuyPrice) || 0;
       const oldMV = parseFloat(h.marketValue) || 0;
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       if (type === 'sell' && shares > oldS) {
         wx.hideLoading();
@@ -814,8 +813,7 @@ Page({
     wx.showLoading({ title: "保存中..." });
     try {
       const amt = parseFloat(this.data.editTxAmount) || (s * p);
-      const now = new Date();
-      const today = calc.formatDate(now);
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,

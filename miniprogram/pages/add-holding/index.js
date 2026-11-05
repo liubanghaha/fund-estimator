@@ -714,7 +714,7 @@ Page({
 
       const hr = parseFloat(holdingReturn) || 0;
       let shares, buyPrice, finalMV, finalHR;
-      const today = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       // 处理加减持仓
       if (adjAmount !== 0 && this._rawHolding) {
