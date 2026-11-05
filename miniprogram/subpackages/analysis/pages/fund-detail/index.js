@@ -56,7 +56,6 @@ Page({
     rankFetched: false,
     showTurnover: false,
     scrollRefreshing: false,
-    showExited: false,
     amountVisible: true, // 详情页金额不做隐藏（2026-09-26 用户拍板：隐藏开关只管首页列表）
   },
 
@@ -1564,7 +1563,6 @@ Page({
     this.setData({ displayCount: n, displayHistory: this.data.navHistory.slice(0, n) });
   },
   onShowLess() { this.setData({ displayCount: 5, displayHistory: this.data.navHistory.slice(0, 5) }); },
-  onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ activeTab: tab }, () => {

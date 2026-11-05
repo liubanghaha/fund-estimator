@@ -126,9 +126,6 @@
 .hold-ratio-change{font-size:22rpx;font-weight:400;width:120rpx;text-align:right;flex-shrink:0}
 .hold-ratio{font-size:24rpx;font-weight:600;width:100rpx;text-align:right;flex-shrink:0}
 
-.exited-toggle{display:flex;justify-content:space-between;align-items:center;font-size:24rpx;color:#999;padding:10rpx 0}
-.exited-arrow{font-size:22rpx;color:#BBB;transition:transform .3s}
-.exited-arrow.open{transform:rotate(180deg)}
 
 .profile-grid{display:flex;flex-wrap:wrap}
 .profile-item{width:50%;padding:16rpx 0;border-bottom:1rpx solid #F5F5F5}
