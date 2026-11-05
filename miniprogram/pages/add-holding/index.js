@@ -761,6 +761,7 @@ Page({
           type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
           note: this.data.adjustNote.trim() || '',
           reason: this.data.reason || '',
+          holdingId: (this._rawHolding && this._rawHolding._id) || id || "",
         });
         track.recordTrade({ source: "add_submit", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: fundCode.trim(), reason: this.data.reason || '' });
 
@@ -903,6 +904,7 @@ Page({
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "add_adjust", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 

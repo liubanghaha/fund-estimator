@@ -494,6 +494,7 @@ Page({
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_manual", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 
@@ -695,6 +696,7 @@ Page({
       type, shares: s, price, amount,
       date: tradeDate,
       reason: reason || "",
+      holdingId: h._id || "",
     });
     track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode, reason: reason || "" });
 
@@ -817,6 +819,7 @@ Page({
 
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_edit", direction: type, amount: amt, amountBand: track.amountBand(amt), fundCode: h.fundCode });
 
