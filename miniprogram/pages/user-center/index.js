@@ -103,6 +103,93 @@ Page({
     this.setData({ showBrief: !this.data.showBrief });
   },
 
+  // ===== 数据导出（2026-11-06 全球调研 Top5）：交易流水 / 持仓明细 / 收益月度汇总 → CSV 文件转发 =====
+  onExportData() {
+    try { require("../../utils/track").track("data_export", { step: "open" }); } catch (e) { /* ignore */ }
+    wx.showActionSheet({
+      itemList: ["交易流水 CSV", "持仓明细 CSV", "收益月度汇总 CSV"],
+      success: (res) => {
+        const types = ["tx", "holdings", "monthly"];
+        this._exportCsv(types[res.tapIndex]);
+      },
+    });
+  },
+
+  async _exportCsv(type) {
+    wx.showLoading({ title: "生成中...", mask: true });
+    try {
+      const esc = (v) => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      let rows = [];
+      if (type === "tx") {
+        const res = await api.transactionList();
+        const list = (res.result && res.result.code === 0 && res.result.data) || [];
+        rows = [["日期", "基金代码", "基金名称", "方向", "份额", "确认价", "金额", "归因", "备注"],
+          ...list.map((t) => [t.date, t.fundCode, t.fundName, t.type === "buy" ? "买入" : "卖出",
+            t.shares, t.price, t.amount, t.reason || "", t.note || ""])];
+      } else if (type === "holdings") {
+        const res = await api.getPortfolio(0, { withAnalysis: false, withEstimates: false, withNav60: false });
+        const d = (res.result && res.result.data) || {};
+        rows = [["基金代码", "基金名称", "份额", "成本价", "市值", "累计收益", "买入日期", "账户"],
+          ...(d.holdings || []).map((h) => [h.fundCode, h.fundName, h.shares, h.buyPrice,
+            h.marketValue, h.totalReturn, h.buyDate || "", h.platform || h.group || ""])];
+      } else {
+        // 收益月度汇总：组合月末市值序列环比（口径与收益页月视图同源：份额 × 月末净值）
+        const res = await api.getPortfolio(500, { withAnalysis: false, withEstimates: false, withNav60: false });
+        const d = (res.result && res.result.data) || {};
+        const navMap = d.navHistoryMap || {};
+        const holds = d.holdings || [];
+        const monthEnd = {}; // yyyy-MM -> 市值
+        holds.forEach((h) => {
+          const rows2 = navMap[h.fundCode] || [];
+          const shares = parseFloat(h.shares) || 0;
+          if (!(shares > 0)) return;
+          rows2.forEach((r) => {
+            const m = String(r.date || "").slice(0, 7);
+            if (!m) return;
+            monthEnd[m] = +(((monthEnd[m] || 0) + shares * (parseFloat(r.nav) || 0)).toFixed(2));
+          });
+        });
+        const months = Object.keys(monthEnd).sort();
+        const monthly = [];
+        for (let i = 1; i < months.length; i++) {
+          const prev = monthEnd[months[i - 1]], cur = monthEnd[months[i]];
+          if (!(prev > 0)) continue;
+          monthly.push([months[i], monthEnd[months[i]], +(((cur / prev) - 1) * 100).toFixed(2)]);
+        }
+        rows = [["月份", "组合月末市值(元)", "当月涨幅(%)"], ...monthly.reverse()];
+      }
+      if (rows.length <= 1) {
+        wx.hideLoading();
+        wx.showToast({ title: "暂无可导出数据", icon: "none" });
+        return;
+      }
+      const csv = "\ufeff" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
+      const d = new Date();
+      const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+      const path = `${wx.env.USER_DATA_PATH}/lf_export_${type}_${dateStr}.csv`;
+      const fs = wx.getFileSystemManager();
+      fs.writeFileSync(path, csv, "utf8");
+      wx.hideLoading();
+      try { require("../../utils/track").track("data_export", { type, rows: rows.length - 1 }); } catch (e) { /* ignore */ }
+      wx.shareFileMessage({
+        filePath: path,
+        fileName: `韭菜估值宝_${type}_${dateStr}.csv`,
+        success: () => {},
+        fail: (err) => {
+          // 转发取消/失败降级：复制全文到剪贴板（Excel 直接粘贴可用）
+          if (err && err.errMsg && /cancel/.test(err.errMsg)) return;
+          wx.setClipboardData({ data: csv, success: () => wx.showToast({ title: "已复制到剪贴板", icon: "none" }) });
+        },
+      });
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: "导出失败，请重试", icon: "none" });
+    }
+  },
+
   async onBriefingAuth() {
     this.setData({ briefSubmitting: true });
     const r = await subscribe.requestAuth("user_center");

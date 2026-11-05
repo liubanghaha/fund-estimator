@@ -1,0 +1,67 @@
+{
+  "data": {
+    "results": [
+      [
+        {
+          "_id": "temp_task_status",
+          "status": "done",
+          "today": "2026-11-05",
+          "count": {
+            "$numberInt": "1502"
+          },
+          "finishedAt": {
+            "$numberLong": "1793811912232"
+          },
+          "signalDist": {
+            "low": {
+              "$numberInt": "329"
+            },
+            "mid": {
+              "$numberInt": "1160"
+            },
+            "high": {
+              "$numberInt": "13"
+            },
+            "nodata": {
+              "$numberInt": "0"
+            }
+          },
+          "industrySnap": {
+            "total": {
+              "$numberInt": "4863"
+            },
+            "hit": {
+              "$numberInt": "4764"
+            },
+            "learned": {
+              "$numberInt": "2"
+            }
+          },
+          "marketIndicator": {
+            "bondYield": {
+              "$numberDouble": "1.64"
+            },
+            "yieldPct": {
+              "$numberInt": "6"
+            },
+            "bondTemp": "偏高",
+            "yieldDays": {
+              "$numberInt": "750"
+            },
+            "yieldDate": "2026-11-03",
+            "csi300PE": {
+              "$numberDouble": "13.6"
+            },
+            "riskPremium": {
+              "$numberDouble": "5.71"
+            },
+            "updatedAt": {
+              "$numberLong": "1793811912232"
+            }
+          }
+        }
+      ]
+    ],
+    "requestId": "7b7d66a1-5345-453b-a60a-5908d0a72ca8"
+  }
+}

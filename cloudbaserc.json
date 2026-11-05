@@ -258,6 +258,20 @@
       ]
     },
     {
+      "name": "rankPercentile",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "rankDistTimer",
+          "type": "timer",
+          "config": "0 30 4 * * * *"
+        }
+      ]
+    },
+    {
       "name": "snapshotProfit",
       "timeout": 120,
       "runtime": "Nodejs20.19",

@@ -930,6 +930,30 @@ Page({
     this.setData({ driftExpanded: !this.data.driftExpanded });
   },
 
+  // 分红记录（档案 tab，2026-11-06 调研 Top1）：云函数 7 天缓存，失败静默（卡片不显示）
+  async fetchDividends() {
+    try {
+      if (!this.data.fundCode || this._dividendsFetched) return;
+      this._dividendsFetched = true;
+      const res = await api.fetchFundDividends(this.data.fundCode);
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d) return;
+      const fmt = (v) => { const n = +v; return isFinite(n) ? (n >= 1 ? n.toFixed(3) : String(n)) : "--"; };
+      this.setData({
+        dividends: {
+          count: d.count || 0,
+          last12mText: fmt(d.last12mPerShare),
+          annualTop: (d.annual || []).slice(0, 3).map((a) => ({
+            year: a.year, totalPerShareText: fmt(a.totalPerShare),
+          })),
+          recent: (d.list || []).slice(0, 3).map((r) => ({
+            date: r.date, perShareText: fmt(r.perShare),
+          })),
+        },
+      });
+    } catch (e) { /* 分红卡失败不影响档案 */ }
+  },
+
   fetchProfile() {
     // 防重入：版本旧触发(加载时) 与 切 tab 可能并发；在途时复用同一请求，
     // 避免切 tab 空转一次（转圈一闪而过、数据要等在途请求结束才出现）
@@ -938,6 +962,8 @@ Page({
       try {
         const res = await api.fetchFundProfile(this.data.fundCode);
         if (res.result && res.result.code === 0) {
+          // 分红记录随档案一起取（独立请求 fire-and-forget，失败不影响档案）
+          this.fetchDividends();
           // 档案子请求超时时云函数仍返回 code:0 + profile:null；
           // 若洗成 {} 会作为真值写入缓存，切档案 tab 的 !profile 重试守卫从此失效 → 永久空白。
           // 视为失败：不覆盖已有值、不写缓存，下次切 tab 自动重试。
@@ -1631,6 +1657,8 @@ Page({
       await this.fetchProfile();
       this.setData({ profileLoading: false, profileLoaded: true });
     }
+    // 分红卡懒加载：档案缓存秒开时不走 fetchProfile，切到档案 tab 仍要补拉（内部防重入）
+    if (tab === 'profile') this.fetchDividends();
   },
   onRetryProfile() {
     if (this.data.profileLoading) return;

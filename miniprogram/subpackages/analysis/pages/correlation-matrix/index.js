@@ -25,6 +25,7 @@ Page({
     amountVisible: true,
     feeCard: null,
     showShadowCard: false, shadowTotal: null, shadowTop: [],
+    divCard: null, // 组合分红演算卡（近一年节奏 × 当前份额）
   },
 
   onShow() {
@@ -41,6 +42,30 @@ Page({
         this._loadFee();    // 费用账单（从收益页迁入：成本结构属深度洞察）
         this._loadBill();   // 行为成本（归因分布+赎回费演算，年度报告 hero 同源）
         this._loadShadow(); // 影子账户（从收益页迁入：行为复盘属深度洞察）
+        this._loadDividends(); // 组合分红演算（2026-11-06 调研 Top1）
+  },
+
+  // 组合分红演算：近 12 个月每份分红 × 当前份额（云函数一次聚合，内部 7 天缓存）。
+  // 国内公募分红不定期，"未来日历"没有预测意义 → 只做"近一年节奏演算"，措辞固定非承诺
+  async _loadDividends() {
+    try {
+      const cached = wx.getStorageSync("dividend_portfolio_cache");
+      if (cached && cached.ts && Date.now() - cached.ts < 86400000 && cached.data) {
+        this.setData({ divCard: cached.data });
+        return;
+      }
+      const res = await api.fetchFundDividendsPortfolio();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d || !d.hasData) return;
+      const card = {
+        totalText: d.total.toFixed(2),
+        top: (d.items || []).filter((i) => i.annualAmount > 0).slice(0, 3).map((i) => ({
+          fundName: i.fundName, amountText: i.annualAmount.toFixed(2),
+        })),
+      };
+      this.setData({ divCard: card });
+      try { wx.setStorageSync("dividend_portfolio_cache", { ts: Date.now(), data: card }); } catch (e) { /* ignore */ }
+    } catch (e) { /* 分红卡失败不影响本页 */ }
   },
 
   // 费用账单：持仓加权综合费率 + 预计年费用（云侧费率缓存 30 天 + 本地 7 天）。

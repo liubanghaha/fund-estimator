@@ -48,6 +48,7 @@
     </view>
 
     <view class="menu-item" bind:tap="onEstimateSrc"><text>数据源</text><text class="arrow">{{estimateSrcText}} ›</text></view>
+    <view class="menu-item" bind:tap="onExportData"><text>数据导出</text><text class="arrow">›</text></view>
     <view class="menu-item" bind:tap="onFeedback"><text>意见反馈</text><text class="arrow">{{showFeedback ? '∨' : '>'}}</text></view>
     <!-- 反馈表单 -->
     <view wx:if="{{showFeedback}}" class="menu-expand">

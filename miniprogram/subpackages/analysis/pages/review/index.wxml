@@ -4,6 +4,7 @@
     <view class="tab-item {{activeTab === 'recover' ? 'active' : ''}}" data-tab="recover" bind:tap="onTabTap">回本中心</view>
     <view class="tab-item {{activeTab === 'temp' ? 'active' : ''}}" data-tab="temp" bind:tap="onTabTap">温度回测</view>
     <view class="tab-item {{activeTab === 'monthly' ? 'active' : ''}}" data-tab="monthly" bind:tap="onTabTap">月度复盘</view>
+    <view class="tab-item {{activeTab === 'goal' ? 'active' : ''}}" data-tab="goal" bind:tap="onTabTap">目标·排名</view>
   </view>
 
   <!-- ==================== 回本中心 ==================== -->
@@ -180,5 +181,52 @@
         <view wx:else class="ep-none">本月无卖出，无赎回费。</view>
       </view>
     </block>
+  </view>
+
+  <!-- ==================== 目标 · 排名（2026-11-06 全球调研 Top2/Top3） ==================== -->
+  <view hidden="{{activeTab !== 'goal'}}">
+    <view class="disclaimer">匿名聚合统计与目标进度，不构成任何建议。</view>
+
+    <!-- 目标进度 -->
+    <view class="card">
+      <view class="card-title">组合目标</view>
+      <block wx:if="{{goalLoaded}}">
+        <block wx:if="{{goal && goal.targetAmount}}">
+          <view class="goal-num {{amountVisible ? '' : 'masked'}}">{{amountVisible ? '¥' + goal.nowText : '¥****'}} / ¥{{goal.targetText}}</view>
+          <view class="goal-track"><view class="goal-fill {{goal.done ? 'done' : ''}}" style="width:{{goal.pctW}}%"></view></view>
+          <view class="goal-meta">
+            <text wx:if="{{goal.done}}">已达成目标（超出 {{goal.overText}}）</text>
+            <text wx:else>还差 ¥{{amountVisible ? goal.gapText : '****'}}（还需上涨 {{goal.needRiseText}}%）</text>
+          </view>
+          <view class="goal-actions">
+            <text class="goal-link" bind:tap="onEditGoal">修改目标</text>
+            <text class="goal-link goal-del" bind:tap="onRemoveGoal">删除</text>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="goal-empty">设定一个目标金额，看组合离它还有多远</view>
+          <view class="goal-input-row">
+            <input class="goal-input" type="digit" placeholder="目标金额（元）" value="{{goalInput}}" bindinput="onGoalInput" />
+            <button class="goal-btn" size="mini" bind:tap="onSaveGoal" disabled="{{goalSaving}}">保存</button>
+          </view>
+          <view wx:if="{{amountVisible && goalNowText}}" class="goal-meta">当前市值 ¥{{goalNowText}}</view>
+        </block>
+      </block>
+      <view wx:else class="goal-loading">加载中...</view>
+    </view>
+
+    <!-- 相对排名（匿名聚合统计） -->
+    <view class="card">
+      <view class="card-title">近一年表现 · 相对位置</view>
+      <block wx:if="{{rankLoaded}}">
+        <block wx:if="{{rank}}">
+          <view class="goal-num">{{rank.pctText}}</view>
+          <view class="goal-meta">你的组合近一年涨了 {{rank.rateText}}，超过 {{rank.pct}}% 的持有人</view>
+          <view class="rank-note">基于 {{rank.samples}} 位持有人组合近一年净值涨幅的匿名分布{{rank.coveredFunds < rank.totalFunds ? '；部分持仓基金缺净值数据未计入' : ''}}</view>
+        </block>
+        <view wx:else class="goal-empty">统计样本积累中（不足 20 人暂不展示），过几天再来看看</view>
+      </block>
+      <view wx:else class="goal-loading">加载中...</view>
+    </view>
   </view>
 </view>

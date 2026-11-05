@@ -15,7 +15,11 @@ const EP_EMPTY = { total: 0, fast: "--", med: "--", slow: "--", unrecovered: 0, 
 Page({
   data: {
     theme: "blue",
-    activeTab: "recover", // recover=回本中心 | temp=温度回测
+    activeTab: "recover", // recover=回本中心 | temp=温度回测 | goal=目标·排名
+    amountVisible: true,
+    // —— 目标 · 排名 ——
+    goalLoaded: false, goal: null, goalInput: "", goalSaving: false, goalNowText: "",
+    rankLoaded: false, rank: null,
     // —— 回本中心 ——
     fundCode: "",
     fundName: "",
@@ -43,6 +47,7 @@ Page({
     options = options || {};
     const tab = options.tab === "temp" ? "temp"
       : options.tab === "monthly" ? "monthly"
+      : options.tab === "goal" ? "goal"
       : "recover";
     this.setData({ theme: wx.getStorageSync("theme") || "blue", activeTab: tab });
     // 亏损持仓列表从首页缓存构建（同步、零网络），两个 tab 都会用到
@@ -51,6 +56,7 @@ Page({
     this.fetchBacktest();
     // 月度复盘较重（getPortfolio 序列），不预取；但深链直开本 tab 时要拉
     if (tab === "monthly" && !this._monthlyLoaded) this.fetchMonthly();
+    if (tab === "goal") this.loadGoalTab();
   },
 
   onShow() {
@@ -81,6 +87,8 @@ Page({
       if (!this._btLoaded) this.fetchBacktest();
     } else if (tab === "monthly") {
       if (!this._monthlyLoaded) this.fetchMonthly();
+    } else if (tab === "goal") {
+      this.loadGoalTab();
     } else if (!this._recoveryLoaded) {
       this.fetchAll(); // 首次切回回本中心：补拉选中基金的明细
     }
@@ -609,5 +617,103 @@ Page({
     if (!ts) return "--";
     const t = new Date(ts + 8 * 3600 * 1000);
     return `${t.getUTCFullYear()}-${_pad(t.getUTCMonth() + 1)}-${_pad(t.getUTCDate())} ${_pad(t.getUTCHours())}:${_pad(t.getUTCMinutes())}`;
+  },
+
+  // ==================== 目标 · 排名（2026-11-06 全球调研 Top2/Top3） ====================
+
+  // 目标进度：市值口径与首页资产卡同源（getPortfolio totalAmount / portfolio_cache）；
+  // 排名：每日匿名分布任务产出的百分位（样本 <20 不出）
+  loadGoalTab() {
+    this.setData({ amountVisible: (wx.getStorageSync("amountVisible") === "" ? true : !!wx.getStorageSync("amountVisible")) });
+    this.loadRank();
+    try {
+      const pc = wx.getStorageSync("portfolio_cache") || {};
+      const total = parseFloat(pc.totalAmount) || 0;
+      if (total > 0) this._portfolioTotal = total;
+    } catch (e) { /* ignore */ }
+    Promise.all([
+      api.manageGoal("get").catch(() => null),
+      this._portfolioTotal ? Promise.resolve(null) : api.getPortfolio(0, { withAnalysis: false, withEstimates: false, withNav60: false }).catch(() => null),
+    ]).then(([goalRes, pfRes]) => {
+      if (pfRes) {
+        const d = pfRes.result && pfRes.result.data;
+        const t = parseFloat(d && d.totalAmount) || 0;
+        if (t > 0) this._portfolioTotal = t;
+      }
+      const g = goalRes && goalRes.result && goalRes.result.code === 0 ? goalRes.result.data : null;
+      this._applyGoal(g);
+    }).finally(() => this.setData({ goalLoaded: true }));
+  },
+
+  _applyGoal(g) {
+    if (!g || !(g.targetAmount > 0)) {
+      this.setData({ goal: null, goalNowText: this._portfolioTotal ? this._portfolioTotal.toFixed(2) : "" });
+      return;
+    }
+    const now = this._portfolioTotal || 0;
+    const target = g.targetAmount;
+    const pct = target > 0 ? (now / target) * 100 : 0;
+    const done = now >= target;
+    this.setData({
+      goal: {
+        targetText: target.toFixed(2),
+        nowText: now.toFixed(2),
+        pctW: Math.min(100, +pct.toFixed(1)),
+        done,
+        gapText: done ? "0.00" : (target - now).toFixed(2),
+        needRiseText: done ? "0.00" : ((target / Math.max(now, 0.01) - 1) * 100).toFixed(2),
+        overText: done ? (now - target).toFixed(2) : "",
+      },
+    });
+  },
+
+  onGoalInput(e) { this.setData({ goalInput: e.detail.value }); },
+
+  onSaveGoal() {
+    const amt = parseFloat(this.data.goalInput);
+    if (!isFinite(amt) || amt <= 0) { wx.showToast({ title: "请输入有效金额", icon: "none" }); return; }
+    this.setData({ goalSaving: true });
+    api.manageGoal("set", amt).then((res) => {
+      if (res.result && res.result.code === 0) {
+        this._applyGoal(res.result.data);
+        this.setData({ goalInput: "" });
+        wx.showToast({ title: "目标已保存", icon: "none" });
+      } else {
+        wx.showToast({ title: "保存失败", icon: "none" });
+      }
+    }).finally(() => this.setData({ goalSaving: false }));
+  },
+
+  onEditGoal() { this.setData({ goal: null, goalInput: "" }); },
+
+  onRemoveGoal() {
+    api.manageGoal("remove").then(() => {
+      this._applyGoal(null);
+      wx.showToast({ title: "目标已删除", icon: "none" });
+    });
+  },
+
+  async loadRank() {
+    try {
+      const res = await api.rankPercentile();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d || !(d.samples >= 20) || !isFinite(+d.pct) || !isFinite(+d.rate)) {
+        this.setData({ rankLoaded: true, rank: null });
+        return;
+      }
+      this.setData({
+        rankLoaded: true,
+        rank: {
+          rateText: (d.rate > 0 ? "+" : "") + (+d.rate).toFixed(2) + "%",
+          pct: d.pct,
+          pctText: "超过 " + d.pct + "% 的持有人",
+          samples: d.samples,
+          coveredFunds: d.coveredFunds || 0,
+          totalFunds: d.totalFunds || 0,
+        },
+      });
+    } catch (e) {
+      this.setData({ rankLoaded: true, rank: null });
+    }
   },
 });

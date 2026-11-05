@@ -220,7 +220,21 @@
       <view class="card-footnote">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成投资建议</view>
     </view>
 
-    <view wx:if="{{!feeCard && !showShadowCard && !billCard}}" class="empty">
+    <!-- 组合分红演算（2026-11-06 调研 Top1）：近一年每份分红 × 当前份额 -->
+    <view wx:if="{{divCard}}" class="card">
+      <view class="card-title">💸 分红到账（近一年演算）</view>
+      <view class="hero-block">
+        <view class="hero-label">近 12 个月分红演算</view>
+        <view class="hero-num">{{amountVisible ? '¥' + divCard.totalText : '¥****'}}</view>
+        <view class="hero-sub">按各基金近一年分红节奏 × 当前份额演算，非承诺；实际以基金公司公告为准</view>
+      </view>
+      <view wx:for="{{divCard.top}}" wx:key="fundName" class="fee-row">
+        <text class="fee-name">{{item.fundName}}</text>
+        <text class="fee-val">{{amountVisible ? '¥' + item.amountText : '¥****'}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{!feeCard && !showShadowCard && !billCard && !divCard}}" class="empty">
       <view>暂无费用与复盘数据</view>
       <view class="empty-hint">持有基金后可查看费用账单；有过卖出记录后会生成影子账户</view>
       <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>

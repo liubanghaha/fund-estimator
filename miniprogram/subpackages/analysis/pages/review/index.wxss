@@ -123,3 +123,21 @@
 .cc-ind{font-size:24rpx;color:#666;margin-top:12rpx;line-height:1.6}
 .cc-warn{font-size:24rpx;color:#B26A00;background:#FFF7E8;border-radius:8rpx;padding:12rpx 16rpx;margin-top:12rpx;line-height:1.5}
 .retry-link{color:var(--primary)}
+
+/* ===== 目标 · 排名（2026-11-06 调研 Top2/Top3） ===== */
+.goal-num{font-size:44rpx;font-weight:700;color:#333;margin:16rpx 0 12rpx}
+.goal-num.masked{letter-spacing:2rpx}
+.goal-track{height:14rpx;background:#EEF0F3;border-radius:7rpx;overflow:hidden;margin-bottom:12rpx}
+.goal-fill{height:100%;border-radius:7rpx;background:var(--primary,#E4393C)}
+.goal-fill.done{background:#4CAF50}
+.goal-meta{font-size:24rpx;color:#666;line-height:1.6}
+.goal-actions{display:flex;gap:32rpx;margin-top:14rpx}
+.goal-link{font-size:24rpx;color:var(--primary,#E4393C)}
+.goal-del{color:#999}
+.goal-empty{font-size:24rpx;color:#999;line-height:1.6;padding:12rpx 0}
+.goal-input-row{display:flex;align-items:center;gap:16rpx;margin-top:14rpx}
+.goal-input{flex:1;border:1rpx solid #E5E7EB;border-radius:10rpx;padding:14rpx 20rpx;font-size:26rpx}
+.goal-btn{background:var(--primary,#E4393C);color:#FFF;font-size:26rpx}
+.goal-btn[disabled]{opacity:.5}
+.goal-loading{font-size:24rpx;color:#999;padding:12rpx 0}
+.rank-note{font-size:20rpx;color:#BBB;margin-top:12rpx;line-height:1.6}
