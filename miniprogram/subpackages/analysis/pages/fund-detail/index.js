@@ -34,6 +34,7 @@ Page({
     priceLoading: false, // 首开时净值/估值还没到：显示"加载中…"而不是"-- + 未出估值"
     showEstimate: false, // 盘中且今日净值未公布：头部走估算口径（由 updateDisplay 计算）
     chartPeriod: '1M',
+    chartPeriodReturn: null, chartPeriodLabel: '',
     chartTxMap: {},
     transactionList: [],
     noteTimeline: [],
@@ -1122,6 +1123,23 @@ Page({
       sixMonthReturn: r.sixMonth, yearReturn: r.year, threeYearReturn: r.threeYear,
       riskMetrics, underwaterMetrics,
     });
+    this._syncPeriodReturn();
+  },
+
+  // 走势卡标题右侧的区间涨跌幅（2026-11-05 用户要求：切 tab 即显示对应区间涨跌）。
+  // 与下方「收益表现」网格同源（calcPeriodReturns），不另算一套口径
+  _syncPeriodReturn() {
+    const MAP = {
+      "1M": ["近一月", "monthReturn"], "3M": ["近三月", "threeMonthReturn"],
+      "6M": ["近半年", "sixMonthReturn"], "1Y": ["近一年", "yearReturn"],
+      "3Y": ["近三年", "threeYearReturn"],
+    };
+    const [label, key] = MAP[this.data.chartPeriod] || MAP["1M"];
+    const raw = this.data[key];
+    const val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
+    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label) {
+      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label });
+    }
   },
 
   _buildChartData() {
@@ -1339,12 +1357,15 @@ Page({
     const PERIOD_DAYS = { '1M': 22, '3M': 66, '6M': 132, '1Y': 260, '3Y': 750 };
     const neededDays = PERIOD_DAYS[period] || 260;
     this.setData({ chartPeriod: period });
+    this._syncPeriodReturn();
     if (!this._historyMaxed && this.data.navHistory.length < neededDays) {
       // 补拉期间给加载反馈：这几秒里图表若毫无变化，用户会以为"点了没反应/没有动画"
       this.setData({ chartLoading: true });
       try {
         // skipRedraw：下面统一绘制（带动画），避免与补拉后的内部重绘重复
         await this.fetchHistory(neededDays + 50, { skipRedraw: true });
+        // 补拉后重算区间收益：近三年等长窗口的 return 依赖新增的历史（否则标题显示旧值/--）
+        this.calcReturns(this.data.navHistory);
       } finally {
         this.setData({ chartLoading: false });
       }

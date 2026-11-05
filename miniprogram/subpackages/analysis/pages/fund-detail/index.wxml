@@ -196,7 +196,7 @@
 
     <view hidden="{{activeTab !== 'trend'}}">
       <view wx:if="{{navHistory.length > 1}}" class="chart-card">
-        <view class="section-title">收益走势</view>
+        <view class="section-title">收益走势<text wx:if="{{chartPeriodLabel}}" class="period-return {{chartPeriodReturn > 0 ? 'up' : chartPeriodReturn < 0 ? 'down' : ''}}">{{chartPeriodLabel}} {{chartPeriodReturn != null ? (chartPeriodReturn > 0 ? '+' : '') + chartPeriodReturn + '%' : '--'}}</text></view>
         <view class="period-tabs">
           <view class="period-item {{chartPeriod === '1M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1M">近一月</view>
           <view class="period-item {{chartPeriod === '3M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3M">近三月</view>

@@ -324,3 +324,7 @@
 .drift-toggle{font-size:22rpx;color:var(--primary);margin-top:12rpx;text-align:right}
 /* 估算偏差两源对比：当日偏差更小的一侧打 ✓（2026-11-05） */
 .acc-win{color:#4CAF50;font-size:20rpx;margin-left:4rpx;font-weight:700}
+/* 走势卡标题右侧区间涨跌幅：随 tab 切换（2026-11-05） */
+.period-return{float:right;font-size:26rpx;font-weight:600;color:#666;line-height:1.5}
+.period-return.up{color:var(--up)}
+.period-return.down{color:var(--down)}
