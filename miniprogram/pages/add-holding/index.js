@@ -623,6 +623,8 @@ Page({
     this.setData({ adjustDate: picked });
   },
   onAdjustPhaseTap(e) {
+    // 用户显式选择才锁定时段；预判值只作展示初值，提交时按时钟重判（见 onSubmit 注释）
+    this._adjustLateTouched = true;
     this.setData({ adjustLate: e.currentTarget.dataset.late === "1" });
   },
   onAdjustNoteInput(e) {
@@ -717,13 +719,18 @@ Page({
       // 处理加减持仓
       if (adjAmount !== 0 && this._rawHolding) {
         // 交易记录的 date = 净值确认日：提交时段（15 点前/后）+ 节假日表在提交时自动顺延；
-        // 这里兜底重算一次防绕过。未选日期时按当天（北京）申请：假期/周末提交自动顺延
+        // 这里兜底重算一次防绕过。未选日期时按当天（北京）申请：假期/周末提交自动顺延。
+        // 时段判定：用户显式选过 chips 以用户为准（补记历史单），否则按提交时钟实时判——
+        // 页面开着跨过 15:00 时 onLoad 的预判值已过期，沿用会错位一天（与 adjust-holding 同口径）
+        const afterClose = this._adjustLateTouched
+          ? this.data.adjustLate
+          : marketTime.bjMinutes() >= 900;
         const applyDay = this.data.adjustDate || marketTime.bjDateStr();
-        const adjDate = marketTime.isTradingDay(applyDay) && !this.data.adjustLate
+        const adjDate = marketTime.isTradingDay(applyDay) && !afterClose
           ? applyDay
           : marketTime.nextTradingDay(applyDay);
         const adjConfirmReason = !marketTime.isTradingDay(applyDay) ? "非交易日提交"
-          : (this.data.adjustLate ? "15点后提交" : "");
+          : (afterClose ? "15点后提交" : "");
         const h = this._rawHolding;
         const type = adjAmount > 0 ? 'buy' : 'sell';
         const absAmount = Math.abs(adjAmount);
