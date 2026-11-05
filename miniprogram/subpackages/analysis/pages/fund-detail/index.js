@@ -12,7 +12,8 @@ const CACHE_PREFIX = "fund_detail_cache_";
 // 3：修正同类排名的持久化标记（旧代码把"没拉过"写成"拉过了"，排名卡一消失就再也回不来）
 // v4（2026-11-05）：调仓对比口径修正（半年报全量 78/50 行当上期 → 按 rank 截前十），
 // 旧缓存里的 changeType/比率差是错口径算的（前十股票被标成"加仓"），必须作废重拉
-const HOLDINGS_CACHE_VERSION = 4;
+// v5（2026-11-05）：去掉 ±0.5pp 阈值（变动按方向全标），旧缓存的 hold 需按新口径重算
+const HOLDINGS_CACHE_VERSION = 5;
 
 Page({
   data: {

@@ -5,6 +5,9 @@ const fd = require("./_shared/fund-data");
 
 const DAY = 86400000;
 const PROFILE_CACHE_TTL = 14 * DAY; // 档案季频变化，14 天新鲜度（覆盖季报披露后的陆续更新）
+// 调仓对比口径版本：v2 = 2026-11-05 去掉 ±0.5pp 阈值（占比变动按方向全标）。
+// 老口径算出的 changeType 存在档案缓存里，必须判旧作废，否则用户要等 14 天 TTL 才看到新口径
+const CMP_VERSION = 2;
 
 exports.main = async (event) => {
   const { fundCode } = event;
@@ -32,7 +35,9 @@ exports.main = async (event) => {
       // 写进过 35/67 条的 exited，"跌出前十大"成了噪声——这类旧缓存必须作废重拉，
       // 否则 parse 修好了也要等 14 天 TTL 才生效（存量脏数据驻留）
       const corruptedExited = !!(doc && Array.isArray(doc.data && doc.data.exited) && doc.data.exited.length > 10);
-      const ttl = corruptedExited ? 0 : (quarterBehind ? DAY : PROFILE_CACHE_TTL);
+      // 调仓对比口径落后（老缓存没有 cmpV / 版本低）同样作废重拉
+      const staleCmp = !!(doc && (!doc.data || doc.data.cmpV !== CMP_VERSION));
+      const ttl = (corruptedExited || staleCmp) ? 0 : (quarterBehind ? DAY : PROFILE_CACHE_TTL);
       if (doc && doc.fetchedDate && doc.data && Date.now() - Date.parse(doc.fetchedDate + "T00:00:00+08:00") < ttl) {
         const live = await refreshLiveParts(fundCode, doc.data.holdings || []);
         return { code: 0, data: { ...doc.data, holdings: live.holdings, sameTypeRank: live.sameTypeRank, rankOk: live.rankOk, fromCache: true } };
@@ -93,7 +98,9 @@ exports.main = async (event) => {
       } else if (prev && prev.navRatio) {
         const v = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
         h.ratioChange = isNaN(v) ? null : v;
-        h.changeType = v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'hold';
+        // 2026-11-05 用户拍板去掉 ±0.5pp 阈值：占比变动按方向全部标出（只有四舍五入后恰好为 0 才算持有）。
+        // 已知代价：占比含价格漂移成分，小幅变动不必然代表基金经理主动交易
+        h.changeType = v > 0 ? 'up' : v < 0 ? 'down' : 'hold';
       } else if (prev) {
         h.ratioChange = null;
         h.changeType = 'hold';
@@ -147,7 +154,7 @@ exports.main = async (event) => {
         const staticHoldings = enrichedHoldings.map(({ stockChangeRate, ...h }) => h);
         const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
         await db.collection("fund_profile_cache").doc(fundCode).set({
-          data: { fundCode, fetchedDate: today, data: { ...dataOut, holdings: staticHoldings } },
+          data: { fundCode, fetchedDate: today, data: { ...dataOut, holdings: staticHoldings, cmpV: CMP_VERSION } },
         });
       } catch (e) { /* 缓存写失败不影响返回 */ }
     }
