@@ -463,7 +463,6 @@ Page({
       estimateAccuracy: acc,
       estimateAccuracyText: lineOf("数据源一", sina),
       accSelfText: lineOf("数据源二", self),
-      accHasSelf: !!(self && self.samples),
       accLog, accLogStyle, accLogCapped: accLog.length > 9,
     };
   },
@@ -575,6 +574,7 @@ Page({
         profile: cached.profile && cached.profile.fundSizeText ? cached.profile : null,
         manager: cached.manager || null,
         sameTypeRank: cached.sameTypeRank || null,
+        drift: cached.drift || null,
         rankFetched: !!cached.rankFetched,
         profileLoaded: !!(cached.profile && cached.profile.fundSizeText),
       }, () => {
@@ -648,6 +648,7 @@ Page({
         quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
         turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
         sameTypeRank: this.data.sameTypeRank,
+        drift: this.data.drift, // 调仓对比卡（静态季报数据，缓存秒开即出；cmpV 由服务端缓存闸门兜底）
         rankFetched: !!this.data.rankFetched,
         dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),

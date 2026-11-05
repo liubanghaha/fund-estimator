@@ -232,6 +232,7 @@ Page({
     } catch (e) { /* ignore */ }
     this._first = true;
     if (!this._cacheApplied) this._quickFirstPaint(); // 无缓存首屏：轻量接口先画当天图
+    this._loadTempMoves(); // 盘后复盘温度变化行（当日缓存一次；缓存命中与 _fetch 两条路径都要出）
     // 缓存新鲜（盘中 30s TTL / 盘后净值发布即冻结 / 周末节假日全天）→ 免拉全量
     // （getPortfolio 全年聚合重）；当天分时不在免拉之列——分时缺失当天图会空白，仍按需轻拉
     if (this._cacheApplied && !this._idxStale &&
@@ -242,7 +243,6 @@ Page({
       // 已渲染的正确值（_totalMarket 保持未定义 → 轮询被守卫挡住，冻结期本就不该变数）
       this._quickFirstPaint();
       this._ensureReview(this.data.activeTab); // 周期复盘（冻结期用首页缓存兜底数据链）
-      this._loadTempMoves(); // 盘后复盘温度变化行（当日缓存一次）
       return;
     }
     this._fetch();
