@@ -90,8 +90,8 @@
         <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
           <text class="c-date">{{item.date}}</text>
           <text class="c-num">{{item.actText}}</text>
-          <text class="c-num {{item.d1Cls}}">{{item.d1Text}}</text>
-          <text class="c-num {{item.d2Cls}}">{{item.d2Text}}</text>
+          <text class="c-num {{item.d1Cls}}">{{item.d1Text}}<text wx:if="{{item.d1Win}}" class="acc-win">✓</text></text>
+          <text class="c-num {{item.d2Cls}}">{{item.d2Text}}<text wx:if="{{item.d2Win}}" class="acc-win">✓</text></text>
         </view>
       </scroll-view>
       <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高 · 源二自 11-05 起记录<text wx:if="{{accLogCapped}}"> · 共 {{accLog.length}} 条，上下滑动查看</text></view>

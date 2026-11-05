@@ -438,15 +438,23 @@ Page({
       const tail = s.hitRate != null ? ` · 方向命中 ${s.hitRate}%` : "";
       return `${label} · 近 ${acc.days || 30} 天误差 ±${s.meanAbsDiff}pp${tail}（${s.samples} 个样本）`;
     };
-    const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => ({
-      date: (r.date || "").slice(5),
-      actText: fmt(r.actualRate),
-      d1Text: fmt(r.diff).replace("%", "pp"),
-      d1Cls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
-      d2Text: fmt(r.diffSelf).replace("%", "pp"),
-      d2Cls: r.diffSelf > 0 ? "down" : r.diffSelf < 0 ? "up" : "",
-      hasSelf: r.diffSelf != null && isFinite(+r.diffSelf),
-    }));
+    const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => {
+      // 当日两源都有值时，偏差绝对值更小的一侧打标（2026-11-05 用户要求）
+      const has1 = r.diff !== null && r.diff !== undefined && isFinite(+r.diff);
+      const has2 = r.diffSelf !== null && r.diffSelf !== undefined && isFinite(+r.diffSelf);
+      const a1 = has1 ? Math.abs(+r.diff) : null;
+      const a2 = has2 ? Math.abs(+r.diffSelf) : null;
+      return {
+        date: (r.date || "").slice(5),
+        actText: fmt(r.actualRate),
+        d1Text: fmt(r.diff).replace("%", "pp"),
+        d1Cls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
+        d2Text: fmt(r.diffSelf).replace("%", "pp"),
+        d2Cls: r.diffSelf > 0 ? "down" : r.diffSelf < 0 ? "up" : "",
+        d1Win: a1 != null && a2 != null && a1 < a2,
+        d2Win: a1 != null && a2 != null && a2 < a1,
+      };
+    });
     // 超过 9 行（约 405rpx）就固定高度改为内部滚动：30 天明细直接铺满正文会把
     // 下面的风险指标/定投整块顶走，用户要划很久才能回去（2026-10-22）
     const accLogStyle = accLog.length > 9 ? "height:405rpx" : "";
