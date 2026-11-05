@@ -623,6 +623,8 @@ Page({
     this.setData({ adjustDate: picked });
   },
   onAdjustPhaseTap(e) {
+    // 用户显式选择才锁定时段；预判值只作展示初值，提交时按时钟重判（见 onSubmit 注释）
+    this._adjustLateTouched = true;
     this.setData({ adjustLate: e.currentTarget.dataset.late === "1" });
   },
   onAdjustNoteInput(e) {
@@ -712,18 +714,23 @@ Page({
 
       const hr = parseFloat(holdingReturn) || 0;
       let shares, buyPrice, finalMV, finalHR;
-      const today = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       // 处理加减持仓
       if (adjAmount !== 0 && this._rawHolding) {
         // 交易记录的 date = 净值确认日：提交时段（15 点前/后）+ 节假日表在提交时自动顺延；
-        // 这里兜底重算一次防绕过。未选日期时按当天（北京）申请：假期/周末提交自动顺延
+        // 这里兜底重算一次防绕过。未选日期时按当天（北京）申请：假期/周末提交自动顺延。
+        // 时段判定：用户显式选过 chips 以用户为准（补记历史单），否则按提交时钟实时判——
+        // 页面开着跨过 15:00 时 onLoad 的预判值已过期，沿用会错位一天（与 adjust-holding 同口径）
+        const afterClose = this._adjustLateTouched
+          ? this.data.adjustLate
+          : marketTime.bjMinutes() >= 900;
         const applyDay = this.data.adjustDate || marketTime.bjDateStr();
-        const adjDate = marketTime.isTradingDay(applyDay) && !this.data.adjustLate
+        const adjDate = marketTime.isTradingDay(applyDay) && !afterClose
           ? applyDay
           : marketTime.nextTradingDay(applyDay);
         const adjConfirmReason = !marketTime.isTradingDay(applyDay) ? "非交易日提交"
-          : (this.data.adjustLate ? "15点后提交" : "");
+          : (afterClose ? "15点后提交" : "");
         const h = this._rawHolding;
         const type = adjAmount > 0 ? 'buy' : 'sell';
         const absAmount = Math.abs(adjAmount);
@@ -754,6 +761,7 @@ Page({
           type, shares: adjShares, price: nav, amount: absAmount, date: adjDate,
           note: this.data.adjustNote.trim() || '',
           reason: this.data.reason || '',
+          holdingId: (this._rawHolding && this._rawHolding._id) || id || "",
         });
         track.recordTrade({ source: "add_submit", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: fundCode.trim(), reason: this.data.reason || '' });
 
@@ -797,6 +805,8 @@ Page({
       }
 
       wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
       wx.setStorageSync('portfolio_force_refresh', true);
       this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', adjustLate: false, showAdjustPicker: false, reason: '', sellHoldDays: null, sellHoldWarn: false });
 
@@ -841,6 +851,8 @@ Page({
           wx.showToast({ title: "已删除", icon: "success" });
           // 与其它写入路径一致：失效首页缓存，否则删除后切回首页仍显示旧总市值
           wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
           wx.setStorageSync('portfolio_force_refresh', true);
           setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
         } catch (e) {
@@ -892,6 +904,7 @@ Page({
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "add_adjust", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 
@@ -917,6 +930,8 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: '已更新', icon: 'success' });
       wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
       wx.setStorageSync('portfolio_force_refresh', true);
       setTimeout(() => wx.navigateBack(), 600);
     } catch (e) {

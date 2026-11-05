@@ -482,8 +482,7 @@ Page({
       const oldS = parseFloat(h._currentShares) || 0;
       const oldP = parseFloat(h._currentBuyPrice) || 0;
       const oldMV = parseFloat(h.marketValue) || 0;
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       if (type === 'sell' && shares > oldS) {
         wx.hideLoading();
@@ -494,6 +493,7 @@ Page({
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName,
         type, shares, price, amount: absAmount, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_manual", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
 
@@ -519,6 +519,7 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: '已记录', icon: 'success' });
       wx.removeStorageSync('portfolio_cache');
+      wx.removeStorageSync('fee_cache_v2'); // 费用账单缓存已升 v2（v1 为历史残留）
       wx.setStorageSync('portfolio_force_refresh', true);
       this.loadHoldings();
     } catch (e) {
@@ -616,6 +617,7 @@ Page({
         wx.showToast({ title: `已处理 ${done} 笔`, icon: "success" });
         this.setData({ ocrResults: [], reason: "" });
         wx.removeStorageSync("portfolio_cache");
+        wx.removeStorageSync('fee_cache_v2'); // 费用账单（市值加权年费用）缓存重算
         wx.setStorageSync("portfolio_force_refresh", true);
         setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
         return;
@@ -624,6 +626,7 @@ Page({
       this.setData({ ocrResults: unmatched, matchedCount: 0 });
       wx.showToast({ title: `已处理 ${done} 笔，${unmatched.length} 笔未匹配到持仓`, icon: "none", duration: 2500 });
       wx.removeStorageSync("portfolio_cache");
+      wx.removeStorageSync('fee_cache_v2'); // 费用账单（市值加权年费用）缓存重算
       wx.setStorageSync("portfolio_force_refresh", true);
       return;
     }
@@ -634,6 +637,7 @@ Page({
       matchedCount: remaining.filter((r) => r.matched).length,
     });
     wx.removeStorageSync("portfolio_cache");
+    wx.removeStorageSync('fee_cache_v2'); // 费用账单（市值加权年费用）缓存重算
     wx.setStorageSync("portfolio_force_refresh", true);
     this.loadHoldings();
     wx.showModal({
@@ -691,6 +695,7 @@ Page({
       type, shares: s, price, amount,
       date: tradeDate,
       reason: reason || "",
+      holdingId: h._id || "",
     });
     track.recordTrade({ source: "ocr_batch", direction: type, amount, amountBand: track.amountBand(amount), fundCode: h.fundCode, reason: reason || "" });
 
@@ -808,11 +813,11 @@ Page({
     wx.showLoading({ title: "保存中..." });
     try {
       const amt = parseFloat(this.data.editTxAmount) || (s * p);
-      const now = new Date();
-      const today = calc.formatDate(now);
+      const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
+        holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_edit", direction: type, amount: amt, amountBand: track.amountBand(amt), fundCode: h.fundCode });
 
@@ -837,6 +842,7 @@ Page({
       wx.showToast({ title: type === "buy" ? "买入成功" : "卖出成功", icon: "success" });
       // 与其它写入路径一致：失效首页缓存，否则切回首页仍显示旧总市值
       wx.removeStorageSync("portfolio_cache");
+      wx.removeStorageSync('fee_cache_v2'); // 费用账单（市值加权年费用）缓存重算
       wx.setStorageSync("portfolio_force_refresh", true);
       this.setData({ showForm: false, ocrResults: [] });
       this.loadHoldings();

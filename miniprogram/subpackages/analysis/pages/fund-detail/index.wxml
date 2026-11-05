@@ -78,21 +78,23 @@
       </view>
     </view>
 
-    <!-- 估算误差徽章（信任线：自曝误差）：样本由 snapshotEstimateDeviation 每日 15:30 写入台账 -->
+    <!-- 估算误差徽章（信任线：自曝误差）：样本由 snapshotEstimateDeviation 每日 15:30 写入台账；
+         按数据源拆分展示（源一=新浪实时估值，源二=持仓股实时涨跌加权） -->
     <view wx:if="{{estimateAccuracyText}}" class="acc-line" catch:tap="onToggleAccLog">
       {{estimateAccuracyText}}<text class="acc-toggle">{{accLogVisible ? ' ⌃' : ' ⌄'}}</text>
     </view>
+    <view wx:if="{{accSelfText}}" class="acc-line acc-line-sub" catch:tap="onToggleAccLog">{{accSelfText}}</view>
     <view wx:if="{{accLogVisible && accLog.length}}" class="acc-log">
-      <view class="acc-log-row acc-log-head"><text class="c-date">日期</text><text class="c-num">估算</text><text class="c-num">实际</text><text class="c-num">偏差</text></view>
+      <view class="acc-log-row acc-log-head"><text class="c-date">日期</text><text class="c-num">实际</text><text class="c-num">源一偏差</text><text class="c-num">源二偏差</text></view>
       <scroll-view class="acc-log-body {{accLogCapped ? 'capped' : ''}}" scroll-y style="{{accLogStyle}}">
         <view class="acc-log-row" wx:for="{{accLog}}" wx:key="date">
           <text class="c-date">{{item.date}}</text>
-          <text class="c-num">{{item.estText}}</text>
           <text class="c-num">{{item.actText}}</text>
-          <text class="c-num {{item.diffCls}}">{{item.diffText}}</text>
+          <text class="c-num {{item.d1Cls}}">{{item.d1Text}}<text wx:if="{{item.d1Win}}" class="acc-win">✓</text></text>
+          <text class="c-num {{item.d2Cls}}">{{item.d2Text}}<text wx:if="{{item.d2Win}}" class="acc-win">✓</text></text>
         </view>
       </scroll-view>
-      <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高<text wx:if="{{accLogCapped}}"> · 共 {{accLog.length}} 条，上下滑动查看</text></view>
+      <view class="acc-log-note">偏差 = 估算 − 实际，正值 = 估高 · 源二自 11-05 起记录<text wx:if="{{accLogCapped}}"> · 共 {{accLog.length}} 条，上下滑动查看</text></view>
     </view>
 
     <view wx:if="{{riskMetrics || peTemp}}" class="info-card risk-card">
@@ -107,6 +109,18 @@
           <view class="risk-label">温度</view>
           <view class="risk-value temp-val {{peTemp.signal === 'low' ? 'temp-low' : peTemp.signal === 'high' ? 'temp-high' : 'temp-mid'}}">{{peTemp.label}}</view>
           <view wx:if="{{peTemp.tempPercentile}}" class="risk-sub">近 {{peTemp.tempPercentile.days}} 个交易日数据的 {{peTemp.tempPercentile.pct}}% 分位</view>
+        </view>
+        <!-- 债券/货币基金无个股估值口径（温度恒为 --），展示债市整体热度：10Y 国债收益率历史分位映射温度三档 -->
+        <view wx:if="{{isBondFund && marketInd && marketInd.bondYield != null}}" class="risk-item">
+          <view class="risk-label">债市温度</view>
+          <view class="risk-value temp-val {{marketInd.bondTemp === '偏高' ? 'temp-high' : marketInd.bondTemp === '偏低' ? 'temp-low' : 'temp-mid'}}">{{marketInd.bondTemp}}</view>
+          <view class="risk-sub">10Y 国债收益率 {{marketInd.bondYield}}%，近 {{marketInd.yieldDays}} 个交易日的 {{marketInd.yieldPct}}% 分位</view>
+        </view>
+        <!-- 股债性价比（纯数据陈述）：沪深300 盈利收益率(1/PE) 与 10Y 国债收益率的差，衡量股相对债的吸引力 -->
+        <view wx:if="{{marketInd && marketInd.riskPremium != null}}" class="risk-item">
+          <view class="risk-label">股债性价比</view>
+          <view class="risk-value">{{marketInd.riskPremium}}%</view>
+          <view class="risk-sub">沪深300盈利收益率 {{marketInd.earningsYield != null ? marketInd.earningsYield : '--'}}% − 10Y国债 {{marketInd.bondYield}}%</view>
         </view>
       </view>
       <!-- 温度分位（信任线）：把"温度 0.82"放回它自己的历史分布里，给数字一个水平感；窗口天数如实显示 -->
@@ -182,7 +196,7 @@
 
     <view hidden="{{activeTab !== 'trend'}}">
       <view wx:if="{{navHistory.length > 1}}" class="chart-card">
-        <view class="section-title">收益走势</view>
+        <view class="section-title">收益走势<text wx:if="{{chartPeriodLabel}}" class="period-return {{chartPeriodReturn > 0 ? 'up' : chartPeriodReturn < 0 ? 'down' : ''}}">{{chartPeriodLabel}} {{chartPeriodReturn != null ? (chartPeriodReturn > 0 ? '+' : '') + chartPeriodReturn + '%' : '--'}}</text></view>
         <view class="period-tabs">
           <view class="period-item {{chartPeriod === '1M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="1M">近一月</view>
           <view class="period-item {{chartPeriod === '3M' ? 'active' : ''}}" bind:tap="onChartPeriod" data-period="3M">近三月</view>
@@ -238,6 +252,7 @@
             <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>
             <text wx:elif="{{item.changeType === 'up' && item.ratioChange != null}}" class="change-tag up">📈+{{item.ratioChange}}%</text>
             <text wx:elif="{{item.changeType === 'down' && item.ratioChange != null}}" class="change-tag down">📉{{item.ratioChange}}%</text>
+            <text wx:elif="{{item.changeType === 'hold'}}" class="change-tag hold">持有</text>
             <text wx:else>--</text>
           </view>
           <view class="hold-ratio">{{item.navRatio ? item.navRatio + '%' : '--'}}</view>
@@ -246,24 +261,17 @@
         <view wx:if="{{prevDataIncomplete}}" class="hold-row" style="opacity:.6;font-size:20rpx;color:#999">
           <view class="hold-name" style="width:100%;text-align:center">上期持仓数据缺失，调仓动向暂无法对比</view>
         </view>
-        <!-- 退出的持仓 -->
-        <view wx:if="{{exited && exited.length > 0}}" style="margin-top:16rpx">
-          <view class="exited-toggle" bind:tap="onToggleExited">
-            <text>上季度退出 ({{exited.length}})</text>
-            <text class="exited-arrow {{showExited ? 'open' : ''}}">{{showExited ? '▼' : '▶'}}</text>
-          </view>
-          <view wx:if="{{showExited}}">
-            <view wx:for="{{exited}}" wx:key="stockCode" class="hold-row" style="opacity:.5">
-              <view class="hold-rank">-</view>
-              <view class="hold-name">{{item.stockName}}</view>
-              <view class="hold-change">--</view>
-              <view class="hold-ratio-change"><text class="change-tag exit">🚫退出</text></view>
-              <view class="hold-ratio">--</view>
-            </view>
-          </view>
-        </view>
+        <!-- 退出的持仓：已并入下方「本季调仓」卡，此处不再重复展示 -->
       </view>
       <view wx:else class="info-card"><view class="empty-text">暂无持仓数据</view></view>
+      <!-- 本季调仓（信任线）：两期季报前十大持仓变动陈述，纯数据无引导；上期数据不完整时不显示 -->
+      <view wx:if="{{drift && holdings.length > 0}}" class="info-card" bind:tap="onToggleDrift">
+        <view class="section-title">本季调仓<text class="risk-period-tip">{{drift.quarterLabel}}</text></view>
+        <view wx:if="{{drift.stable}}" class="drift-line">本季前十大重仓股与上季度一致</view>
+        <view wx:if="{{drift.newsCount}}" class="drift-line">🆕 新进前十大 {{drift.newsCount}} 只：{{driftExpanded ? drift.newsFull : drift.newsText}}</view>
+        <view wx:if="{{drift.exitCount}}" class="drift-line">📤 跌出前十大 {{drift.exitCount}} 只：{{driftExpanded ? drift.exitFull : drift.exitText}}</view>
+        <view wx:if="{{drift.canExpand}}" class="drift-toggle">{{driftExpanded ? '收起 ▲' : '展开全部 ▼'}}</view>
+      </view>
     </view>
 
     <view hidden="{{activeTab !== 'profile'}}">
@@ -295,6 +303,8 @@
           </view>
         </view>
       </view>
+      <!-- 风格漂移卡（信任线）：两期季报重仓股变动陈述，纯数据无引导；上期数据不完整时不显示 -->
+
       <view wx:if="{{profile}}" class="info-card">
         <view class="section-title">基金档案</view>
         <view class="profile-grid">

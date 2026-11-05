@@ -10,7 +10,10 @@ const CACHE_PREFIX = "fund_detail_cache_";
 // 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
 // 旧版本缓存自动作废 → 重新进入页面即拉到新值，避免用户一直看到修复前的错误调仓动向。
 // 3：修正同类排名的持久化标记（旧代码把"没拉过"写成"拉过了"，排名卡一消失就再也回不来）
-const HOLDINGS_CACHE_VERSION = 3;
+// v4（2026-11-05）：调仓对比口径修正（半年报全量 78/50 行当上期 → 按 rank 截前十），
+// 旧缓存里的 changeType/比率差是错口径算的（前十股票被标成"加仓"），必须作废重拉
+// v5（2026-11-05）：去掉 ±0.5pp 阈值（变动按方向全标），旧缓存的 hold 需按新口径重算
+const HOLDINGS_CACHE_VERSION = 5;
 
 Page({
   data: {
@@ -31,6 +34,7 @@ Page({
     priceLoading: false, // 首开时净值/估值还没到：显示"加载中…"而不是"-- + 未出估值"
     showEstimate: false, // 盘中且今日净值未公布：头部走估算口径（由 updateDisplay 计算）
     chartPeriod: '1M',
+    chartPeriodReturn: null, chartPeriodLabel: '',
     chartTxMap: {},
     transactionList: [],
     noteTimeline: [],
@@ -42,6 +46,8 @@ Page({
     showDCA: false, dcaAmount: '', dcaStartDate: '', dcaLoading: false, dcaResult: null,
     // 风险指标 + 费用 + 估值温度
     riskMetrics: null, showFee: false, feeData: null, totalFeeRate: '', peTemp: null,
+    marketInd: null, // 市场级指标（债市温度/股债性价比），云函数随估值透传
+    isBondFund: false, // 债券/货币基金：无个股估值口径，温度卡展示债市温度
     estimateAccuracy: null, estimateAccuracyText: '',
     accLog: [], accLogVisible: false, // R2 误差行点击展开的 30 天对账明细
     rebate: null,
@@ -52,7 +58,7 @@ Page({
     rankFetched: false,
     showTurnover: false,
     scrollRefreshing: false,
-    showExited: false,
+    drift: null, driftExpanded: false,
     amountVisible: true, // 详情页金额不做隐藏（2026-09-26 用户拍板：隐藏开关只管首页列表）
   },
 
@@ -66,7 +72,7 @@ Page({
     const fundName = options.fundName ? decodeURIComponent(options.fundName) : "基金详情";
     // 深链只带 fundCode（推送/分享落地页）时用占位，真实名字由 _backfillName 回填
     this._namePlaceholder = !options.fundName;
-    this.setData({ fundCode: options.fundCode, fundName });
+    this.setData({ fundCode: options.fundCode, fundName, isBondFund: this._bondFlag(fundName) });
     // 持仓态预填（防头部闪跳）：checkHolding 比概览晚到一拍，首帧会先渲染"单位净值"卡、
     // 约一秒后跳成"当日收益"卡。首页的 portfolio_cache 是同步本地存储、逐笔带 getPortfolio
     // 预计算字段——命中即按它预置持仓态（合计口径：金额逐笔相加、成本=市值−累计收益），
@@ -152,8 +158,20 @@ Page({
   _backfillName(name) {
     if (!this._namePlaceholder || !name || name === this.data.fundName) return;
     this._namePlaceholder = false;
-    this.setData({ fundName: name });
+    this.setData({ fundName: name, isBondFund: this._bondFlag(name) });
     wx.setNavigationBarTitle({ title: `${name}(${this.data.fundCode}) 估值` });
+  },
+
+  // 债券/货币基金判断：与 getPortfolio 温度列同一名称正则（两处必须同式，口径才不打架）
+  _bondFlag(name) {
+    return /债|债券|纯债|转债|货币|货基/.test(name || "");
+  },
+
+  // marketInd 派生字段：盈利收益率 = 100/PE（WXML 不支持方法调用，js 预格式化）
+  _miDecorate(mi) {
+    if (!mi) return null;
+    if (mi.earningsYield == null && mi.csi300PE) mi.earningsYield = +(100 / mi.csi300PE).toFixed(2);
+    return mi;
   },
 
   // 首次渲染完成后自动调起 scroll-view 下拉刷新动画（过早调起 refresher 未挂载，无效）
@@ -218,9 +236,11 @@ Page({
 
   // 分享
   onShareAppMessage() {
+    // path 带 fundName：落地页首帧直接渲染标题（原来只带 fundCode，要等 _backfillName 二次回填）
     return {
       title: (this.data.fundName || "基金") + "的估值与温度",
-      path: "/subpackages/analysis/pages/fund-detail/index?fundCode=" + this.data.fundCode,
+      path: "/subpackages/analysis/pages/fund-detail/index?fundCode=" + this.data.fundCode +
+        (this.data.fundName ? "&fundName=" + encodeURIComponent(this.data.fundName) : ""),
     };
   },
 
@@ -313,6 +333,8 @@ Page({
               actualChangeRate: actualCR,
               displayChangeRate: displayCR,
               peTemp: d.peTemp || this.data.peTemp,
+          marketInd: this._miDecorate(d.marketInd) || this.data.marketInd,
+          isBondFund: this._bondFlag(this.data.fundName || d.fundName),
               ...this._accuracyFields(d), ...this._rebateField(),
             });
             this._backfillName(d.fundName);
@@ -399,25 +421,50 @@ Page({
   // 样本少也照实显示样本数（藏样本数就成了自欺）；还没有样本（台账刚起步）返回空文案不显示
   _accuracyFields(resp) {
     const acc = resp && resp.estimateAccuracy !== undefined ? resp.estimateAccuracy : this.data.estimateAccuracy;
-    if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "", accLog: [] };
-    const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
-    const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
+    if (!acc || (!acc.samples && !(acc.self && acc.self.samples))) {
+      return { estimateAccuracy: acc || null, estimateAccuracyText: "", accSelfText: "", accLog: [] };
+    }
     const fmt = (v) => {
+      // 注意 +null === 0：缺值必须先判空，否则源二历史行会渲染成 0.00pp（2026-11-05 实测踩到）
+      if (v === null || v === undefined || v === "") return "--";
       const n = +v;
       if (!isFinite(n)) return "--";
       return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
     };
-    const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => ({
-      date: (r.date || "").slice(5),
-      estText: fmt(r.estRate),
-      actText: fmt(r.actualRate),
-      diffText: fmt(r.diff).replace("%", "pp"),
-      diffCls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
-    }));
+    // 两源各一行汇总（2026-11-05 按用户要求拆分；老数据只有源一，源二自 11-05 起积累）
+    const sina = acc.sina || (acc.samples ? { samples: acc.samples, meanAbsDiff: acc.meanAbsDiff, hitRate: acc.hitRate } : null);
+    const self = acc.self || null;
+    const lineOf = (label, s) => {
+      if (!s || !s.samples) return "";
+      const tail = s.hitRate != null ? ` · 方向命中 ${s.hitRate}%` : "";
+      return `${label} · 近 ${acc.days || 30} 天误差 ±${s.meanAbsDiff}pp${tail}（${s.samples} 个样本）`;
+    };
+    const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => {
+      // 当日两源都有值时，偏差绝对值更小的一侧打标（2026-11-05 用户要求）
+      const has1 = r.diff !== null && r.diff !== undefined && isFinite(+r.diff);
+      const has2 = r.diffSelf !== null && r.diffSelf !== undefined && isFinite(+r.diffSelf);
+      const a1 = has1 ? Math.abs(+r.diff) : null;
+      const a2 = has2 ? Math.abs(+r.diffSelf) : null;
+      return {
+        date: (r.date || "").slice(5),
+        actText: fmt(r.actualRate),
+        d1Text: fmt(r.diff).replace("%", "pp"),
+        d1Cls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
+        d2Text: fmt(r.diffSelf).replace("%", "pp"),
+        d2Cls: r.diffSelf > 0 ? "down" : r.diffSelf < 0 ? "up" : "",
+        d1Win: a1 != null && a2 != null && a1 < a2,
+        d2Win: a1 != null && a2 != null && a2 < a1,
+      };
+    });
     // 超过 9 行（约 405rpx）就固定高度改为内部滚动：30 天明细直接铺满正文会把
     // 下面的风险指标/定投整块顶走，用户要划很久才能回去（2026-10-22）
     const accLogStyle = accLog.length > 9 ? "height:405rpx" : "";
-    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog, accLogStyle, accLogCapped: accLog.length > 9 };
+    return {
+      estimateAccuracy: acc,
+      estimateAccuracyText: lineOf("数据源一", sina),
+      accSelfText: lineOf("数据源二", self),
+      accLog, accLogStyle, accLogCapped: accLog.length > 9,
+    };
   },
 
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）
@@ -444,6 +491,7 @@ Page({
       actualDate: hasNavPair ? e.actualDate : this.data.actualDate,
       priceLoading: false,
       peTemp: e.peTemp || this.data.peTemp,
+      marketInd: this._miDecorate(e.marketInd) || this.data.marketInd,
       ...this._accuracyFields(e), ...this._rebateField(),
     });
     // 最新一天净值合并进历史（估值接口自带 actualDate/actualNav，无需单独拉历史接口）
@@ -510,6 +558,7 @@ Page({
         actualNav: cached.actualNav, actualChangeRate: cached.actualChangeRate,
         actualDate: cached.actualDate, displayChangeRate: cacheToday ? cached.displayChangeRate : null,
         peTemp: cached.peTemp || null,
+        marketInd: cached.marketInd || null,
         navHistory: cached.history,
         displayHistory: (cached.history || []).slice(0, 5),
         displayCount: 5,
@@ -525,6 +574,7 @@ Page({
         profile: cached.profile && cached.profile.fundSizeText ? cached.profile : null,
         manager: cached.manager || null,
         sameTypeRank: cached.sameTypeRank || null,
+        drift: cached.drift || null,
         rankFetched: !!cached.rankFetched,
         profileLoaded: !!(cached.profile && cached.profile.fundSizeText),
       }, () => {
@@ -588,6 +638,7 @@ Page({
         actualNav: this.data.actualNav, actualChangeRate: this.data.actualChangeRate,
         actualDate: this.data.actualDate, displayChangeRate: this.data.displayChangeRate,
         peTemp: this.data.peTemp,
+        marketInd: this.data.marketInd,
         tempDate: marketTime.bjDateStr(),
         history: this.data.navHistory,
         holdingData: this.data.holdingData,
@@ -597,6 +648,7 @@ Page({
         quarterLabel: this.data.quarterLabel, prevDataIncomplete: this.data.prevDataIncomplete,
         turnoverRates: this.data.turnoverRates, profile: this.data.profile, manager: this.data.manager,
         sameTypeRank: this.data.sameTypeRank,
+        drift: this.data.drift, // 调仓对比卡（静态季报数据，缓存秒开即出；cmpV 由服务端缓存闸门兜底）
         rankFetched: !!this.data.rankFetched,
         dataVersion: HOLDINGS_CACHE_VERSION,
         ts: Date.now(),
@@ -801,6 +853,8 @@ Page({
           actualChangeRate: actualCR,
           displayChangeRate: displayCR,
           peTemp: d.peTemp || this.data.peTemp,
+          marketInd: this._miDecorate(d.marketInd) || this.data.marketInd,
+          isBondFund: this._bondFlag(this.data.fundName || d.fundName),
           ...this._accuracyFields(d), ...this._rebateField(),
         });
         this._backfillName(d.fundName);
@@ -838,6 +892,44 @@ Page({
     } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
+  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/跌出名单（各截断 3 个）。
+  // 港股加 (H) 标注：同一家公司可 A+H 双重上市（如中际旭创 300308.SZ / 03308.HK），
+  // 不标注会出现"中际旭创 新进 + 中际旭创 跌出"的两行，看着像 bug
+  _driftCard(holdings, exited, quarterLabel, prevIncomplete) {
+    if (!holdings || holdings.length === 0 || prevIncomplete) return null;
+    const clip = (arr) => arr.slice(0, 3).join("、") + (arr.length > 3 ? " 等" : "");
+    // 同名 A+H 同时出现时（如中际旭创：Q3 新进 H 股、Q2 前十的 A 股跌出），
+    // 两侧都打市场标记，否则会再被看成"同一只既新进又跌出"
+    const newRows = holdings.filter(h => h.changeType === 'new');
+    const exitRows = exited || [];
+    const nameOf = (h) => h.stockName || "";
+    const collide = new Set(
+      newRows.map(nameOf).filter(n => n && exitRows.some(e => nameOf(e) === n))
+    );
+    const isHK = (h) => h.isHK || String(h.stockCode || "").length === 5;
+    const label = (h) => {
+      const name = nameOf(h);
+      if (!name) return "";
+      if (isHK(h)) return name + "(H)";
+      return collide.has(name) ? name + "(A)" : name;
+    };
+    const news = newRows.map(label).filter(Boolean);
+    const exitNames = exitRows.map(label).filter(Boolean);
+    // 折叠态各显示前 3 只；点卡片展开显示全部（用户 2026-11-05 拍板）
+    return {
+      quarterLabel,
+      stable: news.length === 0 && exitNames.length === 0,
+      newsCount: news.length, newsText: news.length ? clip(news) : "", newsFull: news.join("、"),
+      exitCount: exitNames.length, exitText: exitNames.length ? clip(exitNames) : "", exitFull: exitNames.join("、"),
+      canExpand: news.length > 3 || exitNames.length > 3,
+    };
+  },
+
+  onToggleDrift() {
+    if (!this.data.drift || !this.data.drift.canExpand) return;
+    this.setData({ driftExpanded: !this.data.driftExpanded });
+  },
+
   fetchProfile() {
     // 防重入：版本旧触发(加载时) 与 切 tab 可能并发；在途时复用同一请求，
     // 避免切 tab 空转一次（转圈一闪而过、数据要等在途请求结束才出现）
@@ -867,6 +959,11 @@ Page({
           // 清洗后的列表就是真正要展示的：没有"今天"日期的行情会被清成 null
           const sanitizedHoldings = this._sanitizeQuotes(holdings);
           const patch = { manager: res.result.data.manager, holdings: sanitizedHoldings, exited, quarterLabel: res.result.data.quarterLabel || '', prevDataIncomplete: !!res.result.data.prevDataIncomplete, feeData: null, showFee: false, turnoverRates: res.result.data.turnoverRates || [], sameTypeRank: rank, rankFetched };
+          // 风格漂移卡（信任线，2026-11 调研增补）：纯客户端聚合两期季报重仓股变动
+          // （changeType 由 fetchFundProfile 当期 vs 上期 jjcc 对比产出）。上期数据不完整时
+          // 退出数不可信 → 整卡不显示（宁缺毋错）
+          const drift = this._driftCard(sanitizedHoldings, exited, res.result.data.quarterLabel || '', !!res.result.data.prevDataIncomplete);
+          if (drift) patch.drift = drift;
           if (p) patch.profile = p;
           this.setData(patch);
           if (!rankFetched) this._profileStale = true; // 排名这次没拿到：本次会话再切档案 tab 还能重试
@@ -1027,6 +1124,23 @@ Page({
       sixMonthReturn: r.sixMonth, yearReturn: r.year, threeYearReturn: r.threeYear,
       riskMetrics, underwaterMetrics,
     });
+    this._syncPeriodReturn();
+  },
+
+  // 走势卡标题右侧的区间涨跌幅（2026-11-05 用户要求：切 tab 即显示对应区间涨跌）。
+  // 与下方「收益表现」网格同源（calcPeriodReturns），不另算一套口径
+  _syncPeriodReturn() {
+    const MAP = {
+      "1M": ["近一月", "monthReturn"], "3M": ["近三月", "threeMonthReturn"],
+      "6M": ["近半年", "sixMonthReturn"], "1Y": ["近一年", "yearReturn"],
+      "3Y": ["近三年", "threeYearReturn"],
+    };
+    const [label, key] = MAP[this.data.chartPeriod] || MAP["1M"];
+    const raw = this.data[key];
+    const val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
+    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label) {
+      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label });
+    }
   },
 
   _buildChartData() {
@@ -1244,12 +1358,15 @@ Page({
     const PERIOD_DAYS = { '1M': 22, '3M': 66, '6M': 132, '1Y': 260, '3Y': 750 };
     const neededDays = PERIOD_DAYS[period] || 260;
     this.setData({ chartPeriod: period });
+    this._syncPeriodReturn();
     if (!this._historyMaxed && this.data.navHistory.length < neededDays) {
       // 补拉期间给加载反馈：这几秒里图表若毫无变化，用户会以为"点了没反应/没有动画"
       this.setData({ chartLoading: true });
       try {
         // skipRedraw：下面统一绘制（带动画），避免与补拉后的内部重绘重复
         await this.fetchHistory(neededDays + 50, { skipRedraw: true });
+        // 补拉后重算区间收益：近三年等长窗口的 return 依赖新增的历史（否则标题显示旧值/--）
+        this.calcReturns(this.data.navHistory);
       } finally {
         this.setData({ chartLoading: false });
       }
@@ -1503,7 +1620,6 @@ Page({
     this.setData({ displayCount: n, displayHistory: this.data.navHistory.slice(0, n) });
   },
   onShowLess() { this.setData({ displayCount: 5, displayHistory: this.data.navHistory.slice(0, 5) }); },
-  onToggleExited() { this.setData({ showExited: !this.data.showExited }); },
   async onTabTap(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ activeTab: tab }, () => {

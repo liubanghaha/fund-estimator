@@ -16,7 +16,10 @@ exports.main = async (event) => {
       case "add": {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少参数" };
         await db.collection("transactions").add({
-          data: { ...data, reason: REASONS.includes(data.reason) ? data.reason : "", _openid: OPENID, createTime: new Date() },
+          // confirmed 强制 false（客户端不可伪造）：交易份额按提交时最新已公布净值折算，
+          // 与确认日存在一天错位，由 confirmTransactions 定时任务在确认日净值公布后重算并置 true。
+          // holdingId 用于同基金多笔持仓时精确定位（存量交易无此字段，视为已确认不翻旧账）
+          data: { ...data, holdingId: data.holdingId || "", confirmed: false, reason: REASONS.includes(data.reason) ? data.reason : "", _openid: OPENID, createTime: new Date() },
         });
         return { code: 0, msg: "success" };
       }

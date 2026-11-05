@@ -123,6 +123,7 @@
       <view class="review-line" wx:if="{{reviewCard.best}}">最强：{{reviewCard.best.name}} {{reviewCard.best.rate > 0 ? '+' : ''}}{{reviewCard.best.rate}}%</view>
       <view class="review-line" wx:if="{{reviewCard.worst}}">最弱：{{reviewCard.worst.name}} {{reviewCard.worst.rate > 0 ? '+' : ''}}{{reviewCard.worst.rate}}%</view>
       <view class="review-line" wx:if="{{reviewCard.opText}}">{{reviewCard.opText}}</view>
+      <view class="review-line" wx:if="{{activeTab === 'today' && reviewTempMoves}}">🌡 {{reviewTempMoves}}</view>
     </view>
 
     <!-- 签入口：周/月/年 tab 显示对应签（当天 tab 无签） -->

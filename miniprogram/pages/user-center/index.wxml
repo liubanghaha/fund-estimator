@@ -31,6 +31,8 @@
     <view class="menu-item" bind:tap="onCorrelation"><text>📊 资产分析</text><text class="arrow">></text></view>
     <view class="menu-item" bind:tap="onAlertManage"><text>🔔 我的提醒</text><text class="arrow">></text></view>
     <view wx:if="{{showAnnualEntry}}" class="menu-item" bind:tap="onAnnualReport"><text>📊 {{annualYear}} 年度报告</text><text class="arrow">></text></view>
+    <!-- 年度报告预告（12 月窗口）：数据积累中，1/1 正式放开（期间为纯预告态，不可点） -->
+    <view wx:if="{{showAnnualPreview}}" class="menu-item annual-preview"><text>📊 {{annualYear}} 年度报告 · 数据整理中，1 月 1 日见</text></view>
   </view>
   <view class="menu-group-title">通知与数据</view>
   <view class="menu-list">

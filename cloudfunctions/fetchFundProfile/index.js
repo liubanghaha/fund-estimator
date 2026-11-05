@@ -5,6 +5,9 @@ const fd = require("./_shared/fund-data");
 
 const DAY = 86400000;
 const PROFILE_CACHE_TTL = 14 * DAY; // 档案季频变化，14 天新鲜度（覆盖季报披露后的陆续更新）
+// 调仓对比口径版本：v2 = 2026-11-05 去掉 ±0.5pp 阈值（占比变动按方向全标）。
+// 老口径算出的 changeType 存在档案缓存里，必须判旧作废，否则用户要等 14 天 TTL 才看到新口径
+const CMP_VERSION = 2;
 
 exports.main = async (event) => {
   const { fundCode } = event;
@@ -28,7 +31,13 @@ exports.main = async (event) => {
       // 而东财早已披露 Q3）。落后期间每天重试，拿到新季报后自然恢复 14 天缓存。
       const quarterBehind = !!(doc && doc.data && doc.data.quarterLabel &&
         doc.data.quarterLabel !== expectQuarterLabel);
-      const ttl = quarterBehind ? DAY : PROFILE_CACHE_TTL;
+      // 脏缓存闸门（2026-11-05）：前十对比的 exited 最多 10 条。历史上半年报全量解析
+      // 写进过 35/67 条的 exited，"跌出前十大"成了噪声——这类旧缓存必须作废重拉，
+      // 否则 parse 修好了也要等 14 天 TTL 才生效（存量脏数据驻留）
+      const corruptedExited = !!(doc && Array.isArray(doc.data && doc.data.exited) && doc.data.exited.length > 10);
+      // 调仓对比口径落后（老缓存没有 cmpV / 版本低）同样作废重拉
+      const staleCmp = !!(doc && (!doc.data || doc.data.cmpV !== CMP_VERSION));
+      const ttl = (corruptedExited || staleCmp) ? 0 : (quarterBehind ? DAY : PROFILE_CACHE_TTL);
       if (doc && doc.fetchedDate && doc.data && Date.now() - Date.parse(doc.fetchedDate + "T00:00:00+08:00") < ttl) {
         const live = await refreshLiveParts(fundCode, doc.data.holdings || []);
         return { code: 0, data: { ...doc.data, holdings: live.holdings, sameTypeRank: live.sameTypeRank, rankOk: live.rankOk, fromCache: true } };
@@ -73,10 +82,15 @@ exports.main = async (event) => {
     }
 
     // 计算持仓变动
+    // 只按代码匹配（归一 .SZ/.SH/.BJ/.HK 前后缀），不按名称：
+    // 同一家公司可 A+H 双重上市（如中际旭创 300308.SZ / 03308.HK，H 股 2026-07-30 上市），
+    // 同名前缀的两行是不同证券。按名称兜底会把"卖 A 买 H"的换股误判成"持有不变"，
+    // 也会把合法的"新进 H / 跌出 A"抹平。港股 5 位、A 股 6 位代码天然可区分。
+    const normCode = (c) => String(c || "").trim().replace(/\.(SZ|SH|BJ|HK)$/i, "").replace(/^(SH|SZ|BJ|HK)/i, "");
     const prevMap = {};
-    prevHoldings.forEach(h => { if (h.stockCode) prevMap[h.stockCode] = h; });
+    prevHoldings.forEach(h => { if (h.stockCode) prevMap[normCode(h.stockCode)] = h; });
     holdings.forEach(h => {
-      const prev = prevMap[h.stockCode];
+      const prev = prevMap[normCode(h.stockCode)];
       if (prevDataIncomplete) {
         // 上期数据缺失：不推断新增/变动，避免误报
         h.ratioChange = null;
@@ -84,7 +98,9 @@ exports.main = async (event) => {
       } else if (prev && prev.navRatio) {
         const v = +(parseFloat(h.navRatio) - parseFloat(prev.navRatio)).toFixed(2);
         h.ratioChange = isNaN(v) ? null : v;
-        h.changeType = v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'hold';
+        // 2026-11-05 用户拍板去掉 ±0.5pp 阈值：占比变动按方向全部标出（只有四舍五入后恰好为 0 才算持有）。
+        // 已知代价：占比含价格漂移成分，小幅变动不必然代表基金经理主动交易
+        h.changeType = v > 0 ? 'up' : v < 0 ? 'down' : 'hold';
       } else if (prev) {
         h.ratioChange = null;
         h.changeType = 'hold';
@@ -93,10 +109,10 @@ exports.main = async (event) => {
         h.changeType = 'new';
       }
     });
-    // 上季度有但本季度没有的 → 退出（上期数据缺失时无法判断，不展示）
-    const currCodes = new Set(holdings.map(h => h.stockCode));
+    // 上期前十大有但本期前十大没有的 → 跌出前十大（上期数据缺失时无法判断，不展示）
+    const currCodes = new Set(holdings.map(h => normCode(h.stockCode)));
     const exited = !prevDataIncomplete
-      ? prevHoldings.filter(h => !currCodes.has(h.stockCode)).map(h => ({
+      ? prevHoldings.filter(h => !currCodes.has(normCode(h.stockCode))).map(h => ({
           ...h, changeType: 'exit', ratioChange: null,
         }))
       : [];
@@ -138,7 +154,7 @@ exports.main = async (event) => {
         const staticHoldings = enrichedHoldings.map(({ stockChangeRate, ...h }) => h);
         const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
         await db.collection("fund_profile_cache").doc(fundCode).set({
-          data: { fundCode, fetchedDate: today, data: { ...dataOut, holdings: staticHoldings } },
+          data: { fundCode, fetchedDate: today, data: { ...dataOut, holdings: staticHoldings, cmpV: CMP_VERSION } },
         });
       } catch (e) { /* 缓存写失败不影响返回 */ }
     }
@@ -349,7 +365,23 @@ function fetchHoldings(fundCode, year, month) {
               });
             }
           }
-          resolve({ holdings: rows, reportYear, reportMonth, ok: true });
+          // 只取「前十大」：季度表的 jjcc 是前十，但半年报/年报是全量披露（实测 78 行，
+          // 含全部股票投资明细与新股配售）。不截前十时，上期全量与当期前十对比会把
+          // "跌出前十"误报成"退出"（生产实测：退出 42/67 只，甚至同一只股票既新进又退出）。
+          // 归一代码去重（同期不同子表可能给带后缀/前缀的同一代码）后按 rank 取前十
+          const normCode = (c) => String(c || "").trim().replace(/\.(SZ|SH|BJ|HK)$/i, "").replace(/^(SH|SZ|BJ)/i, "");
+          const seen = new Set();
+          const topRows = [];
+          rows
+            .filter((h) => { const r = parseInt(h.rank, 10); return r >= 1 && r <= 10; })
+            .sort((a, b) => parseInt(a.rank, 10) - parseInt(b.rank, 10))
+            .forEach((h) => {
+              const k = normCode(h.stockCode) || h.stockName;
+              if (!k || seen.has(k)) return;
+              seen.add(k);
+              if (topRows.length < 10) topRows.push(h);
+            });
+          resolve({ holdings: topRows, reportYear, reportMonth, ok: true });
         } catch (e) { resolve({ holdings: [], reportMonth: null, ok: false }); }
       });
     });

@@ -12,14 +12,15 @@ exports.main = async (event) => {
 
   try {
     const todayStr = td.bjDateStr();
-    const [estimate, peTemp, estimateAccuracy] = await Promise.all([
+    const [estimate, peTemp, estimateAccuracy, marketInd] = await Promise.all([
       fetchSelfEstimate(fundCode, src),
       fetchTemperature(fundCode),
       fetchEstimateAccuracy(fundCode, todayStr),
+      getMarketInd(),
     ]);
     return {
       code: 0, msg: "success",
-      data: { ...estimate, peTemp, estimateAccuracy },
+      data: { ...estimate, peTemp, estimateAccuracy, marketInd },
     };
   } catch (e) {
     console.error("获取估值失败:", e.message);
@@ -27,30 +28,69 @@ exports.main = async (event) => {
   }
 };
 
+// 市场级指标（债市温度/股债性价比）：computeFundTemperature 每日 03:00 随温度任务写入
+// app_config/temp_task_status.marketIndicator，这里读出透传给详情页温度卡。
+// 实例级 1h 缓存（与首页 temp_dist_cache 同频），任务凌晨更新后旧实例最多滞后 1h
+let _marketIndCache = null; // { ts, mi }
+async function getMarketInd() {
+  try {
+    if (_marketIndCache && Date.now() - _marketIndCache.ts < 3600000) return _marketIndCache.mi;
+    const res = await db.collection("app_config").doc("temp_task_status")
+      .field({ marketIndicator: true }).get();
+    const mi = res.data && res.data.marketIndicator;
+    if (mi && mi.updatedAt) _marketIndCache = { ts: Date.now(), mi };
+    return mi || null;
+  } catch (e) { return null; }
+}
+
 // 近 30 天估算误差（信任线：自曝误差，数据由 snapshotEstimateDeviation 每日 15:30 写入台账）
 // 无样本返回 null（客户端不显示徽章），样本少也照实显示样本数——藏样本数就成了自欺
+// 2026-11-05：按数据源拆分。estRate=数据源一（新浪），estRateSelf=数据源二（持仓股实时加权）；
+// 数据源二自 11-05 起才落库，历史行只有源一 → 明细里源二显示 "--"
 async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
   try {
     const start = _addDays(todayStr, -days);
     // 台账 _id = `${fundCode}_${YYYY-MM-DD}`，按 _id 区间查走主键索引（不必依赖 fundCode 索引）
     const res = await db.collection("fund_estimate_deviations")
       .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
-      .field({ date: true, estRate: true, actualRate: true, diff: true })
+      .field({ date: true, estRate: true, estRateSelf: true, actualRate: true })
       .limit(60).get();
-    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number" && typeof r.estRate === "number");
+    const rows = (res.data || []).filter((r) => typeof r.actualRate === "number" &&
+      (typeof r.estRate === "number" || typeof r.estRateSelf === "number"));
     if (rows.length === 0) return null;
-    const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
-    // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
-    const dirRows = rows.filter((r) => Math.abs(r.actualRate) >= 0.05 && typeof r.estRate === "number");
-    const hitRate = dirRows.length >= 5
-      ? Math.round((dirRows.filter((r) => (r.estRate >= 0) === (r.actualRate >= 0)).length / dirRows.length) * 100)
-      : null;
+    const statsOf = (key) => {
+      const pts = rows.filter((r) => typeof r[key] === "number");
+      if (!pts.length) return null;
+      const meanAbs = pts.reduce((a, r) => a + Math.abs(r[key] - r.actualRate), 0) / pts.length;
+      // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
+      const dir = pts.filter((r) => Math.abs(r.actualRate) >= 0.05);
+      const hitRate = dir.length >= 5
+        ? Math.round((dir.filter((r) => (r[key] >= 0) === (r.actualRate >= 0)).length / dir.length) * 100)
+        : null;
+      return { samples: pts.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate };
+    };
+    const sina = statsOf("estRate");
+    const self = statsOf("estRateSelf");
     // 明细随聚合一并返回：详情页误差行点击展开 30 天对账，轮询走本接口（fetchFundOverview 同款），
     // 不带 log 时页面每次刷新都会把已展开的明细清空
     const log = rows
-      .map((r) => ({ date: r.date, estRate: r.estRate, actualRate: r.actualRate, diff: +r.diff.toFixed(2) }))
+      .map((r) => ({
+        date: r.date,
+        estRate: typeof r.estRate === "number" ? r.estRate : null,
+        estRateSelf: typeof r.estRateSelf === "number" ? r.estRateSelf : null,
+        actualRate: r.actualRate,
+        diff: typeof r.estRate === "number" ? +(r.estRate - r.actualRate).toFixed(4) : null,
+        diffSelf: typeof r.estRateSelf === "number" ? +(r.estRateSelf - r.actualRate).toFixed(4) : null,
+      }))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate, log };
+    // 顶层字段保持源一口径（老客户端兼容）；sina/self 为拆分后的两源统计
+    return {
+      days,
+      samples: sina ? sina.samples : 0,
+      meanAbsDiff: sina ? sina.meanAbsDiff : null,
+      hitRate: sina ? sina.hitRate : null,
+      sina, self, log,
+    };
   } catch (e) {
     console.warn("[fetchFundEstimate] 误差台账读取失败:", e.message);
     return null;
