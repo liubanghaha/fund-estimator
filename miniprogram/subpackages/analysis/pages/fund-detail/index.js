@@ -56,6 +56,7 @@ Page({
     rankFetched: false,
     showTurnover: false,
     scrollRefreshing: false,
+    drift: null, driftExpanded: false,
     amountVisible: true, // 详情页金额不做隐藏（2026-09-26 用户拍板：隐藏开关只管首页列表）
   },
 
@@ -885,12 +886,19 @@ Page({
     };
     const news = newRows.map(label).filter(Boolean);
     const exitNames = exitRows.map(label).filter(Boolean);
+    // 折叠态各显示前 3 只；点卡片展开显示全部（用户 2026-11-05 拍板）
     return {
       quarterLabel,
       stable: news.length === 0 && exitNames.length === 0,
-      newsCount: news.length, newsText: news.length ? clip(news) : "",
-      exitCount: exitNames.length, exitText: exitNames.length ? clip(exitNames) : "",
+      newsCount: news.length, newsText: news.length ? clip(news) : "", newsFull: news.join("、"),
+      exitCount: exitNames.length, exitText: exitNames.length ? clip(exitNames) : "", exitFull: exitNames.join("、"),
+      canExpand: news.length > 3 || exitNames.length > 3,
     };
+  },
+
+  onToggleDrift() {
+    if (!this.data.drift || !this.data.drift.canExpand) return;
+    this.setData({ driftExpanded: !this.data.driftExpanded });
   },
 
   fetchProfile() {
