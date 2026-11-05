@@ -77,18 +77,15 @@ exports.main = async (event) => {
     }
 
     // 计算持仓变动
-    // 代码归一 + 名称兜底匹配：两期表模板偶尔给同一只股票不同写法（.SZ/.SH 后缀或前缀），
-    // 仅按 stockCode 匹配会把它同时判成"新进"和"跌出前十"（生产截图实际出现过）
-    const normCode = (c) => String(c || "").trim().replace(/\.(SZ|SH|BJ|HK)$/i, "").replace(/^(SH|SZ|BJ)/i, "");
+    // 只按代码匹配（归一 .SZ/.SH/.BJ/.HK 前后缀），不按名称：
+    // 同一家公司可 A+H 双重上市（如中际旭创 300308.SZ / 03308.HK，H 股 2026-07-30 上市），
+    // 同名前缀的两行是不同证券。按名称兜底会把"卖 A 买 H"的换股误判成"持有不变"，
+    // 也会把合法的"新进 H / 跌出 A"抹平。港股 5 位、A 股 6 位代码天然可区分。
+    const normCode = (c) => String(c || "").trim().replace(/\.(SZ|SH|BJ|HK)$/i, "").replace(/^(SH|SZ|BJ|HK)/i, "");
     const prevMap = {};
-    const prevByName = {};
-    prevHoldings.forEach(h => {
-      if (h.stockCode) prevMap[normCode(h.stockCode)] = h;
-      if (h.stockName) prevByName[String(h.stockName).trim()] = h;
-    });
-    const findPrev = (h) => prevMap[normCode(h.stockCode)] || prevByName[String(h.stockName || "").trim()] || null;
+    prevHoldings.forEach(h => { if (h.stockCode) prevMap[normCode(h.stockCode)] = h; });
     holdings.forEach(h => {
-      const prev = findPrev(h);
+      const prev = prevMap[normCode(h.stockCode)];
       if (prevDataIncomplete) {
         // 上期数据缺失：不推断新增/变动，避免误报
         h.ratioChange = null;
@@ -107,9 +104,8 @@ exports.main = async (event) => {
     });
     // 上期前十大有但本期前十大没有的 → 跌出前十大（上期数据缺失时无法判断，不展示）
     const currCodes = new Set(holdings.map(h => normCode(h.stockCode)));
-    const currNames = new Set(holdings.map(h => String(h.stockName || "").trim()));
     const exited = !prevDataIncomplete
-      ? prevHoldings.filter(h => !currCodes.has(normCode(h.stockCode)) && !currNames.has(String(h.stockName || "").trim())).map(h => ({
+      ? prevHoldings.filter(h => !currCodes.has(normCode(h.stockCode))).map(h => ({
           ...h, changeType: 'exit', ratioChange: null,
         }))
       : [];

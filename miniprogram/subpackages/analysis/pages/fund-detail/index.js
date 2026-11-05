@@ -861,12 +861,19 @@ Page({
     } catch (e) { console.error("获取历史净值失败:", e); }
   },
 
-  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/退出名单（各截断 3 个）+ 经理任职事实
+  // 风格漂移卡数据（纯数据陈述，无引导性措辞）：重仓股新进/跌出名单（各截断 3 个）+ 经理任职事实。
+  // 港股加 (H) 标注：同一家公司可 A+H 双重上市（如中际旭创 300308.SZ / 03308.HK），
+  // 不标注会出现"中际旭创 新进 + 中际旭创 跌出"的同名两行，看着像 bug
   _driftCard(holdings, exited, manager, quarterLabel, prevIncomplete) {
     if (!holdings || holdings.length === 0 || prevIncomplete) return null;
     const clip = (arr) => arr.slice(0, 3).join("、") + (arr.length > 3 ? " 等" : "");
-    const news = holdings.filter(h => h.changeType === 'new').map(h => h.stockName).filter(Boolean);
-    const exitNames = (exited || []).map(h => h.stockName).filter(Boolean);
+    const label = (h) => {
+      const name = h.stockName || "";
+      const isHK = h.isHK || String(h.stockCode || "").length === 5;
+      return name ? name + (isHK ? "(H)" : "") : "";
+    };
+    const news = holdings.filter(h => h.changeType === 'new').map(label).filter(Boolean);
+    const exitNames = (exited || []).map(label).filter(Boolean);
     const managerText = manager && manager.name
       ? `基金经理 ${manager.name}（任职 ${manager.tenureDays != null ? manager.tenureDays : '--'} 天）`
       : "";

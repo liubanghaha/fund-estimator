@@ -267,7 +267,7 @@
           <view wx:if="{{showExited}}">
             <view wx:for="{{exited}}" wx:key="stockCode" class="hold-row" style="opacity:.5">
               <view class="hold-rank">-</view>
-              <view class="hold-name">{{item.stockName}}</view>
+              <view class="hold-name">{{item.stockName}}<text wx:if="{{item.isHK}}" class="hk-tag">H</text></view>
               <view class="hold-change">--</view>
               <view class="hold-ratio-change"><text class="change-tag exit">🚫退出</text></view>
               <view class="hold-ratio">--</view>
