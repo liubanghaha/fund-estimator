@@ -10,7 +10,9 @@ const CACHE_PREFIX = "fund_detail_cache_";
 // 持仓/档案（含调仓动向）缓存的数据版本号。后端修正了调仓动向计算（占比列定位/季度选择）后 +1，
 // 旧版本缓存自动作废 → 重新进入页面即拉到新值，避免用户一直看到修复前的错误调仓动向。
 // 3：修正同类排名的持久化标记（旧代码把"没拉过"写成"拉过了"，排名卡一消失就再也回不来）
-const HOLDINGS_CACHE_VERSION = 3;
+// v4（2026-11-05）：调仓对比口径修正（半年报全量 78/50 行当上期 → 按 rank 截前十），
+// 旧缓存里的 changeType/比率差是错口径算的（前十股票被标成"加仓"），必须作废重拉
+const HOLDINGS_CACHE_VERSION = 4;
 
 Page({
   data: {
@@ -867,13 +869,23 @@ Page({
   _driftCard(holdings, exited, manager, quarterLabel, prevIncomplete) {
     if (!holdings || holdings.length === 0 || prevIncomplete) return null;
     const clip = (arr) => arr.slice(0, 3).join("、") + (arr.length > 3 ? " 等" : "");
+    // 同名 A+H 同时出现时（如中际旭创：Q3 新进 H 股、Q2 前十的 A 股跌出），
+    // 两侧都打市场标记，否则会再被看成"同一只既新进又跌出"
+    const newRows = holdings.filter(h => h.changeType === 'new');
+    const exitRows = exited || [];
+    const nameOf = (h) => h.stockName || "";
+    const collide = new Set(
+      newRows.map(nameOf).filter(n => n && exitRows.some(e => nameOf(e) === n))
+    );
+    const isHK = (h) => h.isHK || String(h.stockCode || "").length === 5;
     const label = (h) => {
-      const name = h.stockName || "";
-      const isHK = h.isHK || String(h.stockCode || "").length === 5;
-      return name ? name + (isHK ? "(H)" : "") : "";
+      const name = nameOf(h);
+      if (!name) return "";
+      if (isHK(h)) return name + "(H)";
+      return collide.has(name) ? name + "(A)" : name;
     };
-    const news = holdings.filter(h => h.changeType === 'new').map(label).filter(Boolean);
-    const exitNames = (exited || []).map(label).filter(Boolean);
+    const news = newRows.map(label).filter(Boolean);
+    const exitNames = exitRows.map(label).filter(Boolean);
     const managerText = manager && manager.name
       ? `基金经理 ${manager.name}（任职 ${manager.tenureDays != null ? manager.tenureDays : '--'} 天）`
       : "";
