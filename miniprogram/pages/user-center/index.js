@@ -141,15 +141,24 @@ Page({
         const d = (res.result && res.result.data) || {};
         const navMap = d.navHistoryMap || {};
         const holds = d.holdings || [];
-        const monthEnd = {}; // yyyy-MM -> 市值
+        // 每基金每月只取最后一个净值日（月末市值），且只计 buyDate 之后——
+        // 否则把每天 nav 累加、买入前月份也计入，月环比全是错的
+        const monthEnd = {}; // yyyy-MM -> 月末市值
         holds.forEach((h) => {
           const rows2 = navMap[h.fundCode] || [];
           const shares = parseFloat(h.shares) || 0;
           if (!(shares > 0)) return;
+          const from = h.buyDate || "";
+          const monthLast = {}; // yyyy-MM -> 月末 nav
           rows2.forEach((r) => {
             const m = String(r.date || "").slice(0, 7);
-            if (!m) return;
-            monthEnd[m] = +(((monthEnd[m] || 0) + shares * (parseFloat(r.nav) || 0)).toFixed(2));
+            const nav = parseFloat(r.nav);
+            if (!m || !(nav > 0)) return;
+            if (from && r.date < from) return;
+            if (!monthLast[m] || String(r.date) > monthLast[m].date) monthLast[m] = { date: r.date, nav };
+          });
+          Object.entries(monthLast).forEach(([m, v]) => {
+            monthEnd[m] = +(((monthEnd[m] || 0) + shares * v.nav).toFixed(2));
           });
         });
         const months = Object.keys(monthEnd).sort();
