@@ -115,6 +115,7 @@
 .change-tag.up{color:var(--up);background:rgba(228,57,60,.08)}
 .change-tag.down{color:#2E8B57;background:rgba(46,139,87,.08)}
 .change-tag.exit{color:#BBB;background:#F5F5F5}
+.change-tag.hold{color:#999;background:#F5F6F8}
 
 .hold-name{font-size:28rpx;color:#333;margin-left:16rpx;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hk-tag{display:inline-block;font-size:18rpx;color:var(--primary);background:var(--primary-bg);border:1rpx solid var(--primary);border-radius:4rpx;padding:0 6rpx;margin-left:8rpx;vertical-align:middle;font-weight:600;line-height:1.4}

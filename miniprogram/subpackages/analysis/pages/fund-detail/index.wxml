@@ -250,6 +250,7 @@
             <text wx:if="{{item.changeType === 'new'}}" class="change-tag new">🆕新增</text>
             <text wx:elif="{{item.changeType === 'up' && item.ratioChange != null}}" class="change-tag up">📈+{{item.ratioChange}}%</text>
             <text wx:elif="{{item.changeType === 'down' && item.ratioChange != null}}" class="change-tag down">📉{{item.ratioChange}}%</text>
+            <text wx:elif="{{item.changeType === 'hold'}}" class="change-tag hold">持有</text>
             <text wx:else>--</text>
           </view>
           <view class="hold-ratio">{{item.navRatio ? item.navRatio + '%' : '--'}}</view>
