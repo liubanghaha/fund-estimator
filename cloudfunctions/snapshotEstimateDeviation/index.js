@@ -56,10 +56,19 @@ exports.main = async (event) => {
     //    温度表无当日记录时跳过估算档但**继续补写**——补写只需要台账里已有的基金
     const codes = await readTempCodes(today);
     let todayEst = {};
+    // 源一（新浪批量）与源二（自算，腾讯行情加权）互不依赖 → 并行；
+    // 串行会变成 45s + 10s + 55s(补写) ≈ 110s，逼近 120s 超时
+    const [sinaMap, selfEst] = await Promise.all([
+      codes.length > 0
+        ? fd.fetchSinaEstimates(codes, { budgetMs: 45000 }).catch(() => ({}))
+        : Promise.resolve({}),
+      codes.length > 0
+        ? computeSelfEstimates(today).catch(() => ({}))
+        : Promise.resolve({}),
+    ]);
     if (codes.length > 0) {
-      const estMap = await fd.fetchSinaEstimates(codes, { budgetMs: 45000 }).catch(() => ({}));
-      Object.keys(estMap).forEach((code) => {
-        const s = estMap[code];
+      Object.keys(sinaMap).forEach((code) => {
+        const s = sinaMap[code];
         if (s && s.date === today && typeof s.changeRate === "number") todayEst[code] = s.changeRate;
       });
     } else {
@@ -78,18 +87,20 @@ exports.main = async (event) => {
         code: 0, dryRun: true, today, prevDay,
         codes: codes.length,
         estWould: Object.keys(todayEst).length,
+        selfWould: Object.keys(selfEst).length,
         fillWould: fillList.length,
         fillOpen: openDocs.length,
         // 抽 3 条让人能一眼核对方向与量级
         estSample: Object.keys(todayEst).slice(0, 3).map((c) => `${c}:${todayEst[c]}`),
+        selfSample: Object.keys(selfEst).slice(0, 3).map((c) => `${c}:${selfEst[c]}`),
         fillSample: fillList.slice(0, 3).map((f) => `${f.id} est=${f.estRate} act=${f.actualRate} diff=${f.diff}`),
         costMs: el(),
       };
     }
 
-    const estWritten = await writeEst(today, todayEst);
+    const estWritten = await writeEst(today, todayEst, selfEst);
     const actualFilled = await fillActual(fillList);
-    console.log(`[snapshotEstimateDeviation] today=${today} codes=${codes.length} est=${estWritten} filled=${actualFilled} open=${openDocs.length} skippedFill=${skippedFill} t=${el()}ms`);
+    console.log(`[snapshotEstimateDeviation] today=${today} codes=${codes.length} est=${estWritten} self=${Object.keys(selfEst).length} filled=${actualFilled} open=${openDocs.length} skippedFill=${skippedFill} t=${el()}ms`);
     return { code: 0, today, prevDay, codes: codes.length, estWritten, actualFilled, fillOpen: openDocs.length, skippedFill, costMs: el() };
   } catch (e) {
     console.error("snapshotEstimateDeviation 失败:", e.message);
@@ -110,16 +121,55 @@ async function readTempCodes(date) {
   return [...out];
 }
 
+// 数据源二（自算估值）：温度表当日 detailPEs（持仓股 + 占净值比）→ 腾讯批量行情加权。
+// detailPEs 项结构 { code, ratio }（ratio = navRatio）。行情按 50 只/请求内部分批
+async function computeSelfEstimates(date) {
+  const holdingsMap = {};
+  const all = new Set();
+  for (let skip = 0; skip < 20000; skip += PAGE) {
+    const res = await db.collection("fund_temperatures")
+      .where({ date }).field({ fundCode: true, detailPEs: true })
+      .skip(skip).limit(PAGE).get();
+    const rows = res.data || [];
+    rows.forEach((d) => {
+      const hs = (d.detailPEs || []).map((p) => ({
+        code: String(p.code || "").trim(),
+        ratio: parseFloat(p.ratio) || 0,
+      })).filter((h) => h.code && h.ratio > 0);
+      if (d.fundCode && hs.length > 0) {
+        holdingsMap[d.fundCode] = hs;
+        hs.forEach((h) => all.add(h.code));
+      }
+    });
+    if (rows.length < PAGE) break;
+  }
+  const codes = [...all];
+  if (codes.length === 0) return {};
+  const prices = await fd.fetchStockPricesTencent(codes, { timeoutMs: 20000, batchSize: 50 }).catch(() => ({}));
+  const out = {};
+  Object.entries(holdingsMap).forEach(([fundCode, hs]) => {
+    let totalRatio = 0, weighted = 0;
+    hs.forEach((h) => {
+      const p = prices[h.code];
+      if (!p || p.changeRate == null) return;
+      totalRatio += h.ratio;
+      weighted += p.changeRate * h.ratio;
+    });
+    if (totalRatio > 0) out[fundCode] = +(weighted / totalRatio).toFixed(2);
+  });
+  return out;
+}
+
 // 前两个交易日的台账中"有估算、缺实际"的文档（补写目标；已补过的天然跳过 = 幂等）
 async function readOpenDeviations(days) {
   const out = [];
   for (const date of days) {
     for (let skip = 0; skip < 20000; skip += PAGE) {
       const res = await db.collection(COLL)
-        .where({ date }).field({ fundCode: true, date: true, estRate: true, actualRate: true })
+        .where({ date }).field({ fundCode: true, date: true, estRate: true, estRateSelf: true, actualRate: true })
         .skip(skip).limit(PAGE).get();
       (res.data || []).forEach((doc) => {
-        if (typeof doc.estRate === "number" && typeof doc.actualRate !== "number") out.push(doc);
+        if ((typeof doc.estRate === "number" || typeof doc.estRateSelf === "number") && typeof doc.actualRate !== "number") out.push(doc);
       });
       if ((res.data || []).length < PAGE) break;
     }
@@ -144,8 +194,10 @@ async function buildFillList(openDocs, el) {
         return {
           id: `${doc.fundCode}_${doc.date}`,
           estRate: doc.estRate,
+          estRateSelf: doc.estRateSelf,
           actualRate: +row.changeRate.toFixed(4),
-          diff: +(doc.estRate - row.changeRate).toFixed(4),
+          diff: typeof doc.estRate === "number" ? +(doc.estRate - row.changeRate).toFixed(4) : null,
+          diffSelf: typeof doc.estRateSelf === "number" ? +(doc.estRateSelf - row.changeRate).toFixed(4) : null,
         };
       } catch (e) { return null; }
     }));
@@ -155,15 +207,24 @@ async function buildFillList(openDocs, el) {
 }
 
 // 写当日估算档（_id=fundCode_date 幂等 upsert，重跑不会累积垃圾文档）
-async function writeEst(date, estMap) {
-  const codes = Object.keys(estMap);
+// 源一（新浪）与源二（自算）取并集：只缺一边的基金也写，读端按字段各自统计样本
+async function writeEst(date, estMap, selfMap) {
+  const codes = [...new Set([...Object.keys(estMap || {}), ...Object.keys(selfMap || {})])];
   const now = Date.now();
   let ok = 0;
   for (let i = 0; i < codes.length; i += CONCURRENCY) {
     const batch = codes.slice(i, i + CONCURRENCY);
     const results = await Promise.all(batch.map((code) =>
       db.collection(COLL).doc(`${code}_${date}`)
-        .set({ data: { fundCode: code, date, estRate: estMap[code], estSrc: "sina", createdAt: now } })
+        .set({
+          data: {
+            fundCode: code, date,
+            estRate: typeof estMap[code] === "number" ? estMap[code] : null,
+            estSrc: "sina",
+            estRateSelf: typeof selfMap[code] === "number" ? selfMap[code] : null,
+            createdAt: now,
+          },
+        })
         .then(() => true).catch(() => false)));
     ok += results.filter(Boolean).length;
   }
@@ -178,7 +239,7 @@ async function fillActual(list) {
     const batch = list.slice(i, i + CONCURRENCY);
     const results = await Promise.all(batch.map((f) =>
       db.collection(COLL).doc(f.id)
-        .update({ data: { actualRate: f.actualRate, diff: f.diff, filledAt: now } })
+        .update({ data: { actualRate: f.actualRate, diff: f.diff, diffSelf: f.diffSelf, filledAt: now } })
         .then(() => true).catch(() => false)));
     ok += results.filter(Boolean).length;
   }

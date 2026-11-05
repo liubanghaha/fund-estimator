@@ -420,25 +420,41 @@ Page({
   // 样本少也照实显示样本数（藏样本数就成了自欺）；还没有样本（台账刚起步）返回空文案不显示
   _accuracyFields(resp) {
     const acc = resp && resp.estimateAccuracy !== undefined ? resp.estimateAccuracy : this.data.estimateAccuracy;
-    if (!acc || !acc.samples) return { estimateAccuracy: acc || null, estimateAccuracyText: "", accLog: [] };
-    const base = `近 ${acc.days || 30} 天估算误差 ±${acc.meanAbsDiff}pp`;
-    const tail = acc.hitRate != null ? ` · 方向命中 ${acc.hitRate}%` : "";
+    if (!acc || (!acc.samples && !(acc.self && acc.self.samples))) {
+      return { estimateAccuracy: acc || null, estimateAccuracyText: "", accSelfText: "", accLog: [] };
+    }
     const fmt = (v) => {
       const n = +v;
       if (!isFinite(n)) return "--";
       return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
     };
+    // 两源各一行汇总（2026-11-05 按用户要求拆分；老数据只有源一，源二自 11-05 起积累）
+    const sina = acc.sina || (acc.samples ? { samples: acc.samples, meanAbsDiff: acc.meanAbsDiff, hitRate: acc.hitRate } : null);
+    const self = acc.self || null;
+    const lineOf = (label, s) => {
+      if (!s || !s.samples) return "";
+      const tail = s.hitRate != null ? ` · 方向命中 ${s.hitRate}%` : "";
+      return `${label} · 近 ${acc.days || 30} 天误差 ±${s.meanAbsDiff}pp${tail}（${s.samples} 个样本）`;
+    };
     const accLog = (Array.isArray(acc.log) ? acc.log : []).map((r) => ({
       date: (r.date || "").slice(5),
-      estText: fmt(r.estRate),
       actText: fmt(r.actualRate),
-      diffText: fmt(r.diff).replace("%", "pp"),
-      diffCls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
+      d1Text: fmt(r.diff).replace("%", "pp"),
+      d1Cls: r.diff > 0 ? "down" : r.diff < 0 ? "up" : "",
+      d2Text: fmt(r.diffSelf).replace("%", "pp"),
+      d2Cls: r.diffSelf > 0 ? "down" : r.diffSelf < 0 ? "up" : "",
+      hasSelf: r.diffSelf != null && isFinite(+r.diffSelf),
     }));
     // 超过 9 行（约 405rpx）就固定高度改为内部滚动：30 天明细直接铺满正文会把
     // 下面的风险指标/定投整块顶走，用户要划很久才能回去（2026-10-22）
     const accLogStyle = accLog.length > 9 ? "height:405rpx" : "";
-    return { estimateAccuracy: acc, estimateAccuracyText: `${base}${tail}（${acc.samples} 个样本）`, accLog, accLogStyle, accLogCapped: accLog.length > 9 };
+    return {
+      estimateAccuracy: acc,
+      estimateAccuracyText: lineOf("数据源一", sina),
+      accSelfText: lineOf("数据源二", self),
+      accHasSelf: !!(self && self.samples),
+      accLog, accLogStyle, accLogCapped: accLog.length > 9,
+    };
   },
 
   // 轻量估值刷新落账：fetchFundEstimate 结果 → 页面字段 + 合并进历史（cached 为当前缓存对象）

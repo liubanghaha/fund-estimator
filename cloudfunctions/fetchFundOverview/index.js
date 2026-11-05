@@ -275,27 +275,49 @@ async function fetchPeTemp(fundCode) {
 
 // 近 30 天估算误差（与 fetchFundEstimate.fetchEstimateAccuracy 同口径）：概览带一份，
 // 详情页首访（无缓存历史走 overview）也能直接看到徽章，不必等二次刷新
+// 2026-11-05：按数据源拆分（estRate=一/新浪，estRateSelf=二/持仓股加权）
 async function fetchEstimateAccuracy(fundCode, todayStr, days = 30) {
   try {
     const start = _addDays(todayStr, -days);
     // 台账 _id = `${fundCode}_${YYYY-MM-DD}`，按 _id 区间查走主键索引
     const res = await db.collection("fund_estimate_deviations")
       .where({ _id: db.command.gte(`${fundCode}_${start}`).and(db.command.lte(`${fundCode}_${todayStr}`)) })
-      .field({ date: true, estRate: true, actualRate: true, diff: true })
+      .field({ date: true, estRate: true, estRateSelf: true, actualRate: true })
       .limit(60).get();
-    const rows = (res.data || []).filter((r) => typeof r.diff === "number" && typeof r.actualRate === "number" && typeof r.estRate === "number");
+    const rows = (res.data || []).filter((r) => typeof r.actualRate === "number" &&
+      (typeof r.estRate === "number" || typeof r.estRateSelf === "number"));
     if (rows.length === 0) return null;
-    const meanAbs = rows.reduce((a, r) => a + Math.abs(r.diff), 0) / rows.length;
-    // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
-    const dirRows = rows.filter((r) => Math.abs(r.actualRate) >= 0.05 && typeof r.estRate === "number");
-    const hitRate = dirRows.length >= 5
-      ? Math.round((dirRows.filter((r) => (r.estRate >= 0) === (r.actualRate >= 0)).length / dirRows.length) * 100)
-      : null;
+    const statsOf = (key) => {
+      const pts = rows.filter((r) => typeof r[key] === "number");
+      if (!pts.length) return null;
+      const meanAbs = pts.reduce((a, r) => a + Math.abs(r[key] - r.actualRate), 0) / pts.length;
+      // 方向命中率只在"官方当天真有涨跌"的样本上算：|实际| < 0.05pp 视为横盘，不计入
+      const dir = pts.filter((r) => Math.abs(r.actualRate) >= 0.05);
+      const hitRate = dir.length >= 5
+        ? Math.round((dir.filter((r) => (r[key] >= 0) === (r.actualRate >= 0)).length / dir.length) * 100)
+        : null;
+      return { samples: pts.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate };
+    };
+    const sina = statsOf("estRate");
+    const self = statsOf("estRateSelf");
     // 明细随聚合一并返回（详情页误差行点击展开 30 天对账列表）
     const log = rows
-      .map((r) => ({ date: r.date, estRate: r.estRate, actualRate: r.actualRate, diff: +r.diff.toFixed(2) }))
+      .map((r) => ({
+        date: r.date,
+        estRate: typeof r.estRate === "number" ? r.estRate : null,
+        estRateSelf: typeof r.estRateSelf === "number" ? r.estRateSelf : null,
+        actualRate: r.actualRate,
+        diff: typeof r.estRate === "number" ? +(r.estRate - r.actualRate).toFixed(4) : null,
+        diffSelf: typeof r.estRateSelf === "number" ? +(r.estRateSelf - r.actualRate).toFixed(4) : null,
+      }))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-    return { days, samples: rows.length, meanAbsDiff: +meanAbs.toFixed(2), hitRate, log };
+    return {
+      days,
+      samples: sina ? sina.samples : 0,
+      meanAbsDiff: sina ? sina.meanAbsDiff : null,
+      hitRate: sina ? sina.hitRate : null,
+      sina, self, log,
+    };
   } catch (e) {
     console.warn("[fetchFundOverview] 误差台账读取失败:", e.message);
     return null;
