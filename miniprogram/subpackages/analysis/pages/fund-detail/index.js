@@ -424,6 +424,8 @@ Page({
       return { estimateAccuracy: acc || null, estimateAccuracyText: "", accSelfText: "", accLog: [] };
     }
     const fmt = (v) => {
+      // 注意 +null === 0：缺值必须先判空，否则源二历史行会渲染成 0.00pp（2026-11-05 实测踩到）
+      if (v === null || v === undefined || v === "") return "--";
       const n = +v;
       if (!isFinite(n)) return "--";
       return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
