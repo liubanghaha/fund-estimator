@@ -797,6 +797,8 @@ Page({
       }
 
       wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
       wx.setStorageSync('portfolio_force_refresh', true);
       this.setData({ adjustAmount: '', adjustAmountAbs: '', adjustSign: 1, adjustDate: '', adjustNote: '', adjustLate: false, showAdjustPicker: false, reason: '', sellHoldDays: null, sellHoldWarn: false });
 
@@ -841,6 +843,8 @@ Page({
           wx.showToast({ title: "已删除", icon: "success" });
           // 与其它写入路径一致：失效首页缓存，否则删除后切回首页仍显示旧总市值
           wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
           wx.setStorageSync('portfolio_force_refresh', true);
           setTimeout(() => { wx.switchTab({ url: "/pages/index/index" }); }, 800);
         } catch (e) {
@@ -917,6 +921,8 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: '已更新', icon: 'success' });
       wx.removeStorageSync('portfolio_cache');
+      // 持仓变化 → 费用账单（市值加权年费用）重算：fee_cache_v2 为资产分析页 7 天本地缓存
+      wx.removeStorageSync('fee_cache_v2');
       wx.setStorageSync('portfolio_force_refresh', true);
       setTimeout(() => wx.navigateBack(), 600);
     } catch (e) {
