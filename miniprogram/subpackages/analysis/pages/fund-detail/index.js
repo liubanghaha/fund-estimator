@@ -1173,17 +1173,17 @@ Page({
     const [label, key] = MAP[this.data.chartPeriod] || MAP["1M"];
     const raw = this.data[key];
     let val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
-    let label2 = label;
     if (val === null) {
+      // 周期数据不足（如基金成立不满三年）：数字回退为成立以来涨幅（与曲线首日=0% 绘制口径
+      // 一致，曲线画的就是成立以来），标签按用户拍板保持"近X"原文不改（2026-11-07）
       const hist = this.data.navHistory || [];
       const first = hist[hist.length - 1], latest = hist[0];
       if (hist.length >= 20 && first && latest && first.nav > 0) {
         val = +(((latest.nav - first.nav) / first.nav) * 100).toFixed(2);
-        label2 = "成立以来";
       }
     }
-    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label2) {
-      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label2 });
+    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label) {
+      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label });
     }
   },
 
