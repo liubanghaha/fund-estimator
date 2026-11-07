@@ -258,6 +258,20 @@
       ]
     },
     {
+      "name": "fetchFundDividends",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "dividendWarmupTimer",
+          "type": "timer",
+          "config": "0 15 5 * * * *"
+        }
+      ]
+    },
+    {
       "name": "rankPercentile",
       "timeout": 300,
       "runtime": "Nodejs20.19",

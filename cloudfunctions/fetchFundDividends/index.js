@@ -18,6 +18,47 @@ const CACHE_TTL = 7 * 86400000;
 
 exports.main = async (event) => {
   const ev = event || {};
+
+  // 每日预热（05:15）：全库持仓基金去重 → 未命中 7 天缓存的拉分红记录回填。
+  // 让 getPortfolio 的分红科目对全部用户尽早生效（详情页浏览只按需填充，冷启动低估）
+  if (ev.warmup) {
+    const { OPENID: ctxOpenid } = cloud.getWXContext();
+    if (ctxOpenid) return { code: -1, msg: "拒绝客户端调用" };
+    try {
+      const codes = new Set();
+      for (let skip = 0; skip < 20000; skip += 1000) {
+        const r = await db.collection("holdings").field({ fundCode: true }).skip(skip).limit(1000).get();
+        (r.data || []).forEach((h) => { if (h.fundCode) codes.add(h.fundCode); });
+        if ((r.data || []).length < 1000) break;
+      }
+      const all = [...codes];
+      let fresh = 0, fetched = 0, fail = 0;
+      // 先查缓存命中（收集后统一过滤，避免边遍历边 splice 漏删）
+      const freshSet = new Set();
+      for (let i = 0; i < all.length; i += 100) {
+        const r = await db.collection("fund_dividend_cache")
+          .where({ fundCode: db.command.in(all.slice(i, i + 100)) })
+          .field({ fundCode: true, fetchedAt: true }).get();
+        (r.data || []).forEach((d) => { if (d.fetchedAt) freshSet.add(d.fundCode); });
+      }
+      const pending = all.filter((c) => !freshSet.has(c));
+      fresh = freshSet.size;
+      console.log(`[fetchFundDividends] 预热: 总 ${codes.size} 缓存命中 ${fresh} 待拉 ${pending.length}`);
+      for (let i = 0; i < pending.length; i += 5) {
+        await Promise.all(pending.slice(i, i + 5).map(async (code) => {
+          try {
+            const r = await exports.main({ fundCode: code });
+            if (r && r.code === 0) fetched++; else fail++;
+          } catch (e) { fail++; }
+        }));
+      }
+      return { code: 0, total: codes.size, fresh, fetched, fail };
+    } catch (e) {
+      console.error("[fetchFundDividends] 预热失败:", e.message);
+      return { code: 500, msg: e.message };
+    }
+  }
+
   const { OPENID } = cloud.getWXContext();
 
   // 组合级分红演算： holdings 全量 → 各基金近 12 个月每份分红 × 份额。

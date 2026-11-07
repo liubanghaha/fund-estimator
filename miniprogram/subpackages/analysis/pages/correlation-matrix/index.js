@@ -173,7 +173,10 @@ Page({
       const top = d.items.filter((i) => i.shadow != null)
         .sort((a, b) => Math.abs(b.shadow) - Math.abs(a.shadow)).slice(0, 3)
         .map((i) => ({ ...i, dateShort: i.date ? i.date.slice(5).replace("-", "/") : "" }));
-      this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTop: top });
+      const total = d.total;
+      // WXML 不支持 Math 调用，js 预格式化
+      const totalText = total != null && isFinite(+total) ? Math.abs(+total).toFixed(2) : "";
+      this.setData({ showShadowCard: true, shadowTotal: d.total, shadowTotalText: totalText, shadowTop: top });
     }).catch(() => { /* ignore */ });
   },
 

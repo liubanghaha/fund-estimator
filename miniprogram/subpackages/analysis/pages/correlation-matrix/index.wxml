@@ -222,6 +222,16 @@
       </view>
     </view>
 
+    <!-- 拿住不动演算（2026-11-07 调研盲区 2）：影子账户总额 = 全部卖出操作的总代价/增益 -->
+    <view wx:if="{{showShadowCard && shadowTotal != null}}" class="card">
+      <view class="card-title">🧮 操作总代价 / 增益</view>
+      <view class="hero-block">
+        <view class="hero-label">历次卖出如果一直没卖，按最新净值的差额合计</view>
+        <view class="hero-num {{shadowTotal > 0 ? 'up' : 'down'}}">{{amountVisible ? shadowTotalText : '¥****'}}</view>
+        <view class="hero-sub">负数 = 卖出的部分后来涨得比卖价高（少赚）；正数 = 卖对了（多赚）。仅回顾事实，不构成任何建议</view>
+      </view>
+    </view>
+
     <view wx:if="{{!feeCard && !showShadowCard && !billCard && !divCard}}" class="empty">
       <view>暂无费用与复盘数据</view>
       <view class="empty-hint">持有基金后可查看费用账单；有过卖出记录后会生成影子账户</view>

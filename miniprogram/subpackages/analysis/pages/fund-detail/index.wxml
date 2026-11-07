@@ -328,7 +328,7 @@
           <text class="div-year">{{item.date}}</text>
           <text class="div-val">每份派 {{item.perShareText}} 元</text>
         </view>
-        <view class="drift-note">按近一年分红节奏演算，非承诺；实际以基金公司公告为准</view>
+        <view wx:if="{{dividends.mineText}}" class="drift-note">{{dividends.mineText}}（非承诺）</view>
       </view>
       <view wx:if="{{dividends && dividends.count === 0}}" class="info-card">
         <view class="section-title">分红记录</view>

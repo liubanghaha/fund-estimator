@@ -939,10 +939,16 @@ Page({
       const d = res && res.result && res.result.code === 0 && res.result.data;
       if (!d) return;
       const fmt = (v) => { const n = +v; return isFinite(n) ? (n >= 1 ? n.toFixed(3) : String(n)) : "--"; };
+      // 按当前持有份额的近一年分红演算（有持仓才算；口径同资产分析分红卡，非承诺）
+      const shares = parseFloat((this.data.holdingData && this.data.holdingData.shares) || 0);
+      const mineText = shares > 0 && d.last12mPerShare > 0
+        ? `按当前 ${shares.toFixed(2)} 份持有，近一年分红约 ¥${(d.last12mPerShare * shares).toFixed(2)}`
+        : "";
       this.setData({
         dividends: {
           count: d.count || 0,
           last12mText: fmt(d.last12mPerShare),
+          mineText,
           annualTop: (d.annual || []).slice(0, 3).map((a) => ({
             year: a.year, totalPerShareText: fmt(a.totalPerShare),
           })),

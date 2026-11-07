@@ -102,6 +102,11 @@
     </view>
 
     <!-- 周期复盘条：组合 vs 沪深300 + 操作（随 tab 变化：今日/本周/本月/本年） -->
+    <!-- 风险体检（2026-11-07 调研盲区 3）：起计以来组合最大回撤，金额化；纯数据陈述 -->
+    <view wx:if="{{riskCheck}}" class="review-card risk-check-card">
+      <view class="review-line"><text class="risk-ck-title">🛡 风险体检</text>自 {{riskCheck.spanDays}} 天前起计，组合最深回撤 <text class="risk-ck-val">{{riskCheck.dd}}%</text>（约 ¥{{riskCheck.amountText}}，{{riskCheck.peakDate}} → {{riskCheck.lowDate}}）</view>
+      <view class="review-line">最坏的时候账面会少这么多——历史不预示未来，仅作风险参考</view>
+    </view>
     <view wx:if="{{reviewCard}}" class="review-card">
       <view class="review-top">
         <view class="review-combo">

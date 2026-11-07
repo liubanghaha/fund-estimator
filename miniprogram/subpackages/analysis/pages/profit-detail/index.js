@@ -39,6 +39,7 @@ Page({
     amountVisible: true, // 金额不做隐藏（隐藏开关只管首页持仓列表，2026-09-26 用户拍板）
     reviewCard: null, // 当前 tab 的周期复盘（组合 vs 沪深300/强弱/操作）
     reviewTempMoves: "", // 盘后复盘温度变化行（今日 tab 显示，当日缓存）
+    riskCheck: null, // 风险体检：起计以来组合最大回撤（金额化）
     signVisible: false, showSignModal: false, signRendering: false, signPeriod: "week", signTitle: "周签",
     signTabLabel: { today: "今日", week: "本周", month: "本月", year: "本年" },
     signDays: { today: 3, week: 7, month: 25, year: 260 },
@@ -220,6 +221,7 @@ Page({
           todayProfitRate: showCachedToday ? c.s.tpr : "--",
           //（卡片就绪标志）缓存直出的收益是真实冻结值，末端对齐自此生效
           ...this._periodSummary(c.s.tpr, c.s.tp),
+          riskCheck: (c.s && c.s.riskCheck) || null,
           earliestDate: c.ed || c.d[0] ? (c.ed || c.d[0].date) : "",
           availableMonths: c.cal.months || [], selectedMonth: c.cal.sm || "",
           availableYears: c.cal.yrs || [], selectedYear: c.cal.sy || "",
@@ -242,6 +244,9 @@ Page({
       // 冻结期（周末/盘后）portfolioLight 返回空占位，quickFirstPaint 会直接 return 不动
       // 已渲染的正确值（_totalMarket 保持未定义 → 轮询被守卫挡住，冻结期本就不该变数）
       this._quickFirstPaint();
+      // 风险体检：免拉分支也要出（缓存序列已恢复；金额换算依赖 _totalMarket，放 quickFirstPaint 之后）
+      const freeSumm = this._periodSummary(this.data.todayProfitRate || 0, this.data.todayProfit || 0);
+      this.setData({ riskCheck: freeSumm.riskCheck || null });
       this._ensureReview(this.data.activeTab); // 周期复盘（冻结期用首页缓存兜底数据链）
       return;
     }
@@ -502,10 +507,32 @@ Page({
     const wr = calcPeriodRate(this._mon(now));
     const mr = calcPeriodRate(today.slice(0, 7) + "-01");
     const yr = calcPeriodRate(today.slice(0, 4) + "-01-01");
+    // 风险体检（2026-11-07 调研盲区 3）：起计以来组合最大回撤，金额按期末市值缩放。
+    // 用收盘市值序列的回撤比例（份额只是缩放，加减仓不影响比例正确性）；序列短时窗口如实展示
+    const risk = (() => {
+      const pts = series.filter((p) => p.value > 0);
+      if (pts.length < 10) return null;
+      let peak = 0, dd = 0, peakDate = "", lowDate = "";
+      pts.forEach((p) => {
+        if (p.value > peak) { peak = p.value; peakDate = p.date; }
+        const d = (p.value / peak - 1) * 100;
+        if (d < dd) { dd = d; lowDate = p.date; }
+      });
+      if (dd >= 0) return null;
+      const spanDays = Math.round((new Date(pts[pts.length - 1].date) - new Date(pts[0].date)) / 86400000);
+      // 金额分母用序列末值（期末组合市值）：_totalMarket 在冻结期可能未定义（quickFirstPaint 不设）
+      return {
+        dd: +dd.toFixed(2),
+        amountText: Math.abs(dd / 100 * pts[pts.length - 1].value).toFixed(0),
+        peakDate: peakDate.slice(5), lowDate: lowDate.slice(5),
+        spanDays,
+      };
+    })();
     return {
       weekProfit: wr.amount, weekProfitRate: wr.rate, weekHasData: wr.has,
       monthProfit: mr.amount, monthProfitRate: mr.rate, monthHasData: mr.has,
       yearProfit: yr.amount, yearProfitRate: yr.rate, yearHasData: yr.has,
+      riskCheck: risk,
     };
   },
   // 与首页的"当天收益"对齐：首页每次进入都会刷新组合数据，收益页盘后最长 30 分钟才刷一次，
@@ -764,6 +791,7 @@ Page({
       this._tpDay = today; // 这份当天收益属于今天
       const summ = this._periodSummary(d.todayProfitRate, d.todayProfit, allDaily);
       const weekProfitRate = summ.weekProfitRate, monthProfitRate = summ.monthProfitRate, yearProfitRate = summ.yearProfitRate;
+      const riskCheck = summ.riskCheck || null;
       const w = summ.weekProfit, m = summ.monthProfit, y = summ.yearProfit;
 
       this._cardReady = true; // 卡片值为服务端口径，末端对齐自此生效
@@ -784,6 +812,7 @@ Page({
         todayProfit: tp.toFixed(2),
         weekProfit: w, monthProfit: m, yearProfit: y,
         weekProfitRate, monthProfitRate, yearProfitRate,
+        riskCheck,
         weekHasData: summ.weekHasData, monthHasData: summ.monthHasData, yearHasData: summ.yearHasData,
         earliestDate: earliestCreate === "9999-99-99" ? "" : earliestCreate,
       }, () => {
@@ -1792,6 +1821,7 @@ Page({
           todayProfitRate: rate, todayProfit: tp,
           // 周/月/年含当天：当天值一变就得重算（否则"本周金额 == 当天金额"盘中会散架）
           ...this._periodSummary(rate, tp),
+          riskCheck: (this.data.riskCheck) || null, // 演算重算不影响已出的风险体检
         });
         if (this.data.activeTab === 'today' && !animating) this._draw();
       }
