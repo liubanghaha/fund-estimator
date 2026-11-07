@@ -142,3 +142,8 @@
 .sign-save-btn,.sign-share-btn{flex:1;font-size:28rpx;border-radius:40rpx;line-height:2.6;padding:0}
 .sign-save-btn{color:#FFF;background:var(--primary)}
 .sign-share-btn{color:var(--primary);background:#FFF;border:1rpx solid var(--primary)}
+
+/* 风险体检卡（2026-11-07 调研盲区 3）：比复盘卡更轻的底色区分 */
+.risk-check-card{background:#F3F7F3}
+.risk-ck-title{font-weight:700;color:#555;margin-right:12rpx}
+.risk-ck-val{font-weight:700;color:var(--down)}

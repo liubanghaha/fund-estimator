@@ -15,7 +15,9 @@ const EP_EMPTY = { total: 0, fast: "--", med: "--", slow: "--", unrecovered: 0, 
 Page({
   data: {
     theme: "blue",
-    activeTab: "recover", // recover=回本中心 | temp=温度回测
+    activeTab: "recover", // recover=回本中心 | temp=温度回测 | goal=目标·排名
+    amountVisible: true,
+    breakeven: null, // 总体回本卡（onShow 从首页缓存现算）
     // —— 回本中心 ——
     fundCode: "",
     fundName: "",
@@ -56,6 +58,8 @@ Page({
   onShow() {
     // 跨天/加减仓后列表会陈旧：重建（纯同步零网络），当前选中保持（不在新列表则维持深链选中）
     if (this._recoveryInited) this.setData({ fundList: this._buildFundList(), multiClassHint: this._multiClassHint });
+    // 总体回本卡随 onShow 重算（加减仓后从详情页返回即时更新，金额遮罩也同步）
+    this._calcBreakeven();
     // 选中基金的估算现值会过期：回前台超 60s 静默重拉明细
     if (this.data.activeTab === "recover" && this._loadedAt
         && Date.now() - this._loadedAt > 60000 && /^\d{6}$/.test(this.data.fundCode)) {
@@ -87,6 +91,32 @@ Page({
   },
 
   // ==================== 回本中心 ====================
+
+  // 总体回本进度（2026-11-07 从资产分析页迁入）：口径与首页收益卡同源——成本 = 市值 − 累计收益。
+  // 首页缓存直出零网络；缓存缺 totalCost（老数据）时按差额补；盈利态显示"已超过本金"
+  _calcBreakeven() {
+    try {
+      const pc = wx.getStorageSync("portfolio_cache") || {};
+      const num = (v) => parseFloat(v) || 0;
+      const mv = num(pc.totalAmount);
+      const ret = num(pc.totalReturn);
+      const cost = num(pc.totalCost) || (mv - ret);
+      if (mv <= 0 || cost <= 0) { this.setData({ breakeven: null, amountVisible: this.data.amountVisible }); return; }
+      const pct = Math.round((mv / cost) * 1000) / 10;
+      this.setData({
+        breakeven: {
+          pct,
+          fillW: Math.min(100, pct),
+          state: pct >= 100 ? "surplus" : "deficit",
+          needRise: pct < 100 ? Math.round((cost / mv - 1) * 1000) / 10 : null,
+          surplusPct: pct >= 100 ? Math.round((pct - 100) * 10) / 10 : null,
+          costText: cost.toFixed(2),
+          mvText: mv.toFixed(2),
+        },
+      });
+    } catch (e) { this.setData({ breakeven: null }); }
+  },
+
 
   // 亏损持仓列表：首页 portfolio_cache 按基金合并（与首页"全部"tab 的合计口径一致：
   // 金额逐笔相加、成本 = 市值 − 累计收益），只留亏损的、按亏损深度排序，进度/缺口预计算。
@@ -610,4 +640,5 @@ Page({
     const t = new Date(ts + 8 * 3600 * 1000);
     return `${t.getUTCFullYear()}-${_pad(t.getUTCMonth() + 1)}-${_pad(t.getUTCDate())} ${_pad(t.getUTCHours())}:${_pad(t.getUTCMinutes())}`;
   },
+
 });

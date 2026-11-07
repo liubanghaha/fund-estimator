@@ -343,6 +343,47 @@ exports.main = async (event) => {
       });
     }
 
+    // 累计现金分红科目（2026-11-07 盲区 1，账目正确性）：现金分红 = 净值除息 + 现金到卡，
+    // 此前只反映净值侧 → 有分红基金的用户收益被系统性低估（feedback 09-01"估值与实际差距巨大"、
+    // 10-21"盈利的基金出现在回本中心"的根因之一）。分红记录读 fund_dividend_cache
+    // （fetchFundDividends 每日 05:15 预热 + 详情页浏览按需填充），未命中缓存的基金记 0
+    // （低估但不虚构）。口径：只计持仓起点（buyDate，缺失回退 createTime）之后的分红；
+    // 份额用当前份额近似（期间加减仓有偏差，方向更准不虚构）。totalReturn 语义升级为
+    // "含分红累计收益"；日历/月报仍为纯净值变动口径（两视角并存，见开发日志 11-07）。
+    try {
+      const divCodes = [...new Set(enriched.map((h) => h.fundCode).filter(Boolean))];
+      const divMap = {};
+      for (let i = 0; i < divCodes.length; i += 100) {
+        const r = await db.collection("fund_dividend_cache")
+          .where({ fundCode: _.in(divCodes.slice(i, i + 100)) })
+          .get();
+        (r.data || []).forEach((d) => {
+          if (d.data && Array.isArray(d.data.list)) divMap[d.fundCode] = d.data.list;
+        });
+      }
+      if (divCodes.length > 0) {
+        enriched.forEach((h) => {
+          const list = divMap[h.fundCode];
+          if (!list) { h.dividends = 0; return; }
+          const shares = parseFloat(h.shares) || 0;
+          if (!(shares > 0)) { h.dividends = 0; return; }
+          const start = h.buyDate || (h.createTime ? new Date(new Date(h.createTime).getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10) : "");
+          let dv = 0;
+          list.forEach((r) => {
+            if (!r || !(r.perShare > 0)) return;
+            if (!start || r.date >= start) dv += r.perShare;
+          });
+          h.dividends = +(dv * shares).toFixed(2);
+          if (h.dividends > 0) {
+            // totalReturn 语义升级：含分红累计收益（净值变动 + 累计现金分红）
+            h.totalReturn = +(parseFloat(h.totalReturn) + h.dividends).toFixed(2);
+            const cv = (parseFloat(h.buyPrice) || 0) * (parseFloat(h.shares) || 0);
+            if (cv > 0) h.totalReturnRate = ((h.totalReturn / cv) * 100).toFixed(2);
+          }
+        });
+      }
+    } catch (e) { console.warn("[getPortfolio] 分红科目计算失败（收益按不含分红口径）:", e.message); }
+
     // 组合合计口径 = 逐笔「已舍入到分」的值相加（与平台/分组汇总、客户端 _sumHoldings、收盘播报一致）。
     // 此前用未舍入的 shares×nav / buyPrice×shares 累加、最后统一舍入：与逐笔相加会差 1 分
     // （12 笔逐笔舍入残差累计 ≈ -0.006 元，刚好跨过进位边界），

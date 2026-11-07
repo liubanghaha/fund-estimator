@@ -930,6 +930,36 @@ Page({
     this.setData({ driftExpanded: !this.data.driftExpanded });
   },
 
+  // 分红记录（档案 tab，2026-11-06 调研 Top1）：云函数 7 天缓存，失败静默（卡片不显示）
+  async fetchDividends() {
+    try {
+      if (!this.data.fundCode || this._dividendsFetched) return;
+      this._dividendsFetched = true;
+      const res = await api.fetchFundDividends(this.data.fundCode);
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d) return;
+      const fmt = (v) => { const n = +v; return isFinite(n) ? (n >= 1 ? n.toFixed(3) : String(n)) : "--"; };
+      // 按当前持有份额的近一年分红演算（有持仓才算；口径同资产分析分红卡，非承诺）
+      const shares = parseFloat((this.data.holdingData && this.data.holdingData.shares) || 0);
+      const mineText = shares > 0 && d.last12mPerShare > 0
+        ? `按当前 ${shares.toFixed(2)} 份持有，近一年分红约 ¥${(d.last12mPerShare * shares).toFixed(2)}`
+        : "";
+      this.setData({
+        dividends: {
+          count: d.count || 0,
+          last12mText: fmt(d.last12mPerShare),
+          mineText,
+          annualTop: (d.annual || []).slice(0, 3).map((a) => ({
+            year: a.year, totalPerShareText: fmt(a.totalPerShare),
+          })),
+          recent: (d.list || []).slice(0, 3).map((r) => ({
+            date: r.date, perShareText: fmt(r.perShare),
+          })),
+        },
+      });
+    } catch (e) { /* 分红卡失败不影响档案 */ }
+  },
+
   fetchProfile() {
     // 防重入：版本旧触发(加载时) 与 切 tab 可能并发；在途时复用同一请求，
     // 避免切 tab 空转一次（转圈一闪而过、数据要等在途请求结束才出现）
@@ -938,6 +968,8 @@ Page({
       try {
         const res = await api.fetchFundProfile(this.data.fundCode);
         if (res.result && res.result.code === 0) {
+          // 分红记录随档案一起取（独立请求 fire-and-forget，失败不影响档案）
+          this.fetchDividends();
           // 档案子请求超时时云函数仍返回 code:0 + profile:null；
           // 若洗成 {} 会作为真值写入缓存，切档案 tab 的 !profile 重试守卫从此失效 → 永久空白。
           // 视为失败：不覆盖已有值、不写缓存，下次切 tab 自动重试。
@@ -1128,7 +1160,10 @@ Page({
   },
 
   // 走势卡标题右侧的区间涨跌幅（2026-11-05 用户要求：切 tab 即显示对应区间涨跌）。
-  // 与下方「收益表现」网格同源（calcPeriodReturns），不另算一套口径
+  // 周期涨跌来自「收益表现」网格同源（calcPeriodReturns），不另算一套口径；
+  // 该周期数据不足时（如基金成立不满三年，g() 找不到锚点返回 null）回退为
+  // "成立以来"涨幅（取 navHistory 最早点，与曲线首日=0% 的绘制口径一致）——
+  // 曲线明明画着数据、标题却显示 -- 的矛盾不成立（2026-11-07 用户截图反馈）
   _syncPeriodReturn() {
     const MAP = {
       "1M": ["近一月", "monthReturn"], "3M": ["近三月", "threeMonthReturn"],
@@ -1137,7 +1172,16 @@ Page({
     };
     const [label, key] = MAP[this.data.chartPeriod] || MAP["1M"];
     const raw = this.data[key];
-    const val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
+    let val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
+    if (val === null) {
+      // 周期数据不足（如基金成立不满三年）：数字回退为成立以来涨幅（与曲线首日=0% 绘制口径
+      // 一致，曲线画的就是成立以来），标签按用户拍板保持"近X"原文不改（2026-11-07）
+      const hist = this.data.navHistory || [];
+      const first = hist[hist.length - 1], latest = hist[0];
+      if (hist.length >= 20 && first && latest && first.nav > 0) {
+        val = +(((latest.nav - first.nav) / first.nav) * 100).toFixed(2);
+      }
+    }
     if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label) {
       this.setData({ chartPeriodReturn: val, chartPeriodLabel: label });
     }
@@ -1631,6 +1675,8 @@ Page({
       await this.fetchProfile();
       this.setData({ profileLoading: false, profileLoaded: true });
     }
+    // 分红卡懒加载：档案缓存秒开时不走 fetchProfile，切到档案 tab 仍要补拉（内部防重入）
+    if (tab === 'profile') this.fetchDividends();
   },
   onRetryProfile() {
     if (this.data.profileLoading) return;

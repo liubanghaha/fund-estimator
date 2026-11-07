@@ -15,6 +15,7 @@
     <view class="tab-bar">
       <view class="tab-item {{activeTab === 'holding' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="holding">持仓分析</view>
       <view class="tab-item {{activeTab === 'cost' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="cost">账单</view>
+      <view class="tab-item {{activeTab === 'goal' ? 'active' : ''}}" bind:tap="onTabTap" data-tab="goal">目标·排名</view>
     </view>
 
     <!-- ===== Tab 1：持仓分析 ===== -->
@@ -87,19 +88,6 @@
       </view>
 
       <!-- 基金对重合（空状态占位，已移除功能） -->
-    </view>
-
-    <!-- 3.5 组合回本进度（陪伴线，2026-11 调研增补）：成本口径与首页收益卡同源（市值−累计收益） -->
-    <view wx:if="{{breakeven}}" class="card">
-      <view class="card-title">💰 回本进度<text class="card-desc">（全组合）</text></view>
-      <view class="bk-main">
-        <text class="bk-pct {{breakeven.state === 'surplus' ? 'up' : ''}}">{{breakeven.pct}}%</text>
-        <text class="bk-label">{{breakeven.state === 'surplus' ? '当前市值 / 投入本金，已回本' : '当前市值 / 投入本金'}}</text>
-      </view>
-      <view class="bk-track"><view class="bk-fill {{breakeven.state === 'surplus' ? 'surplus' : ''}}" style="width:{{breakeven.fillW}}%"></view></view>
-      <view class="bk-sub" wx:if="{{breakeven.state === 'deficit'}}">距回本还需上涨 {{breakeven.needRise}}%</view>
-      <view class="bk-sub" wx:else>已超过本金 {{breakeven.surplusPct}}%</view>
-      <view class="bk-sub" wx:if="{{amountVisible}}">本金 ¥{{breakeven.costText}} · 现值 ¥{{breakeven.mvText}}</view>
     </view>
 
     <view wx:if="{{!healthScore && (!assetAllocation || !assetAllocation.items) && pairs.length === 0}}" class="empty">
@@ -220,11 +208,83 @@
       <view class="card-footnote">演算口径：卖出份额 ×（最新净值 − 卖出净值），不含分红；仅回顾事实，不构成投资建议</view>
     </view>
 
-    <view wx:if="{{!feeCard && !showShadowCard && !billCard}}" class="empty">
+    <!-- 组合分红演算（2026-11-06 调研 Top1）：近一年每份分红 × 当前份额 -->
+    <view wx:if="{{divCard}}" class="card">
+      <view class="card-title">💸 分红到账（近一年演算）</view>
+      <view class="hero-block">
+        <view class="hero-label">近 12 个月分红演算</view>
+        <view class="hero-num">{{amountVisible ? '¥' + divCard.totalText : '¥****'}}</view>
+        <view class="hero-sub">按各基金近一年分红节奏 × 当前份额演算，非承诺；实际以基金公司公告为准</view>
+      </view>
+      <view wx:for="{{divCard.top}}" wx:key="fundName" class="fee-row">
+        <text class="fee-name">{{item.fundName}}</text>
+        <text class="fee-val">{{amountVisible ? '¥' + item.amountText : '¥****'}}</text>
+      </view>
+    </view>
+
+    <!-- 拿住不动演算（2026-11-07 调研盲区 2）：影子账户总额 = 全部卖出操作的总代价/增益 -->
+    <view wx:if="{{showShadowCard && shadowTotal != null}}" class="card">
+      <view class="card-title">🧮 操作总代价 / 增益</view>
+      <view class="hero-block">
+        <view class="hero-label">历次卖出如果一直没卖，按最新净值的差额合计</view>
+        <view class="hero-num {{shadowTotal > 0 ? 'up' : 'down'}}">{{amountVisible ? shadowTotalText : '¥****'}}</view>
+        <view class="hero-sub">负数 = 卖出的部分后来涨得比卖价高（少赚）；正数 = 卖对了（多赚）。仅回顾事实，不构成任何建议</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!feeCard && !showShadowCard && !billCard && !divCard}}" class="empty">
       <view>暂无费用与复盘数据</view>
       <view class="empty-hint">持有基金后可查看费用账单；有过卖出记录后会生成影子账户</view>
       <button class="empty-btn" bind:tap="onGoHome">去添加持仓</button>
     </view>
+    </view>
+
+    <!-- ===== Tab 3：目标 · 排名（2026-11-06 全球调研 Top2/Top3） ===== -->
+    <view hidden="{{activeTab !== 'goal'}}">
+      <view class="disclaimer">匿名聚合统计与目标进度，不构成任何建议。</view>
+
+      <!-- 目标进度 -->
+      <view class="card">
+        <view class="card-title">组合目标</view>
+        <block wx:if="{{goalLoaded}}">
+          <block wx:if="{{goal && goal.targetAmount}}">
+            <view wx:if="{{!goal.done}}" class="goal-num {{amountVisible ? '' : 'masked'}}">{{amountVisible ? '¥' + goal.nowText : '¥****'}} / ¥{{goal.targetText}}</view>
+            <view wx:else class="goal-num goal-done">🎉 已达成</view>
+            <view class="goal-track"><view class="goal-fill {{goal.done ? 'done' : ''}}" style="width:{{goal.pctW}}%"></view></view>
+            <view class="goal-meta">
+              <text wx:if="{{goal.done}}">当前市值 ¥{{amountVisible ? goal.nowText : '****'}}，为目标的 {{goal.multipleText}} 倍{{goal.achievedAtText ? ' · ' + goal.achievedAtText + '达成' : ''}}</text>
+              <text wx:else>还差 ¥{{amountVisible ? goal.gapText : '****'}}（还需上涨 {{goal.needRiseText}}%）</text>
+            </view>
+            <view class="goal-actions">
+              <text class="goal-link" bind:tap="onEditGoal">修改目标</text>
+              <text class="goal-link goal-del" bind:tap="onRemoveGoal">删除</text>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="goal-empty">设定一个目标金额，看组合离它还有多远</view>
+            <view class="goal-input-row">
+              <input class="goal-input" type="digit" placeholder="目标金额（元）" value="{{goalInput}}" bindinput="onGoalInput" />
+              <button class="goal-btn" size="mini" bind:tap="onSaveGoal" disabled="{{goalSaving}}">保存</button>
+            </view>
+            <view wx:if="{{amountVisible && goalNowText}}" class="goal-meta">当前市值 ¥{{goalNowText}}</view>
+          </block>
+        </block>
+        <view wx:else class="goal-loading">加载中...</view>
+      </view>
+
+      <!-- 相对排名（匿名聚合统计） -->
+      <view class="card">
+        <view class="card-title">近一年表现 · 相对位置</view>
+        <block wx:if="{{rankLoaded}}">
+          <block wx:if="{{rank}}">
+            <view class="goal-num">{{rank.pctText}}</view>
+            <view class="goal-meta">你的组合近一年涨了 {{rank.rateText}}，超过 {{rank.pct}}% 的持有人</view>
+            <view class="rank-note">基于 {{rank.samples}} 位持有人组合近一年净值涨幅的匿名分布{{rank.coveredFunds < rank.totalFunds ? '；部分持仓基金缺净值数据未计入' : ''}}</view>
+          </block>
+          <view wx:else class="goal-empty">统计样本积累中（不足 20 人暂不展示），过几天再来看看</view>
+        </block>
+        <view wx:else class="goal-loading">加载中...</view>
+      </view>
     </view>
   </view>
 </view>

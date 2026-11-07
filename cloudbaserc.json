@@ -258,6 +258,62 @@
       ]
     },
     {
+      "name": "dailyHealthCheck",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "healthCheckTimer",
+          "type": "timer",
+          "config": "0 0 6 * * * *"
+        }
+      ]
+    },
+    {
+      "name": "backupData",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "backupDailyTimer",
+          "type": "timer",
+          "config": "0 30 2 * * * *"
+        }
+      ]
+    },
+    {
+      "name": "fetchFundDividends",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "dividendWarmupTimer",
+          "type": "timer",
+          "config": "0 15 5 * * * *"
+        }
+      ]
+    },
+    {
+      "name": "rankPercentile",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "rankDistTimer",
+          "type": "timer",
+          "config": "0 30 4 * * * *"
+        }
+      ]
+    },
+    {
       "name": "snapshotProfit",
       "timeout": 120,
       "runtime": "Nodejs20.19",

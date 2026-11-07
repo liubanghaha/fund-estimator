@@ -128,7 +128,7 @@
       <view class="form-item">
         <text class="label">买入日期</text>
         <picker mode="date" value="{{buyDate}}" bind:change="onDateChange">
-          <view class="picker-value">{{buyDate || '请选择日期'}}</view>
+          <view class="picker-value">{{buyDate || '买入日期 · 建议填写，解锁精确分红计算'}}</view>
         </picker>
       </view>
       <view wx:if="{{_editIdx < 0}}" class="form-item">

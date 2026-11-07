@@ -88,6 +88,22 @@ const api = {
   fetchFundProfile(fundCode) {
     return this.callFunction("fetchFundProfile", { fundCode });
   },
+  // 基金分红记录（详情页档案卡 + 组合分红演算；云函数 7 天缓存）
+  fetchFundDividends(fundCode) {
+    return this.callFunction("fetchFundDividends", { fundCode });
+  },
+  // 组合分红演算（一次聚合：各持仓基金近 12 个月每份分红 × 份额）
+  fetchFundDividendsPortfolio() {
+    return this.callFunction("fetchFundDividends", { action: "portfolio" });
+  },
+  // 相对排名：查自己组合近一年涨幅的持有人百分位（每日分布任务产出的匿名统计）
+  rankPercentile() {
+    return this.callFunction("rankPercentile", { action: "percentile" });
+  },
+  // 组合目标：action = set(targetAmount,note) / remove / get
+  manageGoal(action, targetAmount, note) {
+    return this.callFunction("manageGoal", { action, targetAmount, note });
+  },
   fetchFundOverview(fundCode) {
     return this.callFunction("fetchFundOverview", { fundCode, src: this._estimateSrc() });
   },

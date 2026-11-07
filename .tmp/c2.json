@@ -1,0 +1,42 @@
+{
+  "data": {
+    "results": [
+      [
+        {
+          "n": {
+            "$numberInt": "1038"
+          },
+          "ok": {
+            "$numberDouble": "1.0"
+          },
+          "$clusterTime": {
+            "clusterTime": {
+              "$timestamp": {
+                "t": 1794017346,
+                "i": 1
+              }
+            },
+            "signature": {
+              "hash": {
+                "$binary": {
+                  "base64": "FqW5WXs/uheWArDls9VWRT23exc=",
+                  "subType": "00"
+                }
+              },
+              "keyId": {
+                "$numberLong": "7638978474174054402"
+              }
+            }
+          },
+          "operationTime": {
+            "$timestamp": {
+              "t": 1794017346,
+              "i": 1
+            }
+          }
+        }
+      ]
+    ],
+    "requestId": "e01f8120-2d6f-495a-a5df-08b79b4599b9"
+  }
+}

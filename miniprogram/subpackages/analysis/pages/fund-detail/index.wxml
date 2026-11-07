@@ -318,6 +318,22 @@
           </view>
         </view>
       </view>
+      <view wx:if="{{dividends && dividends.count > 0}}" class="info-card">
+        <view class="section-title">分红记录<text class="risk-period-tip">近 12 个月每份合计 {{dividends.last12mText}} 元</text></view>
+        <view wx:for="{{dividends.annualTop}}" wx:key="year" class="div-row">
+          <text class="div-year">{{item.year}} 年</text>
+          <text class="div-val">每份合计 {{item.totalPerShareText}} 元</text>
+        </view>
+        <view wx:for="{{dividends.recent}}" wx:key="date" class="div-row div-row-sub">
+          <text class="div-year">{{item.date}}</text>
+          <text class="div-val">每份派 {{item.perShareText}} 元</text>
+        </view>
+        <view wx:if="{{dividends.mineText}}" class="drift-note">{{dividends.mineText}}（非承诺）</view>
+      </view>
+      <view wx:if="{{dividends && dividends.count === 0}}" class="info-card">
+        <view class="section-title">分红记录</view>
+        <view class="drift-line">该基金历史上暂无分红记录</view>
+      </view>
       <view wx:if="{{profile && profile.mgmtFee}}" class="fee-card">
         <view class="fee-header" bind:tap="onToggleFee">
           <view>

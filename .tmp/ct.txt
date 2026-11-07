@@ -1,0 +1,19 @@
+CloudBase CLI 3.7.3
+Try the tcb ai command to start your AI full-stack development experience
+✔ [confirmTransactions] call succeeded
+
+Runtime：61.00ms
+Memory usage：22.23MB
+Billing time：100ms
+Request Id ：98226643-1d59-4b83-997f-9d4b42db0c13
+Return result：{"code":0,"today":"2026-11-05","since":"2026-10-26","total":0,"msg":"无待校准交易"}
+Invocation log：
+START RequestId: 98226643-1d59-4b83-997f-9d4b42db0c13
+Event RequestId: 98226643-1d59-4b83-997f-9d4b42db0c13
+Response RequestId: 98226643-1d59-4b83-997f-9d4b42db0c13 RetMsg: {"code":0,"today":"2026-11-05","since":"2026-10-26","total":0,"msg":"无待校准交易"}
+END RequestId: 98226643-1d59-4b83-997f-9d4b42db0c13
+Report RequestId: 98226643-1d59-4b83-997f-9d4b42db0c13 Duration: 61ms Memory: 256MB MemUsage: 22.230469MB
+
+ℹ 
+Next steps:
+ℹ   View invocation logs    tcb fn log confirmTransactions

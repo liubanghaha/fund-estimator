@@ -328,3 +328,10 @@
 .period-return{float:right;font-size:26rpx;font-weight:600;color:#666;line-height:1.5}
 .period-return.up{color:var(--up)}
 .period-return.down{color:var(--down)}
+
+/* 分红记录卡（2026-11-06 调研 Top1） */
+.div-row{display:flex;justify-content:space-between;font-size:24rpx;color:#555;padding:10rpx 0;border-bottom:1rpx solid #F5F5F5}
+.div-row:last-of-type{border-bottom:none}
+.div-row-sub{opacity:.75}
+.div-year{color:#333}
+.div-val{color:#666}
