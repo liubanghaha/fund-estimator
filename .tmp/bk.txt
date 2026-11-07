@@ -1,0 +1,20 @@
+CloudBase CLI 3.7.3
+Try the tcb ai command to start your AI full-stack development experience
+✔ [backupData] call succeeded
+
+Runtime：6237.00ms
+Memory usage：47.17MB
+Billing time：6300ms
+Request Id ：bc0abc6b-2709-418b-95b8-71a7736d50cb
+Return result：{"code":0,"date":"2026-11-07","ok":true,"files":[{"coll":"holdings","cloudPath":"backup/2026-11-07/holdings.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/holdings.jsonl","lines":10461,"bytes":3112976},{"coll":"transactions","cloudPath":"backup/2026-11-07/transactions.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/transactions.jsonl","lines":275,"bytes":74214},{"coll":"goals","cloudPath":"backup/2026-11-07/goals.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/goals.jsonl","lines":1,"bytes":155},{"coll":"feedback","cloudPath":"backup/2026-11-07/feedback.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/feedback.jsonl","lines":14,"bytes":3876}],"costMs":6004}
+Invocation log：
+START RequestId: bc0abc6b-2709-418b-95b8-71a7736d50cb
+Event RequestId: bc0abc6b-2709-418b-95b8-71a7736d50cb
+[backupData] 2026-11-07: ok=true files=4 t=6004ms
+Response RequestId: bc0abc6b-2709-418b-95b8-71a7736d50cb RetMsg: {"code":0,"date":"2026-11-07","ok":true,"files":[{"coll":"holdings","cloudPath":"backup/2026-11-07/holdings.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/holdings.jsonl","lines":10461,"bytes":3112976},{"coll":"transactions","cloudPath":"backup/2026-11-07/transactions.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/transactions.jsonl","lines":275,"bytes":74214},{"coll":"goals","cloudPath":"backup/2026-11-07/goals.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/goals.jsonl","lines":1,"bytes":155},{"coll":"feedback","cloudPath":"backup/2026-11-07/feedback.jsonl","fileID":"cloud://cloud1-d7gu9zv3i796839b8.636c-cloud1-d7gu9zv3i796839b8-1465106577/backup/2026-11-07/feedback.jsonl","lines":14,"bytes":3876}],"costMs":6004}
+END RequestId: bc0abc6b-2709-418b-95b8-71a7736d50cb
+Report RequestId: bc0abc6b-2709-418b-95b8-71a7736d50cb Duration: 6237ms Memory: 256MB MemUsage: 47.167969MB
+
+ℹ 
+Next steps:
+ℹ   View invocation logs    tcb fn log backupData

@@ -258,6 +258,20 @@
       ]
     },
     {
+      "name": "backupData",
+      "timeout": 300,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "backupDailyTimer",
+          "type": "timer",
+          "config": "0 30 2 * * * *"
+        }
+      ]
+    },
+    {
       "name": "fetchFundDividends",
       "timeout": 300,
       "runtime": "Nodejs20.19",
