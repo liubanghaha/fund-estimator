@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const https = require("https");
+const { sendAdminAlert } = require("./_shared/admin-alert");
 
 /**
  * 用户财务数据每日备份（2026-11-07 生产级补课 #3：数据安全）
@@ -39,63 +40,7 @@ async function isAdmin(openid) {
   } catch (e) { return false; }
 }
 
-async function listAdmins() {
-  try {
-    const r = await db.collection("ops_admins").limit(20).get();
-    return (r.data || []).map((d) => d.openid).filter(Boolean);
-  } catch (e) { return []; }
-}
-
-function httpPost(path, data) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify(data);
-    const req = https.request({
-      hostname: "api.weixin.qq.com", path, method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
-      timeout: 10000,
-    }, (res) => {
-      let buf = "";
-      res.on("data", (c) => { buf += c; });
-      res.on("end", () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(new Error("JSON 解析失败")); } });
-    });
-    req.on("timeout", () => { req.destroy(); reject(new Error("超时")); });
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-async function getAccessToken() {
-  // 与 dailyBriefing 同源：secret 优先环境变量，兜底 app_config/wx_app_secret（不入代码库）
-  let secret = process.env.WX_APP_SECRET || "";
-  if (!secret) {
-    const cfg = await db.collection("app_config").doc("wx_app_secret").get().catch(() => null);
-    secret = (cfg && cfg.data && cfg.data.value) || "";
-  }
-  if (!secret) throw new Error("WX_APP_SECRET 未配置");
-  const r = await httpPost("/cgi-bin/stable_token", { grant_type: "client_credential", appid: WX_APPID, secret });
-  if (!r.access_token) throw new Error("stable_token 获取失败: " + JSON.stringify(r).slice(0, 150));
-  return r.access_token;
-}
-
 // 备份失败 → ops_admins 全员订阅消息（尽力而为：未授权 43101 静默）
-async function sendAdminAlert(result, today) {
-  try {
-    const token = await getAccessToken();
-    const admins = await listAdmins();
-    await Promise.all(admins.map((openid) => httpPost(`/cgi-bin/message/subscribe/send?access_token=${token}`, {
-      touser: openid,
-      template_id: TEMPLATE_ID_BRIEF,
-      page: "pages/user-center/index",
-      data: {
-        thing3: { value: "数据备份失败" },
-        thing5: { value: String(result.error || "未知原因").slice(0, 20) },
-        date2: { value: today },
-      },
-    }).catch(() => {})));
-  } catch (e) { console.error("[backupData] 告警发送失败:", e.message); }
-}
-
 // 导出单集合为 JSONL 行数组（保留 _id；分页遍历）
 async function dumpCollection(name) {
   const lines = [];
@@ -125,7 +70,7 @@ async function cleanupOld(today) {
 }
 
 // 备份主流程
-async function runBackup(today) {
+async function runBackup(today, opts = {}) {
   const t0 = Date.now();
   const result = { date: today, ok: false, files: [] };
   try {
@@ -141,12 +86,16 @@ async function runBackup(today) {
     result.error = String(e.message || e).slice(0, 300);
   }
   result.costMs = Date.now() - t0;
-  await db.collection("app_config").doc("backup_status").set({
-    data: { ...result, finishedAt: Date.now() },
-  }).catch(() => {});
-  if (!result.ok) {
-    console.error("[backupData] 备份失败:", result.error);
-    await sendAdminAlert(result, today);
+  // skipStatus：restore 的 pre-restore 备份不覆盖正式备份状态（否则每日巡检把
+  // "2026-11-07-pre-restore" 当成当日备份缺失误报——2026-11-07 巡检首跑实测踩到）
+  if (!opts.skipStatus) {
+    await db.collection("app_config").doc("backup_status").set({
+      data: { ...result, finishedAt: Date.now() },
+    }).catch(() => {});
+    if (!result.ok) {
+      console.error("[backupData] 备份失败:", result.error);
+      await sendAdminAlert(db, { title: "数据备份失败", detail: String(result.error || "").slice(0, 20), date: today });
+    }
   }
   await cleanupOld(today);
   return result;
@@ -175,7 +124,7 @@ exports.main = async (event) => {
       const files = ((idxDoc && idxDoc.data && idxDoc.data.files) || []).filter((f) => f.date === date);
       if (files.length === 0) return { code: 404, msg: "该日期无备份记录" };
       // 恢复前先把当前状态再备一份（防误恢复丢新数据）
-      await runBackup(bjDate() + "-pre-restore");
+      await runBackup(bjDate() + "-pre-restore", { skipStatus: true });
       for (const f of files) {
         const dl = await cloud.downloadFile({ fileID: f.fileID });
         const lines = dl.fileContent.toString("utf8").split("\n").filter((l) => l.trim());

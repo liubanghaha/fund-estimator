@@ -258,6 +258,20 @@
       ]
     },
     {
+      "name": "dailyHealthCheck",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "concurrency": 1,
+      "triggers": [
+        {
+          "name": "healthCheckTimer",
+          "type": "timer",
+          "config": "0 0 6 * * * *"
+        }
+      ]
+    },
+    {
       "name": "backupData",
       "timeout": 300,
       "runtime": "Nodejs20.19",
