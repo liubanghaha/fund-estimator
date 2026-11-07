@@ -510,7 +510,10 @@ Page({
     // 风险体检（2026-11-07 调研盲区 3）：起计以来组合最大回撤，金额按期末市值缩放。
     // 用收盘市值序列的回撤比例（份额只是缩放，加减仓不影响比例正确性）；序列短时窗口如实展示
     const risk = (() => {
-      const pts = series.filter((p) => p.value > 0);
+      // 只用历史收盘点（排除"今天"点）：今天点盘中是估算值、会随波动跳动——风险体检是
+      // 历史体检，期末点不参与，盘中/盘后/凌晨全时段数字稳定；金额按最近收盘市值缩放
+      const today = calc.formatDate(new Date());
+      const pts = series.filter((p) => p.value > 0 && p.date < today);
       if (pts.length < 10) return null;
       let peak = 0, dd = 0, peakDate = "", lowDate = "";
       pts.forEach((p) => {
@@ -520,7 +523,6 @@ Page({
       });
       if (dd >= 0) return null;
       const spanDays = Math.round((new Date(pts[pts.length - 1].date) - new Date(pts[0].date)) / 86400000);
-      // 金额分母用序列末值（期末组合市值）：_totalMarket 在冻结期可能未定义（quickFirstPaint 不设）
       return {
         dd: +dd.toFixed(2),
         amountText: Math.abs(dd / 100 * pts[pts.length - 1].value).toFixed(0),
