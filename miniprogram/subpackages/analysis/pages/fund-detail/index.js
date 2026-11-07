@@ -1160,7 +1160,10 @@ Page({
   },
 
   // 走势卡标题右侧的区间涨跌幅（2026-11-05 用户要求：切 tab 即显示对应区间涨跌）。
-  // 与下方「收益表现」网格同源（calcPeriodReturns），不另算一套口径
+  // 周期涨跌来自「收益表现」网格同源（calcPeriodReturns），不另算一套口径；
+  // 该周期数据不足时（如基金成立不满三年，g() 找不到锚点返回 null）回退为
+  // "成立以来"涨幅（取 navHistory 最早点，与曲线首日=0% 的绘制口径一致）——
+  // 曲线明明画着数据、标题却显示 -- 的矛盾不成立（2026-11-07 用户截图反馈）
   _syncPeriodReturn() {
     const MAP = {
       "1M": ["近一月", "monthReturn"], "3M": ["近三月", "threeMonthReturn"],
@@ -1169,9 +1172,18 @@ Page({
     };
     const [label, key] = MAP[this.data.chartPeriod] || MAP["1M"];
     const raw = this.data[key];
-    const val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
-    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label) {
-      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label });
+    let val = (raw === null || raw === undefined || !isFinite(+raw)) ? null : +raw;
+    let label2 = label;
+    if (val === null) {
+      const hist = this.data.navHistory || [];
+      const first = hist[hist.length - 1], latest = hist[0];
+      if (hist.length >= 20 && first && latest && first.nav > 0) {
+        val = +(((latest.nav - first.nav) / first.nav) * 100).toFixed(2);
+        label2 = "成立以来";
+      }
+    }
+    if (this.data.chartPeriodReturn !== val || this.data.chartPeriodLabel !== label2) {
+      this.setData({ chartPeriodReturn: val, chartPeriodLabel: label2 });
     }
   },
 
