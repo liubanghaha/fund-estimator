@@ -237,7 +237,30 @@ Page({
       }
       const g = goalRes && goalRes.result && goalRes.result.code === 0 ? goalRes.result.data : null;
       this._applyGoal(g);
+      this._checkGoalAchieved(g);
     }).finally(() => this.setData({ goalLoaded: true }));
+  },
+
+  // 目标达成闭环（2026-11-07，用户拍板方案 C）：市值≥目标且未标记时，一次性站内提示
+  // （wx.showModal，不占订阅消息额度）+ 服务端写 achievedAt（年报叙事素材）。
+  // 首次加载即已达标（如目标设得远小于市值）也触发一次，之后靠 achievedAt 幂等
+  _checkGoalAchieved(g) {
+    if (!g || !(g.targetAmount > 0) || g.achievedAt) return;
+    const now = this._portfolioTotal || 0;
+    if (now < g.targetAmount) return;
+    api.manageGoal("markAchieved").then((res) => {
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (d && d.achievedAt) this._applyGoal(d);
+      const key = "goal_achieved_shown_" + (g.updateTime || g.targetAmount);
+      if (wx.getStorageSync(key)) return;
+      wx.setStorageSync(key, 1);
+      wx.showModal({
+        title: "🎉 组合已达目标",
+        content: `当前市值 ¥${now.toFixed(2)}，已达到你设定的 ¥${g.targetAmount.toFixed(2)} 目标`,
+        showCancel: false,
+        confirmText: "知道了",
+      });
+    }).catch(() => {});
   },
 
   _applyGoal(g) {
@@ -249,15 +272,22 @@ Page({
     const target = g.targetAmount;
     const pct = target > 0 ? (now / target) * 100 : 0;
     const done = now >= target;
+    // 达成态显示增强（2026-11-07）：目标远小于市值时满格条+一行小字像"没有进度条"，
+    // 改为大字"🎉 已达成" + 倍数与达成日期
+    const achievedAtText = g.achievedAt
+      ? (() => { const t = new Date(g.achievedAt + 8 * 3600 * 1000); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`; })()
+      : (done ? "" : "");
     this.setData({
       goal: {
+        targetAmount: target, // wxml 条件 {{goal && goal.targetAmount}} 消费——漏掉会永远走空态分支（2026-11-07 实测踩到）
         targetText: target.toFixed(2),
         nowText: now.toFixed(2),
         pctW: Math.min(100, +pct.toFixed(1)),
         done,
         gapText: done ? "0.00" : (target - now).toFixed(2),
         needRiseText: done ? "0.00" : ((target / Math.max(now, 0.01) - 1) * 100).toFixed(2),
-        overText: done ? (now - target).toFixed(2) : "",
+        multipleText: done ? +((now / target)).toFixed(1) : "",
+        achievedAtText,
       },
     });
   },

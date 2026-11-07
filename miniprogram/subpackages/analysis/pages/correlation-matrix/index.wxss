@@ -316,3 +316,4 @@
 .goal-btn[disabled]{opacity:.5}
 .goal-loading{font-size:24rpx;color:#999;padding:12rpx 0}
 .rank-note{font-size:20rpx;color:#BBB;margin-top:12rpx;line-height:1.6}
+.goal-done{color:#4CAF50}

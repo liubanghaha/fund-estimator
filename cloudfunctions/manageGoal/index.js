@@ -35,6 +35,18 @@ exports.main = async (event) => {
       return { code: 0 };
     }
 
+    // 达成标记（闭环，2026-11-07）：首次发现市值≥目标时由客户端调用，
+    // 写 achievedAt 供年报叙事（"X 月 X 日达成目标"）；幂等（已有值不覆盖）
+    if (action === "markAchieved") {
+      const r = await db.collection("goals").doc(OPENID).get().catch(() => null);
+      const g = r && r.data;
+      if (!g || !(g.targetAmount > 0)) return { code: 0, data: null };
+      if (g.achievedAt) return { code: 0, data: g, already: true };
+      const achievedAt = Date.now();
+      await db.collection("goals").doc(OPENID).update({ data: { achievedAt } });
+      return { code: 0, data: { ...g, achievedAt } };
+    }
+
     // 默认 get
     try {
       const r = await db.collection("goals").doc(OPENID).get();

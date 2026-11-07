@@ -238,10 +238,11 @@
         <view class="card-title">组合目标</view>
         <block wx:if="{{goalLoaded}}">
           <block wx:if="{{goal && goal.targetAmount}}">
-            <view class="goal-num {{amountVisible ? '' : 'masked'}}">{{amountVisible ? '¥' + goal.nowText : '¥****'}} / ¥{{goal.targetText}}</view>
+            <view wx:if="{{!goal.done}}" class="goal-num {{amountVisible ? '' : 'masked'}}">{{amountVisible ? '¥' + goal.nowText : '¥****'}} / ¥{{goal.targetText}}</view>
+            <view wx:else class="goal-num goal-done">🎉 已达成</view>
             <view class="goal-track"><view class="goal-fill {{goal.done ? 'done' : ''}}" style="width:{{goal.pctW}}%"></view></view>
             <view class="goal-meta">
-              <text wx:if="{{goal.done}}">已达成目标（超出 {{goal.overText}}）</text>
+              <text wx:if="{{goal.done}}">当前市值 ¥{{amountVisible ? goal.nowText : '****'}}，为目标的 {{goal.multipleText}} 倍{{goal.achievedAtText ? ' · ' + goal.achievedAtText + '达成' : ''}}</text>
               <text wx:else>还差 ¥{{amountVisible ? goal.gapText : '****'}}（还需上涨 {{goal.needRiseText}}%）</text>
             </view>
             <view class="goal-actions">
