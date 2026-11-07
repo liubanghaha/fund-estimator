@@ -295,15 +295,24 @@
 .fee-cal{color:#2E8B57}
 .fee-todo{color:#B26A00}
 
-/* 回本进度卡（陪伴线，2026-11 调研增补）：pct<100 用跌色（绿）、≥100 用涨色（红），与收益正负色一致 */
-.bk-main{display:flex;align-items:baseline;gap:12rpx;margin:16rpx 0 14rpx}
-.bk-pct{font-size:56rpx;font-weight:700;color:var(--down)}
-.bk-pct.up{color:var(--up)}
-.bk-label{font-size:22rpx;color:#999}
-.bk-track{height:12rpx;background:#EEF0F3;border-radius:6rpx;overflow:hidden}
-.bk-fill{height:100%;border-radius:6rpx;background:var(--down)}
-.bk-fill.surplus{background:var(--up)}
-.bk-sub{margin-top:10rpx;font-size:22rpx;color:#999}
 /* 分红演算明细行（复用 fee-row 布局，补子元素样式） */
 .fee-name{font-size:24rpx;color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fee-val{font-size:26rpx;color:#333;font-weight:600;flex-shrink:0}
+
+/* ===== 目标 · 排名（2026-11-06 调研 Top2/Top3） ===== */
+.goal-num{font-size:44rpx;font-weight:700;color:#333;margin:16rpx 0 12rpx}
+.goal-num.masked{letter-spacing:2rpx}
+.goal-track{height:14rpx;background:#EEF0F3;border-radius:7rpx;overflow:hidden;margin-bottom:12rpx}
+.goal-fill{height:100%;border-radius:7rpx;background:var(--primary,#E4393C)}
+.goal-fill.done{background:#4CAF50}
+.goal-meta{font-size:24rpx;color:#666;line-height:1.6}
+.goal-actions{display:flex;gap:32rpx;margin-top:14rpx}
+.goal-link{font-size:24rpx;color:var(--primary,#E4393C)}
+.goal-del{color:#999}
+.goal-empty{font-size:24rpx;color:#999;line-height:1.6;padding:12rpx 0}
+.goal-input-row{display:flex;align-items:center;gap:16rpx;margin-top:14rpx}
+.goal-input{flex:1;border:1rpx solid #E5E7EB;border-radius:10rpx;padding:14rpx 20rpx;font-size:26rpx}
+.goal-btn{background:var(--primary,#E4393C);color:#FFF;font-size:26rpx}
+.goal-btn[disabled]{opacity:.5}
+.goal-loading{font-size:24rpx;color:#999;padding:12rpx 0}
+.rank-note{font-size:20rpx;color:#BBB;margin-top:12rpx;line-height:1.6}

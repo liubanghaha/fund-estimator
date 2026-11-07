@@ -15,7 +15,6 @@ Page({
     fundNames: [],
     pairs: [],
     sharedStocks: [],
-    breakeven: null, // 组合回本进度（fetchAll payload 计算生成）
     loading: true,
     loadError: false,
     showAllIndustries: false,
@@ -26,6 +25,9 @@ Page({
     feeCard: null,
     showShadowCard: false, shadowTotal: null, shadowTop: [],
     divCard: null, // 组合分红演算卡（近一年节奏 × 当前份额）
+    // —— 目标 · 排名（2026-11-06 全球调研 Top2/Top3） ——
+    goalLoaded: false, goal: null, goalInput: "", goalSaving: false, goalNowText: "",
+    rankLoaded: false, rank: null,
   },
 
   onShow() {
@@ -207,6 +209,107 @@ Page({
       // 但若首屏默认落费用 tab（无持仓分析数据时）圆环未曾绘制
       if (tab === "holding" && this.data.healthScore && !this._ringDrawn) this._drawHealthRing(this.data.healthScore.score);
     });
+    // 目标·排名懒加载（目标卡/排名卡各带防重入，切回不重拉）
+    if (tab === "goal") this.loadGoalTab();
+  },
+
+  // ==================== 目标 · 排名（2026-11-06 全球调研 Top2/Top3，自复盘中心迁入） ====================
+
+  // 目标进度：市值口径与首页资产卡同源（portfolio_cache.totalAmount，缺了再拉 getPortfolio）；
+  // 排名：每日匿名分布任务产出的百分位（样本 <20 不出）
+  loadGoalTab() {
+    const av = wx.getStorageSync("amountVisible");
+    this.setData({ amountVisible: av === "" ? true : !!av });
+    this.loadRank();
+    try {
+      const pc = wx.getStorageSync("portfolio_cache") || {};
+      const total = parseFloat(pc.totalAmount) || 0;
+      if (total > 0) this._portfolioTotal = total;
+    } catch (e) { /* ignore */ }
+    Promise.all([
+      api.manageGoal("get").catch(() => null),
+      this._portfolioTotal ? Promise.resolve(null) : api.getPortfolio(0, { withAnalysis: false, withEstimates: false, withNav60: false }).catch(() => null),
+    ]).then(([goalRes, pfRes]) => {
+      if (pfRes) {
+        const d = pfRes.result && pfRes.result.data;
+        const t = parseFloat(d && d.totalAmount) || 0;
+        if (t > 0) this._portfolioTotal = t;
+      }
+      const g = goalRes && goalRes.result && goalRes.result.code === 0 ? goalRes.result.data : null;
+      this._applyGoal(g);
+    }).finally(() => this.setData({ goalLoaded: true }));
+  },
+
+  _applyGoal(g) {
+    if (!g || !(g.targetAmount > 0)) {
+      this.setData({ goal: null, goalNowText: this._portfolioTotal ? this._portfolioTotal.toFixed(2) : "" });
+      return;
+    }
+    const now = this._portfolioTotal || 0;
+    const target = g.targetAmount;
+    const pct = target > 0 ? (now / target) * 100 : 0;
+    const done = now >= target;
+    this.setData({
+      goal: {
+        targetText: target.toFixed(2),
+        nowText: now.toFixed(2),
+        pctW: Math.min(100, +pct.toFixed(1)),
+        done,
+        gapText: done ? "0.00" : (target - now).toFixed(2),
+        needRiseText: done ? "0.00" : ((target / Math.max(now, 0.01) - 1) * 100).toFixed(2),
+        overText: done ? (now - target).toFixed(2) : "",
+      },
+    });
+  },
+
+  onGoalInput(e) { this.setData({ goalInput: e.detail.value }); },
+
+  onSaveGoal() {
+    const amt = parseFloat(this.data.goalInput);
+    if (!isFinite(amt) || amt <= 0) { wx.showToast({ title: "请输入有效金额", icon: "none" }); return; }
+    this.setData({ goalSaving: true });
+    api.manageGoal("set", amt).then((res) => {
+      if (res.result && res.result.code === 0) {
+        this._applyGoal(res.result.data);
+        this.setData({ goalInput: "" });
+        wx.showToast({ title: "目标已保存", icon: "none" });
+      } else {
+        wx.showToast({ title: "保存失败", icon: "none" });
+      }
+    }).finally(() => this.setData({ goalSaving: false }));
+  },
+
+  onEditGoal() { this.setData({ goal: null, goalInput: "" }); },
+
+  onRemoveGoal() {
+    api.manageGoal("remove").then(() => {
+      this._applyGoal(null);
+      wx.showToast({ title: "目标已删除", icon: "none" });
+    });
+  },
+
+  async loadRank() {
+    try {
+      const res = await api.rankPercentile();
+      const d = res && res.result && res.result.code === 0 && res.result.data;
+      if (!d || !(d.samples >= 20) || !isFinite(+d.pct) || !isFinite(+d.rate)) {
+        this.setData({ rankLoaded: true, rank: null });
+        return;
+      }
+      this.setData({
+        rankLoaded: true,
+        rank: {
+          rateText: (d.rate > 0 ? "+" : "") + (+d.rate).toFixed(2) + "%",
+          pct: d.pct,
+          pctText: "超过 " + d.pct + "% 的持有人",
+          samples: d.samples,
+          coveredFunds: d.coveredFunds || 0,
+          totalFunds: d.totalFunds || 0,
+        },
+      });
+    } catch (e) {
+      this.setData({ rankLoaded: true, rank: null });
+    }
   },
   onShadowFundTap(e) {
     const { code, name } = e.currentTarget.dataset;
@@ -270,28 +373,7 @@ Page({
   },
   // 渲染分析结果（健康分/穿透/温度位置）：缓存路径与网络路径共用，
   // 顺带处理健康分圆环绘制与"无分析内容时默认落账单 tab"
-  // 组合回本进度（陪伴线，2026-11 竞品调研增补）：口径与首页收益卡/回本中心/收盘播报同源——
-  // 成本 = 市值 − 累计收益（勿改用 ΣbuyPrice×shares 直加，否则与收益卡对不上）。
-  // 盈利态（≥100%）显示"已超过本金"；无持仓/成本非正不出卡
-  _breakeven(d) {
-    const num = (v) => parseFloat(v) || 0;
-    const mv = num(d && d.totalAmount);
-    const ret = num(d && d.totalReturn);
-    const cost = num(d && d.totalCost) || (mv - ret);
-    if (mv <= 0 || cost <= 0) return null;
-    const pct = Math.round((mv / cost) * 1000) / 10;
-    return {
-      pct,
-      fillW: Math.min(100, pct),
-      state: pct >= 100 ? "surplus" : "deficit",
-      needRise: pct < 100 ? Math.round((cost / mv - 1) * 1000) / 10 : null,
-      surplusPct: pct >= 100 ? Math.round((pct - 100) * 10) / 10 : null,
-      costText: cost.toFixed(2),
-      mvText: mv.toFixed(2),
-    };
-  },
-
-  _applyPayload(p) {
+_applyPayload(p) {
     this.setData({ loading: false, ...p }, () => {
       if (p.healthScore) this._drawHealthRing(p.healthScore.score);
       if (!p.healthScore && (!p.assetAllocation || !p.assetAllocation.items || !p.assetAllocation.items.length)) {
@@ -365,7 +447,6 @@ Page({
         concentrationTip: concTip,
         tempStatMine: tempStat.mine,
         tempStatMarket: tempStat.market,
-        breakeven: this._breakeven(d),
       };
       this._applyPayload(payload);
       // 写本页缓存（下次进入先秒出；持仓签名变化即失效）
