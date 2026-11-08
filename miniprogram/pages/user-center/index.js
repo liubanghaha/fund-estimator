@@ -137,7 +137,7 @@ Page({
             h.marketValue, h.totalReturn, h.buyDate || "", h.platform || h.group || ""])];
       } else {
         // 收益月度汇总：组合月末市值序列环比（口径与收益页月视图同源：份额 × 月末净值）
-        const res = await api.getPortfolio(500, { withAnalysis: false, withEstimates: false, withNav60: false });
+        const res = await api.getPortfolio(500, { withAnalysis: false, withNav60: false });
         const d = (res.result && res.result.data) || {};
         const navMap = d.navHistoryMap || {};
         const holds = d.holdings || [];
