@@ -163,7 +163,8 @@ exports.main = async (event) => {
   // 节假日守卫：周末/法定假日不算不写（cron 表达不了节假日，守卫只能放代码里）。
   // 此前国庆 7 天每天写 ~1460 行死数据、每个周末同样——读侧虽已按交易日过滤，写侧也该封口。
   // 手动运维动作（seedIndustries）不在此闸内
-  if (!td.isTradingDay(today)) {
+  // force=true（运维手动修复）：跳过非交易日闸（2026-11-08 加——坏数据周末修复用）
+  if (!event.force && !td.isTradingDay(today)) {
     console.log(`[computeFundTemperature] 非交易日 ${today} 跳过`);
     return { code: 0, msg: `非交易日 ${today} 跳过` };
   }
@@ -332,11 +333,20 @@ exports.main = async (event) => {
     const dist = { low: 0, mid: 0, high: 0, nodata: 0 };
     results.forEach(r => { dist[r.signal] = (dist[r.signal] || 0) + 1; });
     console.log(`[computeFundTemperature] 完成 ${results.length} 只 (低估:${dist.low} 正常:${dist.mid} 高估:${dist.high} 无数据:${dist.nodata})`);
-    // 市场级指标（债市温度/股债性价比）随任务一起产出；失败只缺字段，不影响温度
-    const marketIndicator = await calcMarketIndicators().catch(() => null);
+    // 状态写入提前（2026-11-08 修复：此前在 calcMarketIndicators 之后——外部 HTTP 慢速流
+    // 不触发 socket 超时会挂到 300s 被杀，状态/后续日期的温度全部停更，11-06~11-08 实测三天）
     await db.collection("app_config").doc("temp_task_status").set({
-      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat, marketIndicator }
+      data: { status: "done", today, count: results.length, finishedAt: Date.now(), signalDist: dist, industrySnap: industrySnapStat }
     }).catch(() => {});
+    // 市场级指标（债市温度/股债性价比）算完补写（race 硬超时 8s，慢速流不再挂死函数）
+    const marketIndicator = await Promise.race([
+      calcMarketIndicators(),
+      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]).catch(() => null);
+    if (marketIndicator) {
+      await db.collection("app_config").doc("temp_task_status")
+        .update({ data: { marketIndicator } }).catch(() => {});
+    }
 
     // 回测缓存自愈（2026-10-24 补，10-21~24 回测页空窗 4 天的教训）：温度产出正常后，
     // 检查温度回测缓存是否已 >20h（=定时重算线过期，正常应每晚 20:30 重算一次）。
