@@ -1,3 +1,0 @@
-CloudBase CLI 3.7.3
-Try the tcb ai command to start your AI full-stack development experience
-✖ [fetchFundDividends] 调用失败：FetchError: network timeout at: https://scf.tencentcloudapi.com/
