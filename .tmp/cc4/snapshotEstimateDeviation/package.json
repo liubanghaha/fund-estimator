@@ -1,0 +1,9 @@
+{
+  "name": "snapshotEstimateDeviation",
+  "version": "1.0.0",
+  "description": "估算误差台账：每日收盘后记录估算 vs 官方涨跌",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
