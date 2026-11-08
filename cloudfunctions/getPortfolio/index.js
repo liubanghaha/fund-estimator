@@ -96,6 +96,8 @@ exports.main = async (event) => {
     // where in 一次拿全池，循环内查内存 map）。失败静默走原路径
     let navCacheMap = null;
     let afterClose = false;
+    const navWriteback = {}; // 盘后现拉回写候选：code → [date, nav, changeRate][]
+    const writebackQueue = [];
     try {
       const todayKey = fd.formatBJDate();
       // 盘后（≥15:00 交易日）当日新净值陆续公布，但缓存的还是 05:30 预热的旧净值
@@ -158,6 +160,12 @@ exports.main = async (event) => {
                 fd.fetchLatestNavEastMoney(code),
                 fd.fetchNAVHistory(code, needDays),
               ]);
+              // 盘后现拉且当日净值已公布 → 收集回写 fund_nav_cache（2026-11-08 P0）：
+              // 此前盘后路径（104-116 的缓存闸把旧缓存全滤掉）每用户重复付费 ~13 页/基金
+              // 且不回写，15:00-20:00 所有在线用户重复掏这笔钱。回写后首个用户付费、后续走缓存
+              if (eastmoney && eastmoney.actualDate === todayKey && (navHistoryAll || []).length > 50) {
+                navWriteback[code] = navHistoryAll.slice(0, 260).map(r => [r.date, r.nav, r.changeRate == null ? null : r.changeRate]);
+              }
             }
           } else {
             eastmoney = await fd.fetchLatestNavEastMoney(code);
@@ -173,6 +181,10 @@ exports.main = async (event) => {
         }
       }));
       batchResults.forEach((r) => { navByCode[r.code] = r; });
+      // 回写当批（分批收集，循环结束后统一写库）
+      Object.entries(navWriteback).forEach(([code, rows]) => {
+        writebackQueue.push({ fundCode: code, rows });
+      });
       if (i + CONCURRENT < uniqueCodes.length) {
         await new Promise(r => setTimeout(r, 150));
       }
@@ -383,6 +395,20 @@ exports.main = async (event) => {
         });
       }
     } catch (e) { console.warn("[getPortfolio] 分红科目计算失败（收益按不含分红口径）:", e.message); }
+
+    // 盘后现拉回写 fund_nav_cache（2026-11-08 P0）：当日净值已公布的才写（次日起全部用户命中缓存）。
+    // 只回写不覆盖已有的当日有效缓存（upsert 语义同 fetchFundOverview:40 的回写口径）
+    if (writebackQueue.length > 0) {
+      try {
+        const wbDate = fd.formatBJDate(); // todayKey 定义在上方 try 块内，此处不可见
+        await Promise.all(writebackQueue.map((w) =>
+          db.collection("fund_nav_cache").doc(w.fundCode).set({
+            data: { fundCode: w.fundCode, date: wbDate, rows: w.rows },
+          }).catch(() => {})
+        ));
+        console.log(`[getPortfolio] 盘后回写 fund_nav_cache ${writebackQueue.length} 只`);
+      } catch (e) { console.warn("[getPortfolio] 回写失败（不影响主流程）:", e.message); }
+    }
 
     // 组合合计口径 = 逐笔「已舍入到分」的值相加（与平台/分组汇总、客户端 _sumHoldings、收盘播报一致）。
     // 此前用未舍入的 shares×nav / buyPrice×shares 累加、最后统一舍入：与逐笔相加会差 1 分
@@ -933,18 +959,11 @@ async function computeSelfEstimates(codes, startTime) {
       if (estChange == null) {
         const holdings = holdingsMap[code];
         if (!holdings || holdings.length === 0) continue;
-        let totalRatio = 0, weightedChange = 0;
-        for (const h of holdings) {
-          const price = stockPriceMap[h.stockCode];
-          if (!price || price.changeRate == null) continue;
-          // 逐股日期校验（YYYY-MM-DD 与 todayStr 直接比）：停牌/行情源停更的股，
-          // 其 changeRate 是旧交易日的，混进加权会把旧涨跌当今日估算（2026-10-06 审查）
-          if (price.date !== today) continue;
-          totalRatio += h.navRatio;
-          weightedChange += price.changeRate * h.navRatio;
-        }
-        if (totalRatio > 0) {
-          estChange = +(weightedChange / totalRatio).toFixed(2);
+        // 加权口径收敛到 _shared（2026-11-08 审查）：逐股日期校验（2026-10-06 审查口径）
+        // 由 opts.today 参数保留在本调用点
+        const wRate = fd.weightedChangeRate(holdings, stockPriceMap, { today });
+        if (wRate != null) {
+          estChange = wRate;
           map[code] = {
             fundCode: code,
             fundName: "",

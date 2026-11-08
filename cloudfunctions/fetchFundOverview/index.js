@@ -146,14 +146,9 @@ async function computeSelfEstimate(fundCode) {
     if (holdings && holdings.length > 0) {
       const stockCodes = [...new Set(holdings.map(h => h.stockCode).filter(Boolean))];
       const prices = stockCodes.length > 0 ? await fd.fetchStockPricesTencent(stockCodes) : {};
-      let totalRatio = 0, weightedChange = 0;
-      for (const h of holdings) {
-        const p = prices[h.stockCode];
-        if (!p || p.changeRate == null) continue;
-        totalRatio += h.navRatio;
-        weightedChange += p.changeRate * h.navRatio;
-      }
-      if (totalRatio > 0) return +(weightedChange / totalRatio).toFixed(2);
+      // 加权口径收敛到 _shared（2026-11-08 审查：4 处实现漂移消除）
+      const rate = fd.weightedChangeRate(holdings, prices);
+      if (rate != null) return rate;
     }
   } catch (e) { /* ignore */ }
   return null;

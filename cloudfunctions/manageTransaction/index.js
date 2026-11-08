@@ -15,11 +15,22 @@ exports.main = async (event) => {
     switch (action) {
       case "add": {
         if (!data || !data.fundCode) return { code: 400, msg: "缺少参数" };
+        if (!["buy", "sell"].includes(data.type)) return { code: 400, msg: "交易方向无效" };
+        // 字段白名单（2026-11-08 P0）：此前 ...data 原样展开，任意字段（含嵌套对象/超长串）可注入；
+        // trackReport 注释点名的"manageTransaction 白名单"实际并不存在——本次补齐
+        const TX_FIELDS = ["fundCode", "fundName", "type", "shares", "price", "amount", "date", "note", "reason", "holdingId"];
+        const doc = {};
+        TX_FIELDS.forEach((k) => { if (data[k] !== undefined) doc[k] = data[k]; });
+        if (!/^[0-9]{6}$/.test(String(doc.fundCode))) return { code: 400, msg: "基金代码无效" };
+        doc.fundName = String(doc.fundName || "").slice(0, 50);
+        doc.note = String(doc.note || "").slice(0, 200);
+        if (doc.date && !/^\d{4}-\d{2}-\d{2}$/.test(String(doc.date))) return { code: 400, msg: "日期格式无效" };
+        ["shares", "price", "amount"].forEach((k) => { doc[k] = parseFloat(doc[k]) || 0; });
         await db.collection("transactions").add({
           // confirmed 强制 false（客户端不可伪造）：交易份额按提交时最新已公布净值折算，
           // 与确认日存在一天错位，由 confirmTransactions 定时任务在确认日净值公布后重算并置 true。
           // holdingId 用于同基金多笔持仓时精确定位（存量交易无此字段，视为已确认不翻旧账）
-          data: { ...data, holdingId: data.holdingId || "", confirmed: false, reason: REASONS.includes(data.reason) ? data.reason : "", _openid: OPENID, createTime: new Date() },
+          data: { ...doc, confirmed: false, reason: REASONS.includes(doc.reason) ? doc.reason : "", _openid: OPENID, createTime: new Date() },
         });
         return { code: 0, msg: "success" };
       }

@@ -23,6 +23,11 @@ exports.main = async (event = {}) => {
   // 保活 ping（每小时 keepAliveTimer 触发）：轻量调 3 个关键函数各一发，重置云函数
   // 实例的闲置回收计时——免费替代"最小实例数"（35 元/月/函数）。只用盘中时段保活
   // （9-16 点），夜间/周末让实例自然回收（那些时段没人用，冷启动无所谓）
+  // 预热主路径拒客户端（2026-11-08 P0）：全表扫描+大量外呼不可由小程序端伪造触发
+  if (event.Type !== "Timer") {
+    const { OPENID: _wpOpenid } = cloud.getWXContext();
+    if (_wpOpenid) return { code: -1, msg: "预热任务仅限服务端调用" };
+  }
   if (event.Type === "Timer" && event.TriggerName === "keepAliveTimer") {
     const hour = new Date(Date.now() + 8 * 3600000).getUTCHours();
     const weekday = new Date(Date.now() + 8 * 3600000).getUTCDay();

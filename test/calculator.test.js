@@ -117,3 +117,23 @@ test("selectChangeRate：净值已更新 → 用官方涨跌幅", () => {
 test("selectChangeRate：未更新 → 用估算涨跌幅", () => {
   eq(calc.selectChangeRate(1.5, 1.5, 2.1, 6.67), 2.1);
 });
+
+// ---------- rebuildAdjustedNav：复权重构（2026-11-08 收敛） ----------
+test("rebuildAdjustedNav：changeRate 复利优先", () => {
+  // 裸对象（不带 changeRate 字段）——makeHist 会默认塞 0（"涨 0%"是合法复利输入，会干扰分支）
+  const hist = [
+    { date: "2026-11-07", nav: 1.1 },
+    { date: "2026-11-06", nav: 1.0, changeRate: 5 },
+    { date: "2026-11-05", nav: 1.0 },
+  ];
+  const chrono = calc.rebuildAdjustedNav(hist);
+  // 时间升序：11-05(1.0) → 11-06 adj=1.0×1.05=1.05 → 11-07（无 changeRate）adj=1.05×(1.1/1.0)=1.155
+  approx(chrono[1].adj, 1.05, "11-06 复权");
+  approx(chrono[2].adj, 1.155, "11-07 复权");
+});
+test("rebuildAdjustedNav：除息日（changeRate 缺失）用原始净值比衔接，不二次放大", () => {
+  // 1.2 分红除息到 1.0（跳变 -16.7%），changeRate 缺失 → 用原始比衔接保持跳变
+  const hist = [{ date: "2026-11-07", nav: 1.0 }, { date: "2026-11-06", nav: 1.2 }];
+  const chrono = calc.rebuildAdjustedNav(hist);
+  approx(chrono[1].adj, 1.0, "除息日 adj=原始 nav（不伪造回撤也不二次放大）");
+});

@@ -65,6 +65,12 @@ exports.main = async (event = {}) => {
     if (event.action === "alertSrc") return await handleAlertSrc(event);
     if (event.action === "alertPush") return await handleAlertPush(event);
     if (event.action === "briefTest") return await handleBriefTest(event);
+    // 推送触发类 action 仅限服务端（CLI/云函数互调）——客户端可 force 直触全平台推送
+    //（2026-11-08 全局审查 P0）。手动运维走 CLI invoke（无 OPENID 上下文）
+    if (event.action === "navBrief" || event.action === "peAlerts" || event.action === "weeklyBrief" || event.action === "monthlyCheckup" || event.dryRun != null || event.force != null) {
+      const { OPENID: ctxOpenid } = cloud.getWXContext();
+      if (ctxOpenid) return { code: -1, msg: "推送触发仅限服务端调用" };
+    }
     if (event.action === "navBrief") return await runNavBrief(!!event.force, !!event.dryRun);
     if (event.action === "peAlerts") return await runPeAlerts(!!event.force, !!event.dryRun);
     if (event.action === "weeklyBrief") return await runWeeklyBrief(!!event.force, !!event.dryRun);

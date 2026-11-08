@@ -1,4 +1,5 @@
 const api = require("../../../../utils/api");
+const prefs = require("../../../../utils/prefs");
 const marketTime = require("../../../../utils/market-time");
 // 本页 SWR 缓存（健康分/行业穿透/温度位置）：打开先秒出上次结果、后台刷新；
 // 持仓签名不一致（加减仓/换基金）即失效；6 小时内且签名一致时免拉网络
@@ -35,8 +36,7 @@ Page({
     const theme = wx.getStorageSync("theme") || "red";
     this.setData({ theme });
     // 金额口径与首页「隐藏」开关同源（storage key amountVisible）：费用账单/回本卡都带金额
-    const avStored = wx.getStorageSync("amountVisible");
-    this.setData({ amountVisible: avStored === "" ? true : !!avStored });
+    this.setData({ amountVisible: prefs.isAmountVisible() });
   },
 
   onLoad() {
@@ -221,8 +221,7 @@ Page({
   // 目标进度：市值口径与首页资产卡同源（portfolio_cache.totalAmount，缺了再拉 getPortfolio）；
   // 排名：每日匿名分布任务产出的百分位（样本 <20 不出）
   loadGoalTab() {
-    const av = wx.getStorageSync("amountVisible");
-    this.setData({ amountVisible: av === "" ? true : !!av });
+    this.setData({ amountVisible: prefs.isAmountVisible() });
     this.loadRank();
     try {
       const pc = wx.getStorageSync("portfolio_cache") || {};
@@ -466,7 +465,8 @@ _applyPayload(p) {
       if (!tempDist) {
         try {
           const c = wx.getStorageSync("temp_dist_cache");
-          const dd = c && c.dist;
+          // 读侧 TTL 1h（2026-11-08 审查：原读侧不查时效，陈旧分布窗口无界；写侧 index 本就带 ts）
+          const dd = c && c.dist && c.ts && Date.now() - c.ts < 3600000 ? c.dist : null;
           if (dd && (dd.low + dd.mid + dd.high) > 0) tempDist = dd;
         } catch (e) { /* ignore */ }
       }

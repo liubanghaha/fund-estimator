@@ -126,6 +126,9 @@ async function calcMarketIndicators() {
 }
 
 exports.main = async (event) => {
+  // 定时任务专用（2026-11-08 P0）：拒客户端调用（seedIndustries 等运维动作不可伪造）
+  const { OPENID: _tempOpenid } = cloud.getWXContext();
+  if (_tempOpenid) return { code: -1, msg: "拒绝客户端调用" };
   // 一次性运维动作：从历史温度表灌行业种子（回填快照、加速收敛）
   if (event && event.seedIndustries) {
     const t0 = Date.now();

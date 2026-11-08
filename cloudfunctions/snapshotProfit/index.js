@@ -7,6 +7,9 @@ const fd = require("./_shared/fund-data");
 const td = require("./_shared/trading-day");
 
 exports.main = async (event) => {
+  // 定时任务专用（2026-11-08 P0）：拒客户端调用（force 可控全用户快照写入）
+  const { OPENID: _snapOpenid } = cloud.getWXContext();
+  if (_snapOpenid) return { code: -1, msg: "拒绝客户端调用" };
   const { force, dryRun } = event || {}; // force=true：跳过交易时段判断 + 只算不写（供部署后验证）
   // dryRun=true：提醒检测只算不发（不消耗用户订阅额度、不写推送日志），用于验证命中逻辑
   const _start = Date.now();

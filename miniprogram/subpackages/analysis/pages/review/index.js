@@ -46,7 +46,7 @@ Page({
     const tab = options.tab === "temp" ? "temp"
       : options.tab === "monthly" ? "monthly"
       : "recover";
-    this.setData({ theme: wx.getStorageSync("theme") || "blue", activeTab: tab });
+    this.setData({ theme: wx.getStorageSync("theme") || "red", activeTab: tab }); // 默认 red 与全仓一致（原 blue 为漂移）
     // 亏损持仓列表从首页缓存构建（同步、零网络），两个 tab 都会用到
     this._initRecovery(options, tab !== "recover"); // 非 recover tab 打开时只建列表、明细延后
     // 温度回测预取：与回本中心的加载并行，切 tab 时大概率已就绪
@@ -313,21 +313,9 @@ Page({
 
   // 回撤区间扫描（时间升序）：峰值→谷底→收复前高。修复天数 = 谷底日 → 收复日
   _calcEpisodes(history) {
-    // 复权：官方日增长率逐日复利重构净值序列，消除分红除息日的假回撤与假"1 天修复"
-    //（与温度回测的 JZZZL 口径同理；缺涨跌幅的日子用相邻净值比衔接，不伪造 0）
-    const raw = (history || []).filter((d) => d && d.nav > 0).slice().reverse(); // 时间升序
-    const chrono = [];
-    let prev = null;
-    raw.forEach((d) => {
-      let nav = d.nav;
-      if (prev) {
-        if (typeof d.changeRate === "number") nav = prev.adj * (1 + d.changeRate / 100);
-        else if (prev.nav > 0) nav = prev.adj * (d.nav / prev.nav);
-        else nav = prev.adj;
-      }
-      chrono.push({ date: d.date, nav });
-      prev = { nav: d.nav, adj: nav };
-    });
+    // 复权重构下沉 calculator（2026-11-08 审查：与 fund-detail 水下时间双份实现漂移消除）。
+    // chrono 项字段名沿用本页 nav（calculator 返回 adj，此处映射）
+    const chrono = calc.rebuildAdjustedNav(history).map((p) => ({ date: p.date, nav: p.adj }));
     if (chrono.length < 30) {
       this.setData({ ep: { ...EP_EMPTY } });
       return;
@@ -554,7 +542,7 @@ Page({
 
   fetchBacktest(done) {
     this.setData({ tLoading: true, tNotReady: false, tError: "" });
-    wx.cloud.callFunction({ name: "temperatureBacktest" })
+    api.temperatureBacktest()
       .then((res) => {
         const r = (res && res.result) || {};
         if (r.code === 0 && r.data && r.data.buckets) {

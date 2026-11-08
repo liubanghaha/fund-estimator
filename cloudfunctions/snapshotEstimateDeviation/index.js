@@ -148,14 +148,9 @@ async function computeSelfEstimates(date) {
   const prices = await fd.fetchStockPricesTencent(codes, { timeoutMs: 20000, batchSize: 50 }).catch(() => ({}));
   const out = {};
   Object.entries(holdingsMap).forEach(([fundCode, hs]) => {
-    let totalRatio = 0, weighted = 0;
-    hs.forEach((h) => {
-      const p = prices[h.code];
-      if (!p || p.changeRate == null) return;
-      totalRatio += h.ratio;
-      weighted += p.changeRate * h.ratio;
-    });
-    if (totalRatio > 0) out[fundCode] = +(weighted / totalRatio).toFixed(2);
+    // 加权口径收敛到 _shared（2026-11-08 审查）
+    const rate = fd.weightedChangeRate(hs, prices);
+    if (rate != null) out[fundCode] = rate;
   });
   return out;
 }

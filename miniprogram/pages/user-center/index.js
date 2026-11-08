@@ -87,7 +87,7 @@ Page({
         // 云端同步加 500ms 去抖：快速连切时只发最后一次选择，避免异步乱序导致云端 src 落到旧值
         if (this._alertSrcTimer) clearTimeout(this._alertSrcTimer);
         this._alertSrcTimer = setTimeout(() => {
-          wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSrc", src: key } }).catch(() => {});
+          api.dailyBriefing({ action: "alertSrc", src: key }).catch(() => {});
         }, 500);
         // 首页/详情缓存按旧源口径算过，切源后强制失效，下次打开用新源重拉
         try {

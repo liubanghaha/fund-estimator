@@ -1116,19 +1116,8 @@ Page({
     // R8 水下时间/最长被套：官方日增长率逐日复利重构净值（消除分红除息假回撤，同 review 页
     // 口径），时间升序后扫描"低于运行峰值"的天数占比与最长连续段。窗口与风险指标一致（近一年）
     const underwaterMetrics = (() => {
-      const chrono = [];
-      let prevAdj = null;
-      riskWindow.slice().reverse().forEach((d) => {
-        let adj = d.nav;
-        if (prevAdj != null) {
-          if (typeof d.changeRate === "number") adj = prevAdj * (1 + d.changeRate / 100);
-          else if (prevAdj > 0) adj = prevAdj * (d.nav / prevAdj);
-          else adj = prevAdj;
-        }
-        if (!(adj > 0)) return;
-        chrono.push({ date: d.date, adj });
-        prevAdj = adj;
-      });
+      // 复权重构下沉 calculator（2026-11-08 审查：与 review 页双份实现漂移消除）
+      const chrono = calc.rebuildAdjustedNav(riskWindow);
       if (chrono.length < 60) return null; // 数据不足（新基金）整块不渲染
       let peak = 0, underDays = 0, maxStreak = 0, streak = 0, curStart = "", bestStart = "", bestEnd = "";
       chrono.forEach((p) => {
@@ -1940,9 +1929,8 @@ Page({
     const [startYear, startMonth] = dcaStartDate.split("-");
     this.setData({ dcaLoading: true, dcaResult: null });
     try {
-      const res = await wx.cloud.callFunction({
-        name: "dcaBacktest",
-        data: { fundCode, monthlyAmount: parseFloat(dcaAmount), startYear, startMonth, monthlyDay: 1 },
+      const res = await api.dcaBacktest({
+        fundCode, monthlyAmount: parseFloat(dcaAmount), startYear, startMonth, monthlyDay: 1,
       });
       if (res.result && res.result.code === 0) {
         this.setData({ dcaResult: res.result.data, dcaText: this._dcaText(res.result.data) });

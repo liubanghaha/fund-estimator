@@ -35,7 +35,7 @@ Page({
     }
     // 推送额度（提醒只消耗 FUND 池，必须看 quotaNew——合计值含播报额度，
     // 只授权过播报的用户会看到"有额度"实际提醒全跳过，2026-10-06 审查）
-    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
+    api.dailyBriefing({ action: "alertGet" })
       .then((r) => {
         const res = (r && r.result) || {};
         this.setData({ quota: res.quotaNew || 0, quotaLoaded: true });
@@ -154,7 +154,7 @@ Page({
     const payload = {};
     if (settings) payload.settings = settings;
     if (typeof globalOn === "boolean") payload.globalOn = globalOn;
-    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSet", ...payload } }).catch(() => {});
+    api.dailyBriefing({ action: "alertSet", ...payload }).catch(() => {});
   },
 
   // 补充推送额度：微信一次性订阅，一次授权 = 一条可发送额度。

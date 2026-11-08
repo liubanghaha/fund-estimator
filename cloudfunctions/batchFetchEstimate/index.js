@@ -80,17 +80,12 @@ async function computeSelfEstimates(codes) {
     for (const code of codes) {
       const holdings = fundHoldingsMap[code];
       if (!holdings || holdings.length === 0) continue;
-      let totalRatio = 0, weightedChange = 0;
-      for (const h of holdings) {
-        const price = stockPriceMap[h.stockCode];
-        if (!price || price.changeRate == null) continue;
-        totalRatio += h.navRatio;
-        weightedChange += price.changeRate * h.navRatio;
-      }
-      if (totalRatio > 0) {
+      // 加权口径收敛到 _shared（2026-11-08 审查：4 处实现漂移消除）
+      const rate = fd.weightedChangeRate(holdings, stockPriceMap);
+      if (rate != null) {
         map[code] = {
           fundCode: code,
-          estimatedChangeRate: +(weightedChange / totalRatio).toFixed(2),
+          estimatedChangeRate: rate,
           estimateTime: timeStr,
         };
       }

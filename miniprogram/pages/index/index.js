@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const prefs = require("../../utils/prefs");
 const marketTime = require("../../utils/market-time");
 const recent = require("../../utils/recent");
 const subscribe = require("../../utils/subscribe");
@@ -324,7 +325,7 @@ Page({
     this._syncAlertSettingsDaily();
     this._maybeShowUpdateLog();
     this._syncPhaseLabels();
-    const amountVisible = wx.getStorageSync("amountVisible");
+    const amountVisible = prefs.isAmountVisible();
     if (amountVisible !== "") this.setData({ amountVisible: !!amountVisible });
     this.maybeShowGuide(); // 新手导览（首笔持仓后一次性）
     // R3：空仓时保证空态数据就位（storage 日缓存秒出；网络刷新由 fetchPortfolio 空仓分支触发）
@@ -382,7 +383,7 @@ Page({
     if (app._fnsWarmed) return;
     app._fnsWarmed = true;
     api.portfolioLight().catch(() => {});                 // 收益页绿线
-    wx.cloud.callFunction({ name: "temperatureBacktest" }).catch(() => {}); // 复盘中心·温度回测（读缓存，轻）
+    api.temperatureBacktest().catch(() => {}); // 复盘中心·温度回测（读缓存，轻）
     try {
       const pc = wx.getStorageSync("portfolio_cache") || {};
       const codes = [...new Set((pc.holdings || []).map((h) => h.fundCode).filter(Boolean))];
@@ -585,10 +586,7 @@ Page({
       if (wx.getStorageSync("alertSyncDay") === today) return;
       wx.setStorageSync("alertSyncDay", today);
     } catch (e) { return; }
-    wx.cloud.callFunction({
-      name: "dailyBriefing",
-      data: { action: "alertGet" },
-    }).then((r) => {
+    api.dailyBriefing({ action: "alertGet" }).then((r) => {
       const res = r.result;
       const d = res && res.data;
       if (!d || typeof d !== "object") return;
@@ -599,10 +597,7 @@ Page({
         // 云端为空但本地有（升级用户首次打开）：反向初始化，防清空
         const local = wx.getStorageSync("alertSettings");
         if (local && Object.keys(local).length > 0) {
-          wx.cloud.callFunction({
-            name: "dailyBriefing",
-            data: { action: "alertSet", settings: local },
-          }).catch(() => {});
+          api.dailyBriefing({ action: "alertSet", settings: local }).catch(() => {});
         }
       }
       // 全局默认提醒开关同步（写本地缓存，「提醒管理」页读它显示）
@@ -619,7 +614,7 @@ Page({
   // 弹层里的推送额度提示：一次性订阅，一次授权=一条；额度=0 时提醒触发了也发不出去。
   // 只显示在设置弹层（打开时拉一次云端额度）：用户不会去猜"为什么没收到提醒"
   _refreshAlertQuota(fundCode) {
-    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertGet" } })
+    api.dailyBriefing({ action: "alertGet" })
       .then((r) => {
         if (this.data.alertEditFundCode !== fundCode) return; // 弹层已切基金/已关闭，丢弃
         // 提醒只消耗 FUND 池，展示 quotaNew（合计含播报额度，会虚高误导）
@@ -667,10 +662,7 @@ Page({
     this.setData({ showAlertEdit: false });
     wx.showToast({ title: '已设置提醒', icon: 'success' });
     // 设置上云（换设备同步；失败静默，本地仍生效）
-    wx.cloud.callFunction({
-      name: "dailyBriefing",
-      data: { action: "alertSet", settings },
-    }).catch(() => {});
+    api.dailyBriefing({ action: "alertSet", settings }).catch(() => {});
     // 保存提醒 = 用户明确要提醒，此刻请求推送授权（全漏斗转化率最高点）；
     // 每天最多弹一次授权窗（已授权用户当天后续保存无感续额度）
     subscribe.requestAlertAuth("scene_alert").then((r) => {
@@ -1428,7 +1420,7 @@ Page({
       icon: "none",
     });
     // 设置上云（换设备同步；失败静默，本地仍生效）
-    wx.cloud.callFunction({ name: "dailyBriefing", data: { action: "alertSet", settings } }).catch(() => {});
+    api.dailyBriefing({ action: "alertSet", settings }).catch(() => {});
     if (!next) return;
     // 开启时同步拉起订阅授权（单基金保存提醒同款；无授权微信侧 43101 会静默丢弃推送）
     subscribe.requestAlertAuth("scene_alert").then((r) => {
@@ -1470,7 +1462,7 @@ Page({
             const h = selected[idx++];
             try {
               const r = await api.holdingRemove(h._id);
-              if (r.result && r.result.code === 0) done++; else fail++;
+              if (r.result && r.result.code === 0) { done++; wx.removeStorageSync("fee_cache_v2"); } else fail++;
             } catch (e) { fail++; }
           }
         };
@@ -1788,6 +1780,7 @@ Page({
               wx.showLoading({ title: "删除中..." });
               api.holdingRemove(id)
                 .then(() => {
+                  wx.removeStorageSync("fee_cache_v2"); // 持仓变化→费用账单重算（与 add/adjust 页同口径）
                   wx.hideLoading();
                   wx.showToast({ title: "已删除", icon: "success" });
                   self.fetchPortfolio();

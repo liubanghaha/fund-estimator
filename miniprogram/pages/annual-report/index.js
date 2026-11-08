@@ -1,4 +1,5 @@
 const api = require("../../utils/api");
+const prefs = require("../../utils/prefs");
 const calc = require("../../utils/calculator");
 const track = require("../../utils/track");
 const shareCard = require("../../utils/shareCard");
@@ -25,8 +26,7 @@ Page({
     this.setData({ theme: wx.getStorageSync("theme") || "red", year });
     // 金额口径与首页「隐藏」开关同源（storage key amountVisible）：年报分享卡最常被外传，
     // 漏读开关会明文泄漏持有费/收益；未设置过默认显示（与首页 data 默认 true 一致）
-    const avStored = wx.getStorageSync("amountVisible");
-    this.setData({ amountVisible: avStored === "" ? true : !!avStored });
+    this.setData({ amountVisible: prefs.isAmountVisible() });
     track.track("annual_report_open", { year });
     this._load(year);
   },

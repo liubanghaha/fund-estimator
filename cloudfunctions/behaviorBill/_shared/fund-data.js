@@ -757,6 +757,24 @@ function staleCacheUsable(cached, todayStr, now) {
 // pref = "sina"（数据源一）| "self"（数据源二）；入参里的 sinaRate/selfRate 都已由调用方做过日期校验
 // 返回 { rate, source, time, nav }，rate === null 表示今日暂无估值（调用方按"未出估值"处理）；
 // nav 只在数据源一有对应金额时给出（估算净值），沿用缓存值时一并带上，避免"涨跌有值、估算净值空"
+// 持仓股加权涨跌（2026-11-08 审查收敛：4 处 computeSelfEstimate 的公式漂移消除——本函数为唯一口径）。
+// holdings 项兼容 {stockCode|code, navRatio|ratio}；prices 为 fetchStockPricesTencent 返回（含 changeRate）。
+// opts.today 传入时启用逐股日期校验：停牌/停更股的旧涨跌不混入当日估算（2026-10-06 审查口径）。
+// 返回 null = 无有效持仓数据（调用方按"自算不可用"处理）。
+function weightedChangeRate(holdings, prices, opts = {}) {
+  let totalRatio = 0, weighted = 0;
+  (holdings || []).forEach((h) => {
+    const code = h.stockCode || h.code;
+    const ratio = parseFloat(h.navRatio != null ? h.navRatio : h.ratio) || 0;
+    const p = code ? prices[code] : null;
+    if (!p || p.changeRate == null) return;
+    if (opts.today && p.date !== opts.today) return;
+    totalRatio += ratio;
+    weighted += p.changeRate * ratio;
+  });
+  return totalRatio > 0 ? +(weighted / totalRatio).toFixed(2) : null;
+}
+
 function pickEstimate({ pref, sinaRate, sinaTime, sinaNav, selfRate, selfTime, cached, todayStr, now }) {
   if (pref === "self") {
     // 数据源二：自算优先，缺失时用新浪兜底（保持原行为）
@@ -826,6 +844,7 @@ module.exports = {
   fetchStockPricesTencent,
   fetchSinaEstimates,
   pickEstimate,
+  weightedChangeRate,
   staleCacheUsable,
   readEstimateCache,
   writeEstimateCache,

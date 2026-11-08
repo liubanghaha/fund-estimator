@@ -10,6 +10,10 @@ const db = cloud.database();
 //   原 skip 分页在页内删除文档后会前移漂移（漏掉未处理的旧文档、假完成）
 // 幂等可重复运行，保留全部数据。
 exports.main = async (event) => {
+  // 一次性迁移任务（2026-11-08 P0 加守卫）：可 upsert+删除 fund_temperatures 文档，
+  // 仅限定时器或服务端 CLI 调用——客户端 OPENID 一律拒绝
+  const { OPENID: _mgOpenid } = cloud.getWXContext();
+  if (_mgOpenid) return { code: -1, msg: "迁移任务仅限服务端调用" };
   const cloudDb = cloud.database();
   const _cmd = cloudDb.command;
   const startId = (event && event.lastId) || "";

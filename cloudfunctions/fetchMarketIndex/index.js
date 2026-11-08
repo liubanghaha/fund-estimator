@@ -291,8 +291,10 @@ function buildQuoteData(price, prevClose, open, high, low) {
 }
 
 function formatDate(d) {
+  // 北京时间（2026-11-08 审查：原 getFullYear 用服务器本地时区，非 CST 机器会算错"今天"）
+  const bj = new Date(d.getTime() + 8 * 3600000);
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${bj.getUTCFullYear()}-${pad(bj.getUTCMonth() + 1)}-${pad(bj.getUTCDate())}`;
 }
 
 // ========== 亚太指数（东财国际指数，市场前缀 100，两位小数 scale=100） ==========

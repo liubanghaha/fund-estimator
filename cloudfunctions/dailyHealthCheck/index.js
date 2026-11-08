@@ -108,6 +108,29 @@ exports.main = async () => {
     } else { checks.snapshots = "skip"; }
   } catch (e) { problems.push("快照读取失败"); }
 
+  // ===== 无界集合清理（2026-11-08 P0）：events/push_logs/analytics_launches 保留 90 天 =====
+  // 三集合只增不减（trackReport 每会话 3-10 条），opsTool 看板的 ts count 随体量线性恶化。
+  // 每日清一批（预算 50s，删不完明天继续）；events.ts 无索引时分批删除仍慢——清理同时是索引止血前的兜底
+  try {
+    const cutoffTs = Date.now() - 90 * 86400000;
+    const t0 = Date.now();
+    let cleaned = 0;
+    const TS_FIELD = { events: "ts", push_logs: "sentAt", analytics_launches: "ts" }; // 字段名按集合区分（push_logs 用 sentAt）
+    for (const coll of ["events", "push_logs", "analytics_launches"]) {
+      for (let round = 0; round < 30; round++) {
+        if (Date.now() - t0 > 50000) break; // 50s 预算，剩余明天继续
+        const q = await db.collection(coll).where({ [TS_FIELD[coll]]: db.command.lt(cutoffTs) }).limit(500).get();
+        if ((q.data || []).length === 0) break;
+        const ids = q.data.map((d) => d._id);
+        const r = await db.collection(coll).where({ _id: db.command.in(ids) }).remove();
+        cleaned += (r.deleted || ids.length);
+        if ((q.data || []).length < 500) break;
+      }
+    }
+    checks.retention = cleaned;
+    if (cleaned > 0) console.log(`[dailyHealthCheck] 过期数据清理 ${cleaned} 条（90 天前）`);
+  } catch (e) { checks.retention = "fail:" + String(e.message || e).slice(0, 50); }
+
   const ok = problems.length === 0;
   const health = { date: today, ok, problems, checks, finishedAt: Date.now() };
   await db.collection("app_config").doc("daily_health_status").set({ data: health }).catch(() => {});

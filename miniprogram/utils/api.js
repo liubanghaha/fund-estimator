@@ -88,6 +88,16 @@ const api = {
   fetchFundProfile(fundCode) {
     return this.callFunction("fetchFundProfile", { fundCode });
   },
+  // 收盘播报/订阅管理（此前 8 处页面直调 wx.cloud.callFunction，绕过统一超时与去重）
+  dailyBriefing(data) {
+    return this.callFunction("dailyBriefing", data);
+  },
+  temperatureBacktest() {
+    return this.callFunction("temperatureBacktest", {});
+  },
+  dcaBacktest(data) {
+    return this.callFunction("dcaBacktest", data);
+  },
   // 基金分红记录（详情页档案卡 + 组合分红演算；云函数 7 天缓存）
   fetchFundDividends(fundCode) {
     return this.callFunction("fetchFundDividends", { fundCode });

@@ -108,6 +108,25 @@ const calculator = {
     const riskFree = 2.5;
     return parseFloat(((annualizedReturn - riskFree) / volatility).toFixed(2));
   },
+  // 官方日增长率逐日复利重构净值（2026-11-08 收敛：fund-detail 水下时间与 review 修复分布
+  // 的双份实现漂移消除——changeRate 缺失日用相邻**原始净值**比衔接（保持除息跳变幅度），
+  // 再缺失用前一日持平，不伪造 0）。history 最新在前；返回时间升序 [{date, adj}]
+  rebuildAdjustedNav(history) {
+    const chrono = [];
+    let prev = null;
+    (history || []).filter((d) => d && d.nav > 0).slice().reverse().forEach((d) => {
+      let adj = d.nav;
+      if (prev) {
+        if (typeof d.changeRate === "number") adj = prev.adj * (1 + d.changeRate / 100);
+        else if (prev.nav > 0) adj = prev.adj * (d.nav / prev.nav);
+        else adj = prev.adj;
+      }
+      if (!(adj > 0)) return;
+      chrono.push({ date: d.date, adj });
+      prev = { nav: d.nav, adj };
+    });
+    return chrono;
+  },
   // 滚动回撤序列：每日距历史峰值的回撤百分比
   // values: [{ value: number }] 按日期升序排列（旧→新）
   // 返回等长数组，负值表示回撤（如 -5.2 表示从峰值回落 5.2%），0 表示在峰值
