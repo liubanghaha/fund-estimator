@@ -783,7 +783,17 @@ function pickEstimate({ pref, sinaRate, sinaTime, sinaNav, selfRate, selfTime, c
     return { rate: null, source: "", time: "", nav: null };
   }
   // 数据源一：本轮新浪 → 同源最近值 → 自算（仅"从无新浪值"的无覆盖标的，或长时间取不到）
-  if (sinaRate != null) return { rate: sinaRate, source: "sina", time: sinaTime || "", nav: sinaNav != null ? sinaNav : null };
+  if (sinaRate != null) {
+    // 快照时间不回退（2026-11-09 事故）：新浪 CDN 多节点缓存不一致——同一基金连续请求会交替
+    // 返回新旧两个快照（实测 11:32 的 1.8154 ↔ 11:23 的 2.1148），列表与详情各自拉取时刻不同
+    // 就显示成两个数（用户："实时估值怎么不一样"）。本轮快照早于已缓存快照（同一天且都是
+    // HH:mm 格式）时，判定为 CDN 旧节点，沿用缓存值，保证同一时间窗内全端一致
+    if (cached && cached.rate != null && cached.date === todayStr &&
+        cached.time && sinaTime && /^\d{1,2}:\d{2}/.test(sinaTime) && sinaTime < cached.time) {
+      return { rate: cached.rate, source: "sina", time: cached.time, nav: cached.nav != null ? cached.nav : (sinaNav != null ? sinaNav : null) };
+    }
+    return { rate: sinaRate, source: "sina", time: sinaTime || "", nav: sinaNav != null ? sinaNav : null };
+  }
   if (staleCacheUsable(cached, todayStr, now)) {
     return { rate: cached.rate, source: "sina", time: cached.time || "", nav: cached.nav != null ? cached.nav : null };
   }

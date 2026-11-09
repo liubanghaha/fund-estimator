@@ -75,15 +75,13 @@ exports.main = async (event) => {
       ]);
     }
     // 数据源一：本轮缺值的基金取"同源最近值"（缺值不换源，口径见 fd.pickEstimate/注释）。
-    // 只在真的缺值时才读这张表，正常轮次零额外读
+    // 全量读同源最近值（2026-11-09 改：此前只在缺值时才读）——现在"有新浪值时"也要读，
+    // 用于 pickEstimate 的"快照时间不回退"比较（新浪 CDN 多节点缓存不一致，会交替返回新旧快照，
+    // 导致列表与详情显示两个数）。一次批量 in 查询，成本可忽略
     let estCacheMap = {};
-    if (!skipEst && estSrc === "sina") {
-      const todayForCache = fd.formatBJDate();
-      const missCodes = codes.filter((c) => {
-        const s = sinaMap[c];
-        return !(s && s.date != null && _gdIsToday(s.date, todayForCache) && s.changeRate != null);
-      });
-      if (missCodes.length > 0) estCacheMap = await fd.readEstimateCache(db, missCodes);
+    const estCacheWriteback = []; // 本轮接受的新快照（循环后批量回写）
+    if (!skipEst && estSrc === "sina" && codes.length > 0) {
+      estCacheMap = await fd.readEstimateCache(db, codes).catch(() => ({}));
     }
     // withNav60=false（correlation-matrix 等仅需列表）跳过历史净值拉取，只取最新净值
     const needDays = historyDays || (withNav60 === false ? 0 : 250); // 2026-10-18 60→250：距高点改按近一年口径（原 60 交易日窗口会让回撤深的基金"看起来没那么差"，如蓝筹 60日-9% vs 近1年-31%）
@@ -276,6 +274,11 @@ exports.main = async (event) => {
         todayStr, now: Date.now(),
       });
       const estRate = pick.rate, estSource = pick.source;
+      // 读取即回写（2026-11-09）：本轮接受的新快照写回同源缓存——两端（列表/详情）都以 DB
+      // 里"最新时间"为准，否则各自拿到的新旧快照会显示两个数（新浪 CDN 多节点乱序返回）
+      if (estSource === "sina" && pick.rate != null && pick.time === (sinaToday ? (sn.time || "") : null) && sinaToday) {
+        estCacheWriteback.push({ fundCode: h.fundCode, rate: pick.rate, time: pick.time, nav: pick.nav, date: todayStr });
+      }
       if (estRate != null) {
         console.log(`[enrich] ${h.fundCode} 估算 source=${estSource} rate=${estRate} todayStr=${todayStr} actualDate=${eastmoney.actualDate}`);
       }
@@ -356,6 +359,12 @@ exports.main = async (event) => {
         navHigh: navHigh != null ? navHigh.toFixed(4) : null,
         navLow: navLow != null ? navLow.toFixed(4) : null,
       });
+    }
+
+    // 本轮接受的新快照批量回写同源缓存（2026-11-09）：两端都以 DB 最新时间为准，
+    // 消除"列表 1.82% / 详情 1.91%"这类 CDN 乱序快照造成的显示分裂。失败不影响主流程
+    if (estCacheWriteback.length > 0) {
+      fd.writeEstimateCache(db, estCacheWriteback).catch(() => {});
     }
 
     // 累计现金分红科目（2026-11-07 盲区 1，账目正确性）：现金分红 = 净值除息 + 现金到卡，

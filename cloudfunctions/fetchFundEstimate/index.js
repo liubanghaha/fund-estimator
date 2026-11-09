@@ -145,9 +145,11 @@ async function fetchSelfEstimate(fundCode, src) {
   //    数据源二 = 自算优先、新浪兜底。新浪对无覆盖标的（债券基金/968 互认）返回空，或数据非当日 → 视为不可用
   const sinaToday = sn.date != null && (_gdIsToday(sn.date, todayStr)) && sn.changeRate != null;
 
+  // 无条件读同源最近值（2026-11-09 改：此前只在缺值时读）——"有新浪值时"也要读，
+  // 供 pickEstimate 做"快照时间不回退"比较（新浪 CDN 多节点返回新旧快照交替）
   let cached = null;
-  if (estSrc === "sina" && !sinaToday) {
-    const m = await fd.readEstimateCache(db, [fundCode]);
+  if (estSrc === "sina") {
+    const m = await fd.readEstimateCache(db, [fundCode]).catch(() => ({}));
     cached = m[fundCode] || null;
   }
   const selfTime = fd.formatBJTime();
@@ -157,6 +159,10 @@ async function fetchSelfEstimate(fundCode, src) {
     selfRate: selfChangeRate, selfTime,
     cached, todayStr, now: Date.now(),
   });
+  // 读取即回写（2026-11-09）：本轮接受的新快照写回同源缓存，与列表端共享"最新时间"基准
+  if (pick.source === "sina" && pick.rate != null && sinaToday && pick.time === (sn.time || "")) {
+    fd.writeEstimateCache(db, [{ fundCode, rate: pick.rate, time: pick.time, nav: pick.nav, date: todayStr }]).catch(() => {});
+  }
   // 今日既无净值也拿不到估算（债券/968/货币等无覆盖标的）→ 不留"上一交易日涨幅"冒充今日，
   // 置 null 让详情页显示 --（与 getPortfolio / batchFetchEstimate 同一约定）
   const estRate = pick.rate;
