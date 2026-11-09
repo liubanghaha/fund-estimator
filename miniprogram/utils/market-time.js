@@ -138,6 +138,20 @@ function rowsReachDay(rows, day) {
 }
 
 // 当前市场三态
+// 交易确认日归一（2026-11-09 D-01：抽公共函数统一 4 处调用——
+// 手动加减仓/OCR 批量/编辑三处此前各自实现，口径漂移会导致确认日错一天）。
+// 规则：交易日且 15:00 前提交 → 当天；否则（15:00 后/非交易日）→ 下一交易日。
+// afterCloseOverride：用户显式补记历史单时由调用方传入（覆盖时钟判定）
+function resolveTradeDate(applyDay, afterCloseOverride) {
+  const day = applyDay || bjDateStr();
+  const afterClose = afterCloseOverride != null
+    ? !!afterCloseOverride
+    : bjMinutes() >= 900;
+  return isTradingDay(day) && !afterClose
+    ? day
+    : nextTradingDay(day);
+}
+
 function marketPhase() {
   const bj = _bjNow();
   const today = bj.toISOString().slice(0, 10);
@@ -201,6 +215,7 @@ function isLunchBreak() {
 }
 
 module.exports = {
+  resolveTradeDate,
   isTradingDay,
   lastTradingDay,
   prevTradingDay,

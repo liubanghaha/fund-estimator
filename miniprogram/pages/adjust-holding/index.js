@@ -492,7 +492,7 @@ Page({
 
       await api.transactionAdd({
         fundCode: h.fundCode, fundName: h.fundName,
-        type, shares, price, amount: absAmount, date: today,
+        type, shares, price, amount: absAmount, date: marketTime.resolveTradeDate(today),
         holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_manual", direction: type, amount: absAmount, amountBand: track.amountBand(absAmount), fundCode: h.fundCode });
@@ -816,7 +816,7 @@ Page({
       const today = marketTime.bjDateStr(); // 北京时间（原设备本地时区，海外用户日期错天）
 
       await api.transactionAdd({
-        fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: today,
+        fundCode: h.fundCode, fundName: h.fundName, type, shares: s, price: p, amount: amt, date: marketTime.resolveTradeDate(today),
         holdingId: h._id || "",
       });
       track.recordTrade({ source: "ocr_edit", direction: type, amount: amt, amountBand: track.amountBand(amt), fundCode: h.fundCode });

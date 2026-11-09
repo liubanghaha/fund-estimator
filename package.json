@@ -1,9 +1,11 @@
 {
   "devDependencies": {
+    "eslint": "^8.57.1",
     "miniprogram-automator": "^0.12.1"
   },
   "scripts": {
     "sync:shared": "node scripts/sync-shared.js",
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "lint": "eslint . --ext .js --ignore-pattern node_modules --ignore-pattern .tmp"
   }
 }
