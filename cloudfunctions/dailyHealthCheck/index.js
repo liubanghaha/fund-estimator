@@ -52,6 +52,23 @@ exports.main = async () => {
     const expectTempDay = (await isTradingDay(today)) ? today : td.lastTradingDay(today);
     checks.temp = t && t.today === expectTempDay && t.status === "done";
     if (!checks.temp) problems.push(`温度任务未完成(${t ? (t.today || t.date) + "/" + t.status : "无状态"}，预期 ${expectTempDay})`);
+    // 分布健康度（2026-11-09 加）：全市场一个档位占满 = 历史分位全缺失的兜底症状
+    //（11-06/11-09 各发生一次，用户看到"估值全是 1/温度全适中"才发现——巡检要能当天发现）
+    const sd = t && t.signalDist;
+    if (checks.temp && sd && (sd.low + sd.mid + sd.high) > 100) {
+      const total = sd.low + sd.mid + sd.high;
+      const maxShare = Math.max(sd.low, sd.mid, sd.high) / total;
+      checks.tempDist = +maxShare.toFixed(2);
+      if (maxShare > 0.95) {
+        // 自愈（2026-11-09）：6:00 接口通常已正常——直接触发一次强制重跑，
+        // 不用等用户发现"估值全是 1"（03:00 失败时历史 PE 拉不到会导致全兜底）
+        problems.push(`温度分布异常(单档占 ${Math.round(maxShare * 100)}%，已触发自动重跑)`);
+        checks.tempAutoFix = true;
+        cloud.callFunction({ name: "computeFundTemperature", data: { force: true } })
+          .then((r) => console.log("[dailyHealthCheck] 温度自愈触发完成:", JSON.stringify(r.result && r.result.data).slice(0, 120)))
+          .catch((e) => console.error("[dailyHealthCheck] 温度自愈触发失败:", e.message));
+      }
+    }
   } catch (e) { problems.push("温度状态读取失败"); }
 
   // 2) 排名分布（今天 04:30）

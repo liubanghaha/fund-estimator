@@ -185,6 +185,7 @@ function calcSignal(fundCode, holdings, stockMap) {
   let totalScore = 0;
   let stocksWithData = 0;
   let totalStocks = 0;
+  let noPctRatio = 0; // 无任何历史分位（pePct/pbPct 均缺）的股票权重——兜底 score=1.0 的来源
   const detailPEs = [];
   const warnings = [];
 
@@ -200,6 +201,7 @@ function calcSignal(fundCode, holdings, stockMap) {
 
     totalScore += sr.score * h.navRatio;
     totalRatio += h.navRatio;
+    if (pePct == null && pbPct == null) noPctRatio += h.navRatio;
     stocksWithData++;
     if (sr.warn) warnings.push(`${h.stockName}: ${sr.note}`);
 
@@ -216,6 +218,24 @@ function calcSignal(fundCode, holdings, stockMap) {
   });
 
   if (totalRatio < MIN_COVERAGE) return null;
+  // 数据可信闸（2026-11-09 事故）：过半权重无历史 PE/PB 分位时，逐股兜底 score=1.0 会让
+  // 整只基金恒定算出 normPE=1.0 → 全市场"温度适中"的虚假结论（11-06/11-09 凌晨接口慢时
+  // 各发生过一次，用户看到"估值全是 1"）。此时代码���写 nodata（前端显示 --）——
+  // 宁可诚实无数据，不给虚假中性值
+  if (totalRatio > 0 && noPctRatio / totalRatio > 0.5) {
+    return {
+      fundCode,
+      signal: "nodata",
+      label: "--",
+      normPE: 0,
+      weightedPE: 0,
+      coverage: +totalRatio.toFixed(1),
+      stocksWithData,
+      totalStocks,
+      detailPEs,
+      warnings: warnings.concat("历史分位缺失过半，温度不出值"),
+    };
+  }
   if (stocksWithData === 0) {
     return {
       fundCode,

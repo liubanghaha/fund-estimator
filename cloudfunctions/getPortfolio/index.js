@@ -98,8 +98,11 @@ exports.main = async (event) => {
     let afterClose = false;
     const navWriteback = {}; // 盘后现拉回写候选：code → [date, nav, changeRate][]
     const writebackQueue = [];
+    // todayKey 必须在 try 块外：批循环（118 行起）与盘后回写收集都要用——
+    // 2026-11-09 事故：定义在 try 内是块级作用域，收集端引用抛 ReferenceError 被批内 catch 吞掉，
+    // 每只基金返回空 eastmoney → 当日收益全 --（盘中最高优先级故障）
+    const todayKey = fd.formatBJDate();
     try {
-      const todayKey = fd.formatBJDate();
       // 盘后（≥15:00 交易日）当日新净值陆续公布，但缓存的还是 05:30 预热的旧净值
       // （actualDate 停在昨天）——用缓存会把"净值已公布 N/12"误判成 0、影响 ✓ 标记与
       // 收益口径切换。盘后只认"缓存首行已是今天净值"的基金（零星已刷新的），其余现场拉。
