@@ -828,7 +828,26 @@ async function readEstimateCache(db, codes) {
 
 // 批量写回本轮拿到的今日值（只由 snapshotProfit 调用；分块串行，避免瞬发几百个写）
 async function writeEstimateCache(db, entries) {
-  const list = (entries || []).filter((e) => e && e.fundCode && e.rate != null && e.date);
+  let list = (entries || []).filter((e) => e && e.fundCode && e.rate != null && e.date);
+  if (list.length === 0) return 0;
+  // 快照时间不回退（2026-11-09 新浪 CDN 乱序修复的写入端兜底）：多写入者并发时
+  // （snapshotProfit 每 2 分钟 / getPortfolio 盘后回写 / 详情页按需），晚到的旧快照
+  // 会把缓存时间拨回去 → 下游 pickEstimate 时间比较失真。读现有缓存，仅接受"更新或等时间"
+  const codes = [...new Set(list.map((e) => e.fundCode))];
+  const curMap = {};
+  for (let i = 0; i < codes.length; i += 100) {
+    try {
+      const r = await db.collection(EST_CACHE_COLLECTION)
+        .where({ fundCode: db.command.in(codes.slice(i, i + 100)) })
+        .field({ fundCode: true, time: true }).get();
+      (r.data || []).forEach((d) => { curMap[d.fundCode] = d.time || ""; });
+    } catch (e2) { /* 读失败不阻断写入 */ }
+  }
+  list = list.filter((e) => {
+    const cur = curMap[e.fundCode];
+    if (cur == null || e.time == null || e.time === "") return true; // 无基准或无时间 → 接受
+    return String(e.time) >= String(cur); // HH:mm 字典序=时间序
+  });
   if (list.length === 0) return 0;
   const CHUNK = 50;
   for (let i = 0; i < list.length; i += CHUNK) {
