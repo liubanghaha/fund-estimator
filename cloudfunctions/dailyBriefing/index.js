@@ -183,6 +183,27 @@ async function handleAlertSet({ settings, globalOn }) {
   if (!hasSettings && typeof globalOn !== "boolean") {
     return { code: -1, msg: `参数错误 settings=${typeof settings} globalOn=${typeof globalOn} keys=${Object.keys(arguments[0] || {}).join("|")}` };
   }
+  // 防御性清洗（2026-11-09 N-02 审查，保留提醒字段）：settings 项结构为 { name, peAlert, enabled, ... }，
+  // 白名单键 + 代码格式校验 + 上限 300 只——防原型污染键(__proto__/constructor)与超长串注入，
+  // 但**保留 peAlert/enabled 等提醒字段**（下游 runPeAlerts 依赖），不能像 v1 那样只留 name
+  if (hasSettings) {
+    const cleaned = {};
+    let n = 0;
+    for (const [code, val] of Object.entries(settings)) {
+      if (!/^\d{6}$/.test(code) || !(val && typeof val === "object") || n >= 300) continue;
+      cleaned[code] = {
+        name: String(val.name || "").slice(0, 50),
+        fundName: String(val.fundName || "").slice(0, 50),
+        peAlert: !!val.peAlert,
+        enabled: val.enabled !== false,
+        // 涨跌提醒阈值（数字），缺失记 0（下游 alertPush 判断 >0 才触发）
+        upper: isFinite(parseFloat(val.upper)) ? parseFloat(val.upper) : 0,
+        lower: isFinite(parseFloat(val.lower)) ? parseFloat(val.lower) : 0,
+      };
+      n++;
+    }
+    settings = cleaned;
+  }
   const found = await db.collection("alert_settings").where({ _openid: OPENID }).get();
   const now = Date.now();
   if (found.data.length > 0) {
@@ -386,6 +407,11 @@ async function handleAuth({ scene = SCENE, templateId = TEMPLATE_ID_BRIEF }) {
   const tid = [TEMPLATE_ID_BRIEF, TEMPLATE_ID_FUND, TEMPLATE_ID].indexOf(templateId) >= 0 ? templateId : TEMPLATE_ID_BRIEF;
   const found = await db.collection("subscriptions").where({ _openid: OPENID, scene, templateId: tid }).get();
   const now = Date.now();
+  // 额度封顶（2026-11-09 N-01）：auth 可被客户端循环调用刷高 quota——上限 50（正常用户
+  // 一天授权 1-2 次根本用不完）；到顶后静默返回成功（不报错，避免客户端重试循环）
+  const QUOTA_CAP = 50;
+  const cur = found.data.length > 0 ? (found.data[0].quota || 0) : 0;
+  if (cur >= QUOTA_CAP) return { code: 0, templateId: tid };
   if (found.data.length > 0) {
     await db.collection("subscriptions").doc(found.data[0]._id).update({
       data: { quota: _.inc(1), templateId: tid, updatedAt: now }

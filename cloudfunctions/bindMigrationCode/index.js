@@ -59,8 +59,15 @@ exports.main = async (event) => {
 
 async function copyCollection(col, h5Uid, uid) {
   let moved = 0;
-  let docs = await db.collection(col).where({ _openid: h5Uid }).limit(1000).get();
-  while (docs.data.length) {
+  // 游标分页（2026-11-09 U-01）：skip 分页在页内 add 新文档后会让后续页前移/后移，
+  // while(limit(1000)) 在源≥1000 条时会死循环。_id 游标严格单调推进
+  let lastId = "";
+  while (true) {
+    const where = lastId
+      ? { _openid: h5Uid, _id: db.command.gt(lastId) }
+      : { _openid: h5Uid };
+    const docs = await db.collection(col).where(where).orderBy("_id", "asc").limit(1000).get();
+    if (!docs.data.length) break;
     for (const doc of docs.data) {
       const { _id, _openid, ...rest } = doc;
       // 已复制过的文档跳过（断点续传去重）
@@ -77,19 +84,23 @@ async function copyCollection(col, h5Uid, uid) {
       await db.collection(col).add({ data: payload });
       moved++;
     }
+    lastId = docs.data[docs.data.length - 1]._id;
     if (docs.data.length < 1000) break;
-    docs = await db.collection(col).where({ _openid: h5Uid }).limit(1000).get();
   }
   return moved;
 }
 
 async function cleanupCollection(col, h5Uid) {
-  let docs = await db.collection(col).where({ _openid: h5Uid }).limit(1000).get();
-  while (docs.data.length) {
+  // 游标分页（同 copyCollection）：while(skip) 在删除后文档前移会跳文档或死循环
+  let removed = 0;
+  while (true) {
+    const docs = await db.collection(col).where({ _openid: h5Uid }).limit(1000).get();
+    if (!docs.data.length) break;
     for (const doc of docs.data) {
       await db.collection(col).doc(doc._id).remove();
+      removed++;
     }
-    if (docs.data.length < 1000) break;
-    docs = await db.collection(col).where({ _openid: h5Uid }).limit(1000).get();
+    if (docs.data.length < 1000) break; // 页未满 = 已到尾部
   }
+  return removed;
 }

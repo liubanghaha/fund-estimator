@@ -72,6 +72,12 @@ exports.main = async (event) => {
         covered++;
       });
       if (agoV <= 0 || covered === 0) return { code: 0, data: null };
+      // 服务端门槛（2026-11-09 A-02 补齐）：客户端有 samples>=20 判断，但服务端此前未校验——
+      // 小样本（<20 人）时的百分位无统计意义；覆盖率（计入分母的基金/总持仓基金）<50% 时
+      // 该用户的 rate 与分布不可比，同样不出值（宁可无数据不给虚假参照）
+      if (dist.samples < 20) return { code: 0, data: null };
+      const coverage = covered / codes.length;
+      if (coverage < 0.5) return { code: 0, data: null, lowCoverage: +coverage.toFixed(2) };
       const rate = +(((nowV / agoV) - 1) * 100).toFixed(2);
       const below = countBelow(dist.buckets, rate);
       const pct = Math.round((below / dist.samples) * 100);

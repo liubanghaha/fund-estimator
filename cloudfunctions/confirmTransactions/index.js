@@ -85,6 +85,8 @@ exports.main = async (event) => {
       const navD = navInfo && navInfo.byDate[tx.date];
       if (!navD) { stat.skippedNoNav++; continue; }
       const amount = parseFloat(tx.amount);
+      // 值域校验（2026-11-09 D-02）：负数/0/超大会污染份额换算与持仓 patch
+      if (!(amount > 0) || amount > 1e8) { stat.skippedNoNav++; continue; }
       const correctShares = +(amount / navD).toFixed(2);
       const recordedShares = parseFloat(tx.shares) || 0;
 
@@ -141,6 +143,14 @@ exports.main = async (event) => {
       if (newP > 0) { patch.buyPrice = newP; patch.buyAmount = +(newS * newP).toFixed(2); }
 
       if (!dryRun) {
+        // 竞态终防（2026-11-09 D-02）：holdings 快照可能已过期（并发写入/用户操作）——
+        // 校验 shares 仍等于扫描时的值才 patch；不匹配则本轮放弃（confirmed 也不标，下轮重扫）
+        const recheck = await db.collection("holdings").doc(hold._id).get().catch(() => null);
+        const curShares = recheck && recheck.data ? (parseFloat(recheck.data.shares || recheck.data.amount) || 0) : -1;
+        if (Math.abs(curShares - oldS) > EPS_SHARES) {
+          notes.push(`${tx.fundCode}@${tx.date} 持仓并发变更，跳过本轮`);
+          continue;
+        }
         await db.collection("holdings").doc(hold._id).update({ data: patch });
         await markConfirmed(tx._id, correctShares, navD, deltaH, "");
       }
