@@ -772,7 +772,10 @@ function weightedChangeRate(holdings, prices, opts = {}) {
     totalRatio += ratio;
     weighted += p.changeRate * ratio;
   });
-  return totalRatio > 0 ? +(weighted / totalRatio).toFixed(2) : null;
+  if (!(totalRatio > 0)) return null;
+  const rate = +(weighted / totalRatio).toFixed(2);
+  // opts.detail：同时回传加权覆盖率（%），供调用方写 _coverage 等观测字段
+  return opts.detail ? { rate, coverage: +totalRatio.toFixed(1) } : rate;
 }
 
 function pickEstimate({ pref, sinaRate, sinaTime, sinaNav, selfRate, selfTime, cached, todayStr, now }) {

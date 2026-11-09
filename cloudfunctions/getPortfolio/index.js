@@ -972,10 +972,11 @@ async function computeSelfEstimates(codes, startTime) {
         const holdings = holdingsMap[code];
         if (!holdings || holdings.length === 0) continue;
         // 加权口径收敛到 _shared（2026-11-08 审查）：逐股日期校验（2026-10-06 审查口径）
-        // 由 opts.today 参数保留在本调用点
-        const wRate = fd.weightedChangeRate(holdings, stockPriceMap, { today });
-        if (wRate != null) {
-          estChange = wRate;
+        // 由 opts.today 参数保留在本调用点；detail:true 回传覆盖率（2026-11-09 修复：
+        // 替换时遗留 totalRatio 引用致 ReferenceError 被 catch 吞掉，自算整体失效、全兜底新浪）
+        const wRes = fd.weightedChangeRate(holdings, stockPriceMap, { today, detail: true });
+        if (wRes != null) {
+          estChange = wRes.rate;
           map[code] = {
             fundCode: code,
             fundName: "",
@@ -983,7 +984,7 @@ async function computeSelfEstimates(codes, startTime) {
             estimatedNav: null,
             estimatedChangeRate: estChange,
             estimateTime: timeStr,
-            _coverage: +totalRatio.toFixed(1),
+            _coverage: wRes.coverage,
           };
         }
       } else {
